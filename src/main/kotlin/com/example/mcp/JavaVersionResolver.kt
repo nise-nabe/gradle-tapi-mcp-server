@@ -8,15 +8,14 @@ object JavaVersionResolver {
             return null
         }
         val release = File(javaHome, "release")
-        if (release.isFile) {
-            release.readLines()
-                .firstOrNull { it.startsWith("JAVA_VERSION=") }
-                ?.substringAfter('=')
-                ?.trim()
-                ?.trim('"')
-                ?.takeIf { it.isNotBlank() }
-                ?.let { return it }
+        if (!release.isFile) {
+            return null
         }
-        return null
+        return release.readLines()
+            .firstOrNull { it.startsWith("JAVA_VERSION=") }
+            ?.substringAfter('=')
+            ?.trim()
+            ?.trim('"')
+            ?.takeIf { it.isNotBlank() }
     }
 }

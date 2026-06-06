@@ -123,7 +123,7 @@ data class ConnectionStatus(
     val javaVersion: String? = null,
 )
 
-data class CachedBuildEnvironment(
+private data class CachedBuildEnvironment(
     val gradleVersion: String,
     val gradleUserHome: String?,
     val javaHome: String?,
