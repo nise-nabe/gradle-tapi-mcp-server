@@ -131,10 +131,6 @@ class BuildExecutionManagerTest {
             streams = streams,
         ).also { it.finishedAt = Instant.now() }
         manager.seedRunningBuildForTests(record)
-        manager.javaClass.getDeclaredField("buildSlot").apply {
-            isAccessible = true
-            (get(manager) as java.util.concurrent.atomic.AtomicBoolean).set(false)
-        }
 
         val result = manager.status("completed-build", OutputLimitOptions())
 
