@@ -9,13 +9,17 @@ object JavaVersionResolver {
         }
         val release = File(javaHome, "release")
         if (release.isFile) {
-            release.readLines()
-                .firstOrNull { it.startsWith("JAVA_VERSION=") }
-                ?.substringAfter('=')
-                ?.trim()
-                ?.trim('"')
-                ?.takeIf { it.isNotBlank() }
-                ?.let { return it }
+            return try {
+                release.useLines { lines ->
+                    lines.firstOrNull { it.startsWith("JAVA_VERSION=") }
+                        ?.substringAfter('=')
+                        ?.trim()
+                        ?.trim('"')
+                        ?.takeIf { it.isNotBlank() }
+                }
+            } catch (_: Exception) {
+                null
+            }
         }
         return null
     }
