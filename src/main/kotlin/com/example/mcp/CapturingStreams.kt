@@ -26,10 +26,8 @@ class TailCapturingStream(
             val combined = if (pendingBytes.isEmpty()) incoming else pendingBytes + incoming
             val completeLength = utf8CompletePrefixLength(combined)
             if (completeLength > 0) {
-                val text = String(combined, 0, completeLength, StandardCharsets.UTF_8)
-                totalChars += text.length
-                buffer.append(text)
-                trimToRetainedLimit()
+                val decoded = String(combined, 0, completeLength, StandardCharsets.UTF_8)
+                appendNormalizedText(decoded)
             }
             pendingBytes = if (completeLength < combined.size) {
                 combined.copyOfRange(completeLength, combined.size)
@@ -41,9 +39,24 @@ class TailCapturingStream(
 
     fun snapshot(): CapturedStreamSnapshot =
         synchronized(lock) {
-            val text = OutputNormalizer.normalizeNewlines(buffer.toString())
-            CapturedStreamSnapshot(text = text, totalChars = totalChars)
+            CapturedStreamSnapshot(text = buffer.toString(), totalChars = totalChars)
         }
+
+    private fun appendNormalizedText(text: String) {
+        var chunk = OutputNormalizer.normalizeNewlines(text)
+        if (buffer.isNotEmpty() && buffer[buffer.length - 1] == '\r') {
+            buffer.deleteCharAt(buffer.length - 1)
+            totalChars -= 1
+            if (chunk.startsWith("\n")) {
+                chunk = chunk.removePrefix("\n")
+            }
+            buffer.append('\n')
+            totalChars += 1
+        }
+        totalChars += chunk.length
+        buffer.append(chunk)
+        trimToRetainedLimit()
+    }
 
     private fun trimToRetainedLimit() {
         val codePointCount = buffer.codePointCount(0, buffer.length)

@@ -49,6 +49,7 @@ class TailCapturingStreamTest {
         stream.append("a\r\nb".toByteArray(StandardCharsets.UTF_8), 0, 4)
 
         assertEquals("a\nb", stream.snapshot().text)
+        assertEquals(3, stream.snapshot().totalChars)
     }
 
     @Test
