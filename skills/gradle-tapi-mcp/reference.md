@@ -27,6 +27,24 @@ No arguments.
 
 No arguments. Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `java.javaHome`, `java.jvmArguments`.
 
+### gradle_get_build_cache_status
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `includeLastMcpBuild` | `true` | Include cache-oriented stats from the last MCP task/test run |
+| `includeLocalCacheDetails` | `true` | Include local build-cache / configuration-cache directory summaries |
+| `includeDeclaredProperties` | `true` | Include cache-related entries from project and user `gradle.properties` |
+| `probeConfigurationCache` | `false` | Run `properties -q --configuration-cache` compatibility probe |
+
+Returns:
+
+- `summary` — effective flags (`buildCacheEnabled`, `remoteBuildCacheConfigured`, `configurationCacheRequested`, …)
+- `resolvedProperties` — cache-related properties from `properties -q`
+- `declaredProperties` — cache keys from project/user `gradle.properties` files
+- `local` — `build-cache-*` dirs under `gradleUserHome/caches`, project `.gradle` cache dirs
+- `lastMcpBuild` — parsed `taskSummaryLine` / `taskStats` from the last MCP build when available
+- `configurationCacheProbe` — present when `probeConfigurationCache=true`
+
 ### gradle_get_project_overview
 
 No arguments. Returns hierarchy with `taskCount` per project; no task lists.
