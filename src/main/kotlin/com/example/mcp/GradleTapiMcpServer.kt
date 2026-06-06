@@ -59,7 +59,7 @@ private fun createTools(
     listOf(
         tool(
             name = "gradle_connect",
-            description = "Connect to a Gradle project via the Tooling API. Clears in-memory build tracking before connecting. Reuses an existing compatible daemon when available.",
+            description = "Connect to a Gradle project via the Tooling API. Resets the active build slot and marks any running builds as failed before connecting. Reuses an existing compatible daemon when available.",
             schema = objectSchema(
                 required = listOf("projectDirectory"),
                 properties = mapOf(

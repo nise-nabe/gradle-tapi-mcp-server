@@ -27,8 +27,11 @@ internal class EofSignalingInputStream(
     }
 
     override fun close() {
-        delegate.close()
-        signalClosed()
+        try {
+            delegate.close()
+        } finally {
+            signalClosed()
+        }
     }
 
     private fun signalClosed() {

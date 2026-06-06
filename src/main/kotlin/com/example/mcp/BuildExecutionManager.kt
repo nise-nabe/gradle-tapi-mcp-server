@@ -218,12 +218,17 @@ class BuildExecutionManager(
         }
         when (outcome) {
             BuildTerminalOutcome.Succeeded -> record.progressTracker.markSucceeded()
-            is BuildTerminalOutcome.Failed -> {
-                record.progressTracker.markFailed(outcome.message)
-                if (record.errorMessage == null) {
-                    record.errorMessage = outcome.message
-                }
-            }
+            is BuildTerminalOutcome.Failed -> record.progressTracker.markFailed(outcome.message)
+        }
+        val expectedStatus = when (outcome) {
+            BuildTerminalOutcome.Succeeded -> BuildProgressTracker.STATUS_SUCCEEDED
+            is BuildTerminalOutcome.Failed -> BuildProgressTracker.STATUS_FAILED
+        }
+        if (record.progressTracker.snapshot().status != expectedStatus) {
+            return false
+        }
+        if (outcome is BuildTerminalOutcome.Failed && record.errorMessage == null) {
+            record.errorMessage = outcome.message
         }
         if (record.finishedAt == null) {
             record.finishedAt = Instant.now()

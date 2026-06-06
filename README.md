@@ -87,9 +87,9 @@ Foreground runs (default) also include a `progress` summary in the final respons
 
 ## Disconnect during a build
 
-`gradle_disconnect` is non-blocking: the server releases its build slot and resets in-memory build tracking immediately so a new connection or build can start. If a Tooling API build was still running, the Gradle daemon may briefly continue that prior call until it unwinds. The disconnect response includes a `warning` field when a build was active.
+`gradle_disconnect` is non-blocking: the server releases its build slot and marks any running builds as failed immediately so a new connection or build can start. Completed build records remain available via `gradle_get_build_status`. If a Tooling API build was still running, the Gradle daemon may briefly continue that prior call until it unwinds. The disconnect response includes a `warning` field when a build was active.
 
-`gradle_connect` clears in-memory build tracking before opening a new project connection. It rejects the call while a build slot is still held; wait for the build to finish or call `gradle_disconnect` first.
+`gradle_connect` resets the active build slot and marks any running builds as failed before opening a new project connection. It rejects the call while a build slot is still held; wait for the build to finish or call `gradle_disconnect` first.
 
 ## Agent skill
 

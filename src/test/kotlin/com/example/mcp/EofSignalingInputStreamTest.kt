@@ -1,9 +1,11 @@
 package com.example.mcp
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
+import java.io.InputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -38,6 +40,22 @@ class EofSignalingInputStreamTest {
 
         stream.close()
 
+        assertTrue(latch.await(100, TimeUnit.MILLISECONDS))
+    }
+
+    @Test
+    fun `close signals transport closed even when delegate close throws`() {
+        val latch = CountDownLatch(1)
+        val throwingDelegate = object : InputStream() {
+            override fun read(): Int = -1
+
+            override fun close() {
+                throw RuntimeException("close failed")
+            }
+        }
+        val stream = EofSignalingInputStream(throwingDelegate, latch)
+
+        assertThrows(RuntimeException::class.java) { stream.close() }
         assertTrue(latch.await(100, TimeUnit.MILLISECONDS))
     }
 }

@@ -17,7 +17,7 @@ No arguments.
 
 `gradle_disconnect` is non-blocking. If a build was active, the response may include `warning` explaining that the Gradle daemon can briefly overlap work until the prior Tooling API call unwinds.
 
-`gradle_connect` clears in-memory build tracking before connecting and fails fast while a build slot is still held.
+`gradle_connect` resets the active build slot and marks any running builds as failed before connecting. It fails fast while a build slot is still held.
 
 ## Query (read-only)
 
