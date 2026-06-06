@@ -292,7 +292,7 @@ private fun integerProperty(description: String): Map<String, String> =
 
 private fun projectTreeProperties(): Map<String, Any> =
     mapOf(
-        "maxDepth" to integerProperty("Maximum project tree depth to serialize (omit for unlimited)"),
+        "maxDepth" to integerProperty("Maximum project tree depth (root=0); deeper child projects are omitted"),
         "maxChildren" to integerProperty("Maximum child projects per node (omit for unlimited)"),
     )
 
@@ -300,7 +300,7 @@ private fun projectTreeSchema(): Map<String, Any> =
     objectSchema(properties = projectTreeProperties())
 
 private fun modelQueryProperties(): Map<String, Any> =
-    projectTreeProperties() + mapOf(
+    mapOf(
         "includeTasks" to booleanProperty("Include task lists. Default false to save tokens."),
         "includeTaskDetails" to booleanProperty("Include task description and displayName. Default false."),
         "taskGroup" to stringProperty("Filter tasks by Gradle task group"),
@@ -309,7 +309,7 @@ private fun modelQueryProperties(): Map<String, Any> =
     )
 
 private fun modelQuerySchema(): Map<String, Any> =
-    objectSchema(properties = modelQueryProperties())
+    objectSchema(properties = projectTreeProperties() + modelQueryProperties())
 
 private fun invocationsQuerySchema(): Map<String, Any> =
     objectSchema(
