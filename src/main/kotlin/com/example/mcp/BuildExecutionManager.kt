@@ -289,8 +289,11 @@ class BuildExecutionManager(
         tracker: BuildProgressTracker,
         status: String,
     ): Map<String, Any?> {
+        val buildSummary = BuildOutputParser.parse(record.streams.stdoutSnapshot().text)
         val response = mutableMapOf<String, Any?>(
             "status" to status,
+            "outcome" to BuildOutputParser.outcomeFromStatus(status),
+            "buildSummary" to BuildOutputParser.toResponseMap(buildSummary),
         )
         if (request.progressOptions.includeProgress) {
             response["progress"] = tracker.snapshot().toResponseMap()
@@ -322,6 +325,10 @@ class BuildExecutionManager(
         }
         if (progress.status != BuildProgressTracker.STATUS_RUNNING) {
             response.putAll(buildResult(record, outputLimit))
+            response["outcome"] = BuildOutputParser.outcomeFromStatus(progress.status)
+            response["buildSummary"] = BuildOutputParser.toResponseMap(
+                BuildOutputParser.parse(record.streams.stdoutSnapshot().text),
+            )
         } else {
             response.putAll(limitStreamFields(record.streams.stdoutSnapshot(), outputLimit, "stdout"))
             response.putAll(limitStreamFields(record.streams.stderrSnapshot(), outputLimit, "stderr"))

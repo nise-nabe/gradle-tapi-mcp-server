@@ -119,4 +119,38 @@ class BuildExecutionManagerTest {
 
         assertEquals("running", (resultWithProgress["progress"] as Map<*, *>)["status"])
     }
+
+    @Test
+    fun `completed build status includes outcome and build summary`() {
+        val streams = CapturingStreams()
+        val captureField = CapturingStreams::class.java.getDeclaredField("stdoutCapture")
+        captureField.isAccessible = true
+        val capture = captureField.get(streams) as TailCapturingStream
+        val stdout = "BUILD SUCCESSFUL in 1s\n2 actionable tasks: 2 executed\n"
+        val bytes = stdout.toByteArray()
+        capture.append(bytes, 0, bytes.size)
+
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        tracker.markSucceeded()
+        val record = BuildRecord(
+            id = "completed-build",
+            kind = BuildKind.TASKS,
+            tasks = listOf("build"),
+            testClasses = emptyList(),
+            startedAt = Instant.now(),
+            progressTracker = tracker,
+            streams = streams,
+        ).also { it.finishedAt = Instant.now() }
+        manager.seedRunningBuildForTests(record)
+
+        val result = manager.status("completed-build", OutputLimitOptions())
+
+        assertEquals("succeeded", result["status"])
+        assertEquals("SUCCESS", result["outcome"])
+        assertEquals(
+            "BUILD SUCCESSFUL in 1s",
+            (result["buildSummary"] as Map<*, *>)["resultLine"],
+        )
+    }
 }
