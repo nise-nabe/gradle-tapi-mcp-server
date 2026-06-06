@@ -1,4 +1,4 @@
-package org.gradle.mcp
+package com.example.mcp
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.modelcontextprotocol.server.McpServer

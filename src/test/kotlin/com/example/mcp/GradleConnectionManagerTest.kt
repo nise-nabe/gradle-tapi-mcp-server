@@ -1,4 +1,4 @@
-package org.gradle.mcp
+package com.example.mcp
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse

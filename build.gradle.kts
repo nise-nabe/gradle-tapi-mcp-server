@@ -3,7 +3,7 @@ plugins {
     application
 }
 
-group = "org.gradle.mcp"
+group = "com.example"
 version = "0.1.0-SNAPSHOT"
 
 java {
@@ -20,7 +20,7 @@ dependencies {
 }
 
 application {
-    mainClass = "org.gradle.mcp.GradleTapiMcpServerKt"
+    mainClass = "com.example.mcp.GradleTapiMcpServerKt"
 }
 
 testing {
@@ -33,7 +33,7 @@ testing {
 
 tasks.jar {
     manifest {
-        attributes("Main-Class" to "org.gradle.mcp.GradleTapiMcpServerKt")
+        attributes("Main-Class" to "com.example.mcp.GradleTapiMcpServerKt")
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })

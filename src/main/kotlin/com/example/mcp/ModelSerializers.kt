@@ -1,4 +1,4 @@
-package org.gradle.mcp
+package com.example.mcp
 
 import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.build.BuildEnvironment

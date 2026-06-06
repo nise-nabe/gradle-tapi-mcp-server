@@ -1,4 +1,4 @@
-package org.gradle.mcp
+package com.example.mcp
 
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
