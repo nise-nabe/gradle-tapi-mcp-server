@@ -12,6 +12,7 @@ import org.gradle.tooling.model.gradle.BuildInvocations
 import org.gradle.tooling.model.gradle.ProjectPublications
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
 
 private val objectMapper = jacksonObjectMapper()
 
@@ -42,14 +43,26 @@ fun main() {
         .tools(createTools(connectionManager, buildExecutionManager))
         .build()
 
-    Runtime.getRuntime().addShutdownHook(Thread {
-        buildExecutionManager.shutdown()
-        connectionManager.disconnect()
-        server.closeGracefully()
+    val shutdownOnce = AtomicBoolean(false)
+    fun shutdownBestEffort() {
+        if (!shutdownOnce.compareAndSet(false, true)) {
+            return
+        }
+        runCatching { buildExecutionManager.shutdown() }
+        runCatching { connectionManager.disconnect() }
+        runCatching { server.closeGracefully() }
         transportClosed.countDown()
-    })
+    }
 
-    transportClosed.await()
+    Runtime.getRuntime().addShutdownHook(Thread { shutdownBestEffort() })
+
+    try {
+        transportClosed.await()
+    } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+    } finally {
+        shutdownBestEffort()
+    }
 }
 
 private fun createTools(
