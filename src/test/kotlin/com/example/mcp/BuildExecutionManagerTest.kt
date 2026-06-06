@@ -13,7 +13,7 @@ class BuildExecutionManagerTest {
 
     @Test
     fun `status returns not_found for unknown build`() {
-        val result = manager.status("missing-build-id", OutputLimitOptions())
+        val result = manager.status("missing-build-id", OutputLimitOptions(), ProgressResponseOptions())
 
         assertEquals("not_found", result["status"])
     }
@@ -102,9 +102,21 @@ class BuildExecutionManagerTest {
             ),
         )
 
-        val result = manager.status("running-build", OutputLimitOptions(maxOutputChars = 100))
+        val resultWithoutProgress = manager.status(
+            "running-build",
+            OutputLimitOptions(maxOutputChars = 100),
+            ProgressResponseOptions(includeProgress = false),
+        )
 
-        assertEquals("running", result["status"])
-        assertEquals("running", (result["progress"] as Map<*, *>)["status"])
+        assertEquals("running", resultWithoutProgress["status"])
+        assertEquals(null, resultWithoutProgress["progress"])
+
+        val resultWithProgress = manager.status(
+            "running-build",
+            OutputLimitOptions(maxOutputChars = 100),
+            ProgressResponseOptions(includeProgress = true),
+        )
+
+        assertEquals("running", (resultWithProgress["progress"] as Map<*, *>)["status"])
     }
 }
