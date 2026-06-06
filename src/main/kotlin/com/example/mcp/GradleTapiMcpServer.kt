@@ -136,12 +136,7 @@ private fun createTools(
         tool(
             name = "gradle_get_build_status",
             description = "Return progress and partial output for a running or completed Gradle build started with background=true. Omit buildId to use the active or most recent build.",
-            schema = runOutputSchema(
-                required = emptyList(),
-                extraProperties = mapOf(
-                    "buildId" to stringProperty("Build ID returned by gradle_run_tasks or gradle_run_tests with background=true"),
-                ),
-            ),
+            schema = buildStatusSchema(),
         ) { args ->
             val outputLimit = OutputLimitOptions.fromArgs(args)
             jsonResult(buildExecutionManager.status(args.optionalString("buildId"), outputLimit))
@@ -309,6 +304,17 @@ private fun invocationsQuerySchema(): Map<String, Any> =
     objectSchema(
         properties = modelQueryProperties() + mapOf(
             "includeTaskSelectors" to booleanProperty("Include task selectors. Default false to save tokens."),
+        ),
+    )
+
+private fun buildStatusSchema(): Map<String, Any> =
+    objectSchema(
+        properties = mapOf(
+            "buildId" to stringProperty("Build ID returned by gradle_run_tasks or gradle_run_tests with background=true"),
+            "maxOutputChars" to integerProperty(
+                "Maximum stdout/stderr characters to return per stream (default ${OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS})",
+            ),
+            "tailOutput" to booleanProperty("When truncating, keep the tail of each stream (default true)"),
         ),
     )
 

@@ -8,6 +8,8 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 data class BuildRunRequest(
@@ -48,18 +50,27 @@ class BuildExecutionManager(
     }
     private val builds = ConcurrentHashMap<String, BuildRecord>()
     private val activeBuildId = AtomicReference<String?>(null)
+    private val buildSlot = AtomicBoolean(false)
 
     fun startBackground(
         request: BuildRunRequest,
         exchange: McpSyncServerExchange?,
         progressToken: Any?,
     ): Map<String, Any?> {
-        val activeId = activeBuildId.get()
-        if (activeId != null) {
-            val active = builds[activeId]
-            if (active != null && active.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING) {
-                error("Another build is already running (buildId=$activeId). Call gradle_get_build_status first.")
-            }
+        if (!buildSlot.compareAndSet(false, true)) {
+            val activeId = activeBuildId.get()
+            error(
+                "Another build is already running" +
+                    (activeId?.let { " (buildId=$it)" } ?: "") +
+                    ". Call gradle_get_build_status first.",
+            )
+        }
+
+        try {
+            connectionManager.withConnection { }
+        } catch (exception: Exception) {
+            buildSlot.set(false)
+            throw exception
         }
 
         val buildId = UUID.randomUUID().toString()
@@ -76,12 +87,20 @@ class BuildExecutionManager(
             progressTracker = tracker,
             streams = streams,
         )
-        builds[buildId] = record
-        activeBuildId.set(buildId)
-        pruneCompletedBuilds()
-
-        executor.execute {
-            runBuild(record, request, notifier)
+        try {
+            builds[buildId] = record
+            activeBuildId.set(buildId)
+            pruneCompletedBuilds()
+            executor.execute {
+                runBuild(record, request, notifier)
+            }
+        } catch (exception: Exception) {
+            builds.remove(buildId)
+            if (activeBuildId.get() == buildId) {
+                activeBuildId.compareAndSet(buildId, null)
+            }
+            buildSlot.set(false)
+            throw exception
         }
 
         return mapOf(
@@ -100,12 +119,22 @@ class BuildExecutionManager(
         exchange: McpSyncServerExchange?,
         progressToken: Any?,
     ): Map<String, Any?> {
+        if (!buildSlot.compareAndSet(false, true)) {
+            val activeId = activeBuildId.get()
+            error(
+                "Another build is already running" +
+                    (activeId?.let { " (buildId=$it)" } ?: "") +
+                    ". Call gradle_get_build_status first.",
+            )
+        }
+
+        val buildId = "foreground"
         val streams = CapturingStreams()
         val notifier = ProgressNotifier(exchange, progressToken)
         lateinit var tracker: BuildProgressTracker
         tracker = BuildProgressTracker(onUpdate = { notifier.notifyIfNeeded(tracker) })
         val record = BuildRecord(
-            id = "foreground",
+            id = buildId,
             kind = request.kind,
             tasks = request.tasks,
             testClasses = request.testClasses,
@@ -114,10 +143,14 @@ class BuildExecutionManager(
             streams = streams,
         )
 
-        runBuild(record, request, connection, streams, tracker, notifier)
-
-        return buildResult(record, request.outputLimit) +
-            mapOf("progress" to tracker.snapshot().toResponseMap())
+        try {
+            runBuild(record, request, connection, streams, tracker, notifier)
+            return foregroundSuccessResponse(record, request.outputLimit, tracker)
+        } catch (exception: Exception) {
+            return foregroundFailureResponse(record, request.outputLimit, tracker)
+        } finally {
+            buildSlot.set(false)
+        }
     }
 
     fun status(buildId: String?, outputLimit: OutputLimitOptions): Map<String, Any?> {
@@ -130,7 +163,21 @@ class BuildExecutionManager(
     }
 
     fun shutdown() {
+        builds.values
+            .filter { it.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING }
+            .forEach { record ->
+                record.progressTracker.markFailed("Server shutting down")
+                record.errorMessage = "Server shutting down"
+                record.finishedAt = Instant.now()
+            }
+        activeBuildId.set(null)
+        buildSlot.set(false)
         executor.shutdownNow()
+        try {
+            executor.awaitTermination(5, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
     }
 
     private fun resolveBuildId(buildId: String?): String? {
@@ -163,6 +210,7 @@ class BuildExecutionManager(
             if (activeBuildId.get() == record.id) {
                 activeBuildId.compareAndSet(record.id, null)
             }
+            buildSlot.set(false)
             pruneCompletedBuilds()
         }
     }
@@ -204,16 +252,39 @@ class BuildExecutionManager(
                 }
             }
             tracker.markSucceeded()
+            record.finishedAt = Instant.now()
             notifier.notifyFinal(tracker)
         } catch (exception: Exception) {
-            tracker.markFailed(exception.message ?: exception.toString())
-            record.errorMessage = exception.message ?: exception.toString()
+            val message = exception.message ?: exception.toString()
+            tracker.markFailed(message)
+            record.errorMessage = message
+            record.finishedAt = Instant.now()
             notifier.notifyFinal(tracker)
             throw exception
-        } finally {
-            record.finishedAt = Instant.now()
         }
     }
+
+    private fun foregroundSuccessResponse(
+        record: BuildRecord,
+        outputLimit: OutputLimitOptions,
+        tracker: BuildProgressTracker,
+    ): Map<String, Any?> =
+        buildResult(record, outputLimit) +
+            mapOf(
+                "status" to BuildProgressTracker.STATUS_SUCCEEDED,
+                "progress" to tracker.snapshot().toResponseMap(),
+            )
+
+    private fun foregroundFailureResponse(
+        record: BuildRecord,
+        outputLimit: OutputLimitOptions,
+        tracker: BuildProgressTracker,
+    ): Map<String, Any?> =
+        buildResult(record, outputLimit) +
+            mapOf(
+                "status" to BuildProgressTracker.STATUS_FAILED,
+                "progress" to tracker.snapshot().toResponseMap(),
+            )
 
     private fun buildStatusResponse(record: BuildRecord, outputLimit: OutputLimitOptions): Map<String, Any?> {
         val progress = record.progressTracker.snapshot()
@@ -233,10 +304,8 @@ class BuildExecutionManager(
         if (progress.status != BuildProgressTracker.STATUS_RUNNING) {
             response.putAll(buildResult(record, outputLimit))
         } else {
-            response.putAll(
-                OutputLimiter.limitFields(record.streams.stdoutText(), outputLimit, "stdout") +
-                    OutputLimiter.limitFields(record.streams.stderrText(), outputLimit, "stderr")
-            )
+            response.putAll(limitStreamFields(record.streams.stdoutSnapshot(), outputLimit, "stdout"))
+            response.putAll(limitStreamFields(record.streams.stderrSnapshot(), outputLimit, "stderr"))
         }
         return response
     }
@@ -247,8 +316,8 @@ class BuildExecutionManager(
                 BuildKind.TASKS -> put("tasks", record.tasks)
                 BuildKind.TESTS -> put("testClasses", record.testClasses)
             }
-            putAll(OutputLimiter.limitFields(record.streams.stdoutText(), outputLimit, "stdout"))
-            putAll(OutputLimiter.limitFields(record.streams.stderrText(), outputLimit, "stderr"))
+            putAll(limitStreamFields(record.streams.stdoutSnapshot(), outputLimit, "stdout"))
+            putAll(limitStreamFields(record.streams.stderrSnapshot(), outputLimit, "stderr"))
             record.errorMessage?.let { put("error", it) }
         }
 
@@ -308,17 +377,41 @@ class BuildExecutionManager(
             val snapshot = tracker.snapshot()
             val latest = snapshot.recentEvents.lastOrNull() ?: return
             val level = when (latest.eventType) {
-                "TASK_FAIL", "FAIL" -> McpSchema.LoggingLevel.ERROR
-                "TASK_SKIP" -> McpSchema.LoggingLevel.WARNING
+                "TASK_FAIL", "TEST_FAIL", "FAIL" -> McpSchema.LoggingLevel.ERROR
+                "TASK_SKIP", "TEST_SKIP" -> McpSchema.LoggingLevel.WARNING
                 else -> McpSchema.LoggingLevel.INFO
             }
-            McpProgressSupport.sendLog(exchange, "${latest.eventType}: ${latest.displayName}", level)
+            McpProgressSupport.sendLog(
+                exchange = exchange,
+                progressToken = progressToken,
+                message = "${latest.eventType}: ${latest.displayName}",
+                level = level,
+            )
         }
+    }
+
+    internal fun seedRunningBuildForTests(record: BuildRecord) {
+        builds[record.id] = record
+        activeBuildId.set(record.id)
+        buildSlot.set(true)
     }
 
     companion object {
         private const val MAX_RETAINED_BUILDS = 5
     }
+}
+
+private fun limitStreamFields(
+    snapshot: CapturedStreamSnapshot,
+    outputLimit: OutputLimitOptions,
+    fieldPrefix: String,
+): Map<String, Any?> {
+    val limited = OutputLimiter.limit(snapshot.text, outputLimit)
+    return mapOf(
+        fieldPrefix to limited.text,
+        "${fieldPrefix}Truncated" to (limited.truncated || limited.totalChars < snapshot.totalChars),
+        "${fieldPrefix}TotalChars" to snapshot.totalChars,
+    )
 }
 
 private fun BuildProgressSnapshot.toResponseMap(): Map<String, Any?> =
