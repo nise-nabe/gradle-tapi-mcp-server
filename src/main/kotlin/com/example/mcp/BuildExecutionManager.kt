@@ -286,12 +286,12 @@ class BuildExecutionManager(
     ): Map<String, Any?> {
         val buildSummary = BuildOutputParser.parse(record.streams.stdoutSnapshot().text)
         return buildResult(record, outputLimit) +
-            mapOf(
-                "status" to status,
-                "outcome" to BuildOutputParser.outcomeFromStatus(status),
-                "buildSummary" to BuildOutputParser.toResponseMap(buildSummary),
-                "progress" to tracker.snapshot().toResponseMap(),
-            )
+            buildMap {
+                put("status", status)
+                BuildOutputParser.outcomeFromStatus(status)?.let { put("outcome", it) }
+                put("buildSummary", BuildOutputParser.toResponseMap(buildSummary))
+                put("progress", tracker.snapshot().toResponseMap())
+            }
     }
 
     private fun buildStatusResponse(record: BuildRecord, outputLimit: OutputLimitOptions): Map<String, Any?> {
@@ -311,7 +311,7 @@ class BuildExecutionManager(
         }
         if (progress.status != BuildProgressTracker.STATUS_RUNNING) {
             response.putAll(buildResult(record, outputLimit))
-            response["outcome"] = BuildOutputParser.outcomeFromStatus(progress.status)
+            BuildOutputParser.outcomeFromStatus(progress.status)?.let { response["outcome"] = it }
             response["buildSummary"] = BuildOutputParser.toResponseMap(
                 BuildOutputParser.parse(record.streams.stdoutSnapshot().text),
             )

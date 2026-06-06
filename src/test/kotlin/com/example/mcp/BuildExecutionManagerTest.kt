@@ -111,12 +111,7 @@ class BuildExecutionManagerTest {
     @Test
     fun `completed build status includes outcome and build summary`() {
         val streams = CapturingStreams()
-        val captureField = CapturingStreams::class.java.getDeclaredField("stdoutCapture")
-        captureField.isAccessible = true
-        val capture = captureField.get(streams) as TailCapturingStream
-        val stdout = "BUILD SUCCESSFUL in 1s\n2 actionable tasks: 2 executed\n"
-        val bytes = stdout.toByteArray()
-        capture.append(bytes, 0, bytes.size)
+        streams.appendStdoutForTests("BUILD SUCCESSFUL in 1s\n2 actionable tasks: 2 executed\n")
 
         val tracker = BuildProgressTracker()
         tracker.markStarting("Gradle tasks: build")
