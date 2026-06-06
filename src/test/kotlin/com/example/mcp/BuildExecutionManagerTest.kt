@@ -146,7 +146,7 @@ class BuildExecutionManagerTest {
         ).also { it.finishedAt = Instant.now() }
         manager.seedRunningBuildForTests(record)
 
-        val result = manager.status("completed-build", OutputLimitOptions())
+        val result = manager.status("completed-build", OutputLimitOptions(), ProgressResponseOptions())
 
         assertEquals("succeeded", result["status"])
         assertEquals("SUCCESS", result["outcome"])
