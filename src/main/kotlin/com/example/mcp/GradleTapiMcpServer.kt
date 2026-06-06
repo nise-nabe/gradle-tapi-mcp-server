@@ -135,7 +135,7 @@ private fun createTools(
         },
         tool(
             name = "gradle_get_build_status",
-            description = "Return progress and partial output for a running or completed Gradle build started with background=true. Omit buildId to use the active or most recent build.",
+            description = "Return status and partial output for a running or completed Gradle build started with background=true. Set includeProgress=true for detailed progress (completedTasks, recentEvents). Omit buildId to use the active or most recent build.",
             schema = buildStatusSchema(),
         ) { args ->
             val outputLimit = OutputLimitOptions.fromArgs(args)
