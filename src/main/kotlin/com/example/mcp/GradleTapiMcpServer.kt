@@ -353,12 +353,12 @@ private fun Map<String, Any>.requiredStringList(key: String): List<String> {
         null -> throw McpException(McpErrorCode.INVALID_ARGUMENT, "Missing required argument: $key")
         !is List<*> -> throw McpException(McpErrorCode.INVALID_ARGUMENT, "Required argument must be a string array: $key")
         else -> {
-            val strings = value.mapNotNull { it as? String }
+            if (value.any { it !is String }) {
+                throw McpException(McpErrorCode.INVALID_ARGUMENT, "Required argument must contain only strings: $key")
+            }
+            val strings = value.filterIsInstance<String>()
             if (strings.isEmpty()) {
                 throw McpException(McpErrorCode.INVALID_ARGUMENT, "Required argument must be a non-empty string array: $key")
-            }
-            if (strings.size != value.size) {
-                throw McpException(McpErrorCode.INVALID_ARGUMENT, "Required argument must contain only strings: $key")
             }
             return strings
         }

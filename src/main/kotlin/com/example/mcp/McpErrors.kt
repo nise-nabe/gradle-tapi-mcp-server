@@ -41,13 +41,13 @@ fun mapExceptionToErrorCode(exception: Exception): McpErrorCode =
     when (exception) {
         is McpException -> exception.code
         is IllegalArgumentException -> McpErrorCode.INVALID_ARGUMENT
-        is IllegalStateException -> {
-            when {
-                exception.message?.contains("Not connected", ignoreCase = true) == true ->
-                    McpErrorCode.NOT_CONNECTED
-                exception.message?.contains("already running", ignoreCase = true) == true ->
+        is IllegalStateException -> when (exception.message) {
+            "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR." ->
+                McpErrorCode.NOT_CONNECTED
+            else -> when {
+                exception.message?.startsWith("Another build is already running") == true ->
                     McpErrorCode.BUILD_ALREADY_RUNNING
-                exception.message?.contains("does not exist", ignoreCase = true) == true ->
+                exception.message?.startsWith("Project directory does not exist:") == true ->
                     McpErrorCode.PROJECT_NOT_FOUND
                 else -> McpErrorCode.INTERNAL_ERROR
             }
