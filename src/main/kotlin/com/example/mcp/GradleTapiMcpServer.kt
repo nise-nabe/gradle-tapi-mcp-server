@@ -94,11 +94,12 @@ private fun createTools(
         tool(
             name = "gradle_get_project_overview",
             description = "Fetch project hierarchy and task counts without task lists. Token-efficient default for project context ingestion.",
-            schema = emptyObjectSchema(),
-        ) { _ ->
+            schema = projectTreeSchema(),
+        ) { args ->
+            val treeOptions = ProjectTreeOptions.fromArgs(args)
             connectionManager.withConnectionResult { connection ->
                 val project = connection.getModel(GradleProject::class.java)
-                jsonResult(ModelSerializers.projectOverview(project))
+                jsonResult(ModelSerializers.projectOverview(project, treeOptions))
             }
         },
         tool(
@@ -107,9 +108,10 @@ private fun createTools(
             schema = modelQuerySchema(),
         ) { args ->
             val options = ModelQueryOptions.fromArgs(args)
+            val treeOptions = ProjectTreeOptions.fromArgs(args)
             connectionManager.withConnectionResult { connection ->
                 val project = connection.getModel(GradleProject::class.java)
-                jsonResult(ModelSerializers.gradleProject(project, options))
+                jsonResult(ModelSerializers.gradleProject(project, options, treeOptions))
             }
         },
         tool(
@@ -288,8 +290,17 @@ private fun booleanProperty(description: String): Map<String, String> =
 private fun integerProperty(description: String): Map<String, String> =
     mapOf("type" to "integer", "description" to description)
 
-private fun modelQueryProperties(): Map<String, Any> =
+private fun projectTreeProperties(): Map<String, Any> =
     mapOf(
+        "maxDepth" to integerProperty("Maximum project tree depth to serialize (omit for unlimited)"),
+        "maxChildren" to integerProperty("Maximum child projects per node (omit for unlimited)"),
+    )
+
+private fun projectTreeSchema(): Map<String, Any> =
+    objectSchema(properties = projectTreeProperties())
+
+private fun modelQueryProperties(): Map<String, Any> =
+    projectTreeProperties() + mapOf(
         "includeTasks" to booleanProperty("Include task lists. Default false to save tokens."),
         "includeTaskDetails" to booleanProperty("Include task description and displayName. Default false."),
         "taskGroup" to stringProperty("Filter tasks by Gradle task group"),
