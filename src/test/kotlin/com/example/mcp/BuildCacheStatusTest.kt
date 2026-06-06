@@ -169,6 +169,30 @@ class BuildCacheStatusTest {
     }
 
     @Test
+    fun `readDeclaredProperties skips user home when gradle user home is omitted`(
+        @TempDir projectDir: File,
+        @TempDir userHome: File,
+    ) {
+        File(userHome, "gradle.properties").writeText("org.gradle.caching=true\n")
+
+        val declared = BuildCacheStatusCollector.readDeclaredPropertiesForTests(projectDir, null)
+
+        assertTrue(declared["userHome"]!!.isEmpty())
+    }
+
+    @Test
+    fun `readDeclaredProperties includes user home when requested`(
+        @TempDir projectDir: File,
+        @TempDir userHome: File,
+    ) {
+        File(userHome, "gradle.properties").writeText("org.gradle.caching=true\n")
+
+        val declared = BuildCacheStatusCollector.readDeclaredPropertiesForTests(projectDir, userHome)
+
+        assertEquals("true", declared["userHome"]!!["org.gradle.caching"])
+    }
+
+    @Test
     fun `BuildCacheUrlRedactor strips userinfo from remote cache URLs`() {
         assertEquals(
             "https://cache.example.com/path",

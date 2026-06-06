@@ -309,7 +309,10 @@ object BuildCacheStatusCollector {
             GradlePropertiesParser.filterCacheRelated(resolvedProperties),
         )
 
-        val declaredProperties = readDeclaredProperties(projectDirectory, gradleUserHome)
+        val declaredProperties = readDeclaredProperties(
+            projectDirectory = projectDirectory,
+            gradleUserHome = if (options.includeDeclaredProperties) gradleUserHome else null,
+        )
 
         val configurationCacheProbe = if (options.probeConfigurationCache) {
             probeConfigurationCache(connection)
