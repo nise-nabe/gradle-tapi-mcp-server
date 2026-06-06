@@ -180,7 +180,12 @@ object LocalGradleCacheInspector {
                     null
                 }
             }
-            ?.sortedBy { it["gradleVersionDir"] as String }
+            ?.sortedWith { a, b ->
+                compareGradleVersionDirs(
+                    a["gradleVersionDir"] as String,
+                    b["gradleVersionDir"] as String,
+                )
+            }
             ?.take(MAX_CONFIGURATION_CACHE_STORES)
             ?.toList()
             .orEmpty()
@@ -188,6 +193,24 @@ object LocalGradleCacheInspector {
 
     internal fun summarizeDirectoryForTests(root: File, maxFiles: Int): Map<String, Any?> =
         directorySummary(root, includeDetails = true, maxFiles = maxFiles)
+
+    private fun parseGradleVersionParts(name: String): List<Int> {
+        val match = Regex("""^(\d+(?:\.\d+)*)""").find(name) ?: return emptyList()
+        return match.groupValues[1].split('.').mapNotNull { it.toIntOrNull() }
+    }
+
+    private fun compareGradleVersionDirs(a: String, b: String): Int {
+        val aParts = parseGradleVersionParts(a)
+        val bParts = parseGradleVersionParts(b)
+        val maxLen = maxOf(aParts.size, bParts.size)
+        for (index in 0 until maxLen) {
+            val comparison = aParts.getOrElse(index) { 0 }.compareTo(bParts.getOrElse(index) { 0 })
+            if (comparison != 0) {
+                return comparison
+            }
+        }
+        return a.compareTo(b)
+    }
 
     private fun directorySummary(
         directory: File,

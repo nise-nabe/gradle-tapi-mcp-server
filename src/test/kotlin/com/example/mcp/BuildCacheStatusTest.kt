@@ -100,6 +100,7 @@ class BuildCacheStatusTest {
         val cachesDir = File(tempDir, "caches").apply { mkdirs() }
         File(cachesDir, "9.0/cc").apply { mkdirs() }
         File(cachesDir, "8.14/cc").apply { mkdirs() }
+        File(cachesDir, "10.0/cc").apply { mkdirs() }
 
         val inspected = LocalGradleCacheInspector.inspect(
             gradleUserHome = tempDir,
@@ -109,7 +110,7 @@ class BuildCacheStatusTest {
 
         @Suppress("UNCHECKED_CAST")
         val stores = inspected["configurationCacheStores"] as List<Map<String, Any?>>
-        assertEquals(listOf("8.14", "9.0"), stores.map { it["gradleVersionDir"] })
+        assertEquals(listOf("8.14", "9.0", "10.0"), stores.map { it["gradleVersionDir"] })
     }
 
     @Test
