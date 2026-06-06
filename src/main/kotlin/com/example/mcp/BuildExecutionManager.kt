@@ -259,10 +259,8 @@ class BuildExecutionManager(
         lastCompletedBuildSnapshot = CompletedBuildSnapshot(
             buildId = record.id,
             kind = record.kind,
-            tasks = when (record.kind) {
-                BuildKind.TASKS -> record.tasks
-                BuildKind.TESTS -> record.testClasses
-            },
+            tasks = record.tasks,
+            testClasses = record.testClasses,
             finishedAt = record.finishedAt ?: Instant.now(),
             outcome = buildOutcome,
             stdout = record.streams.stdoutSnapshot().text,

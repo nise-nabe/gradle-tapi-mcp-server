@@ -329,6 +329,7 @@ class BuildExecutionManagerTest {
                 buildId = "b1",
                 kind = BuildKind.TASKS,
                 tasks = listOf("build"),
+                testClasses = emptyList(),
                 finishedAt = Instant.now(),
                 outcome = "SUCCESS",
                 stdout = "BUILD SUCCESSFUL in 1s\n3 actionable tasks: 2 executed, 1 from cache\n",
@@ -342,6 +343,27 @@ class BuildExecutionManagerTest {
         requireNotNull(insight)
         assertEquals("b1", insight.buildId)
         assertEquals(2, insight.taskStats?.executed)
+    }
+
+    @Test
+    fun `lastMcpBuildInsight exposes test classes separately from tasks`(@TempDir projectDir: File) {
+        manager.seedLastCompletedBuildForTests(
+            CompletedBuildSnapshot(
+                buildId = "test-run",
+                kind = BuildKind.TESTS,
+                tasks = emptyList(),
+                testClasses = listOf("com.example.FooTest"),
+                finishedAt = Instant.now(),
+                outcome = "SUCCESS",
+                stdout = "BUILD SUCCESSFUL in 1s\n",
+                projectDirectory = projectDir.absolutePath,
+            ),
+        )
+
+        val insight = manager.lastMcpBuildInsight(projectDir)
+        requireNotNull(insight)
+        assertEquals(emptyList<String>(), insight.tasks)
+        assertEquals(listOf("com.example.FooTest"), insight.testClasses)
     }
 
     @Test

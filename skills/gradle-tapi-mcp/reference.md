@@ -42,7 +42,7 @@ Returns:
 - `resolvedProperties` — cache-related properties from `properties -q`
 - `declaredProperties` — cache keys from project/user `gradle.properties` files
 - `local` — `build-cache-*` dirs under `gradleUserHome/caches`, project `.gradle` cache dirs
-- `lastMcpBuild` — parsed `taskSummaryLine` / `taskStats` from the last MCP build when available
+- `lastMcpBuild` — parsed `taskSummaryLine` / `taskStats` from the last MCP build when available; includes `tasks` for task runs and `testClasses` for test runs
 - `configurationCacheProbe` — present when `probeConfigurationCache=true`
 
 ### gradle_get_project_overview
