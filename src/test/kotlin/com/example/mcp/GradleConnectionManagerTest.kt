@@ -9,10 +9,12 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.lang.reflect.InvocationHandler
+import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 class GradleConnectionManagerTest {
     private val manager = GradleConnectionManager()
@@ -23,6 +25,69 @@ class GradleConnectionManagerTest {
 
         assertFalse(status.connected)
         assertNull(status.projectDirectory)
+        assertNull(status.gradleVersion)
+        assertNull(status.javaHome)
+        assertNull(status.javaVersion)
+        assertFalse(status.runtimeStackAvailable)
+    }
+
+    @Test
+    fun `status returns seeded runtime stack without calling getModel`() {
+        val getModelCalls = AtomicInteger(0)
+        val connection = connectionProxy(getModelCalls)
+        val snapshot = BuildEnvironmentSnapshot(
+            gradleVersion = "8.14",
+            gradleUserHome = "/gradle/home",
+            javaHome = "/jdk/home",
+            javaVersion = "21.0.2",
+            jvmArguments = listOf("-Xmx2g"),
+        )
+        manager.seedConnectionForTests(connection, environment = snapshot)
+
+        val status = manager.status()
+
+        assertTrue(status.connected)
+        assertEquals("8.14", status.gradleVersion)
+        assertEquals("/jdk/home", status.javaHome)
+        assertEquals("21.0.2", status.javaVersion)
+        assertTrue(status.runtimeStackAvailable)
+        assertEquals(0, getModelCalls.get())
+    }
+
+    @Test
+    fun `status reports connected without runtime stack when cache is missing`() {
+        val connection = connectionProxy(AtomicInteger(0))
+        manager.seedConnectionForTests(connection)
+
+        val status = manager.status()
+
+        assertTrue(status.connected)
+        assertNull(status.gradleVersion)
+        assertNull(status.javaHome)
+        assertNull(status.javaVersion)
+        assertFalse(status.runtimeStackAvailable)
+    }
+
+    @Test
+    fun `disconnect clears runtime stack from status`() {
+        val connection = connectionProxy(AtomicInteger(0))
+        manager.seedConnectionForTests(
+            connection,
+            environment = BuildEnvironmentSnapshot(
+                gradleVersion = "8.14",
+                gradleUserHome = null,
+                javaHome = "/jdk/home",
+                javaVersion = "21.0.2",
+                jvmArguments = emptyList(),
+            ),
+        )
+
+        manager.disconnect()
+
+        val status = manager.status()
+        assertFalse(status.connected)
+        assertFalse(status.runtimeStackAvailable)
+        assertNull(status.gradleVersion)
     }
 
     @Test
@@ -147,4 +212,16 @@ class GradleConnectionManagerTest {
         releaseBlock.countDown()
         hungThread.join(2_000)
     }
+
+    private fun connectionProxy(getModelCalls: AtomicInteger): ProjectConnection =
+        Proxy.newProxyInstance(
+            ProjectConnection::class.java.classLoader,
+            arrayOf(ProjectConnection::class.java),
+            InvocationHandler { _, method: Method, _ ->
+                if (method.name == "getModel") {
+                    getModelCalls.incrementAndGet()
+                }
+                null
+            },
+        ) as ProjectConnection
 }
