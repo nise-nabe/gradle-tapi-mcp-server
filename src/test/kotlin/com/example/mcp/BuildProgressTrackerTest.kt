@@ -33,6 +33,24 @@ class BuildProgressTrackerTest {
     }
 
     @Test
+    fun `terminal transitions do not emit duplicate update callbacks`() {
+        var notifyCount = 0
+        val tracker = BuildProgressTracker(onUpdate = { notifyCount++ })
+        tracker.markStarting("Gradle tasks: build")
+        val afterStart = notifyCount
+        tracker.markSucceeded()
+        val afterSuccess = notifyCount
+
+        tracker.markFailed("late failure")
+        assertEquals(afterSuccess, notifyCount)
+        assertTrue(afterStart > 0)
+        assertTrue(afterSuccess > afterStart)
+
+        tracker.markSucceeded()
+        assertEquals(afterSuccess, notifyCount)
+    }
+
+    @Test
     fun `tracks lifecycle status transitions`() {
         val tracker = BuildProgressTracker()
 
