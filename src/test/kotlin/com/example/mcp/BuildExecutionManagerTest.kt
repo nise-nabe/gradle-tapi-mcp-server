@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import java.io.File
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
 import java.time.Instant
@@ -291,6 +293,31 @@ class BuildExecutionManagerTest {
             "releaseBuildSlotIfActive should not block until shutdown finishes awaiting termination",
         )
         shutdownThread.join(10_000)
+    }
+
+    @Test
+    fun `lastMcpBuildInsight omits snapshot from a different project`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        manager.seedLastCompletedBuildForTests(
+            CompletedBuildSnapshot(
+                buildId = "b1",
+                kind = BuildKind.TASKS,
+                tasks = listOf("build"),
+                finishedAt = Instant.now(),
+                outcome = "SUCCESS",
+                stdout = "BUILD SUCCESSFUL in 1s\n3 actionable tasks: 2 executed, 1 from cache\n",
+                projectDirectory = projectA.absolutePath,
+            ),
+        )
+
+        assertEquals(null, manager.lastMcpBuildInsight(projectB))
+
+        val insight = manager.lastMcpBuildInsight(projectA)
+        requireNotNull(insight)
+        assertEquals("b1", insight.buildId)
+        assertEquals(2, insight.taskStats?.executed)
     }
 
     @Test

@@ -51,6 +51,8 @@ class BuildExecutionManager(
     private val builds = ConcurrentHashMap<String, BuildRecord>()
     private val activeBuildId = AtomicReference<String?>(null)
     private val buildSlot = AtomicBoolean(false)
+    @Volatile
+    private var lastCompletedBuildSnapshot: CompletedBuildSnapshot? = null
 
     fun startBackground(
         request: BuildRunRequest,
@@ -238,7 +240,29 @@ class BuildExecutionManager(
         if (record.finishedAt == null) {
             record.finishedAt = Instant.now()
         }
+        rememberCompletedBuild(record, outcome)
         return true
+    }
+
+    fun lastCompletedBuildSnapshot(): CompletedBuildSnapshot? = lastCompletedBuildSnapshot
+
+    private fun rememberCompletedBuild(record: BuildRecord, outcome: BuildTerminalOutcome) {
+        val buildOutcome = when (outcome) {
+            BuildTerminalOutcome.Succeeded -> "SUCCESS"
+            is BuildTerminalOutcome.Failed -> "FAILED"
+        }
+        lastCompletedBuildSnapshot = CompletedBuildSnapshot(
+            buildId = record.id,
+            kind = record.kind,
+            tasks = when (record.kind) {
+                BuildKind.TASKS -> record.tasks
+                BuildKind.TESTS -> record.testClasses
+            },
+            finishedAt = record.finishedAt ?: Instant.now(),
+            outcome = buildOutcome,
+            stdout = record.streams.stdoutSnapshot().text,
+            projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath,
+        )
     }
 
     private fun resolveBuildId(buildId: String?): String? {
@@ -462,6 +486,10 @@ class BuildExecutionManager(
             activeBuildId.set(record.id)
             buildSlot.set(true)
         }
+    }
+
+    internal fun seedLastCompletedBuildForTests(snapshot: CompletedBuildSnapshot) {
+        lastCompletedBuildSnapshot = snapshot
     }
 
     internal fun releaseBuildSlotIfActive(record: BuildRecord) {
