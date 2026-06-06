@@ -14,6 +14,7 @@ class TailCapturingStream(
 ) {
     private val lock = Any()
     private val buffer = StringBuilder()
+    private var pendingBytes = ByteArray(0)
     private var totalChars = 0
 
     fun append(bytes: ByteArray, offset: Int, length: Int) {
@@ -21,10 +22,18 @@ class TailCapturingStream(
             return
         }
         synchronized(lock) {
-            val text = String(bytes, offset, length, StandardCharsets.UTF_8)
-            totalChars += text.length
-            buffer.append(text)
-            trimToRetainedLimit()
+            val incoming = bytes.copyOfRange(offset, offset + length)
+            val combined = if (pendingBytes.isEmpty()) incoming else pendingBytes + incoming
+            val completeLength = utf8CompletePrefixLength(combined)
+            if (completeLength > 0) {
+                val decoded = String(combined, 0, completeLength, StandardCharsets.UTF_8)
+                appendNormalizedText(decoded)
+            }
+            pendingBytes = if (completeLength < combined.size) {
+                combined.copyOfRange(completeLength, combined.size)
+            } else {
+                ByteArray(0)
+            }
         }
     }
 
@@ -33,11 +42,64 @@ class TailCapturingStream(
             CapturedStreamSnapshot(text = buffer.toString(), totalChars = totalChars)
         }
 
+    private fun appendNormalizedText(text: String) {
+        var chunk = text
+        if (buffer.isNotEmpty() && buffer[buffer.length - 1] == '\r') {
+            buffer.deleteCharAt(buffer.length - 1)
+            totalChars -= 1
+            if (chunk.startsWith("\n")) {
+                chunk = chunk.removePrefix("\n")
+            }
+            buffer.append('\n')
+            totalChars += 1
+        }
+        chunk = normalizeChunkPreservingTrailingCr(chunk)
+        totalChars += chunk.length
+        buffer.append(chunk)
+        trimToRetainedLimit()
+    }
+
+    private fun normalizeChunkPreservingTrailingCr(text: String): String {
+        if (text.endsWith('\r') && !text.endsWith("\r\n")) {
+            val prefix = text.dropLast(1)
+            return OutputNormalizer.normalizeNewlines(prefix) + "\r"
+        }
+        return OutputNormalizer.normalizeNewlines(text)
+    }
+
     private fun trimToRetainedLimit() {
         if (buffer.length <= maxRetainedChars) {
             return
         }
-        buffer.delete(0, buffer.length - maxRetainedChars)
+        val codePointCount = buffer.codePointCount(0, buffer.length)
+        if (codePointCount <= maxRetainedChars) {
+            return
+        }
+        val startIndex = buffer.offsetByCodePoints(buffer.length, -maxRetainedChars)
+        buffer.delete(0, startIndex)
+    }
+
+    private fun utf8CompletePrefixLength(bytes: ByteArray): Int {
+        var index = 0
+        while (index < bytes.size) {
+            val sequenceLength = utf8SequenceLength(bytes[index])
+            if (sequenceLength <= 0 || index + sequenceLength > bytes.size) {
+                return index
+            }
+            index += sequenceLength
+        }
+        return bytes.size
+    }
+
+    private fun utf8SequenceLength(firstByte: Byte): Int {
+        val byte = firstByte.toInt() and 0xFF
+        return when {
+            byte and 0x80 == 0 -> 1
+            byte and 0xE0 == 0xC0 -> 2
+            byte and 0xF0 == 0xE0 -> 3
+            byte and 0xF8 == 0xF0 -> 4
+            else -> 0
+        }
     }
 
     companion object {
