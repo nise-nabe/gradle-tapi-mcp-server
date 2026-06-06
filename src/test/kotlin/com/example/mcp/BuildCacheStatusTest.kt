@@ -108,6 +108,24 @@ class BuildCacheStatusTest {
     }
 
     @Test
+    fun `LocalGradleCacheInspector keeps newest configuration cache stores`(@TempDir tempDir: File) {
+        val cachesDir = File(tempDir, "caches").apply { mkdirs() }
+        listOf("7.0", "8.0", "8.14", "9.0", "9.1", "10.0").forEach { version ->
+            File(cachesDir, "$version/cc").mkdirs()
+        }
+
+        val inspected = LocalGradleCacheInspector.inspect(
+            gradleUserHome = tempDir,
+            projectDirectory = tempDir,
+            includeDetails = false,
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val stores = inspected["configurationCacheStores"] as List<Map<String, Any?>>
+        assertEquals(listOf("8.0", "8.14", "9.0", "9.1", "10.0"), stores.map { it["gradleVersionDir"] })
+    }
+
+    @Test
     fun `LocalGradleCacheInspector lists configuration cache stores in version order`(@TempDir tempDir: File) {
         val cachesDir = File(tempDir, "caches").apply { mkdirs() }
         File(cachesDir, "9.0/cc").apply { mkdirs() }

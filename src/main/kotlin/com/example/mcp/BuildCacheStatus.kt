@@ -186,8 +186,14 @@ object LocalGradleCacheInspector {
                     b["gradleVersionDir"] as String,
                 )
             }
-            ?.take(MAX_CONFIGURATION_CACHE_STORES)
             ?.toList()
+            ?.let { stores ->
+                if (stores.size <= MAX_CONFIGURATION_CACHE_STORES) {
+                    stores
+                } else {
+                    stores.takeLast(MAX_CONFIGURATION_CACHE_STORES)
+                }
+            }
             .orEmpty()
     }
 
