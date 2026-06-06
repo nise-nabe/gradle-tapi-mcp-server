@@ -129,14 +129,10 @@ object LocalGradleCacheInspector {
         includeDetails: Boolean,
     ): Map<String, Any?> {
         val local = linkedMapOf<String, Any?>()
-        if (gradleUserHome != null) {
-            val cachesDir = File(gradleUserHome, "caches")
-            local["gradleUserHome"] = gradleUserHome.absolutePath
-            local["buildCacheDirectories"] = listBuildCacheDirectories(cachesDir, includeDetails)
-            local["configurationCacheStores"] = listConfigurationCacheStores(cachesDir, includeDetails)
-        } else {
-            local["gradleUserHome"] = null
-        }
+        local["gradleUserHome"] = gradleUserHome?.absolutePath
+        val cachesDir = gradleUserHome?.let { File(it, "caches") }
+        local["buildCacheDirectories"] = cachesDir?.let { listBuildCacheDirectories(it, includeDetails) }.orEmpty()
+        local["configurationCacheStores"] = cachesDir?.let { listConfigurationCacheStores(it, includeDetails) }.orEmpty()
 
         val projectGradleDir = File(projectDirectory, ".gradle")
         local["projectGradleDirectory"] = projectGradleDir.absolutePath

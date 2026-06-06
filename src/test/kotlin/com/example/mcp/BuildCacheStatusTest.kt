@@ -144,6 +144,21 @@ class BuildCacheStatusTest {
     }
 
     @Test
+    fun `LocalGradleCacheInspector includes empty cache lists when gradle user home is missing`(@TempDir tempDir: File) {
+        val inspected = LocalGradleCacheInspector.inspect(
+            gradleUserHome = null,
+            projectDirectory = tempDir,
+            includeDetails = false,
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(emptyList<Map<String, Any?>>(), inspected["buildCacheDirectories"])
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(emptyList<Map<String, Any?>>(), inspected["configurationCacheStores"])
+        assertNull(inspected["gradleUserHome"])
+    }
+
+    @Test
     fun `summary declaredInProjectFiles reflects project gradle properties`(@TempDir tempDir: File) {
         File(tempDir, "gradle.properties").writeText("org.gradle.caching=true\n")
 
