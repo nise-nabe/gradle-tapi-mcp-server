@@ -221,7 +221,8 @@ private fun tool(
                 extractProgressToken(requestOrArgs),
             )
         } catch (exception: Exception) {
-            errorResult(exception.message ?: exception.toString())
+            val code = mapExceptionToErrorCode(exception)
+            structuredErrorResult(code, exception.message ?: exception.toString())
         }
     }
 
@@ -249,12 +250,6 @@ private fun jsonResult(value: Any?): McpSchema.CallToolResult =
     McpSchema.CallToolResult(
         listOf(McpSchema.TextContent(objectMapper.writeValueAsString(value))),
         false,
-    )
-
-private fun errorResult(message: String): McpSchema.CallToolResult =
-    McpSchema.CallToolResult(
-        listOf(McpSchema.TextContent(message)),
-        true,
     )
 
 private fun emptyObjectSchema(): Map<String, Any> =
@@ -336,7 +331,7 @@ private fun runOutputSchema(
 
 private fun Map<String, Any>.requiredString(key: String): String =
     (this[key] as? String)?.takeIf { it.isNotBlank() }
-        ?: error("Missing required argument: $key")
+        ?: throw McpException(McpErrorCode.INVALID_ARGUMENT, "Missing required argument: $key")
 
 private fun Map<String, Any>.optionalString(key: String): String? =
     (this[key] as? String)?.takeIf { it.isNotBlank() }
@@ -344,7 +339,7 @@ private fun Map<String, Any>.optionalString(key: String): String? =
 @Suppress("UNCHECKED_CAST")
 private fun Map<String, Any>.requiredStringList(key: String): List<String> =
     (this[key] as? List<*>)?.mapNotNull { it as? String }?.takeIf { it.isNotEmpty() }
-        ?: error("Missing required argument: $key")
+        ?: throw McpException(McpErrorCode.INVALID_ARGUMENT, "Missing required argument: $key")
 
 @Suppress("UNCHECKED_CAST")
 private fun Map<String, Any>.optionalStringList(key: String): List<String>? =

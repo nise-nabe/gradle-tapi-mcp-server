@@ -59,7 +59,8 @@ class BuildExecutionManager(
     ): Map<String, Any?> {
         if (!buildSlot.compareAndSet(false, true)) {
             val activeId = activeBuildId.get()
-            error(
+            throw McpException(
+                McpErrorCode.BUILD_ALREADY_RUNNING,
                 "Another build is already running" +
                     (activeId?.let { " (buildId=$it)" } ?: "") +
                     ". Call gradle_get_build_status first.",
@@ -121,7 +122,8 @@ class BuildExecutionManager(
     ): Map<String, Any?> {
         if (!buildSlot.compareAndSet(false, true)) {
             val activeId = activeBuildId.get()
-            error(
+            throw McpException(
+                McpErrorCode.BUILD_ALREADY_RUNNING,
                 "Another build is already running" +
                     (activeId?.let { " (buildId=$it)" } ?: "") +
                     ". Call gradle_get_build_status first.",

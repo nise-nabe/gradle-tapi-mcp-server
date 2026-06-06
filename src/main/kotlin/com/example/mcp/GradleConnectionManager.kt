@@ -12,7 +12,12 @@ class GradleConnectionManager {
     fun connect(config: ConnectionConfig): ConnectionInfo {
         disconnect()
         val projectDir = File(config.projectDirectory).absoluteFile
-        require(projectDir.isDirectory) { "Project directory does not exist: ${projectDir.path}" }
+        if (!projectDir.isDirectory) {
+            throw McpException(
+                McpErrorCode.PROJECT_NOT_FOUND,
+                "Project directory does not exist: ${projectDir.path}",
+            )
+        }
 
         val connector = GradleConnector.newConnector().forProjectDirectory(projectDir)
         config.gradleInstallation?.let { connector.useInstallation(File(it).absoluteFile) }
@@ -34,8 +39,9 @@ class GradleConnectionManager {
         block(requireConnection())
 
     private fun requireConnection(): ProjectConnection =
-        connection ?: error(
-            "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR."
+        connection ?: throw McpException(
+            McpErrorCode.NOT_CONNECTED,
+            "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR.",
         )
 
     @Synchronized

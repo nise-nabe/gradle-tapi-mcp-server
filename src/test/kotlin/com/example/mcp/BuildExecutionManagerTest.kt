@@ -34,7 +34,7 @@ class BuildExecutionManagerTest {
             ),
         )
 
-        val error = assertThrows(IllegalStateException::class.java) {
+        val error = assertThrows(McpException::class.java) {
             manager.startBackground(
                 request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
                 exchange = null,
@@ -42,6 +42,7 @@ class BuildExecutionManagerTest {
             )
         }
 
+        assertEquals(McpErrorCode.BUILD_ALREADY_RUNNING, error.code)
         assertEquals(
             "Another build is already running (buildId=running-build). Call gradle_get_build_status first.",
             error.message,
@@ -69,7 +70,7 @@ class BuildExecutionManagerTest {
             arrayOf(ProjectConnection::class.java),
             InvocationHandler { _, _, _ -> null },
         ) as ProjectConnection
-        val error = assertThrows(IllegalStateException::class.java) {
+        val error = assertThrows(McpException::class.java) {
             manager.runForeground(
                 request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
                 connection = unusedConnection,
@@ -78,6 +79,7 @@ class BuildExecutionManagerTest {
             )
         }
 
+        assertEquals(McpErrorCode.BUILD_ALREADY_RUNNING, error.code)
         assertEquals(
             "Another build is already running (buildId=running-build). Call gradle_get_build_status first.",
             error.message,

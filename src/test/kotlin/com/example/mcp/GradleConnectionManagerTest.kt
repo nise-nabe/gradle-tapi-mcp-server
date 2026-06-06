@@ -22,19 +22,21 @@ class GradleConnectionManagerTest {
     fun `connect rejects missing project directory`() {
         val missingDirectory = File("build/tmp/nonexistent-project-dir").absolutePath
 
-        val error = assertThrows(IllegalArgumentException::class.java) {
+        val error = assertThrows(McpException::class.java) {
             manager.connect(ConnectionConfig(projectDirectory = missingDirectory))
         }
 
+        assertEquals(McpErrorCode.PROJECT_NOT_FOUND, error.code)
         assertEquals("Project directory does not exist: $missingDirectory", error.message)
     }
 
     @Test
     fun `withConnection requires an active connection`() {
-        val error = assertThrows(IllegalStateException::class.java) {
+        val error = assertThrows(McpException::class.java) {
             manager.withConnection { }
         }
 
+        assertEquals(McpErrorCode.NOT_CONNECTED, error.code)
         assertEquals(
             "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR.",
             error.message,
