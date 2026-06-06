@@ -14,6 +14,16 @@ data class ProgressResponseOptions(
     }
 }
 
+internal fun optionalProgressFields(
+    progressOptions: ProgressResponseOptions,
+    snapshot: BuildProgressSnapshot,
+): Map<String, Any?> =
+    buildMap {
+        if (progressOptions.includeProgress) {
+            put("progress", snapshot.toResponseMap())
+        }
+    }
+
 internal fun BuildProgressSnapshot.toResponseMap(): Map<String, Any?> =
     mapOf(
         "status" to status,

@@ -292,9 +292,7 @@ class BuildExecutionManager(
         val response = mutableMapOf<String, Any?>(
             "status" to status,
         )
-        if (request.progressOptions.includeProgress) {
-            response["progress"] = tracker.snapshot().toResponseMap()
-        }
+        response.putAll(optionalProgressFields(request.progressOptions, tracker.snapshot()))
         response.putAll(buildResult(record, request.outputLimit))
         return response
     }
@@ -314,9 +312,7 @@ class BuildExecutionManager(
             "tasks" to record.tasks,
             "testClasses" to record.testClasses,
         )
-        if (progressOptions.includeProgress) {
-            response["progress"] = progress.toResponseMap()
-        }
+        response.putAll(optionalProgressFields(progressOptions, progress))
         if (record.errorMessage != null) {
             response["error"] = record.errorMessage
         }
