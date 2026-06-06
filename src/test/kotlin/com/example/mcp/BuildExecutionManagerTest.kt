@@ -162,7 +162,7 @@ class BuildExecutionManagerTest {
 
         manager.resetBuildState("Preparing new Gradle connection")
 
-        val status = manager.status("running-build", OutputLimitOptions())
+        val status = manager.status("running-build", OutputLimitOptions(), ProgressResponseOptions())
         assertEquals("failed", status["status"])
         assertEquals("Preparing new Gradle connection", status["error"])
     }
@@ -185,7 +185,7 @@ class BuildExecutionManagerTest {
 
         manager.onDisconnect()
 
-        val status = manager.status("running-build", OutputLimitOptions())
+        val status = manager.status("running-build", OutputLimitOptions(), ProgressResponseOptions())
         assertEquals("failed", status["status"])
         assertEquals("Gradle connection closed", status["error"])
 
@@ -291,5 +291,34 @@ class BuildExecutionManagerTest {
             "releaseBuildSlotIfActive should not block until shutdown finishes awaiting termination",
         )
         shutdownThread.join(10_000)
+    }
+
+    @Test
+    fun `completed build status includes outcome and build summary`() {
+        val streams = CapturingStreams()
+        streams.appendStdoutForTests("BUILD SUCCESSFUL in 1s\n2 actionable tasks: 2 executed\n")
+
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        tracker.markSucceeded()
+        val record = BuildRecord(
+            id = "completed-build",
+            kind = BuildKind.TASKS,
+            tasks = listOf("build"),
+            testClasses = emptyList(),
+            startedAt = Instant.now(),
+            progressTracker = tracker,
+            streams = streams,
+        ).also { it.finishedAt = Instant.now() }
+        manager.seedRunningBuildForTests(record)
+
+        val result = manager.status("completed-build", OutputLimitOptions(), ProgressResponseOptions())
+
+        assertEquals("succeeded", result["status"])
+        assertEquals("SUCCESS", result["outcome"])
+        assertEquals(
+            "BUILD SUCCESSFUL in 1s",
+            (result["buildSummary"] as Map<*, *>)["resultLine"],
+        )
     }
 }

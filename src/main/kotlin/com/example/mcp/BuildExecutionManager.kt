@@ -333,9 +333,12 @@ class BuildExecutionManager(
         tracker: BuildProgressTracker,
         status: String,
     ): Map<String, Any?> {
+        val buildSummary = BuildOutputParser.parse(record.streams.stdoutSnapshot().text)
         val response = mutableMapOf<String, Any?>(
             "status" to status,
         )
+        BuildOutputParser.outcomeFromStatus(status)?.let { response["outcome"] = it }
+        response["buildSummary"] = BuildOutputParser.toResponseMap(buildSummary)
         response.putAll(optionalProgressFields(request.progressOptions, tracker.snapshot()))
         response.putAll(buildResult(record, request.outputLimit))
         return response
@@ -362,6 +365,10 @@ class BuildExecutionManager(
         }
         if (progress.status != BuildProgressTracker.STATUS_RUNNING) {
             response.putAll(buildResult(record, outputLimit))
+            BuildOutputParser.outcomeFromStatus(progress.status)?.let { response["outcome"] = it }
+            response["buildSummary"] = BuildOutputParser.toResponseMap(
+                BuildOutputParser.parse(record.streams.stdoutSnapshot().text),
+            )
         } else {
             response.putAll(limitStreamFields(record.streams.stdoutSnapshot(), outputLimit, "stdout"))
             response.putAll(limitStreamFields(record.streams.stderrSnapshot(), outputLimit, "stderr"))
