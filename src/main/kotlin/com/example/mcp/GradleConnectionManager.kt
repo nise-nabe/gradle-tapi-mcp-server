@@ -2,10 +2,7 @@ package com.example.mcp
 
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.PrintStream
-import java.nio.charset.StandardCharsets
 
 class GradleConnectionManager {
     private var connection: ProjectConnection? = null
@@ -29,19 +26,17 @@ class GradleConnectionManager {
 
     @Synchronized
     fun withConnection(block: (ProjectConnection) -> Unit) {
-        val active = connection ?: error(
-            "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR."
-        )
-        block(active)
+        block(requireConnection())
     }
 
     @Synchronized
-    fun <T> withConnectionResult(block: (ProjectConnection) -> T): T {
-        val active = connection ?: error(
+    fun <T> withConnectionResult(block: (ProjectConnection) -> T): T =
+        block(requireConnection())
+
+    private fun requireConnection(): ProjectConnection =
+        connection ?: error(
             "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR."
         )
-        return block(active)
-    }
 
     @Synchronized
     fun disconnect(): ConnectionInfo? {
@@ -91,15 +86,3 @@ data class ConnectionStatus(
     val projectDirectory: String?,
 )
 
-class CapturingStreams {
-    val stdout = ByteArrayOutputStream()
-    val stderr = ByteArrayOutputStream()
-
-    fun stdoutText(): String = stdout.toString(StandardCharsets.UTF_8)
-    fun stderrText(): String = stderr.toString(StandardCharsets.UTF_8)
-
-    fun applyTo(launcher: org.gradle.tooling.ConfigurableLauncher<*>) {
-        launcher.setStandardOutput(PrintStream(stdout, true, StandardCharsets.UTF_8))
-        launcher.setStandardError(PrintStream(stderr, true, StandardCharsets.UTF_8))
-    }
-}

@@ -54,6 +54,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_get_project_publications` | Publications |
 | `gradle_run_tasks` | Execute tasks; stdout/stderr truncated by default |
 | `gradle_run_tests` | Execute JVM test classes; stdout/stderr truncated by default |
+| `gradle_get_build_status` | Poll progress/output for a background build |
 
 ## Token-efficient usage
 
@@ -73,6 +74,20 @@ Use heavier tools only when required:
 `gradle_run_tasks` and `gradle_run_tests` keep `stdout`/`stderr` as strings and add `stdoutTruncated`, `stdoutTotalChars`, `stderrTruncated`, and `stderrTotalChars` when truncation happens.
 
 Tune with `maxOutputChars` (default `8000`) and `tailOutput` (default `true`).
+
+## Long-running builds
+
+For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` or `gradle_run_tests`. The tool returns immediately with a `buildId`. Poll `gradle_get_build_status` with that ID (or omit `buildId` to use the active build) to read:
+
+- `status`: `running`, `succeeded`, or `failed`
+- `progress`: current operation, completed/running/failed task counts, and recent task events
+- partial `stdout`/`stderr` while the build is still running
+
+Foreground runs (default) also include a `progress` summary in the final response. When the MCP client supplies a progress token, the server may also emit MCP progress/logging notifications during the run.
+
+## Agent skill
+
+Copy or symlink `skills/gradle-tapi-mcp/` into your Cursor skills directory (for example `~/.cursor/skills/gradle-tapi-mcp/`) so agents use token-efficient MCP workflows with `project-context-ingestion`.
 
 ## Notes
 
