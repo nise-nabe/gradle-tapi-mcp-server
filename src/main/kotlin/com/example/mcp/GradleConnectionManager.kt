@@ -38,6 +38,10 @@ class GradleConnectionManager {
         }
 
         synchronized(lock) {
+            val previousConnection = connection
+            if (previousConnection != null && previousConnection !== newConnection) {
+                previousConnection.close()
+            }
             connection = newConnection
             projectDirectory = projectDir
             cachedEnvironment = snapshot
