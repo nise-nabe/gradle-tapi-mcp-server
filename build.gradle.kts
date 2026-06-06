@@ -16,6 +16,7 @@ dependencies {
     implementation(platform(libs.mcp.bom))
     implementation(libs.mcp)
     implementation(libs.gradle.tooling.api)
+    implementation(libs.jackson.module.kotlin)
     runtimeOnly(libs.slf4j.simple)
 }
 
