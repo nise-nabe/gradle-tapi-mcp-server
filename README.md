@@ -54,7 +54,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_get_project_publications` | Publications |
 | `gradle_run_tasks` | Execute tasks; stdout/stderr truncated by default |
 | `gradle_run_tests` | Execute JVM test classes; stdout/stderr truncated by default |
-| `gradle_get_build_status` | Poll progress/output for a background build |
+| `gradle_get_build_status` | Poll status/output for a background build; set `includeProgress: true` for detailed progress |
 
 ## Token-efficient usage
 
