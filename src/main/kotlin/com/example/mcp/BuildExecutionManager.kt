@@ -19,6 +19,7 @@ data class BuildRunRequest(
     val arguments: List<String> = emptyList(),
     val jvmArguments: List<String> = emptyList(),
     val outputLimit: OutputLimitOptions = OutputLimitOptions(),
+    val progressOptions: ProgressResponseOptions = ProgressResponseOptions(),
 )
 
 enum class BuildKind {
@@ -150,9 +151,9 @@ class BuildExecutionManager(
 
         try {
             runBuild(record, request, connection, streams, tracker, notifier)
-            return foregroundSuccessResponse(record, request.outputLimit, tracker)
+            return foregroundSuccessResponse(record, request, tracker)
         } catch (exception: Exception) {
-            return foregroundFailureResponse(record, request.outputLimit, tracker)
+            return foregroundFailureResponse(record, request, tracker)
         } finally {
             synchronized(lifecycleLock) {
                 buildSlot.set(false)
@@ -160,13 +161,17 @@ class BuildExecutionManager(
         }
     }
 
-    fun status(buildId: String?, outputLimit: OutputLimitOptions): Map<String, Any?> {
+    fun status(
+        buildId: String?,
+        outputLimit: OutputLimitOptions,
+        progressOptions: ProgressResponseOptions,
+    ): Map<String, Any?> {
         val resolvedId = resolveBuildId(buildId)
             ?: return mapOf("status" to "not_found", "message" to "No matching build found.")
         val record = builds[resolvedId]
             ?: return mapOf("status" to "not_found", "buildId" to resolvedId)
 
-        return buildStatusResponse(record, outputLimit)
+        return buildStatusResponse(record, outputLimit, progressOptions)
     }
 
     fun hasActiveBuild(): Boolean = buildSlot.get()
@@ -310,27 +315,37 @@ class BuildExecutionManager(
 
     private fun foregroundSuccessResponse(
         record: BuildRecord,
-        outputLimit: OutputLimitOptions,
+        request: BuildRunRequest,
         tracker: BuildProgressTracker,
     ): Map<String, Any?> =
-        buildResult(record, outputLimit) +
-            mapOf(
-                "status" to BuildProgressTracker.STATUS_SUCCEEDED,
-                "progress" to tracker.snapshot().toResponseMap(),
-            )
+        foregroundResponse(record, request, tracker, BuildProgressTracker.STATUS_SUCCEEDED)
 
     private fun foregroundFailureResponse(
         record: BuildRecord,
-        outputLimit: OutputLimitOptions,
+        request: BuildRunRequest,
         tracker: BuildProgressTracker,
     ): Map<String, Any?> =
-        buildResult(record, outputLimit) +
-            mapOf(
-                "status" to BuildProgressTracker.STATUS_FAILED,
-                "progress" to tracker.snapshot().toResponseMap(),
-            )
+        foregroundResponse(record, request, tracker, BuildProgressTracker.STATUS_FAILED)
 
-    private fun buildStatusResponse(record: BuildRecord, outputLimit: OutputLimitOptions): Map<String, Any?> {
+    private fun foregroundResponse(
+        record: BuildRecord,
+        request: BuildRunRequest,
+        tracker: BuildProgressTracker,
+        status: String,
+    ): Map<String, Any?> {
+        val response = mutableMapOf<String, Any?>(
+            "status" to status,
+        )
+        response.putAll(optionalProgressFields(request.progressOptions, tracker.snapshot()))
+        response.putAll(buildResult(record, request.outputLimit))
+        return response
+    }
+
+    private fun buildStatusResponse(
+        record: BuildRecord,
+        outputLimit: OutputLimitOptions,
+        progressOptions: ProgressResponseOptions,
+    ): Map<String, Any?> {
         val progress = record.progressTracker.snapshot()
         val response = mutableMapOf<String, Any?>(
             "buildId" to record.id,
@@ -340,8 +355,8 @@ class BuildExecutionManager(
             "finishedAt" to record.finishedAt?.toString(),
             "tasks" to record.tasks,
             "testClasses" to record.testClasses,
-            "progress" to progress.toResponseMap(),
         )
+        response.putAll(optionalProgressFields(progressOptions, progress))
         if (record.errorMessage != null) {
             response["error"] = record.errorMessage
         }
@@ -478,23 +493,3 @@ private fun limitStreamFields(
     )
 }
 
-private fun BuildProgressSnapshot.toResponseMap(): Map<String, Any?> =
-    mapOf(
-        "status" to status,
-        "currentOperation" to currentOperation,
-        "completedTaskCount" to completedTaskCount,
-        "runningTaskCount" to runningTaskCount,
-        "failedTaskCount" to failedTaskCount,
-        "completedTasks" to completedTasks,
-        "runningTasks" to runningTasks,
-        "failedTasks" to failedTasks,
-        "recentEvents" to recentEvents.map { event ->
-            mapOf(
-                "timestamp" to event.timestamp,
-                "eventType" to event.eventType,
-                "displayName" to event.displayName,
-                "outcome" to event.outcome,
-            )
-        },
-        "totalEventCount" to totalEventCount,
-    )

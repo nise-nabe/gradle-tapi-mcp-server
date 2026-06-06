@@ -183,15 +183,22 @@ private fun createTools(
         },
         tool(
             name = "gradle_get_build_status",
-            description = "Return progress and partial output for a running or completed Gradle build started with background=true. Omit buildId to use the active or most recent build.",
+            description = "Return status and partial output for a running or completed Gradle build started with background=true. Set includeProgress=true for detailed progress (completedTasks, recentEvents). Omit buildId to use the active or most recent build.",
             schema = buildStatusSchema(),
         ) { args ->
             val outputLimit = OutputLimitOptions.fromArgs(args)
-            jsonResult(buildExecutionManager.status(args.optionalString("buildId"), outputLimit))
+            val progressOptions = ProgressResponseOptions.fromArgs(args)
+            jsonResult(
+                buildExecutionManager.status(
+                    args.optionalString("buildId"),
+                    outputLimit,
+                    progressOptions,
+                ),
+            )
         },
         tool(
             name = "gradle_run_tasks",
-            description = "Execute Gradle task paths and return captured stdout/stderr. Use background=true to start a long build and poll gradle_get_build_status. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
+            description = "Execute Gradle task paths and return captured stdout/stderr. Use background=true to start a long build and poll gradle_get_build_status. Set includeProgress=true for detailed progress on foreground runs. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
             schema = runOutputSchema(
                 required = listOf("tasks"),
                 extraProperties = mapOf(
@@ -207,6 +214,7 @@ private fun createTools(
                 arguments = args.optionalStringList("arguments").orEmpty(),
                 jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
                 outputLimit = OutputLimitOptions.fromArgs(args),
+                progressOptions = ProgressResponseOptions.fromArgs(args),
             )
             if (args.optionalBoolean("background", default = false)) {
                 jsonResult(buildExecutionManager.startBackground(request, exchange, progressToken))
@@ -218,7 +226,7 @@ private fun createTools(
         },
         tool(
             name = "gradle_run_tests",
-            description = "Execute JVM test classes and return captured stdout/stderr. Use background=true to start a long test run and poll gradle_get_build_status. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
+            description = "Execute JVM test classes and return captured stdout/stderr. Use background=true to start a long test run and poll gradle_get_build_status. Set includeProgress=true for detailed progress on foreground runs. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
             schema = runOutputSchema(
                 required = listOf("testClasses"),
                 extraProperties = mapOf(
@@ -234,6 +242,7 @@ private fun createTools(
                 arguments = args.optionalStringList("arguments").orEmpty(),
                 jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
                 outputLimit = OutputLimitOptions.fromArgs(args),
+                progressOptions = ProgressResponseOptions.fromArgs(args),
             )
             if (args.optionalBoolean("background", default = false)) {
                 jsonResult(buildExecutionManager.startBackground(request, exchange, progressToken))
@@ -355,9 +364,16 @@ private fun invocationsQuerySchema(): Map<String, Any> =
         ),
     )
 
+private fun progressProperties(): Map<String, Any> =
+    mapOf(
+        "includeProgress" to booleanProperty(
+            "Include detailed progress (completedTasks, recentEvents). Default false to save tokens.",
+        ),
+    )
+
 private fun buildStatusSchema(): Map<String, Any> =
     objectSchema(
-        properties = mapOf(
+        properties = progressProperties() + mapOf(
             "buildId" to stringProperty("Build ID returned by gradle_run_tasks or gradle_run_tests with background=true"),
             "maxOutputChars" to integerProperty(
                 "Maximum stdout/stderr characters to return per stream (default ${OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS})",
@@ -372,7 +388,7 @@ private fun runOutputSchema(
 ): Map<String, Any> =
     objectSchema(
         required = required,
-        properties = extraProperties + mapOf(
+        properties = extraProperties + progressProperties() + mapOf(
             "arguments" to stringArrayProperty("Additional Gradle command-line arguments"),
             "jvmArguments" to stringArrayProperty("Additional JVM arguments for the build"),
             "maxOutputChars" to integerProperty(
