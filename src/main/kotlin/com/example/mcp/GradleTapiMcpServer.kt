@@ -98,8 +98,11 @@ private fun createTools(
             schema = emptyObjectSchema(),
         ) { _ ->
             val hadActiveBuild = buildExecutionManager.hasActiveBuild()
-            val disconnected = connectionManager.disconnect()
-            buildExecutionManager.onDisconnect()
+            val disconnected = try {
+                connectionManager.disconnect()
+            } finally {
+                buildExecutionManager.onDisconnect()
+            }
             val payload = buildMap<String, Any?> {
                 if (disconnected != null) {
                     put("projectDirectory", disconnected.projectDirectory)
