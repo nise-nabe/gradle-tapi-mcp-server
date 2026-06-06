@@ -30,27 +30,22 @@ object ModelSerializers {
         )
     }
 
-    fun projectOverview(project: GradleProject): Map<String, Any?> = mapOf(
-        "name" to project.name,
-        "path" to project.path,
-        "description" to project.description,
-        "buildDirectory" to project.buildDirectory?.absolutePath,
-        "projectDirectory" to project.projectDirectory.absolutePath,
-        "taskCount" to project.tasks.size,
-        "children" to project.children.map { projectOverview(it) },
-    )
+    fun projectOverview(
+        project: GradleProject,
+        options: ProjectTreeOptions = ProjectTreeOptions(),
+        depth: Int = 0,
+    ): Map<String, Any?> =
+        projectNode(project, options, ModelQueryOptions(), depth, includeTasks = false)
 
-    fun gradleProject(project: GradleProject, options: ModelQueryOptions = ModelQueryOptions()): Map<String, Any?> =
-        mapOf(
-            "name" to project.name,
-            "path" to project.path,
-            "description" to project.description,
-            "buildDirectory" to project.buildDirectory?.absolutePath,
-            "projectDirectory" to project.projectDirectory.absolutePath,
-            "taskCount" to project.tasks.size,
-            "children" to project.children.map { gradleProject(it, options) },
-            "tasks" to serializeTasks(project.tasks.map(::taskSnapshot), options),
-        )
+    fun gradleProject(
+        project: GradleProject,
+        options: ModelQueryOptions = ModelQueryOptions(),
+        treeOptions: ProjectTreeOptions = ProjectTreeOptions(),
+        depth: Int = 0,
+    ): Map<String, Any?> {
+        val node = projectNode(project, treeOptions, options, depth, includeTasks = true)
+        return node + mapOf("tasks" to serializeTasks(project.tasks.map(::taskSnapshot), options))
+    }
 
     fun buildInvocations(invocations: BuildInvocations, options: ModelQueryOptions = ModelQueryOptions()): Map<String, Any?> =
         buildMap {
@@ -103,6 +98,52 @@ object ModelSerializers {
 
     fun serializeTasks(tasks: List<TaskSnapshot>, options: ModelQueryOptions): List<Map<String, Any?>> =
         filterTasks(tasks, options).map { serializeTask(it, options.includeTaskDetails) }
+
+    private fun projectNode(
+        project: GradleProject,
+        treeOptions: ProjectTreeOptions,
+        modelOptions: ModelQueryOptions,
+        depth: Int,
+        includeTasks: Boolean,
+    ): Map<String, Any?> {
+        val result = mutableMapOf<String, Any?>(
+            "name" to project.name,
+            "path" to project.path,
+            "description" to project.description,
+            "buildDirectory" to project.buildDirectory?.absolutePath,
+            "projectDirectory" to project.projectDirectory.absolutePath,
+            "taskCount" to project.tasks.size,
+        )
+
+        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth, treeOptions.maxDepth, project.children.size)
+        if (depthLimit.omitChildren) {
+            if (depthLimit.truncated) {
+                result["truncated"] = true
+                result["totalChildCount"] = depthLimit.totalChildCount
+            }
+            result["children"] = emptyList<Map<String, Any?>>()
+            return result
+        }
+
+        val allChildren = project.children.toList()
+        val childLimit = ProjectTreeLimits.applyChildLimit(allChildren.size, treeOptions.maxChildren)
+        val childrenToSerialize = allChildren.take(childLimit.visibleChildCount)
+
+        result["children"] = childrenToSerialize.map { child ->
+            if (includeTasks) {
+                gradleProject(child, modelOptions, treeOptions, depth + 1)
+            } else {
+                projectOverview(child, treeOptions, depth + 1)
+            }
+        }
+
+        if (childLimit.truncated) {
+            result["truncated"] = true
+            result["totalChildCount"] = childLimit.totalChildCount
+        }
+
+        return result
+    }
 
     private fun serializeTask(task: TaskSnapshot, includeDetails: Boolean): Map<String, Any?> =
         if (includeDetails) {

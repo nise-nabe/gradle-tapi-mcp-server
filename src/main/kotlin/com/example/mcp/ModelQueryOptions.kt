@@ -76,7 +76,7 @@ private fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boo
 private fun Map<String, Any>.optionalString(key: String): String? =
     (this[key] as? String)?.takeIf { it.isNotBlank() }
 
-private fun Map<String, Any>.optionalPositiveInt(key: String): Int? {
+internal fun Map<String, Any>.optionalPositiveInt(key: String): Int? {
     val parsed = when (val value = this[key]) {
         is Number -> value.toInt()
         is String -> value.toIntOrNull()
