@@ -3,6 +3,7 @@ package com.example.mcp
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.modelcontextprotocol.server.McpServer
 import io.modelcontextprotocol.server.McpServerFeatures
+import io.modelcontextprotocol.server.McpSyncServerExchange
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider
 import io.modelcontextprotocol.spec.McpSchema
 import org.gradle.tooling.model.GradleProject
@@ -15,6 +16,7 @@ private val objectMapper = jacksonObjectMapper()
 
 fun main() {
     val connectionManager = GradleConnectionManager()
+    val buildExecutionManager = BuildExecutionManager(connectionManager)
     connectionManager.tryAutoConnectFromEnvironment()
 
     val transport = StdioServerTransportProvider(objectMapper)
@@ -24,12 +26,14 @@ fun main() {
         .capabilities(
             McpSchema.ServerCapabilities.builder()
                 .tools(true)
+                .logging()
                 .build()
         )
-        .tools(createTools(connectionManager))
+        .tools(createTools(connectionManager, buildExecutionManager))
         .build()
 
     Runtime.getRuntime().addShutdownHook(Thread {
+        buildExecutionManager.shutdown()
         connectionManager.disconnect()
         server.close()
     })
@@ -37,7 +41,10 @@ fun main() {
     joinNonDaemonWorkerThreads()
 }
 
-private fun createTools(connectionManager: GradleConnectionManager): List<McpServerFeatures.SyncToolSpecification> =
+private fun createTools(
+    connectionManager: GradleConnectionManager,
+    buildExecutionManager: BuildExecutionManager,
+): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_connect",
@@ -127,61 +134,70 @@ private fun createTools(connectionManager: GradleConnectionManager): List<McpSer
             }
         },
         tool(
+            name = "gradle_get_build_status",
+            description = "Return progress and partial output for a running or completed Gradle build started with background=true. Omit buildId to use the active or most recent build.",
+            schema = runOutputSchema(
+                required = emptyList(),
+                extraProperties = mapOf(
+                    "buildId" to stringProperty("Build ID returned by gradle_run_tasks or gradle_run_tests with background=true"),
+                ),
+            ),
+        ) { args ->
+            val outputLimit = OutputLimitOptions.fromArgs(args)
+            jsonResult(buildExecutionManager.status(args.optionalString("buildId"), outputLimit))
+        },
+        tool(
             name = "gradle_run_tasks",
-            description = "Execute Gradle task paths and return captured stdout/stderr. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
+            description = "Execute Gradle task paths and return captured stdout/stderr. Use background=true to start a long build and poll gradle_get_build_status. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
             schema = runOutputSchema(
                 required = listOf("tasks"),
                 extraProperties = mapOf(
                     "tasks" to stringArrayProperty("Gradle task paths to execute"),
+                    "background" to booleanProperty("Start the build in the background and return a buildId immediately (default false)"),
                 ),
             ),
-        ) { args ->
+        ) { exchange, args, progressToken ->
             val tasks = args.requiredStringList("tasks")
-            val arguments = args.optionalStringList("arguments").orEmpty()
-            val jvmArguments = args.optionalStringList("jvmArguments").orEmpty()
-            val outputLimit = OutputLimitOptions.fromArgs(args)
-            connectionManager.withConnectionResult { connection ->
-                val streams = CapturingStreams()
-                val launcher = connection.newBuild()
-                    .forTasks(*tasks.toTypedArray())
-                    .addArguments(arguments)
-                    .addJvmArguments(jvmArguments)
-                streams.applyTo(launcher)
-                launcher.run()
-                jsonResult(
-                    mapOf("tasks" to tasks) +
-                        OutputLimiter.limitFields(streams.stdoutText(), outputLimit, "stdout") +
-                        OutputLimiter.limitFields(streams.stderrText(), outputLimit, "stderr")
-                )
+            val request = BuildRunRequest(
+                kind = BuildKind.TASKS,
+                tasks = tasks,
+                arguments = args.optionalStringList("arguments").orEmpty(),
+                jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
+                outputLimit = OutputLimitOptions.fromArgs(args),
+            )
+            if (args.optionalBoolean("background", default = false)) {
+                jsonResult(buildExecutionManager.startBackground(request, exchange, progressToken))
+            } else {
+                connectionManager.withConnectionResult { connection ->
+                    jsonResult(buildExecutionManager.runForeground(request, connection, exchange, progressToken))
+                }
             }
         },
         tool(
             name = "gradle_run_tests",
-            description = "Execute JVM test classes and return captured stdout/stderr. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
+            description = "Execute JVM test classes and return captured stdout/stderr. Use background=true to start a long test run and poll gradle_get_build_status. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
             schema = runOutputSchema(
                 required = listOf("testClasses"),
                 extraProperties = mapOf(
                     "testClasses" to stringArrayProperty("Fully qualified JVM test class names"),
+                    "background" to booleanProperty("Start the test run in the background and return a buildId immediately (default false)"),
                 ),
             ),
-        ) { args ->
+        ) { exchange, args, progressToken ->
             val testClasses = args.requiredStringList("testClasses")
-            val arguments = args.optionalStringList("arguments").orEmpty()
-            val jvmArguments = args.optionalStringList("jvmArguments").orEmpty()
-            val outputLimit = OutputLimitOptions.fromArgs(args)
-            connectionManager.withConnectionResult { connection ->
-                val streams = CapturingStreams()
-                val launcher = connection.newTestLauncher()
-                    .withJvmTestClasses(*testClasses.toTypedArray())
-                    .addArguments(arguments)
-                    .addJvmArguments(jvmArguments)
-                streams.applyTo(launcher)
-                launcher.run()
-                jsonResult(
-                    mapOf("testClasses" to testClasses) +
-                        OutputLimiter.limitFields(streams.stdoutText(), outputLimit, "stdout") +
-                        OutputLimiter.limitFields(streams.stderrText(), outputLimit, "stderr")
-                )
+            val request = BuildRunRequest(
+                kind = BuildKind.TESTS,
+                testClasses = testClasses,
+                arguments = args.optionalStringList("arguments").orEmpty(),
+                jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
+                outputLimit = OutputLimitOptions.fromArgs(args),
+            )
+            if (args.optionalBoolean("background", default = false)) {
+                jsonResult(buildExecutionManager.startBackground(request, exchange, progressToken))
+            } else {
+                connectionManager.withConnectionResult { connection ->
+                    jsonResult(buildExecutionManager.runForeground(request, connection, exchange, progressToken))
+                }
             }
         },
     )
@@ -192,16 +208,47 @@ private fun tool(
     schema: Map<String, Any>,
     handler: (Map<String, Any>) -> McpSchema.CallToolResult,
 ): McpServerFeatures.SyncToolSpecification =
+    tool(name, description, schema) { _, args, _ -> handler(args) }
+
+private fun tool(
+    name: String,
+    description: String,
+    schema: Map<String, Any>,
+    handler: (McpSyncServerExchange, Map<String, Any>, Any?) -> McpSchema.CallToolResult,
+): McpServerFeatures.SyncToolSpecification =
     McpServerFeatures.SyncToolSpecification(
         McpSchema.Tool(name, description, objectMapper.writeValueAsString(schema)),
-    ) { _, arguments ->
+    ) { exchange, requestOrArgs ->
         try {
-            @Suppress("UNCHECKED_CAST")
-            handler(arguments as Map<String, Any>)
+            handler(
+                exchange,
+                extractArgs(requestOrArgs),
+                extractProgressToken(requestOrArgs),
+            )
         } catch (exception: Exception) {
             errorResult(exception.message ?: exception.toString())
         }
     }
+
+private fun extractArgs(requestOrArgs: Any): Map<String, Any> {
+    if (requestOrArgs is McpSchema.CallToolRequest) {
+        @Suppress("UNCHECKED_CAST")
+        return requestOrArgs.arguments() as? Map<String, Any> ?: emptyMap()
+    }
+    @Suppress("UNCHECKED_CAST")
+    return requestOrArgs as? Map<String, Any> ?: emptyMap()
+}
+
+private fun extractProgressToken(requestOrArgs: Any): Any? {
+    if (requestOrArgs is McpSchema.CallToolRequest) {
+        return McpProgressSupport.extractProgressToken(requestOrArgs)
+    }
+    @Suppress("UNCHECKED_CAST")
+    val args = requestOrArgs as? Map<String, Any> ?: return null
+    @Suppress("UNCHECKED_CAST")
+    val nestedMeta = args["_meta"] as? Map<String, Any>
+    return nestedMeta?.get("progressToken")
+}
 
 private fun jsonResult(value: Any?): McpSchema.CallToolResult =
     McpSchema.CallToolResult(
@@ -296,6 +343,12 @@ private fun Map<String, Any>.requiredStringList(key: String): List<String> =
 @Suppress("UNCHECKED_CAST")
 private fun Map<String, Any>.optionalStringList(key: String): List<String>? =
     (this[key] as? List<*>)?.mapNotNull { it as? String }
+
+private fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boolean =
+    when (val value = this[key]) {
+        is Boolean -> value
+        else -> default
+    }
 
 private fun joinNonDaemonWorkerThreads() {
     Thread.getAllStackTraces().keys
