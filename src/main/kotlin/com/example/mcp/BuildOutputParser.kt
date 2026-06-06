@@ -7,7 +7,7 @@ data class BuildSummary(
 
 object BuildOutputParser {
     private val buildResultRegex = Regex("""BUILD (SUCCESSFUL|FAILED) in .+""")
-    private val taskSummaryRegex = Regex("""\d+ actionable tasks?: \d+ executed.*""")
+    private val taskSummaryRegex = Regex("""\d+ actionable tasks?: .+""")
 
     fun parse(stdout: String): BuildSummary {
         val lines = normalizeNewlines(stdout).lines()
@@ -32,3 +32,4 @@ object BuildOutputParser {
     private fun normalizeNewlines(text: String): String =
         text.replace("\r\n", "\n").replace('\r', '\n')
 }
+
