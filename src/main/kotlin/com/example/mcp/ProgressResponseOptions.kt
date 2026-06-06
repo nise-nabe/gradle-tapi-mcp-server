@@ -14,7 +14,7 @@ data class ProgressResponseOptions(
     }
 }
 
-fun BuildProgressSnapshot.toResponseMap(): Map<String, Any?> =
+internal fun BuildProgressSnapshot.toResponseMap(): Map<String, Any?> =
     mapOf(
         "status" to status,
         "currentOperation" to currentOperation,
