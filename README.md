@@ -45,7 +45,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | Tool | Description |
 |------|-------------|
 | `gradle_connect` | Connect to a project directory |
-| `gradle_connection_status` | Current connection state |
+| `gradle_connection_status` | Current connection state plus connect-time Gradle/Java snapshot (`runtimeStackAvailable`) |
 | `gradle_disconnect` | Close the connection |
 | `gradle_get_build_environment` | Gradle/Java environment (lightweight) |
 | `gradle_get_project_overview` | Project hierarchy and task counts only |

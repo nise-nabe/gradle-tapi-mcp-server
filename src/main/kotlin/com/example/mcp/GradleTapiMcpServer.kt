@@ -100,7 +100,7 @@ private fun createTools(
         },
         tool(
             name = "gradle_connection_status",
-            description = "Return the current Tooling API connection status.",
+            description = "Return the current Tooling API connection status and a connect-time runtime stack snapshot (gradleVersion, javaHome, javaVersion). Stack fields are null with runtimeStackAvailable=false when the snapshot could not be loaded at connect. For a fresh query including gradleUserHome and jvmArguments, use gradle_get_build_environment.",
             schema = emptyObjectSchema(),
         ) { _ ->
             jsonResult(connectionManager.status())
