@@ -3,13 +3,16 @@ package com.example.mcp
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
 import java.io.File
+import java.util.concurrent.Semaphore
 
 class GradleConnectionManager {
+    private val lock = Any()
+    @Volatile
+    private var operationPermit = Semaphore(1)
     private var connection: ProjectConnection? = null
     private var projectDirectory: File? = null
 
-    @Synchronized
-    fun connect(config: ConnectionConfig): ConnectionInfo {
+    fun connect(config: ConnectionConfig): ConnectionInfo = synchronized(lock) {
         disconnect()
         val projectDir = File(config.projectDirectory).absoluteFile
         require(projectDir.isDirectory) { "Project directory does not exist: ${projectDir.path}" }
@@ -21,41 +24,56 @@ class GradleConnectionManager {
 
         connection = connector.connect()
         projectDirectory = projectDir
-        return ConnectionInfo(projectDir.path, "connected")
+        ConnectionInfo(projectDir.path, "connected")
     }
 
-    @Synchronized
     fun withConnection(block: (ProjectConnection) -> Unit) {
-        block(requireConnection())
+        val permit = operationPermit
+        if (!permit.tryAcquire()) {
+            error("Another Gradle operation is in progress. Wait for it to finish or poll gradle_get_build_status.")
+        }
+        try {
+            block(borrowConnection())
+        } finally {
+            permit.release()
+        }
     }
 
-    @Synchronized
-    fun <T> withConnectionResult(block: (ProjectConnection) -> T): T =
-        block(requireConnection())
+    fun <T> withConnectionResult(block: (ProjectConnection) -> T): T {
+        val permit = operationPermit
+        if (!permit.tryAcquire()) {
+            error("Another Gradle operation is in progress. Wait for it to finish or poll gradle_get_build_status.")
+        }
+        try {
+            return block(borrowConnection())
+        } finally {
+            permit.release()
+        }
+    }
 
-    private fun requireConnection(): ProjectConnection =
+    private fun borrowConnection(): ProjectConnection = synchronized(lock) {
         connection ?: error(
             "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR."
         )
+    }
 
-    @Synchronized
-    fun disconnect(): ConnectionInfo? {
+    fun disconnect(): ConnectionInfo? = synchronized(lock) {
         val previous = projectDirectory?.path
         connection?.close()
         connection = null
         projectDirectory = null
-        return previous?.let { ConnectionInfo(it, "disconnected") }
+        operationPermit = Semaphore(1)
+        previous?.let { ConnectionInfo(it, "disconnected") }
     }
 
-    @Synchronized
-    fun status(): ConnectionStatus {
+    fun status(): ConnectionStatus = synchronized(lock) {
         val dir = projectDirectory?.path
-        return ConnectionStatus(connected = connection != null, projectDirectory = dir)
+        ConnectionStatus(connected = connection != null, projectDirectory = dir)
     }
 
     fun tryAutoConnectFromEnvironment() {
         val projectDir = System.getenv("GRADLE_PROJECT_DIR")?.takeIf { it.isNotBlank() } ?: return
-        if (connection != null) {
+        if (status().connected) {
             return
         }
         connect(
@@ -66,6 +84,13 @@ class GradleConnectionManager {
                 gradleInstallation = System.getenv("GRADLE_INSTALLATION")?.takeIf { it.isNotBlank() },
             )
         )
+    }
+
+    internal fun seedConnectionForTests(connection: ProjectConnection, projectDirectory: File = File(".")) {
+        synchronized(lock) {
+            this.connection = connection
+            this.projectDirectory = projectDirectory
+        }
     }
 }
 
@@ -85,4 +110,3 @@ data class ConnectionStatus(
     val connected: Boolean,
     val projectDirectory: String?,
 )
-
