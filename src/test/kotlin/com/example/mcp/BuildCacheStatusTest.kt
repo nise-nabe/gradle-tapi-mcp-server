@@ -169,6 +169,29 @@ class BuildCacheStatusTest {
     }
 
     @Test
+    fun `BuildCacheUrlRedactor strips userinfo from remote cache URLs`() {
+        assertEquals(
+            "https://cache.example.com/path",
+            BuildCacheUrlRedactor.redactUserInfo("https://user:pass@cache.example.com/path"),
+        )
+        assertEquals(
+            "https://cache.example.com",
+            BuildCacheUrlRedactor.redactUserInfo("https://cache.example.com"),
+        )
+    }
+
+    @Test
+    fun `buildSummary redacts credentials from remoteBuildCacheUrl`() {
+        val summary = BuildCacheStatusCollector.buildSummaryForTests(
+            mapOf("org.gradle.caching.remote.url" to "https://user:pass@cache.example.com"),
+            emptyMap(),
+        )
+
+        assertEquals("https://cache.example.com", summary["remoteBuildCacheUrl"])
+        assertEquals(true, summary["remoteBuildCacheConfigured"])
+    }
+
+    @Test
     fun `BuildCacheStatusOptions fromArgs uses defaults`() {
         val options = BuildCacheStatusOptions.fromArgs(emptyMap())
 

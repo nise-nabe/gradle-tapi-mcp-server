@@ -3,6 +3,7 @@ package com.example.mcp
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.model.build.BuildEnvironment
 import java.io.File
+import java.net.URI
 import java.time.Instant
 
 data class BuildCacheStatusOptions(
@@ -90,6 +91,36 @@ object GradlePropertiesParser {
 
     fun filterCacheRelated(properties: Map<String, String>): Map<String, String> =
         properties.filterKeys(BuildCachePropertyKeys::isCacheRelated)
+}
+
+internal object BuildCacheUrlRedactor {
+    private const val REMOTE_URL_KEY = "org.gradle.caching.remote.url"
+
+    fun sanitizeCacheProperties(properties: Map<String, String>): Map<String, String> =
+        properties.mapValues { (key, value) ->
+            if (key == REMOTE_URL_KEY) {
+                redactUserInfo(value)
+            } else {
+                value
+            }
+        }
+
+    fun redactUserInfo(url: String): String {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty() || !trimmed.contains('@')) {
+            return trimmed
+        }
+        return try {
+            val uri = URI(trimmed)
+            if (uri.userInfo.isNullOrEmpty()) {
+                trimmed
+            } else {
+                URI(uri.scheme, null, uri.host, uri.port, uri.path, uri.query, uri.fragment).toString()
+            }
+        } catch (_: Exception) {
+            trimmed.replace(Regex("""^(https?://)[^/@]+@"""), "$1")
+        }
+    }
 }
 
 object TaskExecutionStatsParser {
@@ -274,7 +305,9 @@ object BuildCacheStatusCollector {
         val gradleUserHome = environment.gradle.gradleUserHome
 
         val resolvedProperties = fetchResolvedProperties(connection)
-        val cacheProperties = GradlePropertiesParser.filterCacheRelated(resolvedProperties)
+        val cacheProperties = BuildCacheUrlRedactor.sanitizeCacheProperties(
+            GradlePropertiesParser.filterCacheRelated(resolvedProperties),
+        )
 
         val declaredProperties = readDeclaredProperties(projectDirectory, gradleUserHome)
 
@@ -326,7 +359,10 @@ object BuildCacheStatusCollector {
         buildMap {
             put("buildCacheEnabled", resolved.parseBoolean("org.gradle.caching"))
             put("remoteBuildCacheConfigured", !resolved["org.gradle.caching.remote.url"].isNullOrBlank())
-            put("remoteBuildCacheUrl", resolved["org.gradle.caching.remote.url"])
+            put(
+                "remoteBuildCacheUrl",
+                resolved["org.gradle.caching.remote.url"]?.let(BuildCacheUrlRedactor::redactUserInfo),
+            )
             put("configurationCacheRequested", resolved.parseBoolean("org.gradle.configuration-cache")
                 ?: resolved.parseBoolean("org.gradle.unsafe.configuration-cache"))
             put("configurationCacheProblems", resolved["org.gradle.configuration-cache.problems"])
@@ -373,8 +409,10 @@ object BuildCacheStatusCollector {
         if (!file.isFile) {
             return emptyMap()
         }
-        return GradlePropertiesParser.filterCacheRelated(
-            GradlePropertiesParser.parse(file.readText()),
+        return BuildCacheUrlRedactor.sanitizeCacheProperties(
+            GradlePropertiesParser.filterCacheRelated(
+                GradlePropertiesParser.parse(file.readText()),
+            ),
         )
     }
 
