@@ -12,12 +12,3 @@ data class ProjectTreeOptions(
             )
     }
 }
-
-private fun Map<String, Any>.optionalPositiveInt(key: String): Int? {
-    val parsed = when (val value = this[key]) {
-        is Number -> value.toInt()
-        is String -> value.toIntOrNull()
-        else -> null
-    }
-    return parsed?.takeIf { it > 0 }
-}

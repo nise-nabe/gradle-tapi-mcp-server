@@ -111,24 +111,19 @@ object ModelSerializers {
             "taskCount" to project.tasks.size,
         )
 
-        val childDepthExceeded = treeOptions.maxDepth != null && depth >= treeOptions.maxDepth
-        if (childDepthExceeded) {
-            val totalChildren = project.children.size
-            if (totalChildren > 0) {
+        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth, treeOptions.maxDepth, project.children.size)
+        if (depthLimit.omitChildren) {
+            if (depthLimit.truncated) {
                 result["truncated"] = true
-                result["totalChildCount"] = totalChildren
+                result["totalChildCount"] = depthLimit.totalChildCount
             }
             result["children"] = emptyList<Map<String, Any?>>()
             return result
         }
 
         val allChildren = project.children.toList()
-        val maxChildren = treeOptions.maxChildren
-        val childrenToSerialize = if (maxChildren != null && allChildren.size > maxChildren) {
-            allChildren.take(maxChildren)
-        } else {
-            allChildren
-        }
+        val childLimit = ProjectTreeLimits.applyChildLimit(allChildren.size, treeOptions.maxChildren)
+        val childrenToSerialize = allChildren.take(childLimit.visibleChildCount)
 
         result["children"] = childrenToSerialize.map { child ->
             if (includeTasks) {
@@ -138,9 +133,9 @@ object ModelSerializers {
             }
         }
 
-        if (maxChildren != null && allChildren.size > maxChildren) {
+        if (childLimit.truncated) {
             result["truncated"] = true
-            result["totalChildCount"] = allChildren.size
+            result["totalChildCount"] = childLimit.totalChildCount
         }
 
         return result
