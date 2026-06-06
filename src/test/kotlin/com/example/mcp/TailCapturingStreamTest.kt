@@ -1,6 +1,7 @@
 package com.example.mcp
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.nio.charset.StandardCharsets
@@ -17,6 +18,37 @@ class TailCapturingStreamTest {
         val snapshot = stream.snapshot()
         assertEquals("23456789", snapshot.text)
         assertEquals(10, snapshot.totalChars)
+    }
+
+    @Test
+    fun `buffers split utf8 bytes without replacement characters`() {
+        val stream = TailCapturingStream(maxRetainedChars = 100)
+        val bytes = "😀".toByteArray(StandardCharsets.UTF_8)
+        stream.append(bytes.copyOfRange(0, 2), 0, 2)
+        assertEquals("", stream.snapshot().text)
+        stream.append(bytes.copyOfRange(2, 4), 0, 2)
+        assertEquals("😀", stream.snapshot().text)
+        assertFalse(stream.snapshot().text.contains('\uFFFD'))
+    }
+
+    @Test
+    fun `trims by code point without replacement characters`() {
+        val stream = TailCapturingStream(maxRetainedChars = 2)
+        val emoji = "😀😀😀"
+        val bytes = emoji.toByteArray(StandardCharsets.UTF_8)
+        stream.append(bytes, 0, bytes.size)
+
+        val snapshot = stream.snapshot()
+        assertEquals("😀😀", snapshot.text)
+        assertFalse(snapshot.text.contains('\uFFFD'))
+    }
+
+    @Test
+    fun `normalizes CRLF in snapshot`() {
+        val stream = TailCapturingStream(maxRetainedChars = 32)
+        stream.append("a\r\nb".toByteArray(StandardCharsets.UTF_8), 0, 4)
+
+        assertEquals("a\nb", stream.snapshot().text)
     }
 
     @Test

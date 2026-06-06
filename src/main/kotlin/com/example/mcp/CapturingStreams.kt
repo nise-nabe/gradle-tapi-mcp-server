@@ -14,6 +14,7 @@ class TailCapturingStream(
 ) {
     private val lock = Any()
     private val buffer = StringBuilder()
+    private var pendingBytes = ByteArray(0)
     private var totalChars = 0
 
     fun append(bytes: ByteArray, offset: Int, length: Int) {
@@ -21,24 +22,57 @@ class TailCapturingStream(
             return
         }
         synchronized(lock) {
-            val text = String(bytes, offset, length, StandardCharsets.UTF_8)
-            totalChars += text.length
-            buffer.append(text)
-            trimToRetainedLimit()
+            val incoming = bytes.copyOfRange(offset, offset + length)
+            val combined = if (pendingBytes.isEmpty()) incoming else pendingBytes + incoming
+            val completeLength = utf8CompletePrefixLength(combined)
+            if (completeLength > 0) {
+                val text = String(combined, 0, completeLength, StandardCharsets.UTF_8)
+                totalChars += text.length
+                buffer.append(text)
+                trimToRetainedLimit()
+            }
+            pendingBytes = if (completeLength < combined.size) {
+                combined.copyOfRange(completeLength, combined.size)
+            } else {
+                ByteArray(0)
+            }
         }
     }
 
     fun snapshot(): CapturedStreamSnapshot =
         synchronized(lock) {
-            CapturedStreamSnapshot(text = buffer.toString(), totalChars = totalChars)
+            val text = OutputNormalizer.normalizeNewlines(buffer.toString())
+            CapturedStreamSnapshot(text = text, totalChars = totalChars)
         }
 
     private fun trimToRetainedLimit() {
-        if (buffer.length <= maxRetainedChars) {
+        val codePointCount = buffer.codePointCount(0, buffer.length)
+        if (codePointCount <= maxRetainedChars) {
             return
         }
-        buffer.delete(0, buffer.length - maxRetainedChars)
+        val startIndex = buffer.offsetByCodePoints(buffer.length, -maxRetainedChars)
+        buffer.delete(0, startIndex)
     }
+
+    private fun utf8CompletePrefixLength(bytes: ByteArray): Int {
+        var index = 0
+        while (index < bytes.size) {
+            val sequenceLength = utf8SequenceLength(bytes[index])
+            if (sequenceLength <= 0 || index + sequenceLength > bytes.size) {
+                return index
+            }
+            index += sequenceLength
+        }
+        return bytes.size
+    }
+
+    private fun utf8SequenceLength(firstByte: Byte): Int =
+        when (firstByte.toInt() and 0xF0) {
+            0xF0 -> 4
+            0xE0 -> 3
+            0xC0 -> 2
+            else -> if (firstByte.toInt() and 0x80 == 0) 1 else 0
+        }
 
     companion object {
         const val DEFAULT_MAX_RETAINED_CHARS = 65_536

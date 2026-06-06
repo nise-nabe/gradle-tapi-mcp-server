@@ -74,9 +74,17 @@ class ModelSerializersTest {
             OutputLimitOptions(maxOutputChars = 8, tailOutput = true),
         )
 
-        assertEquals("89abcdef", limited.text)
+        assertEquals("... [truncated 8 chars] ...\n89abcdef", limited.text)
         assertTrue(limited.truncated)
         assertEquals(16, limited.totalChars)
+    }
+
+    @Test
+    fun `output limiter normalizes CRLF`() {
+        val limited = OutputLimiter.limit("a\r\nb", OutputLimitOptions(maxOutputChars = 10))
+
+        assertEquals("a\nb", limited.text)
+        assertFalse(limited.truncated)
     }
 
     @Test
@@ -87,7 +95,7 @@ class ModelSerializersTest {
             "stdout",
         )
 
-        assertEquals("89abcdef", fields["stdout"])
+        assertEquals("... [truncated 8 chars] ...\n89abcdef", fields["stdout"])
         assertEquals(true, fields["stdoutTruncated"])
         assertEquals(16, fields["stdoutTotalChars"])
     }
