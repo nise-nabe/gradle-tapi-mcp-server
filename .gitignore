@@ -1,0 +1,9 @@
+/build/
+/.gradle/
+/.kotlin/
+/.cursor/
+/.idea/
+*.iml
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+/io/
