@@ -45,10 +45,10 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | Tool | Description |
 |------|-------------|
 | `gradle_connect` | Connect to a project directory |
-| `gradle_connection_status` | Current connection state |
+| `gradle_connection_status` | Current connection state (includes cached Gradle/Java when connected) |
 | `gradle_disconnect` | Close the connection |
-| `gradle_get_build_environment` | Gradle/Java environment (lightweight) |
-| `gradle_get_project_overview` | Project hierarchy and task counts only |
+| `gradle_get_build_environment` | Gradle/Java environment including `javaVersion` (lightweight) |
+| `gradle_get_project_overview` | Project hierarchy and task counts only; optional `maxDepth` / `maxChildren` |
 | `gradle_get_project_model` | Project model; tasks omitted by default |
 | `gradle_get_build_invocations` | Runnable tasks; selectors omitted by default |
 | `gradle_get_project_publications` | Publications |
@@ -69,21 +69,27 @@ Use heavier tools only when required:
 - `gradle_get_project_model` with `includeTasks=true` to list tasks
 - `includeTaskDetails=true` only when descriptions are needed
 - `taskGroup`, `taskNamePrefix`, or `maxTasks` to narrow large builds
+- `maxDepth` / `maxChildren` on overview/model queries for large monorepos
 - `gradle_get_build_invocations` with `includeTaskSelectors=true` only when selectors matter
 
-`gradle_run_tasks` and `gradle_run_tests` keep `stdout`/`stderr` as strings and add `stdoutTruncated`, `stdoutTotalChars`, `stderrTruncated`, and `stderrTotalChars` when truncation happens.
+`gradle_run_tasks` and `gradle_run_tests` keep `stdout`/`stderr` as strings and add `stdoutTruncated`, `stdoutTotalChars`, `stderrTruncated`, and `stderrTotalChars` when truncation happens. Truncated output is prefixed with `... [truncated N chars] ...` and newlines are normalized to LF.
+
+Foreground responses include `outcome` (`SUCCESS` / `FAILED`) and `buildSummary` (parsed Gradle summary lines). Set `includeProgress: true` to include detailed task progress; default is omitted for token efficiency.
 
 Tune with `maxOutputChars` (default `8000`) and `tailOutput` (default `true`).
+
+Tool errors return structured JSON: `{ "error": { "code": "NOT_CONNECTED", "message": "..." } }`.
 
 ## Long-running builds
 
 For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` or `gradle_run_tests`. The tool returns immediately with a `buildId`. Poll `gradle_get_build_status` with that ID (or omit `buildId` to use the active build) to read:
 
 - `status`: `running`, `succeeded`, or `failed`
-- `progress`: current operation, completed/running/failed task counts, and recent task events
+- `outcome` and `buildSummary` when the build has finished
+- `progress` (only when `includeProgress: true`): capped task lists and recent events
 - partial `stdout`/`stderr` while the build is still running
 
-Foreground runs (default) also include a `progress` summary in the final response. When the MCP client supplies a progress token, the server may also emit MCP progress/logging notifications during the run.
+When the MCP client supplies a progress token, the server may also emit MCP progress/logging notifications during the run.
 
 ## Agent skill
 

@@ -15,20 +15,29 @@
 
 No arguments.
 
+`gradle_connection_status` returns `connected`, `projectDirectory`, and when connected and cached: `gradleVersion`, `javaHome`, `javaVersion`.
+
 ## Query (read-only)
 
 ### gradle_get_build_environment
 
-No arguments. Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `java.javaHome`, `java.jvmArguments`.
+No arguments. Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `java.javaHome`, `java.javaVersion`, `java.jvmArguments`.
 
 ### gradle_get_project_overview
 
-No arguments. Returns hierarchy with `taskCount` per project; no task lists.
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `maxDepth` | unlimited | Maximum project tree depth |
+| `maxChildren` | unlimited | Maximum child projects per node |
+
+Returns hierarchy with `taskCount` per project; no task lists. When truncated: `truncated: true`, `totalChildCount`.
 
 ### gradle_get_project_model
 
 | Argument | Default | Description |
 |----------|---------|-------------|
+| `maxDepth` | unlimited | Maximum project tree depth |
+| `maxChildren` | unlimited | Maximum child projects per node |
 | `includeTasks` | `false` | Include task arrays |
 | `includeTaskDetails` | `false` | Add `description`, `displayName` per task |
 | `taskGroup` | — | Filter by Gradle task group |
@@ -39,7 +48,7 @@ Slim task shape (default): `{ name, path, group }`.
 
 ### gradle_get_build_invocations
 
-Same as `gradle_get_project_model`, plus:
+Same as `gradle_get_project_model` (including `maxDepth` / `maxChildren`), plus:
 
 | Argument | Default | Description |
 |----------|---------|-------------|
@@ -62,11 +71,12 @@ No arguments.
 | `jvmArguments` | no | `[]` | JVM args for the build |
 | `maxOutputChars` | no | `8000` | Per-stream char limit |
 | `tailOutput` | no | `true` | Keep tail when truncating |
+| `includeProgress` | no | `false` | Include detailed `progress` object |
 | `background` | no | `false` | Return `buildId` immediately; poll with `gradle_get_build_status` |
 
-Response fields when `background=true`: `buildId`, `status`, `kind`, `message`.
+Response when `background=true`: `buildId`, `status`, `kind`, `message`.
 
-Foreground responses also include `progress` with completed/running/failed task counts and recent events.
+Foreground responses include `outcome` (`SUCCESS` / `FAILED`), `buildSummary` (`resultLine`, `taskSummaryLine`), and `progress` only when `includeProgress=true`.
 
 ### gradle_run_tests
 
@@ -77,6 +87,7 @@ Foreground responses also include `progress` with completed/running/failed task 
 | `jvmArguments` | no | `[]` | JVM args |
 | `maxOutputChars` | no | `8000` | Per-stream char limit |
 | `tailOutput` | no | `true` | Keep tail when truncating |
+| `includeProgress` | no | `false` | Include detailed `progress` object |
 | `background` | no | `false` | Return `buildId` immediately; poll with `gradle_get_build_status` |
 
 ### gradle_get_build_status
@@ -84,10 +95,26 @@ Foreground responses also include `progress` with completed/running/failed task 
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `buildId` | no | active/latest | Build ID from a background run |
+| `includeProgress` | no | `false` | Include detailed `progress` object |
 | `maxOutputChars` | no | `8000` | Per-stream char limit for stdout/stderr |
 | `tailOutput` | no | `true` | Keep tail when truncating |
 
-Returns `status`, `progress`, timestamps, and partial or final `stdout`/`stderr`.
+Returns `status`, timestamps, and partial or final `stdout`/`stderr`. Completed builds also include `outcome` and `buildSummary`.
+
+## Errors
+
+Failed tool calls return JSON:
+
+```json
+{
+  "error": {
+    "code": "NOT_CONNECTED",
+    "message": "..."
+  }
+}
+```
+
+Codes: `NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`.
 
 ## Environment variables (server startup)
 
