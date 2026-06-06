@@ -35,6 +35,7 @@ data class BuildRecord(
     val startedAt: Instant,
     val progressTracker: BuildProgressTracker,
     val streams: CapturingStreams,
+    val projectDirectory: String? = null,
 ) {
     @Volatile
     var finishedAt: Instant? = null
@@ -81,6 +82,7 @@ class BuildExecutionManager(
 
             buildId = UUID.randomUUID().toString()
             val streams = CapturingStreams()
+            val projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath
             lateinit var tracker: BuildProgressTracker
             tracker = BuildProgressTracker(onUpdate = { notifier.notifyIfNeeded(tracker) })
             record = BuildRecord(
@@ -91,6 +93,7 @@ class BuildExecutionManager(
                 startedAt = Instant.now(),
                 progressTracker = tracker,
                 streams = streams,
+                projectDirectory = projectDirectory,
             )
             try {
                 builds[buildId] = record
@@ -138,6 +141,7 @@ class BuildExecutionManager(
 
         val buildId = "foreground"
         val streams = CapturingStreams()
+        val projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath
         val notifier = ProgressNotifier(exchange, progressToken)
         lateinit var tracker: BuildProgressTracker
         tracker = BuildProgressTracker(onUpdate = { notifier.notifyIfNeeded(tracker) })
@@ -149,6 +153,7 @@ class BuildExecutionManager(
             startedAt = Instant.now(),
             progressTracker = tracker,
             streams = streams,
+            projectDirectory = projectDirectory,
         )
 
         try {
@@ -261,7 +266,7 @@ class BuildExecutionManager(
             finishedAt = record.finishedAt ?: Instant.now(),
             outcome = buildOutcome,
             stdout = record.streams.stdoutSnapshot().text,
-            projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath,
+            projectDirectory = record.projectDirectory,
         )
     }
 

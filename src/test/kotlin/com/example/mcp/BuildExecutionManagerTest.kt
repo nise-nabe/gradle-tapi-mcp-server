@@ -296,6 +296,30 @@ class BuildExecutionManagerTest {
     }
 
     @Test
+    fun `resetBuildState snapshot keeps project directory from build start`(@TempDir projectDir: File) {
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        manager.seedRunningBuildForTests(
+            BuildRecord(
+                id = "running-build",
+                kind = BuildKind.TASKS,
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                startedAt = Instant.now(),
+                progressTracker = tracker,
+                streams = CapturingStreams(),
+                projectDirectory = projectDir.absolutePath,
+            ),
+        )
+
+        manager.resetBuildState("Gradle connection closed")
+
+        val snapshot = manager.lastCompletedBuildSnapshot()
+        requireNotNull(snapshot)
+        assertEquals(projectDir.absolutePath, snapshot.projectDirectory)
+    }
+
+    @Test
     fun `lastMcpBuildInsight omits snapshot from a different project`(
         @TempDir projectA: File,
         @TempDir projectB: File,
