@@ -80,7 +80,11 @@ class GradleConnectionManager {
                     gradleInstallation = System.getenv("GRADLE_INSTALLATION")?.takeIf { it.isNotBlank() },
                 ),
             )
-        } catch (_: IllegalArgumentException) {
+        } catch (exception: Exception) {
+            if (exception is InterruptedException) {
+                Thread.currentThread().interrupt()
+                return
+            }
             // Auto-connect is best-effort at startup.
         }
     }
@@ -90,7 +94,10 @@ class GradleConnectionManager {
         try {
             val environment = conn.getModel(BuildEnvironment::class.java)
             cachedEnvironment = CachedBuildEnvironment.from(environment)
-        } catch (_: Exception) {
+        } catch (exception: Exception) {
+            if (exception is InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
             cachedEnvironment = null
         }
     }
