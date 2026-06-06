@@ -2,6 +2,7 @@ package com.example.mcp
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -118,5 +119,43 @@ class ModelSerializersTest {
         val options = ModelQueryOptions.fromArgs(mapOf("maxTasks" to 0))
 
         assertEquals(null, options.maxTasks)
+    }
+
+    @Test
+    fun `project tree limits cap visible children and annotate truncation`() {
+        val childLimit = ProjectTreeLimits.applyChildLimit(totalChildren = 3, maxChildren = 2)
+
+        assertEquals(2, childLimit.visibleChildCount)
+        assertTrue(childLimit.truncated)
+        assertEquals(3, childLimit.totalChildCount)
+    }
+
+    @Test
+    fun `project tree limits omit descendants when max depth reached`() {
+        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth = 1, maxDepth = 1, childCount = 1)
+
+        assertTrue(depthLimit.omitChildren)
+        assertTrue(depthLimit.truncated)
+        assertEquals(1, depthLimit.totalChildCount)
+    }
+
+    @Test
+    fun `project tree limits omit all children at root-only depth`() {
+        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth = 0, maxDepth = 0, childCount = 2)
+
+        assertTrue(depthLimit.omitChildren)
+        assertTrue(depthLimit.truncated)
+        assertEquals(2, depthLimit.totalChildCount)
+    }
+
+    @Test
+    fun `project tree limits leave full tree when no caps configured`() {
+        val childLimit = ProjectTreeLimits.applyChildLimit(totalChildren = 3, maxChildren = null)
+        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth = 0, maxDepth = null, childCount = 3)
+
+        assertEquals(3, childLimit.visibleChildCount)
+        assertFalse(childLimit.truncated)
+        assertNull(childLimit.totalChildCount)
+        assertFalse(depthLimit.omitChildren)
     }
 }
