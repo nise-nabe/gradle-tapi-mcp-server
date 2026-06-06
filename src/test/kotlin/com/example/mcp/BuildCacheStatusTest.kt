@@ -96,6 +96,18 @@ class BuildCacheStatusTest {
     }
 
     @Test
+    fun `directorySummary does not cap when file count equals limit exactly`(@TempDir tempDir: File) {
+        repeat(2) { index ->
+            File(tempDir, "file$index.txt").writeText("x")
+        }
+
+        val summary = LocalGradleCacheInspector.summarizeDirectoryForTests(tempDir, maxFiles = 2)
+
+        assertEquals(2, summary["fileCount"])
+        assertNull(summary["fileCountCapped"])
+    }
+
+    @Test
     fun `LocalGradleCacheInspector lists configuration cache stores in version order`(@TempDir tempDir: File) {
         val cachesDir = File(tempDir, "caches").apply { mkdirs() }
         File(cachesDir, "9.0/cc").apply { mkdirs() }

@@ -234,17 +234,20 @@ object LocalGradleCacheInspector {
     private fun summarizeDirectory(root: File, maxFiles: Int = MAX_DIRECTORY_FILES): DirectoryStats {
         var fileCount = 0
         var totalBytes = 0L
-        root.walkTopDown()
-            .onEnter { fileCount < maxFiles }
-            .forEach { file ->
-                if (file.isFile) {
-                    fileCount += 1
-                    totalBytes += file.length()
-                }
+        var capped = false
+        for (file in root.walkTopDown()) {
+            if (!file.isFile) {
+                continue
             }
-        val capped = fileCount >= maxFiles
+            if (fileCount >= maxFiles) {
+                capped = true
+                break
+            }
+            fileCount += 1
+            totalBytes += file.length()
+        }
         return DirectoryStats(
-            fileCount = if (capped) maxFiles else fileCount,
+            fileCount = fileCount,
             totalBytes = totalBytes,
             capped = capped,
         )
