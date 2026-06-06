@@ -55,6 +55,9 @@ class BuildProgressTracker(
     fun markSucceeded() {
         notifyAfter {
             synchronized(lock) {
+                if (status != STATUS_RUNNING) {
+                    return@notifyAfter
+                }
                 status = STATUS_SUCCEEDED
                 currentOperation = null
                 runningTasks.clear()
@@ -66,6 +69,9 @@ class BuildProgressTracker(
     fun markFailed(message: String) {
         notifyAfter {
             synchronized(lock) {
+                if (status != STATUS_RUNNING) {
+                    return@notifyAfter
+                }
                 status = STATUS_FAILED
                 currentOperation = null
                 runningTasks.clear()
