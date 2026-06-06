@@ -1,9 +1,18 @@
 package com.example.mcp
 
 import org.gradle.tooling.model.GradleProject
+import org.gradle.tooling.model.Task
 import org.gradle.tooling.model.build.BuildEnvironment
 import org.gradle.tooling.model.gradle.BuildInvocations
 import org.gradle.tooling.model.gradle.ProjectPublications
+
+data class TaskSnapshot(
+    val name: String,
+    val path: String,
+    val description: String?,
+    val group: String?,
+    val displayName: String,
+)
 
 object ModelSerializers {
     fun buildEnvironment(environment: BuildEnvironment): Map<String, Any?> = mapOf(
@@ -17,42 +26,44 @@ object ModelSerializers {
         ),
     )
 
-    fun gradleProject(project: GradleProject): Map<String, Any?> = mapOf(
+    fun projectOverview(project: GradleProject): Map<String, Any?> = mapOf(
         "name" to project.name,
         "path" to project.path,
         "description" to project.description,
         "buildDirectory" to project.buildDirectory?.absolutePath,
         "projectDirectory" to project.projectDirectory.absolutePath,
-        "children" to project.children.map { gradleProject(it) },
-        "tasks" to project.tasks.map { task ->
-            mapOf(
-                "name" to task.name,
-                "path" to task.path,
-                "description" to task.description,
-                "group" to task.group,
-                "displayName" to task.displayName,
-            )
-        },
+        "taskCount" to project.tasks.size,
+        "children" to project.children.map { projectOverview(it) },
     )
 
-    fun buildInvocations(invocations: BuildInvocations): Map<String, Any?> = mapOf(
-        "tasks" to invocations.tasks.map { task ->
-            mapOf(
-                "name" to task.name,
-                "path" to task.path,
-                "description" to task.description,
-                "group" to task.group,
-                "displayName" to task.displayName,
-            )
-        },
-        "taskSelectors" to invocations.taskSelectors.map { selector ->
-            mapOf(
-                "name" to selector.name,
-                "description" to selector.description,
-                "displayName" to selector.displayName,
-            )
-        },
-    )
+    fun gradleProject(project: GradleProject, options: ModelQueryOptions = ModelQueryOptions()): Map<String, Any?> =
+        mapOf(
+            "name" to project.name,
+            "path" to project.path,
+            "description" to project.description,
+            "buildDirectory" to project.buildDirectory?.absolutePath,
+            "projectDirectory" to project.projectDirectory.absolutePath,
+            "taskCount" to project.tasks.size,
+            "children" to project.children.map { gradleProject(it, options) },
+            "tasks" to serializeTasks(project.tasks.map(::taskSnapshot), options),
+        )
+
+    fun buildInvocations(invocations: BuildInvocations, options: ModelQueryOptions = ModelQueryOptions()): Map<String, Any?> =
+        buildMap {
+            put("tasks", serializeTasks(invocations.tasks.map(::taskSnapshot), options.copy(includeTasks = true)))
+            if (options.includeTaskSelectors) {
+                put(
+                    "taskSelectors",
+                    invocations.taskSelectors.map { selector ->
+                        mapOf(
+                            "name" to selector.name,
+                            "description" to selector.description,
+                            "displayName" to selector.displayName,
+                        )
+                    },
+                )
+            }
+        }
 
     fun projectPublications(publications: ProjectPublications): Map<String, Any?> = mapOf(
         "project" to mapOf(
@@ -67,4 +78,51 @@ object ModelSerializers {
             )
         },
     )
+
+    fun filterTasks(tasks: List<TaskSnapshot>, options: ModelQueryOptions): List<TaskSnapshot> {
+        if (!options.includeTasks) {
+            return emptyList()
+        }
+
+        var filtered = tasks.asSequence()
+        options.taskGroup?.let { group ->
+            filtered = filtered.filter { it.group == group }
+        }
+        options.taskNamePrefix?.let { prefix ->
+            filtered = filtered.filter { it.name.startsWith(prefix) }
+        }
+        options.maxTasks?.let { max ->
+            filtered = filtered.take(max)
+        }
+        return filtered.toList()
+    }
+
+    fun serializeTasks(tasks: List<TaskSnapshot>, options: ModelQueryOptions): List<Map<String, Any?>> =
+        filterTasks(tasks, options).map { serializeTask(it, options.includeTaskDetails) }
+
+    private fun serializeTask(task: TaskSnapshot, includeDetails: Boolean): Map<String, Any?> =
+        if (includeDetails) {
+            mapOf(
+                "name" to task.name,
+                "path" to task.path,
+                "description" to task.description,
+                "group" to task.group,
+                "displayName" to task.displayName,
+            )
+        } else {
+            mapOf(
+                "name" to task.name,
+                "path" to task.path,
+                "group" to task.group,
+            )
+        }
+
+    private fun taskSnapshot(task: Task): TaskSnapshot =
+        TaskSnapshot(
+            name = task.name,
+            path = task.path,
+            description = task.description,
+            group = task.group,
+            displayName = task.displayName,
+        )
 }

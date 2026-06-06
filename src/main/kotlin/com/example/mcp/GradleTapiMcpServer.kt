@@ -1,6 +1,6 @@
 package com.example.mcp
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.modelcontextprotocol.server.McpServer
 import io.modelcontextprotocol.server.McpServerFeatures
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider
@@ -11,7 +11,7 @@ import org.gradle.tooling.model.gradle.BuildInvocations
 import org.gradle.tooling.model.gradle.ProjectPublications
 import java.time.Duration
 
-private val objectMapper = ObjectMapper()
+private val objectMapper = jacksonObjectMapper()
 
 fun main() {
     val connectionManager = GradleConnectionManager()
@@ -76,7 +76,7 @@ private fun createTools(connectionManager: GradleConnectionManager): List<McpSer
         },
         tool(
             name = "gradle_get_build_environment",
-            description = "Fetch BuildEnvironment (Gradle version, Gradle user home, Java home/version).",
+            description = "Fetch BuildEnvironment (Gradle version, Gradle user home, Java home). Lightweight; prefer this over project model for stack checks.",
             schema = emptyObjectSchema(),
         ) { _ ->
             connectionManager.withConnectionResult { connection ->
@@ -85,23 +85,35 @@ private fun createTools(connectionManager: GradleConnectionManager): List<McpSer
             }
         },
         tool(
-            name = "gradle_get_project_model",
-            description = "Fetch the GradleProject model including subprojects and tasks.",
+            name = "gradle_get_project_overview",
+            description = "Fetch project hierarchy and task counts without task lists. Token-efficient default for project context ingestion.",
             schema = emptyObjectSchema(),
         ) { _ ->
             connectionManager.withConnectionResult { connection ->
                 val project = connection.getModel(GradleProject::class.java)
-                jsonResult(ModelSerializers.gradleProject(project))
+                jsonResult(ModelSerializers.projectOverview(project))
+            }
+        },
+        tool(
+            name = "gradle_get_project_model",
+            description = "Fetch the GradleProject model. Tasks are omitted by default; set includeTasks=true only when needed.",
+            schema = modelQuerySchema(),
+        ) { args ->
+            val options = ModelQueryOptions.fromArgs(args)
+            connectionManager.withConnectionResult { connection ->
+                val project = connection.getModel(GradleProject::class.java)
+                jsonResult(ModelSerializers.gradleProject(project, options))
             }
         },
         tool(
             name = "gradle_get_build_invocations",
-            description = "Fetch runnable tasks and task selectors exposed by the build.",
-            schema = emptyObjectSchema(),
-        ) { _ ->
+            description = "Fetch runnable Gradle tasks. Task selectors are omitted by default; tasks return name/path/group unless includeTaskDetails=true.",
+            schema = invocationsQuerySchema(),
+        ) { args ->
+            val options = ModelQueryOptions.fromArgs(args).copy(includeTasks = true)
             connectionManager.withConnectionResult { connection ->
                 val invocations = connection.getModel(BuildInvocations::class.java)
-                jsonResult(ModelSerializers.buildInvocations(invocations))
+                jsonResult(ModelSerializers.buildInvocations(invocations, options))
             }
         },
         tool(
@@ -116,19 +128,18 @@ private fun createTools(connectionManager: GradleConnectionManager): List<McpSer
         },
         tool(
             name = "gradle_run_tasks",
-            description = "Execute Gradle task paths and return captured stdout/stderr.",
-            schema = objectSchema(
+            description = "Execute Gradle task paths and return captured stdout/stderr. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
+            schema = runOutputSchema(
                 required = listOf("tasks"),
-                properties = mapOf(
+                extraProperties = mapOf(
                     "tasks" to stringArrayProperty("Gradle task paths to execute"),
-                    "arguments" to stringArrayProperty("Additional Gradle command-line arguments"),
-                    "jvmArguments" to stringArrayProperty("Additional JVM arguments for the build"),
                 ),
             ),
         ) { args ->
             val tasks = args.requiredStringList("tasks")
             val arguments = args.optionalStringList("arguments").orEmpty()
             val jvmArguments = args.optionalStringList("jvmArguments").orEmpty()
+            val outputLimit = OutputLimitOptions.fromArgs(args)
             connectionManager.withConnectionResult { connection ->
                 val streams = CapturingStreams()
                 val launcher = connection.newBuild()
@@ -138,29 +149,26 @@ private fun createTools(connectionManager: GradleConnectionManager): List<McpSer
                 streams.applyTo(launcher)
                 launcher.run()
                 jsonResult(
-                    mapOf(
-                        "tasks" to tasks,
-                        "stdout" to streams.stdoutText(),
-                        "stderr" to streams.stderrText(),
-                    )
+                    mapOf("tasks" to tasks) +
+                        OutputLimiter.limitFields(streams.stdoutText(), outputLimit, "stdout") +
+                        OutputLimiter.limitFields(streams.stderrText(), outputLimit, "stderr")
                 )
             }
         },
         tool(
             name = "gradle_run_tests",
-            description = "Execute JVM test classes and return captured stdout/stderr.",
-            schema = objectSchema(
+            description = "Execute JVM test classes and return captured stdout/stderr. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
+            schema = runOutputSchema(
                 required = listOf("testClasses"),
-                properties = mapOf(
+                extraProperties = mapOf(
                     "testClasses" to stringArrayProperty("Fully qualified JVM test class names"),
-                    "arguments" to stringArrayProperty("Additional Gradle command-line arguments"),
-                    "jvmArguments" to stringArrayProperty("Additional JVM arguments for the build"),
                 ),
             ),
         ) { args ->
             val testClasses = args.requiredStringList("testClasses")
             val arguments = args.optionalStringList("arguments").orEmpty()
             val jvmArguments = args.optionalStringList("jvmArguments").orEmpty()
+            val outputLimit = OutputLimitOptions.fromArgs(args)
             connectionManager.withConnectionResult { connection ->
                 val streams = CapturingStreams()
                 val launcher = connection.newTestLauncher()
@@ -170,11 +178,9 @@ private fun createTools(connectionManager: GradleConnectionManager): List<McpSer
                 streams.applyTo(launcher)
                 launcher.run()
                 jsonResult(
-                    mapOf(
-                        "testClasses" to testClasses,
-                        "stdout" to streams.stdoutText(),
-                        "stderr" to streams.stderrText(),
-                    )
+                    mapOf("testClasses" to testClasses) +
+                        OutputLimiter.limitFields(streams.stdoutText(), outputLimit, "stdout") +
+                        OutputLimiter.limitFields(streams.stderrText(), outputLimit, "stderr")
                 )
             }
         },
@@ -232,6 +238,47 @@ private fun stringArrayProperty(description: String): Map<String, Any> =
         "type" to "array",
         "description" to description,
         "items" to mapOf("type" to "string"),
+    )
+
+private fun booleanProperty(description: String): Map<String, String> =
+    mapOf("type" to "boolean", "description" to description)
+
+private fun integerProperty(description: String): Map<String, String> =
+    mapOf("type" to "integer", "description" to description)
+
+private fun modelQueryProperties(): Map<String, Any> =
+    mapOf(
+        "includeTasks" to booleanProperty("Include task lists. Default false to save tokens."),
+        "includeTaskDetails" to booleanProperty("Include task description and displayName. Default false."),
+        "taskGroup" to stringProperty("Filter tasks by Gradle task group"),
+        "taskNamePrefix" to stringProperty("Filter tasks whose name starts with this prefix"),
+        "maxTasks" to integerProperty("Maximum number of tasks to return after filtering"),
+    )
+
+private fun modelQuerySchema(): Map<String, Any> =
+    objectSchema(properties = modelQueryProperties())
+
+private fun invocationsQuerySchema(): Map<String, Any> =
+    objectSchema(
+        properties = modelQueryProperties() + mapOf(
+            "includeTaskSelectors" to booleanProperty("Include task selectors. Default false to save tokens."),
+        ),
+    )
+
+private fun runOutputSchema(
+    required: List<String>,
+    extraProperties: Map<String, Any>,
+): Map<String, Any> =
+    objectSchema(
+        required = required,
+        properties = extraProperties + mapOf(
+            "arguments" to stringArrayProperty("Additional Gradle command-line arguments"),
+            "jvmArguments" to stringArrayProperty("Additional JVM arguments for the build"),
+            "maxOutputChars" to integerProperty(
+                "Maximum stdout/stderr characters to return per stream (default ${OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS})",
+            ),
+            "tailOutput" to booleanProperty("When truncating, keep the tail of each stream (default true)"),
+        ),
     )
 
 private fun Map<String, Any>.requiredString(key: String): String =

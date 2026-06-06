@@ -47,12 +47,32 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_connect` | Connect to a project directory |
 | `gradle_connection_status` | Current connection state |
 | `gradle_disconnect` | Close the connection |
-| `gradle_get_build_environment` | Gradle/Java environment |
-| `gradle_get_project_model` | Project hierarchy and tasks |
-| `gradle_get_build_invocations` | Runnable tasks |
+| `gradle_get_build_environment` | Gradle/Java environment (lightweight) |
+| `gradle_get_project_overview` | Project hierarchy and task counts only |
+| `gradle_get_project_model` | Project model; tasks omitted by default |
+| `gradle_get_build_invocations` | Runnable tasks; selectors omitted by default |
 | `gradle_get_project_publications` | Publications |
-| `gradle_run_tasks` | Execute tasks |
-| `gradle_run_tests` | Execute JVM test classes |
+| `gradle_run_tasks` | Execute tasks; stdout/stderr truncated by default |
+| `gradle_run_tests` | Execute JVM test classes; stdout/stderr truncated by default |
+
+## Token-efficient usage
+
+Prefer this order for agent workflows such as project context ingestion:
+
+1. `gradle_get_build_environment` for resolved Gradle/Java versions
+2. `gradle_get_project_overview` for module hierarchy and task counts
+3. `gradle_run_tasks` with `["build"]` or `["test"]` when verification is needed
+
+Use heavier tools only when required:
+
+- `gradle_get_project_model` with `includeTasks=true` to list tasks
+- `includeTaskDetails=true` only when descriptions are needed
+- `taskGroup`, `taskNamePrefix`, or `maxTasks` to narrow large builds
+- `gradle_get_build_invocations` with `includeTaskSelectors=true` only when selectors matter
+
+`gradle_run_tasks` and `gradle_run_tests` keep `stdout`/`stderr` as strings and add `stdoutTruncated`, `stdoutTotalChars`, `stderrTruncated`, and `stderrTotalChars` when truncation happens.
+
+Tune with `maxOutputChars` (default `8000`) and `tailOutput` (default `true`).
 
 ## Notes
 
