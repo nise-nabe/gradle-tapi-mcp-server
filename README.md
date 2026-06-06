@@ -85,6 +85,12 @@ For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` o
 
 Foreground runs (default) also include a `progress` summary in the final response. When the MCP client supplies a progress token, the server may also emit MCP progress/logging notifications during the run.
 
+## Disconnect during a build
+
+`gradle_disconnect` is non-blocking: the server releases its build slot and marks any running builds as failed immediately so a new connection or build can start. Completed build records remain available via `gradle_get_build_status`. If a Tooling API build was still running, the Gradle daemon may briefly continue that prior call until it unwinds. The disconnect response includes a `warning` field when a build was active.
+
+`gradle_connect` resets the active build slot and marks any running builds as failed before opening a new project connection. It rejects the call while a build slot is still held; wait for the build to finish or call `gradle_disconnect` first.
+
 ## Agent skill
 
 Copy or symlink `skills/gradle-tapi-mcp/` into your Cursor skills directory (for example `~/.cursor/skills/gradle-tapi-mcp/`) so agents use token-efficient MCP workflows with `project-context-ingestion`.
