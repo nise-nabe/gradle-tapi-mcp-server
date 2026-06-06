@@ -15,6 +15,8 @@
 
 No arguments.
 
+`gradle_connection_status` returns `connected`, `projectDirectory`, and a connect-time runtime stack snapshot (`gradleVersion`, `javaHome`, `javaVersion`, `runtimeStackAvailable`). It does not perform Gradle I/O on each call. Use `gradle_get_build_environment` for a fresh query including `gradleUserHome` and `jvmArguments`.
+
 `gradle_disconnect` is non-blocking. If a build was active, the response may include `warning` explaining that the Gradle daemon can briefly overlap work until the prior Tooling API call unwinds.
 
 `gradle_connect` resets the active build slot and marks any running builds as failed before connecting. It fails fast while a build slot is still held.
