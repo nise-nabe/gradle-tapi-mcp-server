@@ -53,6 +53,25 @@ class TailCapturingStreamTest {
     }
 
     @Test
+    fun `joins split CRLF across appends`() {
+        val stream = TailCapturingStream(maxRetainedChars = 32)
+        stream.append("a\r".toByteArray(StandardCharsets.UTF_8), 0, 2)
+        stream.append("\nb".toByteArray(StandardCharsets.UTF_8), 0, 2)
+
+        assertEquals("a\nb", stream.snapshot().text)
+        assertEquals(3, stream.snapshot().totalChars)
+    }
+
+    @Test
+    fun `decodes two byte utf8 sequences`() {
+        val stream = TailCapturingStream(maxRetainedChars = 32)
+        val bytes = "Я".toByteArray(StandardCharsets.UTF_8)
+        stream.append(bytes, 0, bytes.size)
+
+        assertEquals("Я", stream.snapshot().text)
+    }
+
+    @Test
     fun `supports concurrent writes and reads`() {
         val stream = TailCapturingStream(maxRetainedChars = 256)
         val pool = Executors.newFixedThreadPool(4)

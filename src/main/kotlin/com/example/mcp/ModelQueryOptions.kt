@@ -64,25 +64,31 @@ object OutputLimiter {
         }
 
         val excerptBudget = options.maxOutputChars - maxPrefixLength
-        val excerpt = if (options.tailOutput) {
+        var excerpt = if (options.tailOutput) {
             normalized.takeLast(excerptBudget)
         } else {
             normalized.take(excerptBudget)
         }
-        val omittedChars = normalized.length - excerpt.length
-        val prefix = "... [truncated $omittedChars chars] ...\n"
-        val text = if (prefix.length + excerpt.length <= options.maxOutputChars) {
-            prefix + excerpt
-        } else {
+        var omittedChars = normalized.length - excerpt.length
+        var prefix = "... [truncated $omittedChars chars] ...\n"
+        if (prefix.length + excerpt.length > options.maxOutputChars) {
             val adjustedBudget = (options.maxOutputChars - prefix.length).coerceAtLeast(0)
-            val adjustedExcerpt = if (adjustedBudget == 0) {
+            excerpt = if (adjustedBudget == 0) {
                 ""
             } else if (options.tailOutput) {
                 normalized.takeLast(adjustedBudget)
             } else {
                 normalized.take(adjustedBudget)
             }
-            prefix + adjustedExcerpt
+            omittedChars = normalized.length - excerpt.length
+            prefix = "... [truncated $omittedChars chars] ...\n"
+        }
+        val text = if (prefix.length + excerpt.length <= options.maxOutputChars) {
+            prefix + excerpt
+        } else if (options.tailOutput) {
+            normalized.takeLast(options.maxOutputChars)
+        } else {
+            normalized.take(options.maxOutputChars)
         }
         return LimitedText(
             text = text,

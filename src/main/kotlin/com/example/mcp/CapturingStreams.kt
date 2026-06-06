@@ -43,7 +43,7 @@ class TailCapturingStream(
         }
 
     private fun appendNormalizedText(text: String) {
-        var chunk = OutputNormalizer.normalizeNewlines(text)
+        var chunk = text
         if (buffer.isNotEmpty() && buffer[buffer.length - 1] == '\r') {
             buffer.deleteCharAt(buffer.length - 1)
             totalChars -= 1
@@ -53,12 +53,24 @@ class TailCapturingStream(
             buffer.append('\n')
             totalChars += 1
         }
+        chunk = normalizeChunkPreservingTrailingCr(chunk)
         totalChars += chunk.length
         buffer.append(chunk)
         trimToRetainedLimit()
     }
 
+    private fun normalizeChunkPreservingTrailingCr(text: String): String {
+        if (text.endsWith('\r') && !text.endsWith("\r\n")) {
+            val prefix = text.dropLast(1)
+            return OutputNormalizer.normalizeNewlines(prefix) + "\r"
+        }
+        return OutputNormalizer.normalizeNewlines(text)
+    }
+
     private fun trimToRetainedLimit() {
+        if (buffer.length <= maxRetainedChars) {
+            return
+        }
         val codePointCount = buffer.codePointCount(0, buffer.length)
         if (codePointCount <= maxRetainedChars) {
             return
@@ -79,13 +91,16 @@ class TailCapturingStream(
         return bytes.size
     }
 
-    private fun utf8SequenceLength(firstByte: Byte): Int =
-        when (firstByte.toInt() and 0xF0) {
-            0xF0 -> 4
-            0xE0 -> 3
-            0xC0 -> 2
-            else -> if (firstByte.toInt() and 0x80 == 0) 1 else 0
+    private fun utf8SequenceLength(firstByte: Byte): Int {
+        val byte = firstByte.toInt() and 0xFF
+        return when {
+            byte and 0x80 == 0 -> 1
+            byte and 0xE0 == 0xC0 -> 2
+            byte and 0xF0 == 0xE0 -> 3
+            byte and 0xF8 == 0xF0 -> 4
+            else -> 0
         }
+    }
 
     companion object {
         const val DEFAULT_MAX_RETAINED_CHARS = 65_536
