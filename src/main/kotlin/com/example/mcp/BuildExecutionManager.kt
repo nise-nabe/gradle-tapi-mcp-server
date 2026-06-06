@@ -269,22 +269,30 @@ class BuildExecutionManager(
         outputLimit: OutputLimitOptions,
         tracker: BuildProgressTracker,
     ): Map<String, Any?> =
-        buildResult(record, outputLimit) +
-            mapOf(
-                "status" to BuildProgressTracker.STATUS_SUCCEEDED,
-                "progress" to tracker.snapshot().toResponseMap(),
-            )
+        foregroundResponse(record, outputLimit, tracker, BuildProgressTracker.STATUS_SUCCEEDED)
 
     private fun foregroundFailureResponse(
         record: BuildRecord,
         outputLimit: OutputLimitOptions,
         tracker: BuildProgressTracker,
     ): Map<String, Any?> =
-        buildResult(record, outputLimit) +
+        foregroundResponse(record, outputLimit, tracker, BuildProgressTracker.STATUS_FAILED)
+
+    private fun foregroundResponse(
+        record: BuildRecord,
+        outputLimit: OutputLimitOptions,
+        tracker: BuildProgressTracker,
+        status: String,
+    ): Map<String, Any?> {
+        val buildSummary = BuildOutputParser.parse(record.streams.stdoutSnapshot().text)
+        return buildResult(record, outputLimit) +
             mapOf(
-                "status" to BuildProgressTracker.STATUS_FAILED,
+                "status" to status,
+                "outcome" to BuildOutputParser.outcomeFromStatus(status),
+                "buildSummary" to BuildOutputParser.toResponseMap(buildSummary),
                 "progress" to tracker.snapshot().toResponseMap(),
             )
+    }
 
     private fun buildStatusResponse(record: BuildRecord, outputLimit: OutputLimitOptions): Map<String, Any?> {
         val progress = record.progressTracker.snapshot()
@@ -303,6 +311,10 @@ class BuildExecutionManager(
         }
         if (progress.status != BuildProgressTracker.STATUS_RUNNING) {
             response.putAll(buildResult(record, outputLimit))
+            response["outcome"] = BuildOutputParser.outcomeFromStatus(progress.status)
+            response["buildSummary"] = BuildOutputParser.toResponseMap(
+                BuildOutputParser.parse(record.streams.stdoutSnapshot().text),
+            )
         } else {
             response.putAll(limitStreamFields(record.streams.stdoutSnapshot(), outputLimit, "stdout"))
             response.putAll(limitStreamFields(record.streams.stderrSnapshot(), outputLimit, "stderr"))
