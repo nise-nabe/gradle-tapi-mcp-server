@@ -279,11 +279,7 @@ object BuildCacheStatusCollector {
         val resolvedProperties = fetchResolvedProperties(connection)
         val cacheProperties = GradlePropertiesParser.filterCacheRelated(resolvedProperties)
 
-        val declaredProperties = if (options.includeDeclaredProperties) {
-            readDeclaredProperties(projectDirectory, gradleUserHome)
-        } else {
-            emptyMap()
-        }
+        val declaredProperties = readDeclaredProperties(projectDirectory, gradleUserHome)
 
         val configurationCacheProbe = if (options.probeConfigurationCache) {
             probeConfigurationCache(connection)
@@ -314,6 +310,16 @@ object BuildCacheStatusCollector {
             configurationCacheProbe?.let { put("configurationCacheProbe", it) }
         }
     }
+
+    internal fun buildSummaryForTests(
+        resolved: Map<String, String>,
+        declared: Map<String, Map<String, String>>,
+    ): Map<String, Any?> = buildSummary(resolved, declared, configurationCacheProbe = null)
+
+    internal fun readDeclaredPropertiesForTests(
+        projectDirectory: File,
+        gradleUserHome: File?,
+    ): Map<String, Map<String, String>> = readDeclaredProperties(projectDirectory, gradleUserHome)
 
     private fun buildSummary(
         resolved: Map<String, String>,

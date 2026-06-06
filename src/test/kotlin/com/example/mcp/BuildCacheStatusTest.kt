@@ -144,6 +144,16 @@ class BuildCacheStatusTest {
     }
 
     @Test
+    fun `summary declaredInProjectFiles reflects project gradle properties`(@TempDir tempDir: File) {
+        File(tempDir, "gradle.properties").writeText("org.gradle.caching=true\n")
+
+        val declared = BuildCacheStatusCollector.readDeclaredPropertiesForTests(tempDir, null)
+        val summary = BuildCacheStatusCollector.buildSummaryForTests(emptyMap(), declared)
+
+        assertEquals(true, summary["declaredInProjectFiles"])
+    }
+
+    @Test
     fun `BuildCacheStatusOptions fromArgs uses defaults`() {
         val options = BuildCacheStatusOptions.fromArgs(emptyMap())
 
