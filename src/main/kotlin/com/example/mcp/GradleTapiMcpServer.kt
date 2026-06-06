@@ -232,7 +232,8 @@ private fun tool(
                 extractProgressToken(requestOrArgs),
             )
         } catch (exception: Exception) {
-            errorResult(exception.message ?: exception.toString())
+            val code = mapExceptionToErrorCode(exception)
+            structuredErrorResult(code, exception.message ?: exception.toString())
         }
     }
 
@@ -260,12 +261,6 @@ private fun jsonResult(value: Any?): McpSchema.CallToolResult =
     McpSchema.CallToolResult(
         listOf(McpSchema.TextContent(objectMapper.writeValueAsString(value))),
         false,
-    )
-
-private fun errorResult(message: String): McpSchema.CallToolResult =
-    McpSchema.CallToolResult(
-        listOf(McpSchema.TextContent(message)),
-        true,
     )
 
 private fun emptyObjectSchema(): Map<String, Any> =
@@ -361,17 +356,41 @@ private fun runOutputSchema(
         ),
     )
 
-private fun Map<String, Any>.requiredString(key: String): String =
-    (this[key] as? String)?.takeIf { it.isNotBlank() }
-        ?: error("Missing required argument: $key")
+private fun Map<String, Any>.requiredString(key: String): String {
+    val value = this[key]
+    if (value is String && value.isNotBlank()) {
+        return value
+    }
+    throw McpException(
+        McpErrorCode.INVALID_ARGUMENT,
+        when (value) {
+            null -> "Missing required argument: $key"
+            is String -> "Required argument must not be blank: $key"
+            else -> "Required argument must be a string: $key"
+        },
+    )
+}
 
 private fun Map<String, Any>.optionalString(key: String): String? =
     (this[key] as? String)?.takeIf { it.isNotBlank() }
 
 @Suppress("UNCHECKED_CAST")
-private fun Map<String, Any>.requiredStringList(key: String): List<String> =
-    (this[key] as? List<*>)?.mapNotNull { it as? String }?.takeIf { it.isNotEmpty() }
-        ?: error("Missing required argument: $key")
+private fun Map<String, Any>.requiredStringList(key: String): List<String> {
+    when (val value = this[key]) {
+        null -> throw McpException(McpErrorCode.INVALID_ARGUMENT, "Missing required argument: $key")
+        !is List<*> -> throw McpException(McpErrorCode.INVALID_ARGUMENT, "Required argument must be a string array: $key")
+        else -> {
+            val strings = value.mapNotNull { it as? String }
+            if (strings.isEmpty()) {
+                throw McpException(McpErrorCode.INVALID_ARGUMENT, "Required argument must be a non-empty string array: $key")
+            }
+            if (strings.size != value.size) {
+                throw McpException(McpErrorCode.INVALID_ARGUMENT, "Required argument must contain only strings: $key")
+            }
+            return strings
+        }
+    }
+}
 
 @Suppress("UNCHECKED_CAST")
 private fun Map<String, Any>.optionalStringList(key: String): List<String>? =
