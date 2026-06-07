@@ -4,6 +4,8 @@ import com.example.gradle.mcp.cache.CompletedBuildSnapshot
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.model.OutputLimiter
+import com.example.gradle.mcp.protocol.McpErrorCode
+import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpProgressSupport
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.protocol.optionalProgressFields
@@ -14,7 +16,9 @@ import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -34,28 +38,19 @@ class BuildExecutionManager(
     ): Map<String, Any?> {
         connectionManager.withConnection { }
 
-        val buildId = UUID.randomUUID().toString()
-        val streams = CapturingStreams()
-        val projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath
-        val notifier = ProgressNotifier(exchange, progressToken)
-        lateinit var tracker: BuildProgressTracker
-        tracker = BuildProgressTracker(onUpdate = { notifier.notifyIfNeeded(tracker) })
-        val record = BuildRecord(
-            id = buildId,
-            kind = request.kind,
-            tasks = request.tasks,
-            testClasses = request.testClasses,
-            startedAt = Instant.now(),
-            progressTracker = tracker,
-            streams = streams,
-            projectDirectory = projectDirectory,
-        )
+        val start = newBuildStart(request, exchange, progressToken)
+        val buildId = start.record.id
 
         synchronized(lifecycleLock) {
-            builds[buildId] = record
+            builds[buildId] = start.record
             pruneCompletedBuilds()
-            executor.execute {
-                runBuild(record, request, notifier)
+            try {
+                executor.execute {
+                    runBuild(start.record, request, start.notifier)
+                }
+            } catch (_: RejectedExecutionException) {
+                builds.remove(buildId)
+                throw maxConcurrentBuildsException()
             }
         }
 
@@ -75,26 +70,22 @@ class BuildExecutionManager(
         exchange: McpSyncServerExchange?,
         progressToken: Any?,
     ): Map<String, Any?> {
-        val streams = CapturingStreams()
-        val notifier = ProgressNotifier(exchange, progressToken)
-        lateinit var tracker: BuildProgressTracker
-        tracker = BuildProgressTracker(onUpdate = { notifier.notifyIfNeeded(tracker) })
-        val record = BuildRecord(
-            id = UUID.randomUUID().toString(),
-            kind = request.kind,
-            tasks = request.tasks,
-            testClasses = request.testClasses,
-            startedAt = Instant.now(),
-            progressTracker = tracker,
-            streams = streams,
-            projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath,
-        )
-
+        val start = newBuildStart(request, exchange, progressToken)
+        builds[start.record.id] = start.record
         return try {
-            runBuild(record, request, connection, streams, tracker, notifier)
-            foregroundSuccessResponse(record, request, tracker)
+            runBuild(
+                start.record,
+                request,
+                connection,
+                start.record.streams,
+                start.record.progressTracker,
+                start.notifier,
+            )
+            foregroundSuccessResponse(start.record, request, start.record.progressTracker)
         } catch (_: Exception) {
-            foregroundFailureResponse(record, request, tracker)
+            foregroundFailureResponse(start.record, request, start.record.progressTracker)
+        } finally {
+            pruneCompletedBuilds()
         }
     }
 
@@ -191,6 +182,28 @@ class BuildExecutionManager(
             stdout = record.streams.stdoutSnapshot().text,
             projectDirectory = record.projectDirectory,
         )
+    }
+
+    private fun newBuildStart(
+        request: BuildRunRequest,
+        exchange: McpSyncServerExchange?,
+        progressToken: Any?,
+    ): BuildStart {
+        val streams = CapturingStreams()
+        val notifier = ProgressNotifier(exchange, progressToken)
+        lateinit var tracker: BuildProgressTracker
+        tracker = BuildProgressTracker(onUpdate = { notifier.notifyIfNeeded(tracker) })
+        val record = BuildRecord(
+            id = UUID.randomUUID().toString(),
+            kind = request.kind,
+            tasks = request.tasks,
+            testClasses = request.testClasses,
+            startedAt = Instant.now(),
+            progressTracker = tracker,
+            streams = streams,
+            projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath,
+        )
+        return BuildStart(record, notifier)
     }
 
     private fun runBuild(
@@ -399,6 +412,11 @@ class BuildExecutionManager(
         }
     }
 
+    private data class BuildStart(
+        val record: BuildRecord,
+        val notifier: ProgressNotifier,
+    )
+
     internal fun seedRunningBuildForTests(record: BuildRecord) {
         builds[record.id] = record
     }
@@ -407,11 +425,21 @@ class BuildExecutionManager(
         lastCompletedBuildSnapshot = snapshot
     }
 
+    internal fun maxConcurrentBackgroundBuilds(): Int = MAX_CONCURRENT_BUILDS
+
     private fun newBuildExecutor(): ExecutorService {
         val threadCounter = AtomicInteger()
-        return Executors.newCachedThreadPool { runnable ->
-            Thread(runnable, "gradle-build-runner-${threadCounter.incrementAndGet()}").apply { isDaemon = true }
-        }
+        return ThreadPoolExecutor(
+            MAX_CONCURRENT_BUILDS,
+            MAX_CONCURRENT_BUILDS,
+            60L,
+            TimeUnit.SECONDS,
+            SynchronousQueue(),
+            { runnable ->
+                Thread(runnable, "gradle-build-runner-${threadCounter.incrementAndGet()}").apply { isDaemon = true }
+            },
+            ThreadPoolExecutor.AbortPolicy(),
+        )
     }
 
     private fun replaceBuildExecutor() {
@@ -419,8 +447,16 @@ class BuildExecutionManager(
         executor = newBuildExecutor()
     }
 
+    private fun maxConcurrentBuildsException(): McpException =
+        McpException(
+            McpErrorCode.BUILD_ALREADY_RUNNING,
+            "Maximum concurrent background builds ($MAX_CONCURRENT_BUILDS) reached. " +
+                "Poll gradle_get_build_status or wait for a build to finish.",
+        )
+
     companion object {
-        private const val MAX_RETAINED_BUILDS = 5
+        private val MAX_CONCURRENT_BUILDS = maxOf(4, Runtime.getRuntime().availableProcessors())
+        private const val MAX_RETAINED_BUILDS = 10
     }
 }
 

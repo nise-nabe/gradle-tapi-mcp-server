@@ -183,7 +183,7 @@ class GradleConnectionManagerTest {
     }
 
     @Test
-    fun `disconnect resets operation permit for reconnect`() {
+    fun `disconnect allows reconnect after hung withConnection block`() {
         val connection = Proxy.newProxyInstance(
             ProjectConnection::class.java.classLoader,
             arrayOf(ProjectConnection::class.java),

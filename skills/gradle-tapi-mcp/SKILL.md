@@ -100,7 +100,9 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 
 → `gradle_get_build_status`（`status`, `outcome`, `buildSummary`, 途中の `stdout`/`stderr`；`progress` は `includeProgress=true` 時のみ）
 
-`buildId` を省略すると、実行中または直近のビルドを返す。同時に走らせられるバックグラウンドビルドは 1 件。
+`buildId` は必須（並行ビルド時の取り違え防止）。複数の `background=true` ビルドを同時実行できる（サーバー側の上限あり）。上限到達時は `BUILD_ALREADY_RUNNING` が返る。
+
+`gradle_connect` と `gradle_get_build_cache_status` はフォアグラウンド／バックグラウンド問わずビルド実行中は拒否される。
 
 ## 典型的な呼び出し
 

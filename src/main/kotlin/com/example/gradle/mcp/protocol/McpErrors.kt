@@ -44,7 +44,8 @@ fun mapExceptionToErrorCode(exception: Exception): McpErrorCode =
             "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR." ->
                 McpErrorCode.NOT_CONNECTED
             else -> when {
-                exception.message?.startsWith("Another build is already running") == true ->
+                exception.message?.startsWith("Another build is already running") == true ||
+                    exception.message?.startsWith("Maximum concurrent background builds") == true ->
                     McpErrorCode.BUILD_ALREADY_RUNNING
                 exception.message?.startsWith("Project directory does not exist:") == true ->
                     McpErrorCode.PROJECT_NOT_FOUND

@@ -14,11 +14,13 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import org.gradle.tooling.ProjectConnection
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.lang.reflect.InvocationHandler
+import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
@@ -68,6 +70,72 @@ class BuildExecutionManagerTest {
 
         result["buildId"] shouldNotBe "running-build"
         result["status"] shouldBe "running"
+    }
+
+    @Test
+    fun `hasActiveBuild reports foreground build while running`() {
+        val connectionManager = GradleConnectionManager()
+        val buildEntered = CountDownLatch(1)
+        val releaseBuild = CountDownLatch(1)
+        val connection = blockingProjectConnection(buildEntered, releaseBuild)
+        connectionManager.seedConnectionForTests(connection)
+        val manager = BuildExecutionManager(connectionManager)
+
+        val buildThread = Thread {
+            manager.runForeground(
+                request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
+                connection = connection,
+                exchange = null,
+                progressToken = null,
+            )
+        }.apply { isDaemon = true }
+        buildThread.start()
+
+        buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        manager.hasActiveBuild().shouldBeTrue()
+
+        releaseBuild.countDown()
+        buildThread.join(5_000)
+        manager.hasActiveBuild().shouldBeFalse()
+    }
+
+    @Test
+    fun `startBackground rejects when max concurrent background builds reached`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            Proxy.newProxyInstance(
+                ProjectConnection::class.java.classLoader,
+                arrayOf(ProjectConnection::class.java),
+                InvocationHandler { _, _, _ -> null },
+            ) as ProjectConnection,
+        )
+        val manager = BuildExecutionManager(connectionManager)
+        val executor = BuildExecutionManager::class.java
+            .getDeclaredField("executor")
+            .apply { isAccessible = true }
+            .get(manager) as ExecutorService
+        val maxBuilds = manager.maxConcurrentBackgroundBuilds()
+        val tasksStarted = CountDownLatch(maxBuilds)
+        val releaseTasks = CountDownLatch(1)
+        repeat(maxBuilds) {
+            executor.execute {
+                tasksStarted.countDown()
+                releaseTasks.await(5, TimeUnit.SECONDS)
+            }
+        }
+        tasksStarted.await(5, TimeUnit.SECONDS).shouldBeTrue()
+
+        val error = shouldThrow<McpException> {
+            manager.startBackground(
+                request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("other")),
+                exchange = null,
+                progressToken = null,
+            )
+        }
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.message.shouldNotBeNull() shouldContain "Maximum concurrent background builds"
+
+        releaseTasks.countDown()
     }
 
     @Test
@@ -359,3 +427,53 @@ class BuildExecutionManagerTest {
         (result["buildSummary"] as Map<*, *>)["resultLine"] shouldBe "BUILD SUCCESSFUL in 1s"
     }
 }
+
+private fun blockingProjectConnection(
+    buildEntered: CountDownLatch,
+    releaseBuild: CountDownLatch,
+): ProjectConnection =
+    Proxy.newProxyInstance(
+        ProjectConnection::class.java.classLoader,
+        arrayOf(ProjectConnection::class.java),
+        InvocationHandler { _, method, _ ->
+            when (method.name) {
+                "newBuild" -> chainingProxy(
+                    Class.forName("org.gradle.tooling.BuildLauncher"),
+                    onRun = {
+                        buildEntered.countDown()
+                        releaseBuild.await(5, TimeUnit.SECONDS)
+                    },
+                )
+                else -> defaultProxyReturn(method)
+            }
+        },
+    ) as ProjectConnection
+
+private fun chainingProxy(
+    interfaceClass: Class<*>,
+    onRun: () -> Unit,
+): Any {
+    val self = arrayOfNulls<Any>(1)
+    self[0] = Proxy.newProxyInstance(
+        interfaceClass.classLoader,
+        arrayOf(interfaceClass),
+        InvocationHandler { _, method, _ ->
+            when (method.name) {
+                "run" -> {
+                    onRun()
+                    null
+                }
+                else -> self[0]
+            }
+        },
+    )
+    return self[0]!!
+}
+
+private fun defaultProxyReturn(method: Method): Any? =
+    when (method.returnType) {
+        java.lang.Boolean.TYPE -> false
+        java.lang.Integer.TYPE, java.lang.Long.TYPE, java.lang.Short.TYPE, java.lang.Byte.TYPE -> 0
+        java.lang.Double.TYPE, java.lang.Float.TYPE -> 0
+        else -> null
+    }
