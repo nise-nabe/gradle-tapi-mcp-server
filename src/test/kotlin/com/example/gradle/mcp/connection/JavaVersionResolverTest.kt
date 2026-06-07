@@ -1,7 +1,7 @@
 package com.example.gradle.mcp.connection
 
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.nio.file.Files
@@ -12,7 +12,7 @@ class JavaVersionResolverTest {
         val tempHome = Files.createTempDirectory("java-home").toFile()
         try {
             File(tempHome, "release").writeText("""JAVA_VERSION="21.0.2"""")
-            assertEquals("21.0.2", JavaVersionResolver.resolve(tempHome))
+            JavaVersionResolver.resolve(tempHome) shouldBe "21.0.2"
         } finally {
             tempHome.deleteRecursively()
         }
@@ -22,7 +22,7 @@ class JavaVersionResolverTest {
     fun `returns null when release file is missing`() {
         val tempHome = Files.createTempDirectory("java-home-empty").toFile()
         try {
-            assertNull(JavaVersionResolver.resolve(tempHome))
+            JavaVersionResolver.resolve(tempHome).shouldBeNull()
         } finally {
             tempHome.deleteRecursively()
         }

@@ -1,9 +1,12 @@
 package com.example.gradle.mcp.model
 
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertTrue
+import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.ints.shouldBeLessThanOrEqual
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldStartWith
 import org.junit.jupiter.api.Test
 
 class ModelSerializersTest {
@@ -17,7 +20,7 @@ class ModelSerializersTest {
     fun `serializeTasks omits tasks by default`() {
         val serialized = ModelSerializers.serializeTasks(tasks, ModelQueryOptions())
 
-        assertTrue(serialized.isEmpty())
+        serialized.shouldBeEmpty()
     }
 
     @Test
@@ -27,11 +30,8 @@ class ModelSerializersTest {
             ModelQueryOptions(includeTasks = true),
         )
 
-        assertEquals(3, serialized.size)
-        assertEquals(
-            mapOf("name" to "build", "path" to ":build", "group" to "build"),
-            serialized[1],
-        )
+        serialized.size shouldBe 3
+        serialized[1] shouldBe mapOf("name" to "build", "path" to ":build", "group" to "build")
     }
 
     @Test
@@ -41,8 +41,8 @@ class ModelSerializersTest {
             ModelQueryOptions(includeTasks = true, includeTaskDetails = true),
         )
 
-        assertEquals("Build project", serialized[1]["description"])
-        assertEquals("task ':build'", serialized[1]["displayName"])
+        serialized[1]["description"] shouldBe "Build project"
+        serialized[1]["displayName"] shouldBe "task ':build'"
     }
 
     @Test
@@ -57,15 +57,15 @@ class ModelSerializersTest {
             ),
         )
 
-        assertEquals(listOf("help"), filtered.map { it.name })
+        filtered.map { it.name } shouldBe listOf("help")
     }
 
     @Test
     fun `output limiter keeps short text unchanged`() {
         val limited = OutputLimiter.limit("ok", OutputLimitOptions(maxOutputChars = 10, tailOutput = true))
 
-        assertEquals("ok", limited.text)
-        assertFalse(limited.truncated)
+        limited.text shouldBe "ok"
+        limited.truncated.shouldBeFalse()
     }
 
     @Test
@@ -76,10 +76,10 @@ class ModelSerializersTest {
             OutputLimitOptions(maxOutputChars = 40, tailOutput = true),
         )
 
-        assertTrue(limited.truncated)
-        assertEquals(text.length, limited.totalChars)
-        assertTrue(limited.text.length <= 40)
-        assertTrue(limited.text.startsWith("... [truncated "))
+        limited.truncated.shouldBeTrue()
+        limited.totalChars shouldBe text.length
+        limited.text.length shouldBeLessThanOrEqual 40
+        limited.text shouldStartWith "... [truncated "
     }
 
     @Test
@@ -89,17 +89,17 @@ class ModelSerializersTest {
             OutputLimitOptions(maxOutputChars = 8, tailOutput = true),
         )
 
-        assertEquals("89abcdef", limited.text)
-        assertTrue(limited.truncated)
-        assertEquals(8, limited.text.length)
+        limited.text shouldBe "89abcdef"
+        limited.truncated.shouldBeTrue()
+        limited.text.length shouldBe 8
     }
 
     @Test
     fun `output limiter normalizes CRLF`() {
         val limited = OutputLimiter.limit("a\r\nb", OutputLimitOptions(maxOutputChars = 10))
 
-        assertEquals("a\nb", limited.text)
-        assertFalse(limited.truncated)
+        limited.text shouldBe "a\nb"
+        limited.truncated.shouldBeFalse()
     }
 
     @Test
@@ -111,9 +111,9 @@ class ModelSerializersTest {
             "stdout",
         )
 
-        assertTrue((fields["stdout"] as String).length <= 40)
-        assertEquals(true, fields["stdoutTruncated"])
-        assertEquals(text.length, fields["stdoutTotalChars"])
+        (fields["stdout"] as String).length shouldBeLessThanOrEqual 40
+        fields["stdoutTruncated"] shouldBe true
+        fields["stdoutTotalChars"] shouldBe text.length
     }
 
     @Test
@@ -129,46 +129,46 @@ class ModelSerializersTest {
             ),
         )
 
-        assertTrue(options.includeTasks)
-        assertTrue(options.includeTaskDetails)
-        assertTrue(options.includeTaskSelectors)
-        assertEquals("build", options.taskGroup)
-        assertEquals("co", options.taskNamePrefix)
-        assertEquals(5, options.maxTasks)
+        options.includeTasks.shouldBeTrue()
+        options.includeTaskDetails.shouldBeTrue()
+        options.includeTaskSelectors.shouldBeTrue()
+        options.taskGroup shouldBe "build"
+        options.taskNamePrefix shouldBe "co"
+        options.maxTasks shouldBe 5
     }
 
     @Test
     fun `model query options ignore non-positive maxTasks`() {
         val options = ModelQueryOptions.fromArgs(mapOf("maxTasks" to 0))
 
-        assertEquals(null, options.maxTasks)
+        options.maxTasks.shouldBeNull()
     }
 
     @Test
     fun `project tree limits cap visible children and annotate truncation`() {
         val childLimit = ProjectTreeLimits.applyChildLimit(totalChildren = 3, maxChildren = 2)
 
-        assertEquals(2, childLimit.visibleChildCount)
-        assertTrue(childLimit.truncated)
-        assertEquals(3, childLimit.totalChildCount)
+        childLimit.visibleChildCount shouldBe 2
+        childLimit.truncated.shouldBeTrue()
+        childLimit.totalChildCount shouldBe 3
     }
 
     @Test
     fun `project tree limits omit descendants when max depth reached`() {
         val depthLimit = ProjectTreeLimits.applyDepthLimit(depth = 1, maxDepth = 1, childCount = 1)
 
-        assertTrue(depthLimit.omitChildren)
-        assertTrue(depthLimit.truncated)
-        assertEquals(1, depthLimit.totalChildCount)
+        depthLimit.omitChildren.shouldBeTrue()
+        depthLimit.truncated.shouldBeTrue()
+        depthLimit.totalChildCount shouldBe 1
     }
 
     @Test
     fun `project tree limits omit all children at root-only depth`() {
         val depthLimit = ProjectTreeLimits.applyDepthLimit(depth = 0, maxDepth = 0, childCount = 2)
 
-        assertTrue(depthLimit.omitChildren)
-        assertTrue(depthLimit.truncated)
-        assertEquals(2, depthLimit.totalChildCount)
+        depthLimit.omitChildren.shouldBeTrue()
+        depthLimit.truncated.shouldBeTrue()
+        depthLimit.totalChildCount shouldBe 2
     }
 
     @Test
@@ -176,9 +176,9 @@ class ModelSerializersTest {
         val childLimit = ProjectTreeLimits.applyChildLimit(totalChildren = 3, maxChildren = null)
         val depthLimit = ProjectTreeLimits.applyDepthLimit(depth = 0, maxDepth = null, childCount = 3)
 
-        assertEquals(3, childLimit.visibleChildCount)
-        assertFalse(childLimit.truncated)
-        assertNull(childLimit.totalChildCount)
-        assertFalse(depthLimit.omitChildren)
+        childLimit.visibleChildCount shouldBe 3
+        childLimit.truncated.shouldBeFalse()
+        childLimit.totalChildCount.shouldBeNull()
+        depthLimit.omitChildren.shouldBeFalse()
     }
 }

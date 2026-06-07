@@ -2,12 +2,14 @@ package com.example.gradle.mcp.connection
 
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import org.gradle.tooling.ProjectConnection
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertThrows
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.lang.reflect.InvocationHandler
@@ -25,12 +27,12 @@ class GradleConnectionManagerTest {
     fun `status reports disconnected initially`() {
         val status = manager.status()
 
-        assertFalse(status.connected)
-        assertNull(status.projectDirectory)
-        assertNull(status.gradleVersion)
-        assertNull(status.javaHome)
-        assertNull(status.javaVersion)
-        assertFalse(status.runtimeStackAvailable)
+        status.connected.shouldBeFalse()
+        status.projectDirectory.shouldBeNull()
+        status.gradleVersion.shouldBeNull()
+        status.javaHome.shouldBeNull()
+        status.javaVersion.shouldBeNull()
+        status.runtimeStackAvailable.shouldBeFalse()
     }
 
     @Test
@@ -48,12 +50,12 @@ class GradleConnectionManagerTest {
 
         val status = manager.status()
 
-        assertTrue(status.connected)
-        assertEquals("8.14", status.gradleVersion)
-        assertEquals("/jdk/home", status.javaHome)
-        assertEquals("21.0.2", status.javaVersion)
-        assertTrue(status.runtimeStackAvailable)
-        assertEquals(0, getModelCalls.get())
+        status.connected.shouldBeTrue()
+        status.gradleVersion shouldBe "8.14"
+        status.javaHome shouldBe "/jdk/home"
+        status.javaVersion shouldBe "21.0.2"
+        status.runtimeStackAvailable.shouldBeTrue()
+        getModelCalls.get() shouldBe 0
     }
 
     @Test
@@ -63,11 +65,11 @@ class GradleConnectionManagerTest {
 
         val status = manager.status()
 
-        assertTrue(status.connected)
-        assertNull(status.gradleVersion)
-        assertNull(status.javaHome)
-        assertNull(status.javaVersion)
-        assertFalse(status.runtimeStackAvailable)
+        status.connected.shouldBeTrue()
+        status.gradleVersion.shouldBeNull()
+        status.javaHome.shouldBeNull()
+        status.javaVersion.shouldBeNull()
+        status.runtimeStackAvailable.shouldBeFalse()
     }
 
     @Test
@@ -87,39 +89,37 @@ class GradleConnectionManagerTest {
         manager.disconnect()
 
         val status = manager.status()
-        assertFalse(status.connected)
-        assertFalse(status.runtimeStackAvailable)
-        assertNull(status.gradleVersion)
+        status.connected.shouldBeFalse()
+        status.runtimeStackAvailable.shouldBeFalse()
+        status.gradleVersion.shouldBeNull()
     }
 
     @Test
     fun `connect rejects missing project directory`() {
         val missingDirectory = File("build/tmp/nonexistent-project-dir").absolutePath
 
-        val error = assertThrows(McpException::class.java) {
+        val error = shouldThrow<McpException> {
             manager.connect(ConnectionConfig(projectDirectory = missingDirectory))
         }
 
-        assertEquals(McpErrorCode.PROJECT_NOT_FOUND, error.code)
-        assertEquals("Project directory does not exist: $missingDirectory", error.message)
+        error.code shouldBe McpErrorCode.PROJECT_NOT_FOUND
+        error.message shouldBe "Project directory does not exist: $missingDirectory"
     }
 
     @Test
     fun `withConnection requires an active connection`() {
-        val error = assertThrows(McpException::class.java) {
+        val error = shouldThrow<McpException> {
             manager.withConnection { }
         }
 
-        assertEquals(McpErrorCode.NOT_CONNECTED, error.code)
-        assertEquals(
-            "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR.",
-            error.message,
-        )
+        error.code shouldBe McpErrorCode.NOT_CONNECTED
+        error.message shouldBe
+            "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR."
     }
 
     @Test
     fun `disconnect without connection returns null`() {
-        assertNull(manager.disconnect())
+        manager.disconnect().shouldBeNull()
     }
 
     @Test
@@ -142,7 +142,7 @@ class GradleConnectionManagerTest {
             }
         }.apply { isDaemon = true }
         buildThread.start()
-        assertTrue(blockEntered.await(5, TimeUnit.SECONDS), "withConnection block should start")
+        blockEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
 
         val disconnectThread = Thread {
             manager.disconnect()
@@ -151,10 +151,10 @@ class GradleConnectionManagerTest {
         disconnectThread.start()
         disconnectThread.join(2_000)
 
-        assertTrue(disconnectCompleted.get(), "disconnect must not block on withConnection work")
+        disconnectCompleted.get().shouldBeTrue()
         releaseBlock.countDown()
         buildThread.join(2_000)
-        assertFalse(buildThread.isAlive, "withConnection thread must terminate after releaseBlock")
+        buildThread.isAlive.shouldBeFalse()
     }
 
     @Test
@@ -175,12 +175,12 @@ class GradleConnectionManagerTest {
             }
         }.apply { isDaemon = true }
         firstThread.start()
-        assertTrue(firstEntered.await(5, TimeUnit.SECONDS))
+        firstEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
 
-        val error = assertThrows(IllegalStateException::class.java) {
+        val error = shouldThrow<IllegalStateException> {
             manager.withConnectionResult { 42 }
         }
-        assertTrue(error.message!!.contains("Another Gradle operation is in progress"))
+        error.message.shouldNotBeNull() shouldContain "Another Gradle operation is in progress"
 
         releaseFirst.countDown()
         firstThread.join(2_000)
@@ -204,14 +204,14 @@ class GradleConnectionManagerTest {
             }
         }.apply { isDaemon = true }
         hungThread.start()
-        assertTrue(blockEntered.await(5, TimeUnit.SECONDS))
+        blockEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
 
         manager.disconnect()
         manager.seedConnectionForTests(connection)
 
         var secondOperationRan = false
         manager.withConnection { secondOperationRan = true }
-        assertTrue(secondOperationRan, "new operation must succeed after disconnect resets permit")
+        secondOperationRan.shouldBeTrue()
 
         releaseBlock.countDown()
         hungThread.join(2_000)

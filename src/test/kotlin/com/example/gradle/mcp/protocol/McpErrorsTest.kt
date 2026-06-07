@@ -1,8 +1,8 @@
 package com.example.gradle.mcp.protocol
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
+import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
 class McpErrorsTest {
@@ -14,7 +14,7 @@ class McpErrorsTest {
             ),
         )
 
-        assertEquals(McpErrorCode.NOT_CONNECTED, code)
+        code shouldBe McpErrorCode.NOT_CONNECTED
     }
 
     @Test
@@ -23,7 +23,7 @@ class McpErrorsTest {
             McpException(McpErrorCode.BUILD_ALREADY_RUNNING, "Another build is already running"),
         )
 
-        assertEquals(McpErrorCode.BUILD_ALREADY_RUNNING, code)
+        code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
     }
 
     @Test
@@ -32,16 +32,16 @@ class McpErrorsTest {
             McpException(McpErrorCode.PROJECT_NOT_FOUND, "Project directory does not exist: /missing"),
         )
 
-        assertEquals(McpErrorCode.PROJECT_NOT_FOUND, code)
+        code shouldBe McpErrorCode.PROJECT_NOT_FOUND
     }
 
     @Test
     fun `structured error result returns JSON payload with isError true`() {
         val result = structuredErrorResult(McpErrorCode.NOT_CONNECTED, "Not connected")
 
-        assertTrue(result.isError)
+        result.isError.shouldBeTrue()
         val payload = jacksonObjectMapper().readTree((result.content.single() as io.modelcontextprotocol.spec.McpSchema.TextContent).text)
-        assertEquals("NOT_CONNECTED", payload["error"]["code"].asText())
-        assertEquals("Not connected", payload["error"]["message"].asText())
+        payload["error"]["code"].asText() shouldBe "NOT_CONNECTED"
+        payload["error"]["message"].asText() shouldBe "Not connected"
     }
 }

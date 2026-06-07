@@ -7,10 +7,12 @@ import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
 import org.gradle.tooling.ProjectConnection
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertThrows
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -28,7 +30,7 @@ class BuildExecutionManagerTest {
     fun `status returns not_found for unknown build`() {
         val result = manager.status("missing-build-id", OutputLimitOptions(), ProgressResponseOptions())
 
-        assertEquals("not_found", result["status"])
+        result["status"] shouldBe "not_found"
     }
 
     @Test
@@ -47,7 +49,7 @@ class BuildExecutionManagerTest {
             ),
         )
 
-        val error = assertThrows(McpException::class.java) {
+        val error = shouldThrow<McpException> {
             manager.startBackground(
                 request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
                 exchange = null,
@@ -55,11 +57,9 @@ class BuildExecutionManagerTest {
             )
         }
 
-        assertEquals(McpErrorCode.BUILD_ALREADY_RUNNING, error.code)
-        assertEquals(
-            "Another build is already running (buildId=running-build). Call gradle_get_build_status first.",
-            error.message,
-        )
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.message shouldBe
+            "Another build is already running (buildId=running-build). Call gradle_get_build_status first."
     }
 
     @Test
@@ -83,7 +83,7 @@ class BuildExecutionManagerTest {
             arrayOf(ProjectConnection::class.java),
             InvocationHandler { _, _, _ -> null },
         ) as ProjectConnection
-        val error = assertThrows(McpException::class.java) {
+        val error = shouldThrow<McpException> {
             manager.runForeground(
                 request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
                 connection = unusedConnection,
@@ -92,11 +92,9 @@ class BuildExecutionManagerTest {
             )
         }
 
-        assertEquals(McpErrorCode.BUILD_ALREADY_RUNNING, error.code)
-        assertEquals(
-            "Another build is already running (buildId=running-build). Call gradle_get_build_status first.",
-            error.message,
-        )
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.message shouldBe
+            "Another build is already running (buildId=running-build). Call gradle_get_build_status first."
     }
 
     @Test
@@ -123,8 +121,8 @@ class BuildExecutionManagerTest {
             ProgressResponseOptions(includeProgress = false),
         )
 
-        assertEquals("running", resultWithoutProgress["status"])
-        assertEquals(null, resultWithoutProgress["progress"])
+        resultWithoutProgress["status"] shouldBe "running"
+        resultWithoutProgress["progress"].shouldBeNull()
 
         val resultWithProgress = manager.status(
             "running-build",
@@ -132,7 +130,7 @@ class BuildExecutionManagerTest {
             ProgressResponseOptions(includeProgress = true),
         )
 
-        assertEquals("running", (resultWithProgress["progress"] as Map<*, *>)["status"])
+        (resultWithProgress["progress"] as Map<*, *>)["status"] shouldBe "running"
     }
 
     @Test
@@ -151,7 +149,7 @@ class BuildExecutionManagerTest {
             ),
         )
 
-        assertTrue(manager.hasActiveBuild())
+        manager.hasActiveBuild().shouldBeTrue()
     }
 
     @Test
@@ -173,8 +171,8 @@ class BuildExecutionManagerTest {
         manager.resetBuildState("Preparing new Gradle connection")
 
         val status = manager.status("running-build", OutputLimitOptions(), ProgressResponseOptions())
-        assertEquals("failed", status["status"])
-        assertEquals("Preparing new Gradle connection", status["error"])
+        status["status"] shouldBe "failed"
+        status["error"] shouldBe "Preparing new Gradle connection"
     }
 
     @Test
@@ -196,21 +194,19 @@ class BuildExecutionManagerTest {
         manager.onDisconnect()
 
         val status = manager.status("running-build", OutputLimitOptions(), ProgressResponseOptions())
-        assertEquals("failed", status["status"])
-        assertEquals("Gradle connection closed", status["error"])
+        status["status"] shouldBe "failed"
+        status["error"] shouldBe "Gradle connection closed"
 
-        val slotError = assertThrows(McpException::class.java) {
+        val slotError = shouldThrow<McpException> {
             manager.startBackground(
                 request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
                 exchange = null,
                 progressToken = null,
             )
         }
-        assertEquals(McpErrorCode.NOT_CONNECTED, slotError.code)
-        assertEquals(
-            "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR.",
-            slotError.message,
-        )
+        slotError.code shouldBe McpErrorCode.NOT_CONNECTED
+        slotError.message shouldBe
+            "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR."
     }
 
     @Test
@@ -246,18 +242,16 @@ class BuildExecutionManagerTest {
 
         manager.releaseBuildSlotIfActive(staleRecord)
 
-        val error = assertThrows(McpException::class.java) {
+        val error = shouldThrow<McpException> {
             manager.startBackground(
                 request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("other")),
                 exchange = null,
                 progressToken = null,
             )
         }
-        assertEquals(McpErrorCode.BUILD_ALREADY_RUNNING, error.code)
-        assertEquals(
-            "Another build is already running (buildId=new-build). Call gradle_get_build_status first.",
-            error.message,
-        )
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.message shouldBe
+            "Another build is already running (buildId=new-build). Call gradle_get_build_status first."
     }
 
     @Test
@@ -293,15 +287,12 @@ class BuildExecutionManagerTest {
                 slotReleased.countDown()
             }
         }
-        assertTrue(taskEntered.await(5, TimeUnit.SECONDS), "build executor task should start")
+        taskEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
 
         val shutdownThread = Thread { manager.shutdown() }.apply { isDaemon = true }
         shutdownThread.start()
 
-        assertTrue(
-            slotReleased.await(500, TimeUnit.MILLISECONDS),
-            "releaseBuildSlotIfActive should not block until shutdown finishes awaiting termination",
-        )
+        slotReleased.await(500, TimeUnit.MILLISECONDS).shouldBeTrue()
         shutdownThread.join(10_000)
     }
 
@@ -325,8 +316,8 @@ class BuildExecutionManagerTest {
         manager.resetBuildState("Gradle connection closed")
 
         val snapshot = manager.lastCompletedBuildSnapshot()
-        requireNotNull(snapshot)
-        assertEquals(projectDir.absolutePath, snapshot.projectDirectory)
+        snapshot.shouldNotBeNull()
+        snapshot.projectDirectory shouldBe projectDir.absolutePath
     }
 
     @Test
@@ -347,12 +338,12 @@ class BuildExecutionManagerTest {
             ),
         )
 
-        assertEquals(null, manager.lastMcpBuildInsight(projectB))
+        manager.lastMcpBuildInsight(projectB).shouldBeNull()
 
         val insight = manager.lastMcpBuildInsight(projectA)
-        requireNotNull(insight)
-        assertEquals("b1", insight.buildId)
-        assertEquals(2, insight.taskStats?.executed)
+        insight.shouldNotBeNull()
+        insight.buildId shouldBe "b1"
+        insight.taskStats?.executed shouldBe 2
     }
 
     @Test
@@ -371,9 +362,9 @@ class BuildExecutionManagerTest {
         )
 
         val insight = manager.lastMcpBuildInsight(projectDir)
-        requireNotNull(insight)
-        assertEquals(emptyList<String>(), insight.tasks)
-        assertEquals(listOf("com.example.FooTest"), insight.testClasses)
+        insight.shouldNotBeNull()
+        insight.tasks shouldBe emptyList<String>()
+        insight.testClasses shouldBe listOf("com.example.FooTest")
     }
 
     @Test
@@ -397,11 +388,8 @@ class BuildExecutionManagerTest {
 
         val result = manager.status("completed-build", OutputLimitOptions(), ProgressResponseOptions())
 
-        assertEquals("succeeded", result["status"])
-        assertEquals("SUCCESS", result["outcome"])
-        assertEquals(
-            "BUILD SUCCESSFUL in 1s",
-            (result["buildSummary"] as Map<*, *>)["resultLine"],
-        )
+        result["status"] shouldBe "succeeded"
+        result["outcome"] shouldBe "SUCCESS"
+        (result["buildSummary"] as Map<*, *>)["resultLine"] shouldBe "BUILD SUCCESSFUL in 1s"
     }
 }

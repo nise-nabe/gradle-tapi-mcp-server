@@ -1,10 +1,11 @@
 package com.example.gradle.mcp.cache
 
 import com.example.gradle.mcp.build.GradlePropertiesStreamCapture
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertTrue
+import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.maps.shouldNotContainKey
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -23,9 +24,9 @@ class BuildCacheStatusTest {
             """.trimIndent(),
         )
 
-        assertEquals("true", properties["org.gradle.caching"])
-        assertEquals("https://cache.example.com", properties["org.gradle.caching.remote.url"])
-        assertEquals("false", properties["org.gradle.parallel"])
+        properties["org.gradle.caching"] shouldBe "true"
+        properties["org.gradle.caching.remote.url"] shouldBe "https://cache.example.com"
+        properties["org.gradle.parallel"] shouldBe "false"
     }
 
     @Test
@@ -38,8 +39,8 @@ class BuildCacheStatusTest {
             ),
         )
 
-        assertEquals(2, filtered.size)
-        assertFalse(filtered.containsKey("version"))
+        filtered.size shouldBe 2
+        filtered shouldNotContainKey "version"
     }
 
     @Test
@@ -47,10 +48,10 @@ class BuildCacheStatusTest {
         val stats = TaskExecutionStatsParser.parse("12 actionable tasks: 10 executed, 2 from cache")
 
         requireNotNull(stats)
-        assertEquals(12, stats.actionableTasks)
-        assertEquals(10, stats.executed)
-        assertEquals(2, stats.fromCache)
-        assertNull(stats.upToDate)
+        stats.actionableTasks shouldBe 12
+        stats.executed shouldBe 10
+        stats.fromCache shouldBe 2
+        stats.upToDate.shouldBeNull()
     }
 
     @Test
@@ -58,9 +59,9 @@ class BuildCacheStatusTest {
         val stats = TaskExecutionStatsParser.parse("5 actionable tasks: 5 up-to-date")
 
         requireNotNull(stats)
-        assertEquals(5, stats.actionableTasks)
-        assertEquals(5, stats.upToDate)
-        assertNull(stats.executed)
+        stats.actionableTasks shouldBe 5
+        stats.upToDate shouldBe 5
+        stats.executed.shouldBeNull()
     }
 
     @Test
@@ -80,10 +81,10 @@ class BuildCacheStatusTest {
 
         @Suppress("UNCHECKED_CAST")
         val buildCacheDirectories = inspected["buildCacheDirectories"] as List<Map<String, Any?>>
-        assertEquals(1, buildCacheDirectories.size)
-        assertEquals(true, buildCacheDirectories.single()["exists"])
-        assertEquals(1, buildCacheDirectories.single()["fileCount"])
-        assertNull(buildCacheDirectories.single()["fileCountCapped"])
+        buildCacheDirectories.size shouldBe 1
+        buildCacheDirectories.single()["exists"] shouldBe true
+        buildCacheDirectories.single()["fileCount"] shouldBe 1
+        buildCacheDirectories.single()["fileCountCapped"].shouldBeNull()
     }
 
     @Test
@@ -94,8 +95,8 @@ class BuildCacheStatusTest {
 
         val summary = LocalGradleCacheInspector.summarizeDirectoryForTests(tempDir, maxFiles = 2)
 
-        assertEquals(2, summary["fileCount"])
-        assertEquals(true, summary["fileCountCapped"])
+        summary["fileCount"] shouldBe 2
+        summary["fileCountCapped"] shouldBe true
     }
 
     @Test
@@ -106,8 +107,8 @@ class BuildCacheStatusTest {
 
         val summary = LocalGradleCacheInspector.summarizeDirectoryForTests(tempDir, maxFiles = 2)
 
-        assertEquals(2, summary["fileCount"])
-        assertNull(summary["fileCountCapped"])
+        summary["fileCount"] shouldBe 2
+        summary["fileCountCapped"].shouldBeNull()
     }
 
     @Test
@@ -125,7 +126,7 @@ class BuildCacheStatusTest {
 
         @Suppress("UNCHECKED_CAST")
         val stores = inspected["configurationCacheStores"] as List<Map<String, Any?>>
-        assertEquals(listOf("8.0", "8.14", "9.0", "9.1", "10.0"), stores.map { it["gradleVersionDir"] })
+        stores.map { it["gradleVersionDir"] } shouldBe listOf("8.0", "8.14", "9.0", "9.1", "10.0")
     }
 
     @Test
@@ -143,7 +144,7 @@ class BuildCacheStatusTest {
 
         @Suppress("UNCHECKED_CAST")
         val stores = inspected["configurationCacheStores"] as List<Map<String, Any?>>
-        assertEquals(listOf("8.14", "9.0", "10.0"), stores.map { it["gradleVersionDir"] })
+        stores.map { it["gradleVersionDir"] } shouldBe listOf("8.14", "9.0", "10.0")
     }
 
     @Test
@@ -155,10 +156,10 @@ class BuildCacheStatusTest {
         )
 
         @Suppress("UNCHECKED_CAST")
-        assertEquals(emptyList<Map<String, Any?>>(), inspected["buildCacheDirectories"])
+        inspected["buildCacheDirectories"] shouldBe emptyList<Map<String, Any?>>()
         @Suppress("UNCHECKED_CAST")
-        assertEquals(emptyList<Map<String, Any?>>(), inspected["configurationCacheStores"])
-        assertNull(inspected["gradleUserHome"])
+        inspected["configurationCacheStores"] shouldBe emptyList<Map<String, Any?>>()
+        inspected["gradleUserHome"].shouldBeNull()
     }
 
     @Test
@@ -168,7 +169,7 @@ class BuildCacheStatusTest {
         val declared = BuildCacheStatusCollector.readDeclaredPropertiesForTests(tempDir, null)
         val summary = BuildCacheStatusCollector.buildSummaryForTests(emptyMap(), declared)
 
-        assertEquals(true, summary["declaredInProjectFiles"])
+        summary["declaredInProjectFiles"] shouldBe true
     }
 
     @Test
@@ -180,7 +181,7 @@ class BuildCacheStatusTest {
 
         val declared = BuildCacheStatusCollector.readDeclaredPropertiesForTests(projectDir, null)
 
-        assertTrue(declared["userHome"]!!.isEmpty())
+        declared["userHome"]!! shouldBe emptyMap<String, String>()
     }
 
     @Test
@@ -192,19 +193,15 @@ class BuildCacheStatusTest {
 
         val declared = BuildCacheStatusCollector.readDeclaredPropertiesForTests(projectDir, userHome)
 
-        assertEquals("true", declared["userHome"]!!["org.gradle.caching"])
+        declared["userHome"]!!["org.gradle.caching"] shouldBe "true"
     }
 
     @Test
     fun `BuildCacheUrlRedactor strips userinfo from remote cache URLs`() {
-        assertEquals(
-            "https://cache.example.com/path",
-            BuildCacheUrlRedactor.redactUserInfo("https://user:pass@cache.example.com/path"),
-        )
-        assertEquals(
-            "https://cache.example.com",
-            BuildCacheUrlRedactor.redactUserInfo("https://cache.example.com"),
-        )
+        BuildCacheUrlRedactor.redactUserInfo("https://user:pass@cache.example.com/path") shouldBe
+            "https://cache.example.com/path"
+        BuildCacheUrlRedactor.redactUserInfo("https://cache.example.com") shouldBe
+            "https://cache.example.com"
     }
 
     @Test
@@ -214,8 +211,8 @@ class BuildCacheStatusTest {
             emptyMap(),
         )
 
-        assertEquals("https://cache.example.com", summary["remoteBuildCacheUrl"])
-        assertEquals(true, summary["remoteBuildCacheConfigured"])
+        summary["remoteBuildCacheUrl"] shouldBe "https://cache.example.com"
+        summary["remoteBuildCacheConfigured"] shouldBe true
     }
 
     @Test
@@ -230,18 +227,18 @@ class BuildCacheStatusTest {
 
         val properties = capture.snapshotProperties()
 
-        assertEquals("true", properties["org.gradle.caching"])
-        assertEquals("true", properties["org.gradle.parallel"])
-        assertEquals(2, properties.size)
+        properties["org.gradle.caching"] shouldBe "true"
+        properties["org.gradle.parallel"] shouldBe "true"
+        properties.size shouldBe 2
     }
 
     @Test
     fun `BuildCacheStatusOptions fromArgs uses defaults`() {
         val options = BuildCacheStatusOptions.fromArgs(emptyMap())
 
-        assertTrue(options.includeLastMcpBuild)
-        assertTrue(options.includeLocalCacheDetails)
-        assertTrue(options.includeDeclaredProperties)
-        assertFalse(options.probeConfigurationCache)
+        options.includeLastMcpBuild.shouldBeTrue()
+        options.includeLocalCacheDetails.shouldBeTrue()
+        options.includeDeclaredProperties.shouldBeTrue()
+        options.probeConfigurationCache.shouldBeFalse()
     }
 }

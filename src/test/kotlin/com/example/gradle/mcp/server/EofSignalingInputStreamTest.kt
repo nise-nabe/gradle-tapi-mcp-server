@@ -1,8 +1,8 @@
 package com.example.gradle.mcp.server
 
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertThrows
-import org.junit.jupiter.api.Assertions.assertTrue
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
 import java.io.InputStream
@@ -15,10 +15,10 @@ class EofSignalingInputStreamTest {
         val latch = CountDownLatch(1)
         val stream = EofSignalingInputStream(ByteArrayInputStream(ByteArray(0)), latch)
 
-        assertEquals(-1, stream.read())
-        assertTrue(latch.await(100, TimeUnit.MILLISECONDS))
+        stream.read() shouldBe -1
+        latch.await(100, TimeUnit.MILLISECONDS).shouldBeTrue()
         stream.close()
-        assertEquals(0, latch.count)
+        latch.count shouldBe 0
     }
 
     @Test
@@ -27,10 +27,10 @@ class EofSignalingInputStreamTest {
         val stream = EofSignalingInputStream(ByteArrayInputStream(ByteArray(0)), latch)
         val buffer = ByteArray(8)
 
-        assertEquals(-1, stream.read(buffer, 0, buffer.size))
-        assertTrue(latch.await(100, TimeUnit.MILLISECONDS))
+        stream.read(buffer, 0, buffer.size) shouldBe -1
+        latch.await(100, TimeUnit.MILLISECONDS).shouldBeTrue()
         stream.close()
-        assertEquals(0, latch.count)
+        latch.count shouldBe 0
     }
 
     @Test
@@ -40,7 +40,7 @@ class EofSignalingInputStreamTest {
 
         stream.close()
 
-        assertTrue(latch.await(100, TimeUnit.MILLISECONDS))
+        latch.await(100, TimeUnit.MILLISECONDS).shouldBeTrue()
     }
 
     @Test
@@ -55,7 +55,7 @@ class EofSignalingInputStreamTest {
         }
         val stream = EofSignalingInputStream(throwingDelegate, latch)
 
-        assertThrows(RuntimeException::class.java) { stream.close() }
-        assertTrue(latch.await(100, TimeUnit.MILLISECONDS))
+        shouldThrow<RuntimeException> { stream.close() }
+        latch.await(100, TimeUnit.MILLISECONDS).shouldBeTrue()
     }
 }

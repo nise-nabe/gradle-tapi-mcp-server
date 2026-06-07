@@ -1,8 +1,9 @@
 package com.example.gradle.mcp.build
 
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
+import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldEndWith
+import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.Test
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executors
@@ -16,8 +17,8 @@ class TailCapturingStreamTest {
         stream.append("0123456789".toByteArray(StandardCharsets.UTF_8), 0, 10)
 
         val snapshot = stream.snapshot()
-        assertEquals("23456789", snapshot.text)
-        assertEquals(10, snapshot.totalChars)
+        snapshot.text shouldBe "23456789"
+        snapshot.totalChars shouldBe 10
     }
 
     @Test
@@ -25,10 +26,10 @@ class TailCapturingStreamTest {
         val stream = TailCapturingStream(maxRetainedChars = 100)
         val bytes = "😀".toByteArray(StandardCharsets.UTF_8)
         stream.append(bytes.copyOfRange(0, 2), 0, 2)
-        assertEquals("", stream.snapshot().text)
+        stream.snapshot().text shouldBe ""
         stream.append(bytes.copyOfRange(2, 4), 0, 2)
-        assertEquals("😀", stream.snapshot().text)
-        assertFalse(stream.snapshot().text.contains('\uFFFD'))
+        stream.snapshot().text shouldBe "😀"
+        stream.snapshot().text shouldNotContain "\uFFFD"
     }
 
     @Test
@@ -39,8 +40,8 @@ class TailCapturingStreamTest {
         stream.append(bytes, 0, bytes.size)
 
         val snapshot = stream.snapshot()
-        assertEquals("😀😀", snapshot.text)
-        assertFalse(snapshot.text.contains('\uFFFD'))
+        snapshot.text shouldBe "😀😀"
+        snapshot.text shouldNotContain "\uFFFD"
     }
 
     @Test
@@ -48,8 +49,8 @@ class TailCapturingStreamTest {
         val stream = TailCapturingStream(maxRetainedChars = 32)
         stream.append("a\r\nb".toByteArray(StandardCharsets.UTF_8), 0, 4)
 
-        assertEquals("a\nb", stream.snapshot().text)
-        assertEquals(3, stream.snapshot().totalChars)
+        stream.snapshot().text shouldBe "a\nb"
+        stream.snapshot().totalChars shouldBe 3
     }
 
     @Test
@@ -58,8 +59,8 @@ class TailCapturingStreamTest {
         stream.append("a\r".toByteArray(StandardCharsets.UTF_8), 0, 2)
         stream.append("\nb".toByteArray(StandardCharsets.UTF_8), 0, 2)
 
-        assertEquals("a\nb", stream.snapshot().text)
-        assertEquals(3, stream.snapshot().totalChars)
+        stream.snapshot().text shouldBe "a\nb"
+        stream.snapshot().totalChars shouldBe 3
     }
 
     @Test
@@ -68,7 +69,7 @@ class TailCapturingStreamTest {
         val bytes = "Я".toByteArray(StandardCharsets.UTF_8)
         stream.append(bytes, 0, bytes.size)
 
-        assertEquals("Я", stream.snapshot().text)
+        stream.snapshot().text shouldBe "Я"
     }
 
     @Test
@@ -84,11 +85,11 @@ class TailCapturingStreamTest {
         }
 
         pool.shutdown()
-        assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS))
+        pool.awaitTermination(10, TimeUnit.SECONDS).shouldBeTrue()
         futures.forEach { it.get() }
 
         val snapshot = stream.snapshot()
-        assertEquals(200, snapshot.totalChars)
-        assertTrue(snapshot.text.endsWith("x\n"))
+        snapshot.totalChars shouldBe 200
+        snapshot.text shouldEndWith "x\n"
     }
 }
