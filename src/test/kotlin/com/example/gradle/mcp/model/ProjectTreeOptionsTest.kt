@@ -1,7 +1,7 @@
 package com.example.gradle.mcp.model
 
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
 class ProjectTreeOptionsTest {
@@ -14,15 +14,15 @@ class ProjectTreeOptionsTest {
             ),
         )
 
-        assertEquals(2, options.maxDepth)
-        assertEquals(5, options.maxChildren)
+        options.maxDepth shouldBe 2
+        options.maxChildren shouldBe 5
     }
 
     @Test
     fun `fromArgs accepts root-only maxDepth and rejects invalid children limits`() {
         val options = ProjectTreeOptions.fromArgs(mapOf("maxDepth" to 0, "maxChildren" to -1))
 
-        assertEquals(0, options.maxDepth)
-        assertNull(options.maxChildren)
+        options.maxDepth shouldBe 0
+        options.maxChildren.shouldBeNull()
     }
 }

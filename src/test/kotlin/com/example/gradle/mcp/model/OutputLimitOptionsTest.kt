@@ -1,8 +1,8 @@
 package com.example.gradle.mcp.model
 
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
+import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
 class OutputLimitOptionsTest {
@@ -10,8 +10,8 @@ class OutputLimitOptionsTest {
     fun `fromArgs uses defaults when omitted`() {
         val options = OutputLimitOptions.fromArgs(emptyMap())
 
-        assertEquals(OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS, options.maxOutputChars)
-        assertTrue(options.tailOutput)
+        options.maxOutputChars shouldBe OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS
+        options.tailOutput.shouldBeTrue()
     }
 
     @Test
@@ -23,7 +23,7 @@ class OutputLimitOptionsTest {
             ),
         )
 
-        assertEquals(1200, options.maxOutputChars)
-        assertFalse(options.tailOutput)
+        options.maxOutputChars shouldBe 1200
+        options.tailOutput.shouldBeFalse()
     }
 }

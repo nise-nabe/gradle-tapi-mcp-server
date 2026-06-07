@@ -34,6 +34,10 @@ testing {
     suites {
         val test by getting(JvmTestSuite::class) {
             useJUnitJupiter(libs.versions.junit.get())
+            dependencies {
+                implementation(platform(libs.kotest.bom))
+                implementation(libs.kotest.assertions.core)
+            }
         }
     }
 }

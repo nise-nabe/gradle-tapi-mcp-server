@@ -1,10 +1,13 @@
 package com.example.gradle.mcp.build
 
+import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.ints.shouldBeGreaterThan
+import io.kotest.matchers.ints.shouldBeLessThanOrEqual
+import io.kotest.matchers.shouldBe
 import org.gradle.tooling.events.test.TestFinishEvent
 import org.gradle.tooling.events.test.TestStartEvent
 import org.gradle.tooling.events.test.TestSuccessResult
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
@@ -18,7 +21,7 @@ class BuildProgressTrackerTest {
 
         tracker.markFailed("late failure")
 
-        assertEquals(BuildProgressTracker.STATUS_SUCCEEDED, tracker.snapshot().status)
+        tracker.snapshot().status shouldBe BuildProgressTracker.STATUS_SUCCEEDED
     }
 
     @Test
@@ -29,7 +32,7 @@ class BuildProgressTrackerTest {
 
         tracker.markSucceeded()
 
-        assertEquals(BuildProgressTracker.STATUS_FAILED, tracker.snapshot().status)
+        tracker.snapshot().status shouldBe BuildProgressTracker.STATUS_FAILED
     }
 
     @Test
@@ -42,12 +45,12 @@ class BuildProgressTrackerTest {
         val afterSuccess = notifyCount
 
         tracker.markFailed("late failure")
-        assertEquals(afterSuccess, notifyCount)
-        assertTrue(afterStart > 0)
-        assertTrue(afterSuccess > afterStart)
+        notifyCount shouldBe afterSuccess
+        afterStart shouldBeGreaterThan 0
+        afterSuccess shouldBeGreaterThan afterStart
 
         tracker.markSucceeded()
-        assertEquals(afterSuccess, notifyCount)
+        notifyCount shouldBe afterSuccess
     }
 
     @Test
@@ -55,12 +58,12 @@ class BuildProgressTrackerTest {
         val tracker = BuildProgressTracker()
 
         tracker.markStarting("Gradle tasks: build")
-        assertEquals(BuildProgressTracker.STATUS_RUNNING, tracker.snapshot().status)
+        tracker.snapshot().status shouldBe BuildProgressTracker.STATUS_RUNNING
 
         tracker.markSucceeded()
         val snapshot = tracker.snapshot()
-        assertEquals(BuildProgressTracker.STATUS_SUCCEEDED, snapshot.status)
-        assertEquals(0, snapshot.runningTaskCount)
+        snapshot.status shouldBe BuildProgressTracker.STATUS_SUCCEEDED
+        snapshot.runningTaskCount shouldBe 0
     }
 
     @Test
@@ -68,11 +71,11 @@ class BuildProgressTrackerTest {
         val tracker = BuildProgressTracker()
         tracker.markStarting("build")
 
-        assertTrue(tracker.shouldNotifyProgress())
-        assertEquals(false, tracker.shouldNotifyProgress())
+        tracker.shouldNotifyProgress().shouldBeTrue()
+        tracker.shouldNotifyProgress().shouldBeFalse()
 
         tracker.markSucceeded()
-        assertTrue(tracker.shouldNotifyProgress())
+        tracker.shouldNotifyProgress().shouldBeTrue()
     }
 
     @Test
@@ -95,8 +98,8 @@ class BuildProgressTrackerTest {
         listener.statusChanged(testStart)
 
         var snapshot = tracker.snapshot()
-        assertEquals(1, snapshot.runningTaskCount)
-        assertEquals(testName, snapshot.runningTasks.single())
+        snapshot.runningTaskCount shouldBe 1
+        snapshot.runningTasks.single() shouldBe testName
 
         val testFinish = Proxy.newProxyInstance(
             TestFinishEvent::class.java.classLoader,
@@ -117,9 +120,9 @@ class BuildProgressTrackerTest {
         listener.statusChanged(testFinish)
 
         snapshot = tracker.snapshot()
-        assertEquals(0, snapshot.runningTaskCount)
-        assertEquals(1, snapshot.completedTaskCount)
-        assertEquals("TEST_SUCCESS", snapshot.recentEvents.last().eventType)
+        snapshot.runningTaskCount shouldBe 0
+        snapshot.completedTaskCount shouldBe 1
+        snapshot.recentEvents.last().eventType shouldBe "TEST_SUCCESS"
     }
 
     @Test
@@ -130,7 +133,7 @@ class BuildProgressTrackerTest {
         }
 
         val snapshot = tracker.snapshot()
-        assertTrue(snapshot.recentEvents.size <= 30)
-        assertEquals(40, snapshot.totalEventCount)
+        snapshot.recentEvents.size shouldBeLessThanOrEqual 30
+        snapshot.totalEventCount shouldBe 40
     }
 }

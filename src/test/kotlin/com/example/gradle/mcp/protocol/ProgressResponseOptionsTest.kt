@@ -3,8 +3,8 @@ package com.example.gradle.mcp.protocol
 import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.ProgressEventSnapshot
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
+import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
 class ProgressResponseOptionsTest {
@@ -12,7 +12,7 @@ class ProgressResponseOptionsTest {
     fun `fromArgs defaults includeProgress to false`() {
         val options = ProgressResponseOptions.fromArgs(emptyMap())
 
-        assertFalse(options.includeProgress)
+        options.includeProgress.shouldBeFalse()
     }
 
     @Test
@@ -30,12 +30,9 @@ class ProgressResponseOptionsTest {
             totalEventCount = 0,
         )
 
-        assertEquals(emptyMap<String, Any?>(), optionalProgressFields(ProgressResponseOptions(), snapshot))
-        assertEquals(
-            "succeeded",
-            optionalProgressFields(ProgressResponseOptions(includeProgress = true), snapshot)["progress"]
-                .let { it as Map<*, *> }["status"],
-        )
+        optionalProgressFields(ProgressResponseOptions(), snapshot) shouldBe emptyMap<String, Any?>()
+        optionalProgressFields(ProgressResponseOptions(includeProgress = true), snapshot)["progress"]
+            .let { it as Map<*, *> }["status"] shouldBe "succeeded"
     }
 
     @Test
@@ -57,9 +54,9 @@ class ProgressResponseOptionsTest {
 
         val response = snapshot.toResponseMap()
 
-        assertEquals(20, (response["completedTasks"] as List<*>).size)
-        assertEquals(10, (response["recentEvents"] as List<*>).size)
-        assertEquals("task-25", (response["completedTasks"] as List<*>).last())
-        assertEquals("task-15", ((response["recentEvents"] as List<*>).last() as Map<*, *>)["displayName"])
+        (response["completedTasks"] as List<*>).size shouldBe 20
+        (response["recentEvents"] as List<*>).size shouldBe 10
+        (response["completedTasks"] as List<*>).last() shouldBe "task-25"
+        ((response["recentEvents"] as List<*>).last() as Map<*, *>)["displayName"] shouldBe "task-15"
     }
 }

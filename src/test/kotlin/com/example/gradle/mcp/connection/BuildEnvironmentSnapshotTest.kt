@@ -1,6 +1,6 @@
 package com.example.gradle.mcp.connection
 
-import org.junit.jupiter.api.Assertions.assertEquals
+import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
 class BuildEnvironmentSnapshotTest {
@@ -14,19 +14,16 @@ class BuildEnvironmentSnapshotTest {
             jvmArguments = listOf("-Xmx2g"),
         )
 
-        assertEquals(
-            mapOf(
-                "gradle" to mapOf(
-                    "gradleVersion" to "8.14",
-                    "gradleUserHome" to "/gradle/home",
-                ),
-                "java" to mapOf(
-                    "javaHome" to "/jdk/home",
-                    "javaVersion" to "21.0.2",
-                    "jvmArguments" to listOf("-Xmx2g"),
-                ),
+        snapshot.toMap() shouldBe mapOf(
+            "gradle" to mapOf(
+                "gradleVersion" to "8.14",
+                "gradleUserHome" to "/gradle/home",
             ),
-            snapshot.toMap(),
+            "java" to mapOf(
+                "javaHome" to "/jdk/home",
+                "javaVersion" to "21.0.2",
+                "jvmArguments" to listOf("-Xmx2g"),
+            ),
         )
     }
 }
