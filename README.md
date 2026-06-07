@@ -45,9 +45,10 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | Tool | Description |
 |------|-------------|
 | `gradle_connect` | Connect to a project directory |
-| `gradle_connection_status` | Current connection state (includes cached Gradle/Java when connected) |
+| `gradle_connection_status` | Current connection state plus connect-time Gradle/Java snapshot (`runtimeStackAvailable`) |
 | `gradle_disconnect` | Close the connection |
 | `gradle_get_build_environment` | Gradle/Java environment including `javaVersion` (lightweight) |
+| `gradle_get_build_cache_status` | Build cache / configuration cache settings and local cache summaries |
 | `gradle_get_project_overview` | Project hierarchy and task counts only; optional `maxDepth` / `maxChildren` |
 | `gradle_get_project_model` | Project model; tasks omitted by default |
 | `gradle_get_build_invocations` | Runnable tasks; selectors omitted by default |
@@ -90,6 +91,12 @@ For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` o
 - partial `stdout`/`stderr` while the build is still running
 
 When the MCP client supplies a progress token, the server may also emit MCP progress/logging notifications during the run.
+
+## Disconnect during a build
+
+`gradle_disconnect` is non-blocking: the server releases its build slot and marks any running builds as failed immediately so a new connection or build can start. Completed build records remain available via `gradle_get_build_status`. If a Tooling API build was still running, the Gradle daemon may briefly continue that prior call until it unwinds. The disconnect response includes a `warning` field when a build was active.
+
+`gradle_connect` resets the active build slot and marks any running builds as failed before opening a new project connection. It rejects the call while a build slot is still held; wait for the build to finish or call `gradle_disconnect` first.
 
 ## Agent skill
 

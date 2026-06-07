@@ -43,10 +43,24 @@ class BuildOutputParserTest {
     }
 
     @Test
-    fun `maps build status to outcome`() {
+    fun `parses failed build result line`() {
+        val summary = BuildOutputParser.parse(
+            """
+            > Task :compileJava FAILED
+            BUILD FAILED in 2s
+            1 actionable task: 1 executed
+            """.trimIndent(),
+        )
+
+        assertEquals("BUILD FAILED in 2s", summary.resultLine)
+        assertEquals("1 actionable task: 1 executed", summary.taskSummaryLine)
+    }
+
+    @Test
+    fun `maps terminal build status to outcome`() {
         assertEquals("SUCCESS", BuildOutputParser.outcomeFromStatus(BuildProgressTracker.STATUS_SUCCEEDED))
         assertEquals("FAILED", BuildOutputParser.outcomeFromStatus(BuildProgressTracker.STATUS_FAILED))
-        assertEquals("FAILED", BuildOutputParser.outcomeFromStatus(BuildProgressTracker.STATUS_RUNNING))
+        assertNull(BuildOutputParser.outcomeFromStatus(BuildProgressTracker.STATUS_RUNNING))
     }
 }
 

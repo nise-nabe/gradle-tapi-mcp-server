@@ -19,10 +19,10 @@ class ProjectTreeOptionsTest {
     }
 
     @Test
-    fun `fromArgs ignores non-positive limits`() {
+    fun `fromArgs accepts root-only maxDepth and rejects invalid children limits`() {
         val options = ProjectTreeOptions.fromArgs(mapOf("maxDepth" to 0, "maxChildren" to -1))
 
-        assertNull(options.maxDepth)
+        assertEquals(0, options.maxDepth)
         assertNull(options.maxChildren)
     }
 }

@@ -163,6 +163,15 @@ class ModelSerializersTest {
     }
 
     @Test
+    fun `project tree limits omit all children at root-only depth`() {
+        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth = 0, maxDepth = 0, childCount = 2)
+
+        assertTrue(depthLimit.omitChildren)
+        assertTrue(depthLimit.truncated)
+        assertEquals(2, depthLimit.totalChildCount)
+    }
+
+    @Test
     fun `project tree limits leave full tree when no caps configured`() {
         val childLimit = ProjectTreeLimits.applyChildLimit(totalChildren = 3, maxChildren = null)
         val depthLimit = ProjectTreeLimits.applyDepthLimit(depth = 0, maxDepth = null, childCount = 3)

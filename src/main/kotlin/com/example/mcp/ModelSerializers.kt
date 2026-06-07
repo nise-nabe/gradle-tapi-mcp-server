@@ -15,20 +15,8 @@ data class TaskSnapshot(
 )
 
 object ModelSerializers {
-    fun buildEnvironment(environment: BuildEnvironment): Map<String, Any?> {
-        val javaHome = environment.java.javaHome
-        return mapOf(
-            "gradle" to mapOf(
-                "gradleVersion" to environment.gradle.gradleVersion,
-                "gradleUserHome" to environment.gradle.gradleUserHome?.absolutePath,
-            ),
-            "java" to mapOf(
-                "javaHome" to javaHome?.absolutePath,
-                "javaVersion" to JavaVersionResolver.resolve(javaHome),
-                "jvmArguments" to environment.java.jvmArguments,
-            ),
-        )
-    }
+    fun buildEnvironment(environment: BuildEnvironment): Map<String, Any?> =
+        BuildEnvironmentSnapshot.from(environment).toMap()
 
     fun projectOverview(
         project: GradleProject,

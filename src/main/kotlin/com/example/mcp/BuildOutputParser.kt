@@ -22,11 +22,11 @@ object BuildOutputParser {
             "taskSummaryLine" to summary.taskSummaryLine,
         )
 
-    fun outcomeFromStatus(status: String): String =
+    fun outcomeFromStatus(status: String): String? =
         when (status) {
             BuildProgressTracker.STATUS_SUCCEEDED -> "SUCCESS"
             BuildProgressTracker.STATUS_FAILED -> "FAILED"
-            else -> "FAILED"
+            else -> null
         }
 
     private fun normalizeNewlines(text: String): String =
