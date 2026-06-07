@@ -75,7 +75,7 @@ Use heavier tools only when required:
 
 `gradle_run_tasks` and `gradle_run_tests` keep `stdout`/`stderr` as strings and add `stdoutTruncated`, `stdoutTotalChars`, `stderrTruncated`, and `stderrTotalChars` when truncation happens. Truncated output is prefixed with `... [truncated N chars] ...` and newlines are normalized to LF.
 
-Foreground responses include `outcome` (`SUCCESS` / `FAILED`) and `buildSummary` (parsed Gradle summary lines). Set `includeProgress: true` to include detailed task progress; default is omitted for token efficiency.
+Foreground responses include `outcome` (`SUCCESS` / `FAILED`) and `buildSummary` (parsed Gradle summary lines). Completed builds also include `failedTaskCount`, `failedTasks` (from Tooling API progress events), and `buildSummary.failureSummary` (parsed `> Task ... FAILED` / test failure lines from stdout). Set `includeProgress: true` to include the full progress object; default is omitted for token efficiency.
 
 Tune with `maxOutputChars` (default `8000`) and `tailOutput` (default `true`).
 

@@ -9,6 +9,7 @@ import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpProgressSupport
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.protocol.optionalProgressFields
+import com.example.gradle.mcp.protocol.terminalFailureFields
 import io.modelcontextprotocol.server.McpSyncServerExchange
 import io.modelcontextprotocol.spec.McpSchema
 import org.gradle.tooling.ProjectConnection
@@ -295,6 +296,7 @@ class BuildExecutionManager(
         )
         BuildOutputParser.outcomeFromStatus(status)?.let { response["outcome"] = it }
         response["buildSummary"] = BuildOutputParser.toResponseMap(buildSummary)
+        response.putAll(terminalFailureFields(tracker.snapshot()))
         response.putAll(optionalProgressFields(request.progressOptions, tracker.snapshot()))
         response.putAll(buildResult(record, request.outputLimit))
         return response
@@ -325,6 +327,7 @@ class BuildExecutionManager(
             response["buildSummary"] = BuildOutputParser.toResponseMap(
                 BuildOutputParser.parse(record.streams.stdoutSnapshot().text),
             )
+            response.putAll(terminalFailureFields(progress))
         } else {
             response.putAll(limitStreamFields(record.streams.stdoutSnapshot(), outputLimit, "stdout"))
             response.putAll(limitStreamFields(record.streams.stderrSnapshot(), outputLimit, "stderr"))
