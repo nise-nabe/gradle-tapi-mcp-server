@@ -3,6 +3,12 @@ plugins {
     application
 }
 
+kotlin {
+    compilerOptions {
+        freeCompilerArgs.add("-Xcontext-parameters")
+    }
+}
+
 group = "com.example"
 version = "0.1.0-SNAPSHOT"
 
@@ -21,7 +27,7 @@ dependencies {
 }
 
 application {
-    mainClass = "com.example.mcp.GradleTapiMcpServerKt"
+    mainClass = "com.example.gradle.mcp.GradleTapiMcpServerKt"
 }
 
 testing {
@@ -34,7 +40,7 @@ testing {
 
 tasks.jar {
     manifest {
-        attributes("Main-Class" to "com.example.mcp.GradleTapiMcpServerKt")
+        attributes("Main-Class" to "com.example.gradle.mcp.GradleTapiMcpServerKt")
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
