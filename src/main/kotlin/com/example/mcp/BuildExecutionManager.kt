@@ -139,7 +139,7 @@ class BuildExecutionManager(
             }
         }
 
-        val buildId = "foreground"
+        val buildId = UUID.randomUUID().toString()
         val streams = CapturingStreams()
         val projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath
         val notifier = ProgressNotifier(exchange, progressToken)
