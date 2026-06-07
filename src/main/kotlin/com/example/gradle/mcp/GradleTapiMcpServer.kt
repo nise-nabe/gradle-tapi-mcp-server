@@ -1,5 +1,24 @@
 package com.example.gradle.mcp
 
+import com.example.gradle.mcp.build.BuildExecutionManager
+import com.example.gradle.mcp.build.BuildKind
+import com.example.gradle.mcp.build.BuildRunRequest
+import com.example.gradle.mcp.cache.BuildCacheStatusCollector
+import com.example.gradle.mcp.cache.BuildCacheStatusOptions
+import com.example.gradle.mcp.cache.lastMcpBuildInsight
+import com.example.gradle.mcp.server.EofSignalingInputStream
+import com.example.gradle.mcp.connection.ConnectionConfig
+import com.example.gradle.mcp.connection.GradleConnectionManager
+import com.example.gradle.mcp.model.ModelQueryOptions
+import com.example.gradle.mcp.model.ModelSerializers
+import com.example.gradle.mcp.model.OutputLimitOptions
+import com.example.gradle.mcp.model.ProjectTreeOptions
+import com.example.gradle.mcp.protocol.McpErrorCode
+import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.protocol.McpProgressSupport
+import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import com.example.gradle.mcp.protocol.mapExceptionToErrorCode
+import com.example.gradle.mcp.protocol.structuredErrorResult
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.modelcontextprotocol.server.McpServer
 import io.modelcontextprotocol.server.McpServerFeatures
