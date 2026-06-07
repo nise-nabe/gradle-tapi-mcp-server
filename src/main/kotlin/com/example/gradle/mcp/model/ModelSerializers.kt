@@ -1,6 +1,5 @@
 package com.example.gradle.mcp.model
 
-import com.example.gradle.mcp.connection.BuildEnvironmentSnapshot
 import com.example.gradle.mcp.connection.buildEnvironmentSnapshotFrom
 import com.example.gradle.mcp.connection.toMap
 import org.gradle.tooling.model.GradleProject

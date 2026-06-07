@@ -1,7 +1,5 @@
 package com.example.gradle.mcp.protocol
 
-import com.example.gradle.mcp.build.BuildProgressSnapshot
-
 data class ProgressResponseOptions(
     val includeProgress: Boolean = false,
 ) {
