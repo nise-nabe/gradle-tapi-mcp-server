@@ -6,12 +6,9 @@ import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.model.build.BuildEnvironment
 import java.io.File
-import java.util.concurrent.Semaphore
 
 class GradleConnectionManager {
     private val lock = Any()
-    @Volatile
-    private var operationPermit = Semaphore(1)
     private var connection: ProjectConnection? = null
     private var projectDirectory: File? = null
     private var cachedEnvironment: BuildEnvironmentSnapshot? = null
@@ -33,15 +30,13 @@ class GradleConnectionManager {
         config.gradleUserHome?.let { connector.useGradleUserHomeDir(File(it).absoluteFile) }
 
         val newConnection = connector.connect()
-        val snapshot = withPermit {
-            try {
-                buildEnvironmentSnapshotFrom(newConnection.getModel(BuildEnvironment::class.java))
-            } catch (exception: Exception) {
-                if (exception is InterruptedException) {
-                    Thread.currentThread().interrupt()
-                }
-                null
+        val snapshot = try {
+            buildEnvironmentSnapshotFrom(newConnection.getModel(BuildEnvironment::class.java))
+        } catch (exception: Exception) {
+            if (exception is InterruptedException) {
+                Thread.currentThread().interrupt()
             }
+            null
         }
 
         synchronized(lock) {
@@ -58,27 +53,11 @@ class GradleConnectionManager {
     }
 
     fun withConnection(block: (ProjectConnection) -> Unit) {
-        withPermit {
-            block(borrowConnection())
-        }
+        block(borrowConnection())
     }
 
     fun <T> withConnectionResult(block: (ProjectConnection) -> T): T =
-        withPermit {
-            block(borrowConnection())
-        }
-
-    private inline fun <T> withPermit(block: () -> T): T {
-        val permit = operationPermit
-        if (!permit.tryAcquire()) {
-            error("Another Gradle operation is in progress. Wait for it to finish or poll gradle_get_build_status.")
-        }
-        try {
-            return block()
-        } finally {
-            permit.release()
-        }
-    }
+        block(borrowConnection())
 
     private fun borrowConnection(): ProjectConnection = synchronized(lock) {
         connection ?: throw McpException(
@@ -93,7 +72,6 @@ class GradleConnectionManager {
         connection = null
         projectDirectory = null
         cachedEnvironment = null
-        operationPermit = Semaphore(1)
         previous?.let { ConnectionInfo(it, "disconnected") }
     }
 

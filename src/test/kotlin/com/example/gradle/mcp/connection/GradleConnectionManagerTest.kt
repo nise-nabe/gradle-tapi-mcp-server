@@ -8,7 +8,6 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldContain
 import org.gradle.tooling.ProjectConnection
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -158,7 +157,7 @@ class GradleConnectionManagerTest {
     }
 
     @Test
-    fun `withConnection rejects overlapping operations`() {
+    fun `withConnection allows overlapping operations`() {
         val connection = Proxy.newProxyInstance(
             ProjectConnection::class.java.classLoader,
             arrayOf(ProjectConnection::class.java),
@@ -177,10 +176,7 @@ class GradleConnectionManagerTest {
         firstThread.start()
         firstEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
 
-        val error = shouldThrow<IllegalStateException> {
-            manager.withConnectionResult { 42 }
-        }
-        error.message.shouldNotBeNull() shouldContain "Another Gradle operation is in progress"
+        manager.withConnectionResult { 42 } shouldBe 42
 
         releaseFirst.countDown()
         firstThread.join(2_000)

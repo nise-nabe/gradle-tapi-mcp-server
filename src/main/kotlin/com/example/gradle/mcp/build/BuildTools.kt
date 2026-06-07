@@ -55,7 +55,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_get_build_status",
-            description = "Return status and partial output for a running or completed Gradle build started with background=true. Set includeProgress=true for detailed progress (completedTasks, recentEvents). Omit buildId to use the active or most recent build.",
+            description = "Return status and partial output for a running or completed Gradle build started with background=true. Set includeProgress=true for detailed progress (completedTasks, recentEvents). Omit buildId to use the most recently started running build, or the most recent build when none are running.",
             schema = buildStatusSchema(),
         ) { args ->
             val outputLimit = OutputLimitOptions.fromArgs(args)
@@ -70,7 +70,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_run_tasks",
-            description = "Execute Gradle task paths and return captured stdout/stderr. Use background=true to start a long build and poll gradle_get_build_status. Set includeProgress=true for detailed progress on foreground runs. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
+            description = "Execute Gradle task paths and return captured stdout/stderr. Use background=true to start a long build and poll gradle_get_build_status with the returned buildId; multiple background builds may run concurrently. Set includeProgress=true for detailed progress on foreground runs. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
             schema = runOutputSchema(
                 required = listOf("tasks"),
                 extraProperties = mapOf(
@@ -98,7 +98,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_run_tests",
-            description = "Execute JVM test classes and return captured stdout/stderr. Use background=true to start a long test run and poll gradle_get_build_status. Set includeProgress=true for detailed progress on foreground runs. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
+            description = "Execute JVM test classes and return captured stdout/stderr. Use background=true to start a long test run and poll gradle_get_build_status with the returned buildId; multiple background test runs may run concurrently. Set includeProgress=true for detailed progress on foreground runs. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
             schema = runOutputSchema(
                 required = listOf("testClasses"),
                 extraProperties = mapOf(

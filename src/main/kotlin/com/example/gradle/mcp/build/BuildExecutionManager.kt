@@ -4,8 +4,6 @@ import com.example.gradle.mcp.cache.CompletedBuildSnapshot
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.model.OutputLimiter
-import com.example.gradle.mcp.protocol.McpErrorCode
-import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpProgressSupport
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.protocol.optionalProgressFields
@@ -18,8 +16,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicInteger
 
 class BuildExecutionManager(
     private val connectionManager: GradleConnectionManager,
@@ -27,8 +24,6 @@ class BuildExecutionManager(
     private val lifecycleLock = Any()
     private var executor: ExecutorService = newBuildExecutor()
     private val builds = ConcurrentHashMap<String, BuildRecord>()
-    private val activeBuildId = AtomicReference<String?>(null)
-    private val buildSlot = AtomicBoolean(false)
     @Volatile
     private var lastCompletedBuildSnapshot: CompletedBuildSnapshot? = null
 
@@ -37,56 +32,30 @@ class BuildExecutionManager(
         exchange: McpSyncServerExchange?,
         progressToken: Any?,
     ): Map<String, Any?> {
-        val buildId: String
-        val record: BuildRecord
+        connectionManager.withConnection { }
+
+        val buildId = UUID.randomUUID().toString()
+        val streams = CapturingStreams()
+        val projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath
         val notifier = ProgressNotifier(exchange, progressToken)
+        lateinit var tracker: BuildProgressTracker
+        tracker = BuildProgressTracker(onUpdate = { notifier.notifyIfNeeded(tracker) })
+        val record = BuildRecord(
+            id = buildId,
+            kind = request.kind,
+            tasks = request.tasks,
+            testClasses = request.testClasses,
+            startedAt = Instant.now(),
+            progressTracker = tracker,
+            streams = streams,
+            projectDirectory = projectDirectory,
+        )
+
         synchronized(lifecycleLock) {
-            if (!buildSlot.compareAndSet(false, true)) {
-                val activeId = activeBuildId.get()
-                throw McpException(
-                    McpErrorCode.BUILD_ALREADY_RUNNING,
-                    "Another build is already running" +
-                        (activeId?.let { " (buildId=$it)" } ?: "") +
-                        ". Call gradle_get_build_status first.",
-                )
-            }
-
-            try {
-                connectionManager.withConnection { }
-            } catch (exception: Exception) {
-                buildSlot.set(false)
-                throw exception
-            }
-
-            buildId = UUID.randomUUID().toString()
-            val streams = CapturingStreams()
-            val projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath
-            lateinit var tracker: BuildProgressTracker
-            tracker = BuildProgressTracker(onUpdate = { notifier.notifyIfNeeded(tracker) })
-            record = BuildRecord(
-                id = buildId,
-                kind = request.kind,
-                tasks = request.tasks,
-                testClasses = request.testClasses,
-                startedAt = Instant.now(),
-                progressTracker = tracker,
-                streams = streams,
-                projectDirectory = projectDirectory,
-            )
-            try {
-                builds[buildId] = record
-                activeBuildId.set(buildId)
-                pruneCompletedBuilds()
-                executor.execute {
-                    runBuild(record, request, notifier)
-                }
-            } catch (exception: Exception) {
-                builds.remove(buildId)
-                if (activeBuildId.compareAndSet(buildId, null)) {
-                    buildSlot.set(false)
-                }
-                finalizeBuild(record, BuildTerminalOutcome.Failed(exception.message ?: exception.toString()))
-                throw exception
+            builds[buildId] = record
+            pruneCompletedBuilds()
+            executor.execute {
+                runBuild(record, request, notifier)
             }
         }
 
@@ -106,44 +75,26 @@ class BuildExecutionManager(
         exchange: McpSyncServerExchange?,
         progressToken: Any?,
     ): Map<String, Any?> {
-        synchronized(lifecycleLock) {
-            if (!buildSlot.compareAndSet(false, true)) {
-                val activeId = activeBuildId.get()
-                throw McpException(
-                    McpErrorCode.BUILD_ALREADY_RUNNING,
-                    "Another build is already running" +
-                        (activeId?.let { " (buildId=$it)" } ?: "") +
-                        ". Call gradle_get_build_status first.",
-                )
-            }
-        }
-
-        val buildId = UUID.randomUUID().toString()
         val streams = CapturingStreams()
-        val projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath
         val notifier = ProgressNotifier(exchange, progressToken)
         lateinit var tracker: BuildProgressTracker
         tracker = BuildProgressTracker(onUpdate = { notifier.notifyIfNeeded(tracker) })
         val record = BuildRecord(
-            id = buildId,
+            id = UUID.randomUUID().toString(),
             kind = request.kind,
             tasks = request.tasks,
             testClasses = request.testClasses,
             startedAt = Instant.now(),
             progressTracker = tracker,
             streams = streams,
-            projectDirectory = projectDirectory,
+            projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath,
         )
 
-        try {
+        return try {
             runBuild(record, request, connection, streams, tracker, notifier)
-            return foregroundSuccessResponse(record, request, tracker)
-        } catch (exception: Exception) {
-            return foregroundFailureResponse(record, request, tracker)
-        } finally {
-            synchronized(lifecycleLock) {
-                buildSlot.set(false)
-            }
+            foregroundSuccessResponse(record, request, tracker)
+        } catch (_: Exception) {
+            foregroundFailureResponse(record, request, tracker)
         }
     }
 
@@ -160,13 +111,12 @@ class BuildExecutionManager(
         return buildStatusResponse(record, outputLimit, progressOptions)
     }
 
-    fun hasActiveBuild(): Boolean = buildSlot.get()
+    fun hasActiveBuild(): Boolean =
+        builds.values.any { it.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING }
 
     fun resetBuildState(reason: String) {
         synchronized(lifecycleLock) {
             markRunningBuildsFailed(reason)
-            activeBuildId.set(null)
-            buildSlot.set(false)
             replaceBuildExecutor()
         }
     }
@@ -178,8 +128,6 @@ class BuildExecutionManager(
     fun shutdown() {
         val executorToAwait = synchronized(lifecycleLock) {
             markRunningBuildsFailed("Server shutting down")
-            activeBuildId.set(null)
-            buildSlot.set(false)
             val currentExecutor = executor
             currentExecutor.shutdownNow()
             currentExecutor
@@ -251,7 +199,10 @@ class BuildExecutionManager(
         if (!buildId.isNullOrBlank()) {
             return buildId
         }
-        activeBuildId.get()?.let { return it }
+        builds.values
+            .filter { it.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING }
+            .maxByOrNull { it.startedAt }
+            ?.let { return it.id }
         return builds.values.maxByOrNull { it.startedAt }?.id
     }
 
@@ -268,7 +219,6 @@ class BuildExecutionManager(
             finalizeBuild(record, BuildTerminalOutcome.Failed(exception.message ?: exception.toString()))
             notifier.notifyFinal(record.progressTracker)
         } finally {
-            releaseBuildSlotIfActive(record)
             pruneCompletedBuilds()
         }
     }
@@ -463,29 +413,19 @@ class BuildExecutionManager(
     }
 
     internal fun seedRunningBuildForTests(record: BuildRecord) {
-        synchronized(lifecycleLock) {
-            builds[record.id] = record
-            activeBuildId.set(record.id)
-            buildSlot.set(true)
-        }
+        builds[record.id] = record
     }
 
     internal fun seedLastCompletedBuildForTests(snapshot: CompletedBuildSnapshot) {
         lastCompletedBuildSnapshot = snapshot
     }
 
-    internal fun releaseBuildSlotIfActive(record: BuildRecord) {
-        synchronized(lifecycleLock) {
-            if (activeBuildId.compareAndSet(record.id, null)) {
-                buildSlot.set(false)
-            }
+    private fun newBuildExecutor(): ExecutorService {
+        val threadCounter = AtomicInteger()
+        return Executors.newCachedThreadPool { runnable ->
+            Thread(runnable, "gradle-build-runner-${threadCounter.incrementAndGet()}").apply { isDaemon = true }
         }
     }
-
-    private fun newBuildExecutor(): ExecutorService =
-        Executors.newSingleThreadExecutor { runnable ->
-            Thread(runnable, "gradle-build-runner").apply { isDaemon = true }
-        }
 
     private fun replaceBuildExecutor() {
         executor.shutdownNow()
@@ -509,4 +449,3 @@ private fun limitStreamFields(
         "${fieldPrefix}TotalChars" to snapshot.totalChars,
     )
 }
-
