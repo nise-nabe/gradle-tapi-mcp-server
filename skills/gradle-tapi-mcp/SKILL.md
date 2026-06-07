@@ -82,7 +82,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 - 詳細 progress は `includeProgress=true` のときのみ（デフォルト false）
 - 末尾を残す: `tailOutput=true`（デフォルト）
 
-失敗時は `stdout` 末尾または `buildSummary.resultLine` を優先して読む。
+失敗時は `failedTasks` / `buildSummary.failureSummary` を先に確認し、必要なら `stdout` 末尾または `buildSummary.resultLine` を読む。完了ビルドでは `includeProgress` なしでも `failedTaskCount` / `failedTasks` が返る。
 
 ## 長時間ビルドの進捗確認
 

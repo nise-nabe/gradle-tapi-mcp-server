@@ -425,6 +425,51 @@ class BuildExecutionManagerTest {
         result["status"] shouldBe "succeeded"
         result["outcome"] shouldBe "SUCCESS"
         (result["buildSummary"] as Map<*, *>)["resultLine"] shouldBe "BUILD SUCCESSFUL in 1s"
+        result["failedTaskCount"] shouldBe 0
+        result["failedTasks"] shouldBe emptyList<String>()
+        result["progress"].shouldBeNull()
+    }
+
+    @Test
+    fun `completed failed build status includes failure fields without includeProgress`() {
+        val streams = CapturingStreams()
+        streams.appendStdoutForTests(
+            """
+            > Task :examples:resilience4j-spring:test FAILED
+            > com.linecorp.armeria.example.FooTest > testBar() FAILED
+            BUILD FAILED in 2s
+            1 actionable task: 1 executed
+            """.trimIndent() + "\n",
+        )
+
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        tracker.markFailed("Build failed")
+        val record = BuildRecord(
+            id = "failed-build",
+            kind = BuildKind.TASKS,
+            tasks = listOf("build"),
+            testClasses = emptyList(),
+            startedAt = Instant.now(),
+            progressTracker = tracker,
+            streams = streams,
+        ).also {
+            it.finishedAt = Instant.now()
+            it.errorMessage = "Build failed"
+        }
+        manager.seedRunningBuildForTests(record)
+
+        val result = manager.status("failed-build", OutputLimitOptions(), ProgressResponseOptions(includeProgress = false))
+
+        result["status"] shouldBe "failed"
+        result["outcome"] shouldBe "FAILED"
+        result["failedTaskCount"] shouldBe 0
+        result["failedTasks"] shouldBe emptyList<String>()
+        result["progress"].shouldBeNull()
+        (result["buildSummary"] as Map<*, *>)["failureSummary"] shouldBe listOf(
+            ":examples:resilience4j-spring:test",
+            "com.linecorp.armeria.example.FooTest > testBar()",
+        )
     }
 }
 

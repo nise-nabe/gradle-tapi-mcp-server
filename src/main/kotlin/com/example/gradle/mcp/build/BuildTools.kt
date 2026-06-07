@@ -56,7 +56,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_get_build_status",
-            description = "Return status and partial output for a running or completed Gradle build started with background=true. buildId is required because multiple background builds may run concurrently. Set includeProgress=true for detailed progress (completedTasks, recentEvents).",
+            description = "Return status and partial output for a running or completed Gradle build started with background=true. buildId is required because multiple background builds may run concurrently. Completed builds include failedTaskCount, failedTasks, and buildSummary.failureSummary without includeProgress. Set includeProgress=true for the full progress object (completedTasks, recentEvents).",
             schema = buildStatusSchema(),
         ) { args ->
             val outputLimit = OutputLimitOptions.fromArgs(args)

@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.protocol
 
 import com.example.gradle.mcp.build.BuildProgressSnapshot
+import com.example.gradle.mcp.build.BuildProgressTracker
 
 internal fun optionalProgressFields(
     progressOptions: ProgressResponseOptions,
@@ -10,6 +11,16 @@ internal fun optionalProgressFields(
         if (progressOptions.includeProgress) {
             put("progress", snapshot.toResponseMap())
         }
+    }
+
+internal fun terminalFailureFields(snapshot: BuildProgressSnapshot): Map<String, Any?> =
+    if (snapshot.status == BuildProgressTracker.STATUS_RUNNING) {
+        emptyMap()
+    } else {
+        mapOf(
+            "failedTaskCount" to snapshot.failedTaskCount,
+            "failedTasks" to snapshot.failedTasks,
+        )
     }
 
 internal fun BuildProgressSnapshot.toResponseMap(): Map<String, Any?> =
