@@ -1,9 +1,10 @@
 package com.example.gradle.mcp.protocol
 
-import com.example.gradle.mcp.protocol.mcpObjectMapper
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.shouldBe
+import io.modelcontextprotocol.spec.McpSchema
 import org.junit.jupiter.api.Test
+import tools.jackson.module.kotlin.readValue
 
 class McpErrorsTest {
     @Test
@@ -40,8 +41,13 @@ class McpErrorsTest {
         val result = structuredErrorResult(McpErrorCode.NOT_CONNECTED, "Not connected")
 
         result.isError.shouldBeTrue()
-        val payload = mcpObjectMapper().readTree((result.content.single() as io.modelcontextprotocol.spec.McpSchema.TextContent).text)
-        payload["error"]["code"].asText() shouldBe "NOT_CONNECTED"
-        payload["error"]["message"].asText() shouldBe "Not connected"
+        val text = (result.content.single() as McpSchema.TextContent).text
+        val payload = mcpObjectMapper().readValue<StructuredErrorPayload>(text)
+        payload.error.code shouldBe "NOT_CONNECTED"
+        payload.error.message shouldBe "Not connected"
     }
 }
+
+private data class StructuredErrorPayload(val error: StructuredErrorDetail)
+
+private data class StructuredErrorDetail(val code: String, val message: String)
