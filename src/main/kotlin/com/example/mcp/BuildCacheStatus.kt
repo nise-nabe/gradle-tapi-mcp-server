@@ -311,8 +311,11 @@ object BuildCacheStatusCollector {
         options: BuildCacheStatusOptions,
         lastMcpBuild: LastMcpBuildInsight?,
     ): Map<String, Any?> {
-        val environment = connection.getModel(BuildEnvironment::class.java)
-        val gradleUserHome = environment.gradle.gradleUserHome
+        val gradleUserHome = if (options.includeLocalCacheDetails || options.includeDeclaredProperties) {
+            connection.getModel(BuildEnvironment::class.java).gradle.gradleUserHome
+        } else {
+            null
+        }
 
         val resolvedProperties = fetchResolvedProperties(connection)
         val cacheProperties = BuildCacheUrlRedactor.sanitizeCacheProperties(
