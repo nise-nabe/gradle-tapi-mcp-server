@@ -41,7 +41,7 @@ class BuildExecutionManagerTest {
             ),
         )
 
-        val error = assertThrows(IllegalStateException::class.java) {
+        val error = assertThrows(McpException::class.java) {
             manager.startBackground(
                 request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
                 exchange = null,
@@ -49,6 +49,7 @@ class BuildExecutionManagerTest {
             )
         }
 
+        assertEquals(McpErrorCode.BUILD_ALREADY_RUNNING, error.code)
         assertEquals(
             "Another build is already running (buildId=running-build). Call gradle_get_build_status first.",
             error.message,
@@ -76,7 +77,7 @@ class BuildExecutionManagerTest {
             arrayOf(ProjectConnection::class.java),
             InvocationHandler { _, _, _ -> null },
         ) as ProjectConnection
-        val error = assertThrows(IllegalStateException::class.java) {
+        val error = assertThrows(McpException::class.java) {
             manager.runForeground(
                 request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
                 connection = unusedConnection,
@@ -85,6 +86,7 @@ class BuildExecutionManagerTest {
             )
         }
 
+        assertEquals(McpErrorCode.BUILD_ALREADY_RUNNING, error.code)
         assertEquals(
             "Another build is already running (buildId=running-build). Call gradle_get_build_status first.",
             error.message,
@@ -191,13 +193,14 @@ class BuildExecutionManagerTest {
         assertEquals("failed", status["status"])
         assertEquals("Gradle connection closed", status["error"])
 
-        val slotError = assertThrows(IllegalStateException::class.java) {
+        val slotError = assertThrows(McpException::class.java) {
             manager.startBackground(
                 request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
                 exchange = null,
                 progressToken = null,
             )
         }
+        assertEquals(McpErrorCode.NOT_CONNECTED, slotError.code)
         assertEquals(
             "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR.",
             slotError.message,
@@ -237,13 +240,14 @@ class BuildExecutionManagerTest {
 
         manager.releaseBuildSlotIfActive(staleRecord)
 
-        val error = assertThrows(IllegalStateException::class.java) {
+        val error = assertThrows(McpException::class.java) {
             manager.startBackground(
                 request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("other")),
                 exchange = null,
                 progressToken = null,
             )
         }
+        assertEquals(McpErrorCode.BUILD_ALREADY_RUNNING, error.code)
         assertEquals(
             "Another build is already running (buildId=new-build). Call gradle_get_build_status first.",
             error.message,
