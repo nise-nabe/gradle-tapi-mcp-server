@@ -48,9 +48,3 @@ internal fun BuildProgressSnapshot.toResponseMap(): Map<String, Any?> =
             },
         "totalEventCount" to totalEventCount,
     )
-
-private fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boolean =
-    when (val value = this[key]) {
-        is Boolean -> value
-        else -> default
-    }

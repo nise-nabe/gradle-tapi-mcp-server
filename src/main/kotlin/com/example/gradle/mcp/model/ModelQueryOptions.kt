@@ -1,6 +1,8 @@
 package com.example.gradle.mcp.model
 
 import com.example.gradle.mcp.protocol.OutputNormalizer
+import com.example.gradle.mcp.protocol.optionalBoolean
+import com.example.gradle.mcp.protocol.optionalString
 
 data class ModelQueryOptions(
     val includeTasks: Boolean = false,
@@ -108,15 +110,6 @@ object OutputLimiter {
         )
     }
 }
-
-private fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boolean =
-    when (val value = this[key]) {
-        is Boolean -> value
-        else -> default
-    }
-
-private fun Map<String, Any>.optionalString(key: String): String? =
-    (this[key] as? String)?.takeIf { it.isNotBlank() }
 
 internal fun Map<String, Any>.optionalPositiveInt(key: String): Int? {
     val parsed = parseOptionalInt(key)
