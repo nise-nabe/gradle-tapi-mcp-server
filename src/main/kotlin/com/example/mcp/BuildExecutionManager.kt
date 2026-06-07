@@ -249,7 +249,7 @@ class BuildExecutionManager(
         return true
     }
 
-    fun lastCompletedBuildSnapshot(): CompletedBuildSnapshot? = lastCompletedBuildSnapshot
+    internal fun lastCompletedBuildSnapshot(): CompletedBuildSnapshot? = lastCompletedBuildSnapshot
 
     private fun rememberCompletedBuild(record: BuildRecord, outcome: BuildTerminalOutcome) {
         val buildOutcome = when (outcome) {
