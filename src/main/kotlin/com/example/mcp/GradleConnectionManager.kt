@@ -4,15 +4,17 @@ import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.model.build.BuildEnvironment
 import java.io.File
+import java.util.concurrent.Semaphore
 
 class GradleConnectionManager {
+    private val lock = Any()
+    @Volatile
+    private var operationPermit = Semaphore(1)
     private var connection: ProjectConnection? = null
     private var projectDirectory: File? = null
-    private var cachedEnvironment: CachedBuildEnvironment? = null
+    private var cachedEnvironment: BuildEnvironmentSnapshot? = null
 
-    @Synchronized
     fun connect(config: ConnectionConfig): ConnectionInfo {
-        disconnect()
         val projectDir = File(config.projectDirectory).absoluteFile
         if (!projectDir.isDirectory) {
             throw McpException(
@@ -21,60 +23,97 @@ class GradleConnectionManager {
             )
         }
 
+        disconnect()
+
         val connector = GradleConnector.newConnector().forProjectDirectory(projectDir)
         config.gradleInstallation?.let { connector.useInstallation(File(it).absoluteFile) }
         config.gradleVersion?.let { connector.useGradleVersion(it) }
         config.gradleUserHome?.let { connector.useGradleUserHomeDir(File(it).absoluteFile) }
 
-        connection = connector.connect()
-        projectDirectory = projectDir
-        refreshEnvironmentCache()
+        val newConnection = connector.connect()
+        val snapshot = withPermit {
+            try {
+                BuildEnvironmentSnapshot.from(newConnection.getModel(BuildEnvironment::class.java))
+            } catch (exception: Exception) {
+                if (exception is InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+                null
+            }
+        }
+
+        synchronized(lock) {
+            val previousConnection = connection
+            if (previousConnection != null && previousConnection !== newConnection) {
+                previousConnection.close()
+            }
+            connection = newConnection
+            projectDirectory = projectDir
+            cachedEnvironment = snapshot
+        }
+
         return ConnectionInfo(projectDir.path, "connected")
     }
 
-    @Synchronized
     fun withConnection(block: (ProjectConnection) -> Unit) {
-        block(requireConnection())
+        withPermit {
+            block(borrowConnection())
+        }
     }
 
-    @Synchronized
     fun <T> withConnectionResult(block: (ProjectConnection) -> T): T =
-        block(requireConnection())
+        withPermit {
+            block(borrowConnection())
+        }
 
-    private fun requireConnection(): ProjectConnection =
+    private inline fun <T> withPermit(block: () -> T): T {
+        val permit = operationPermit
+        if (!permit.tryAcquire()) {
+            error("Another Gradle operation is in progress. Wait for it to finish or poll gradle_get_build_status.")
+        }
+        try {
+            return block()
+        } finally {
+            permit.release()
+        }
+    }
+
+    private fun borrowConnection(): ProjectConnection = synchronized(lock) {
         connection ?: throw McpException(
             McpErrorCode.NOT_CONNECTED,
             "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR.",
         )
+    }
 
-    @Synchronized
-    fun disconnect(): ConnectionInfo? {
+    fun disconnect(): ConnectionInfo? = synchronized(lock) {
         val previous = projectDirectory?.path
         connection?.close()
         connection = null
         projectDirectory = null
         cachedEnvironment = null
-        return previous?.let { ConnectionInfo(it, "disconnected") }
+        operationPermit = Semaphore(1)
+        previous?.let { ConnectionInfo(it, "disconnected") }
     }
 
-    @Synchronized
-    fun status(): ConnectionStatus {
-        if (connection != null && cachedEnvironment == null) {
-            refreshEnvironmentCache()
-        }
+    fun connectedProjectDirectory(): File? = synchronized(lock) {
+        projectDirectory
+    }
+
+    fun status(): ConnectionStatus = synchronized(lock) {
         val env = cachedEnvironment
-        return ConnectionStatus(
+        ConnectionStatus(
             connected = connection != null,
             projectDirectory = projectDirectory?.path,
             gradleVersion = env?.gradleVersion,
             javaHome = env?.javaHome,
             javaVersion = env?.javaVersion,
+            runtimeStackAvailable = env != null,
         )
     }
 
     fun tryAutoConnectFromEnvironment() {
         val projectDir = System.getenv("GRADLE_PROJECT_DIR")?.takeIf { it.isNotBlank() } ?: return
-        if (connection != null) {
+        if (isConnected()) {
             return
         }
         try {
@@ -95,16 +134,19 @@ class GradleConnectionManager {
         }
     }
 
-    private fun refreshEnvironmentCache() {
-        val conn = connection ?: return
-        try {
-            val environment = conn.getModel(BuildEnvironment::class.java)
-            cachedEnvironment = CachedBuildEnvironment.from(environment)
-        } catch (exception: Exception) {
-            if (exception is InterruptedException) {
-                Thread.currentThread().interrupt()
-            }
-            cachedEnvironment = null
+    private fun isConnected(): Boolean = synchronized(lock) {
+        connection != null
+    }
+
+    internal fun seedConnectionForTests(
+        connection: ProjectConnection,
+        projectDirectory: File = File("."),
+        environment: BuildEnvironmentSnapshot? = null,
+    ) {
+        synchronized(lock) {
+            this.connection = connection
+            this.projectDirectory = projectDirectory
+            this.cachedEnvironment = environment
         }
     }
 }
@@ -127,23 +169,5 @@ data class ConnectionStatus(
     val gradleVersion: String? = null,
     val javaHome: String? = null,
     val javaVersion: String? = null,
+    val runtimeStackAvailable: Boolean = false,
 )
-
-private data class CachedBuildEnvironment(
-    val gradleVersion: String,
-    val gradleUserHome: String?,
-    val javaHome: String?,
-    val javaVersion: String?,
-) {
-    companion object {
-        fun from(environment: BuildEnvironment): CachedBuildEnvironment {
-            val javaHome = environment.java.javaHome
-            return CachedBuildEnvironment(
-                gradleVersion = environment.gradle.gradleVersion,
-                gradleUserHome = environment.gradle.gradleUserHome?.absolutePath,
-                javaHome = javaHome?.absolutePath,
-                javaVersion = JavaVersionResolver.resolve(javaHome),
-            )
-        }
-    }
-}

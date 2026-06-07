@@ -15,13 +15,35 @@
 
 No arguments.
 
-`gradle_connection_status` returns `connected`, `projectDirectory`, and when connected and cached: `gradleVersion`, `javaHome`, `javaVersion`.
+`gradle_connection_status` returns `connected`, `projectDirectory`, and a connect-time runtime stack snapshot (`gradleVersion`, `javaHome`, `javaVersion`, `runtimeStackAvailable`). It does not perform Gradle I/O on each call. Use `gradle_get_build_environment` for a fresh query including `gradleUserHome` and `jvmArguments`.
+
+`gradle_disconnect` is non-blocking. If a build was active, the response may include `warning` explaining that the Gradle daemon can briefly overlap work until the prior Tooling API call unwinds.
+
+`gradle_connect` resets the active build slot and marks any running builds as failed before connecting. It fails fast while a build slot is still held.
 
 ## Query (read-only)
 
 ### gradle_get_build_environment
 
 No arguments. Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `java.javaHome`, `java.javaVersion`, `java.jvmArguments`.
+
+### gradle_get_build_cache_status
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `includeLastMcpBuild` | `true` | Include cache-oriented stats from the last MCP task/test run |
+| `includeLocalCacheDetails` | `true` | Include local build-cache / configuration-cache directory summaries |
+| `includeDeclaredProperties` | `true` | Include cache-related entries from project and user `gradle.properties` |
+| `probeConfigurationCache` | `false` | Run `properties -q --configuration-cache` compatibility probe |
+
+Returns:
+
+- `summary` — effective flags (`buildCacheEnabled`, `remoteBuildCacheConfigured`, `configurationCacheRequested`, …)
+- `resolvedProperties` — cache-related properties from `properties -q`
+- `declaredProperties` — cache keys from project/user `gradle.properties` files
+- `local` — `build-cache-*` dirs under `gradleUserHome/caches`, project `.gradle` cache dirs
+- `lastMcpBuild` — parsed `taskSummaryLine` / `taskStats` from the last MCP build when available; includes `tasks` for task runs and `testClasses` for test runs
+- `configurationCacheProbe` — present when `probeConfigurationCache=true`
 
 ### gradle_get_project_overview
 

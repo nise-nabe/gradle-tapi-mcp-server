@@ -7,7 +7,7 @@ data class ProjectTreeOptions(
     companion object {
         fun fromArgs(args: Map<String, Any>): ProjectTreeOptions =
             ProjectTreeOptions(
-                maxDepth = args.optionalPositiveInt("maxDepth"),
+                maxDepth = args.optionalNonNegativeInt("maxDepth"),
                 maxChildren = args.optionalPositiveInt("maxChildren"),
             )
     }

@@ -1,13 +1,17 @@
 package com.example.mcp
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class McpErrorsTest {
     @Test
     fun `maps not connected state exception`() {
         val code = mapExceptionToErrorCode(
-            IllegalStateException("Not connected to a Gradle project. Call gradle_connect first."),
+            IllegalStateException(
+                "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR.",
+            ),
         )
 
         assertEquals(McpErrorCode.NOT_CONNECTED, code)
@@ -29,5 +33,15 @@ class McpErrorsTest {
         )
 
         assertEquals(McpErrorCode.PROJECT_NOT_FOUND, code)
+    }
+
+    @Test
+    fun `structured error result returns JSON payload with isError true`() {
+        val result = structuredErrorResult(McpErrorCode.NOT_CONNECTED, "Not connected")
+
+        assertTrue(result.isError)
+        val payload = jacksonObjectMapper().readTree((result.content.single() as io.modelcontextprotocol.spec.McpSchema.TextContent).text)
+        assertEquals("NOT_CONNECTED", payload["error"]["code"].asText())
+        assertEquals("Not connected", payload["error"]["message"].asText())
     }
 }

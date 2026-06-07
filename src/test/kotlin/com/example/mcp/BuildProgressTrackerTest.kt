@@ -11,6 +11,46 @@ import java.lang.reflect.Proxy
 
 class BuildProgressTrackerTest {
     @Test
+    fun `markFailed does not overwrite succeeded status`() {
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        tracker.markSucceeded()
+
+        tracker.markFailed("late failure")
+
+        assertEquals(BuildProgressTracker.STATUS_SUCCEEDED, tracker.snapshot().status)
+    }
+
+    @Test
+    fun `markSucceeded does not overwrite failed status`() {
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        tracker.markFailed("Gradle connection closed")
+
+        tracker.markSucceeded()
+
+        assertEquals(BuildProgressTracker.STATUS_FAILED, tracker.snapshot().status)
+    }
+
+    @Test
+    fun `terminal transitions do not emit duplicate update callbacks`() {
+        var notifyCount = 0
+        val tracker = BuildProgressTracker(onUpdate = { notifyCount++ })
+        tracker.markStarting("Gradle tasks: build")
+        val afterStart = notifyCount
+        tracker.markSucceeded()
+        val afterSuccess = notifyCount
+
+        tracker.markFailed("late failure")
+        assertEquals(afterSuccess, notifyCount)
+        assertTrue(afterStart > 0)
+        assertTrue(afterSuccess > afterStart)
+
+        tracker.markSucceeded()
+        assertEquals(afterSuccess, notifyCount)
+    }
+
+    @Test
     fun `tracks lifecycle status transitions`() {
         val tracker = BuildProgressTracker()
 

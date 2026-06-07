@@ -17,7 +17,7 @@
 - Single-module project; `build-logic` is intentionally deferred until multi-module need arises.
 - `.gitignore` excludes `.cursor/`; `gradle-wrapper.jar` is explicitly un-ignored so clones can run `./gradlew`.
 - Agent skill at `skills/gradle-tapi-mcp/` documents token-efficient MCP workflows; install to `~/.cursor/skills/` for global use.
-- MCP defaults are token-efficient: prefer `gradle_get_project_overview`; task lists omitted unless `includeTasks=true`; run output truncated at 8000 chars.
+- MCP defaults are token-efficient: prefer `gradle_get_project_overview`; use `gradle_get_build_cache_status` for cache settings; task lists omitted unless `includeTasks=true`; run output truncated at 8000 chars.
 - Long Gradle builds: set `background=true` on `gradle_run_tasks`/`gradle_run_tests`, then poll `gradle_get_build_status` for progress and partial output.
 - Cursor MCP config launches the JAR via `java -jar` with `GRADLE_PROJECT_DIR=${workspaceFolder}` (workspace `.cursor/mcp.json` or global `~/.cursor/mcp.json`).
 - After MCP server code changes, rebuild the JAR (`./gradlew jar`) and restart MCP servers in Cursor.
