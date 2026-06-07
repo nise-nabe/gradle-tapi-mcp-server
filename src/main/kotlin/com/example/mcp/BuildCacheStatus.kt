@@ -3,7 +3,9 @@ package com.example.mcp
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.model.build.BuildEnvironment
 import java.io.File
+import java.io.PrintStream
 import java.net.URI
+import java.nio.charset.StandardCharsets
 import java.time.Instant
 
 data class BuildCacheStatusOptions(
@@ -73,20 +75,27 @@ object GradlePropertiesParser {
     fun parse(text: String): Map<String, String> {
         val properties = linkedMapOf<String, String>()
         for (line in OutputNormalizer.normalizeNewlines(text).lines()) {
-            val trimmed = line.trim()
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
-                continue
-            }
-            val separator = trimmed.indexOf('=').takeIf { it > 0 }
-                ?: trimmed.indexOf(':').takeIf { it > 0 }
-                ?: continue
-            val key = trimmed.substring(0, separator).trim()
-            val value = trimmed.substring(separator + 1).trim()
-            if (key.isNotEmpty()) {
+            parsePropertyLine(line)?.let { (key, value) ->
                 properties[key] = value
             }
         }
         return properties
+    }
+
+    fun parsePropertyLine(line: String): Pair<String, String>? {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+            return null
+        }
+        val separator = trimmed.indexOf('=').takeIf { it > 0 }
+            ?: trimmed.indexOf(':').takeIf { it > 0 }
+            ?: return null
+        val key = trimmed.substring(0, separator).trim()
+        val value = trimmed.substring(separator + 1).trim()
+        if (key.isEmpty()) {
+            return null
+        }
+        return key to value
     }
 
     fun filterCacheRelated(properties: Map<String, String>): Map<String, String> =
@@ -389,13 +398,13 @@ object BuildCacheStatusCollector {
         }
 
     private fun fetchResolvedProperties(connection: ProjectConnection): Map<String, String> {
-        val streams = CapturingStreams(maxRetainedChars = 256_000)
+        val capture = GradlePropertiesStreamCapture(retainKey = BuildCachePropertyKeys::isCacheRelated)
         val launcher = connection.newBuild()
             .forTasks("properties")
             .addArguments("-q")
-        streams.applyTo(launcher)
+        launcher.setStandardOutput(PrintStream(capture.asOutputStream(), true, StandardCharsets.UTF_8))
         launcher.run()
-        return GradlePropertiesParser.parse(streams.stdoutText())
+        return capture.snapshotProperties()
     }
 
     private fun readDeclaredProperties(

@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.io.PrintStream
+import java.nio.charset.StandardCharsets
 
 class BuildCacheStatusTest {
     @Test
@@ -213,6 +215,23 @@ class BuildCacheStatusTest {
 
         assertEquals("https://cache.example.com", summary["remoteBuildCacheUrl"])
         assertEquals(true, summary["remoteBuildCacheConfigured"])
+    }
+
+    @Test
+    fun `GradlePropertiesStreamCapture retains early cache keys from large property output`() {
+        val capture = GradlePropertiesStreamCapture(retainKey = BuildCachePropertyKeys::isCacheRelated)
+        val out = PrintStream(capture.asOutputStream(), true, StandardCharsets.UTF_8)
+        out.println("org.gradle.caching: true")
+        repeat(50_000) { index ->
+            out.println("filler.property.$index=value")
+        }
+        out.println("org.gradle.parallel=true")
+
+        val properties = capture.snapshotProperties()
+
+        assertEquals("true", properties["org.gradle.caching"])
+        assertEquals("true", properties["org.gradle.parallel"])
+        assertEquals(2, properties.size)
     }
 
     @Test
