@@ -27,10 +27,8 @@ internal fun connectSchema(): Map<String, Any> =
         ),
     )
 
-fun connectionTools(
-    connectionManager: GradleConnectionManager,
-    buildExecutionManager: BuildExecutionManager,
-): List<McpServerFeatures.SyncToolSpecification> =
+context(connectionManager: GradleConnectionManager, buildExecutionManager: BuildExecutionManager)
+fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_connect",

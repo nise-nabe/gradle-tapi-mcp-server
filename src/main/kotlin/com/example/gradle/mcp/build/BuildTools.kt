@@ -50,10 +50,8 @@ internal fun runOutputSchema(
         ),
     )
 
-fun buildTools(
-    connectionManager: GradleConnectionManager,
-    buildExecutionManager: BuildExecutionManager,
-): List<McpServerFeatures.SyncToolSpecification> =
+context(connectionManager: GradleConnectionManager, buildExecutionManager: BuildExecutionManager)
+fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_get_build_status",

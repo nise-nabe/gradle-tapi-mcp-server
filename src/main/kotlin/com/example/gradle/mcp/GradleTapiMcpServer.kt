@@ -28,22 +28,24 @@ fun main() {
         EofSignalingInputStream(System.`in`, transportClosed),
         System.out,
     )
-    val server = McpServer.sync(transport)
-        .serverInfo("gradle-tapi-mcp-server", "0.1.0")
-        .requestTimeout(Duration.ofMinutes(30))
-        .capabilities(
-            McpSchema.ServerCapabilities.builder()
-                .tools(true)
-                .logging()
-                .build()
-        )
-        .tools(
-            connectionTools(connectionManager, buildExecutionManager) +
-                cacheTools(connectionManager, buildExecutionManager) +
-                modelTools(connectionManager) +
-                buildTools(connectionManager, buildExecutionManager)
-        )
-        .build()
+    val server = context(connectionManager, buildExecutionManager) {
+        McpServer.sync(transport)
+            .serverInfo("gradle-tapi-mcp-server", "0.1.0")
+            .requestTimeout(Duration.ofMinutes(30))
+            .capabilities(
+                McpSchema.ServerCapabilities.builder()
+                    .tools(true)
+                    .logging()
+                    .build()
+            )
+            .tools(
+                connectionTools() +
+                    cacheTools() +
+                    modelTools() +
+                    buildTools()
+            )
+            .build()
+    }
 
     val shutdownOnce = AtomicBoolean(false)
     fun shutdownBestEffort() {

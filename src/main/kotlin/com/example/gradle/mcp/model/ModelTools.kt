@@ -41,9 +41,8 @@ internal fun invocationsQuerySchema(): Map<String, Any> =
         ),
     )
 
-fun modelTools(
-    connectionManager: GradleConnectionManager,
-): List<McpServerFeatures.SyncToolSpecification> =
+context(connectionManager: GradleConnectionManager)
+fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_get_project_overview",
