@@ -35,6 +35,7 @@ data class BuildRecord(
     val startedAt: Instant,
     val progressTracker: BuildProgressTracker,
     val streams: CapturingStreams,
+    val projectDirectory: String? = null,
 ) {
     @Volatile
     var finishedAt: Instant? = null
@@ -51,6 +52,8 @@ class BuildExecutionManager(
     private val builds = ConcurrentHashMap<String, BuildRecord>()
     private val activeBuildId = AtomicReference<String?>(null)
     private val buildSlot = AtomicBoolean(false)
+    @Volatile
+    private var lastCompletedBuildSnapshot: CompletedBuildSnapshot? = null
 
     fun startBackground(
         request: BuildRunRequest,
@@ -79,6 +82,7 @@ class BuildExecutionManager(
 
             buildId = UUID.randomUUID().toString()
             val streams = CapturingStreams()
+            val projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath
             lateinit var tracker: BuildProgressTracker
             tracker = BuildProgressTracker(onUpdate = { notifier.notifyIfNeeded(tracker) })
             record = BuildRecord(
@@ -89,6 +93,7 @@ class BuildExecutionManager(
                 startedAt = Instant.now(),
                 progressTracker = tracker,
                 streams = streams,
+                projectDirectory = projectDirectory,
             )
             try {
                 builds[buildId] = record
@@ -134,8 +139,9 @@ class BuildExecutionManager(
             }
         }
 
-        val buildId = "foreground"
+        val buildId = UUID.randomUUID().toString()
         val streams = CapturingStreams()
+        val projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath
         val notifier = ProgressNotifier(exchange, progressToken)
         lateinit var tracker: BuildProgressTracker
         tracker = BuildProgressTracker(onUpdate = { notifier.notifyIfNeeded(tracker) })
@@ -147,6 +153,7 @@ class BuildExecutionManager(
             startedAt = Instant.now(),
             progressTracker = tracker,
             streams = streams,
+            projectDirectory = projectDirectory,
         )
 
         try {
@@ -238,7 +245,27 @@ class BuildExecutionManager(
         if (record.finishedAt == null) {
             record.finishedAt = Instant.now()
         }
+        rememberCompletedBuild(record, outcome)
         return true
+    }
+
+    internal fun lastCompletedBuildSnapshot(): CompletedBuildSnapshot? = lastCompletedBuildSnapshot
+
+    private fun rememberCompletedBuild(record: BuildRecord, outcome: BuildTerminalOutcome) {
+        val buildOutcome = when (outcome) {
+            BuildTerminalOutcome.Succeeded -> "SUCCESS"
+            is BuildTerminalOutcome.Failed -> "FAILED"
+        }
+        lastCompletedBuildSnapshot = CompletedBuildSnapshot(
+            buildId = record.id,
+            kind = record.kind,
+            tasks = record.tasks,
+            testClasses = record.testClasses,
+            finishedAt = record.finishedAt ?: Instant.now(),
+            outcome = buildOutcome,
+            stdout = record.streams.stdoutSnapshot().text,
+            projectDirectory = record.projectDirectory,
+        )
     }
 
     private fun resolveBuildId(buildId: String?): String? {
@@ -462,6 +489,10 @@ class BuildExecutionManager(
             activeBuildId.set(record.id)
             buildSlot.set(true)
         }
+    }
+
+    internal fun seedLastCompletedBuildForTests(snapshot: CompletedBuildSnapshot) {
+        lastCompletedBuildSnapshot = snapshot
     }
 
     internal fun releaseBuildSlotIfActive(record: BuildRecord) {

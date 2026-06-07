@@ -89,6 +89,10 @@ class GradleConnectionManager {
         previous?.let { ConnectionInfo(it, "disconnected") }
     }
 
+    fun connectedProjectDirectory(): File? = synchronized(lock) {
+        projectDirectory
+    }
+
     fun status(): ConnectionStatus = synchronized(lock) {
         val env = cachedEnvironment
         ConnectionStatus(

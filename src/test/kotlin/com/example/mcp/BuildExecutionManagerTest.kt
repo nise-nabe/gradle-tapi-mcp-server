@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import java.io.File
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
 import java.time.Instant
@@ -291,6 +293,77 @@ class BuildExecutionManagerTest {
             "releaseBuildSlotIfActive should not block until shutdown finishes awaiting termination",
         )
         shutdownThread.join(10_000)
+    }
+
+    @Test
+    fun `resetBuildState snapshot keeps project directory from build start`(@TempDir projectDir: File) {
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        manager.seedRunningBuildForTests(
+            BuildRecord(
+                id = "running-build",
+                kind = BuildKind.TASKS,
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                startedAt = Instant.now(),
+                progressTracker = tracker,
+                streams = CapturingStreams(),
+                projectDirectory = projectDir.absolutePath,
+            ),
+        )
+
+        manager.resetBuildState("Gradle connection closed")
+
+        val snapshot = manager.lastCompletedBuildSnapshot()
+        requireNotNull(snapshot)
+        assertEquals(projectDir.absolutePath, snapshot.projectDirectory)
+    }
+
+    @Test
+    fun `lastMcpBuildInsight omits snapshot from a different project`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        manager.seedLastCompletedBuildForTests(
+            CompletedBuildSnapshot(
+                buildId = "b1",
+                kind = BuildKind.TASKS,
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                finishedAt = Instant.now(),
+                outcome = "SUCCESS",
+                stdout = "BUILD SUCCESSFUL in 1s\n3 actionable tasks: 2 executed, 1 from cache\n",
+                projectDirectory = projectA.absolutePath,
+            ),
+        )
+
+        assertEquals(null, manager.lastMcpBuildInsight(projectB))
+
+        val insight = manager.lastMcpBuildInsight(projectA)
+        requireNotNull(insight)
+        assertEquals("b1", insight.buildId)
+        assertEquals(2, insight.taskStats?.executed)
+    }
+
+    @Test
+    fun `lastMcpBuildInsight exposes test classes separately from tasks`(@TempDir projectDir: File) {
+        manager.seedLastCompletedBuildForTests(
+            CompletedBuildSnapshot(
+                buildId = "test-run",
+                kind = BuildKind.TESTS,
+                tasks = emptyList(),
+                testClasses = listOf("com.example.FooTest"),
+                finishedAt = Instant.now(),
+                outcome = "SUCCESS",
+                stdout = "BUILD SUCCESSFUL in 1s\n",
+                projectDirectory = projectDir.absolutePath,
+            ),
+        )
+
+        val insight = manager.lastMcpBuildInsight(projectDir)
+        requireNotNull(insight)
+        assertEquals(emptyList<String>(), insight.tasks)
+        assertEquals(listOf("com.example.FooTest"), insight.testClasses)
     }
 
     @Test
