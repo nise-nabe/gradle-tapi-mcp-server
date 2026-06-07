@@ -1,6 +1,6 @@
 package com.example.gradle.mcp.protocol
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.example.gradle.mcp.protocol.mcpObjectMapper
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -40,7 +40,7 @@ class McpErrorsTest {
         val result = structuredErrorResult(McpErrorCode.NOT_CONNECTED, "Not connected")
 
         result.isError.shouldBeTrue()
-        val payload = jacksonObjectMapper().readTree((result.content.single() as io.modelcontextprotocol.spec.McpSchema.TextContent).text)
+        val payload = mcpObjectMapper().readTree((result.content.single() as io.modelcontextprotocol.spec.McpSchema.TextContent).text)
         payload["error"]["code"].asText() shouldBe "NOT_CONNECTED"
         payload["error"]["message"].asText() shouldBe "Not connected"
     }
