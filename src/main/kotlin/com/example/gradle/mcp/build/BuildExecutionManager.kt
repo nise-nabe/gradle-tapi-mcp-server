@@ -99,14 +99,12 @@ class BuildExecutionManager(
     }
 
     fun status(
-        buildId: String?,
+        buildId: String,
         outputLimit: OutputLimitOptions,
         progressOptions: ProgressResponseOptions,
     ): Map<String, Any?> {
-        val resolvedId = resolveBuildId(buildId)
-            ?: return mapOf("status" to "not_found", "message" to "No matching build found.")
-        val record = builds[resolvedId]
-            ?: return mapOf("status" to "not_found", "buildId" to resolvedId)
+        val record = builds[buildId]
+            ?: return mapOf("status" to "not_found", "buildId" to buildId)
 
         return buildStatusResponse(record, outputLimit, progressOptions)
     }
@@ -193,17 +191,6 @@ class BuildExecutionManager(
             stdout = record.streams.stdoutSnapshot().text,
             projectDirectory = record.projectDirectory,
         )
-    }
-
-    private fun resolveBuildId(buildId: String?): String? {
-        if (!buildId.isNullOrBlank()) {
-            return buildId
-        }
-        builds.values
-            .filter { it.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING }
-            .maxByOrNull { it.startedAt }
-            ?.let { return it.id }
-        return builds.values.maxByOrNull { it.startedAt }?.id
     }
 
     private fun runBuild(

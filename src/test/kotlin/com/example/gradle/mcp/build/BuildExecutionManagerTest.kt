@@ -145,41 +145,6 @@ class BuildExecutionManagerTest {
     }
 
     @Test
-    fun `status without buildId prefers most recently started running build`() {
-        val olderTracker = BuildProgressTracker()
-        olderTracker.markStarting("Gradle tasks: build")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
-                id = "older-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                testClasses = emptyList(),
-                startedAt = Instant.now().minusSeconds(30),
-                progressTracker = olderTracker,
-                streams = CapturingStreams(),
-            ),
-        )
-        val newerTracker = BuildProgressTracker()
-        newerTracker.markStarting("Gradle tasks: test")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
-                id = "newer-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("test"),
-                testClasses = emptyList(),
-                startedAt = Instant.now(),
-                progressTracker = newerTracker,
-                streams = CapturingStreams(),
-            ),
-        )
-
-        val result = manager.status(null, OutputLimitOptions(), ProgressResponseOptions())
-
-        result["buildId"] shouldBe "newer-build"
-        result["status"] shouldBe "running"
-    }
-
-    @Test
     fun `hasActiveBuild reports seeded running build`() {
         val tracker = BuildProgressTracker()
         tracker.markStarting("Gradle tasks: build")
