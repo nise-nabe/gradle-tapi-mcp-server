@@ -9,26 +9,6 @@ import org.gradle.tooling.events.test.TestFinishEvent
 import org.gradle.tooling.events.test.TestStartEvent
 import java.time.Instant
 
-data class ProgressEventSnapshot(
-    val timestamp: String,
-    val eventType: String,
-    val displayName: String,
-    val outcome: String? = null,
-)
-
-data class BuildProgressSnapshot(
-    val status: String,
-    val currentOperation: String?,
-    val completedTaskCount: Int,
-    val runningTaskCount: Int,
-    val failedTaskCount: Int,
-    val completedTasks: List<String>,
-    val runningTasks: List<String>,
-    val failedTasks: List<String>,
-    val recentEvents: List<ProgressEventSnapshot>,
-    val totalEventCount: Int,
-)
-
 class BuildProgressTracker(
     private val onUpdate: (() -> Unit)? = null,
 ) {

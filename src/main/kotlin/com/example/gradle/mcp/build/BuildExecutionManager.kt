@@ -21,38 +21,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
-data class BuildRunRequest(
-    val kind: BuildKind,
-    val tasks: List<String> = emptyList(),
-    val testClasses: List<String> = emptyList(),
-    val arguments: List<String> = emptyList(),
-    val jvmArguments: List<String> = emptyList(),
-    val outputLimit: OutputLimitOptions = OutputLimitOptions(),
-    val progressOptions: ProgressResponseOptions = ProgressResponseOptions(),
-)
-
-enum class BuildKind {
-    TASKS,
-    TESTS,
-}
-
-data class BuildRecord(
-    val id: String,
-    val kind: BuildKind,
-    val tasks: List<String>,
-    val testClasses: List<String>,
-    val startedAt: Instant,
-    val progressTracker: BuildProgressTracker,
-    val streams: CapturingStreams,
-    val projectDirectory: String? = null,
-) {
-    @Volatile
-    var finishedAt: Instant? = null
-
-    @Volatile
-    var errorMessage: String? = null
-}
-
 class BuildExecutionManager(
     private val connectionManager: GradleConnectionManager,
 ) {

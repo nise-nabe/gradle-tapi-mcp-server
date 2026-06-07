@@ -35,7 +35,7 @@ class GradleConnectionManager {
         val newConnection = connector.connect()
         val snapshot = withPermit {
             try {
-                BuildEnvironmentSnapshot.from(newConnection.getModel(BuildEnvironment::class.java))
+                buildEnvironmentSnapshotFrom(newConnection.getModel(BuildEnvironment::class.java))
             } catch (exception: Exception) {
                 if (exception is InterruptedException) {
                     Thread.currentThread().interrupt()
@@ -152,24 +152,3 @@ class GradleConnectionManager {
         }
     }
 }
-
-data class ConnectionConfig(
-    val projectDirectory: String,
-    val gradleUserHome: String? = null,
-    val gradleVersion: String? = null,
-    val gradleInstallation: String? = null,
-)
-
-data class ConnectionInfo(
-    val projectDirectory: String,
-    val state: String,
-)
-
-data class ConnectionStatus(
-    val connected: Boolean,
-    val projectDirectory: String?,
-    val gradleVersion: String? = null,
-    val javaHome: String? = null,
-    val javaVersion: String? = null,
-    val runtimeStackAvailable: Boolean = false,
-)

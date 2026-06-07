@@ -1,23 +1,17 @@
 package com.example.gradle.mcp.model
 
 import com.example.gradle.mcp.connection.BuildEnvironmentSnapshot
+import com.example.gradle.mcp.connection.buildEnvironmentSnapshotFrom
+import com.example.gradle.mcp.connection.toMap
 import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.Task
 import org.gradle.tooling.model.build.BuildEnvironment
 import org.gradle.tooling.model.gradle.BuildInvocations
 import org.gradle.tooling.model.gradle.ProjectPublications
 
-data class TaskSnapshot(
-    val name: String,
-    val path: String,
-    val description: String?,
-    val group: String?,
-    val displayName: String,
-)
-
 object ModelSerializers {
     fun buildEnvironment(environment: BuildEnvironment): Map<String, Any?> =
-        BuildEnvironmentSnapshot.from(environment).toMap()
+        buildEnvironmentSnapshotFrom(environment).toMap()
 
     fun projectOverview(
         project: GradleProject,

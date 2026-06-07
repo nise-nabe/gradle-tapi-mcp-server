@@ -1,10 +1,5 @@
 package com.example.gradle.mcp.build
 
-data class BuildSummary(
-    val resultLine: String?,
-    val taskSummaryLine: String?,
-)
-
 object BuildOutputParser {
     private val buildResultRegex = Regex("""BUILD (SUCCESSFUL|FAILED) in .+""")
     private val taskSummaryRegex = Regex("""\d+ actionable tasks?: .+""")
@@ -32,4 +27,3 @@ object BuildOutputParser {
     private fun normalizeNewlines(text: String): String =
         text.replace("\r\n", "\n").replace('\r', '\n')
 }
-

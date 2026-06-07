@@ -6,11 +6,6 @@ import java.io.OutputStream
 import java.io.PrintStream
 import java.nio.charset.StandardCharsets
 
-data class CapturedStreamSnapshot(
-    val text: String,
-    val totalChars: Int,
-)
-
 class TailCapturingStream(
     private val maxRetainedChars: Int = DEFAULT_MAX_RETAINED_CHARS,
 ) {
