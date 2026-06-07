@@ -1,6 +1,6 @@
 package com.example.gradle.mcp.model
 
-import com.example.gradle.mcp.connection.GradleConnectionManager
+import com.example.gradle.mcp.ConnectionScope
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.emptyObjectSchema
 import com.example.gradle.mcp.protocol.integerProperty
@@ -41,7 +41,7 @@ internal fun invocationsQuerySchema(): Map<String, Any> =
         ),
     )
 
-context(connectionManager: GradleConnectionManager)
+context(runtime: ConnectionScope)
 fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
@@ -50,7 +50,7 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             schema = projectTreeSchema(),
         ) { args ->
             val treeOptions = ProjectTreeOptions.fromArgs(args)
-            connectionManager.withConnectionResult { connection ->
+            runtime.connectionManager.withConnectionResult { connection ->
                 val project = connection.getModel(GradleProject::class.java)
                 jsonResult(ModelSerializers.projectOverview(project, treeOptions))
             }
@@ -62,7 +62,7 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
         ) { args ->
             val options = ModelQueryOptions.fromArgs(args)
             val treeOptions = ProjectTreeOptions.fromArgs(args)
-            connectionManager.withConnectionResult { connection ->
+            runtime.connectionManager.withConnectionResult { connection ->
                 val project = connection.getModel(GradleProject::class.java)
                 jsonResult(ModelSerializers.gradleProject(project, options, treeOptions))
             }
@@ -73,7 +73,7 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             schema = invocationsQuerySchema(),
         ) { args ->
             val options = ModelQueryOptions.fromArgs(args).copy(includeTasks = true)
-            connectionManager.withConnectionResult { connection ->
+            runtime.connectionManager.withConnectionResult { connection ->
                 val invocations = connection.getModel(BuildInvocations::class.java)
                 jsonResult(ModelSerializers.buildInvocations(invocations, options))
             }
@@ -83,7 +83,7 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             description = "Fetch publications declared by the build.",
             schema = emptyObjectSchema(),
         ) { _ ->
-            connectionManager.withConnectionResult { connection ->
+            runtime.connectionManager.withConnectionResult { connection ->
                 val publications = connection.getModel(ProjectPublications::class.java)
                 jsonResult(ModelSerializers.projectPublications(publications))
             }

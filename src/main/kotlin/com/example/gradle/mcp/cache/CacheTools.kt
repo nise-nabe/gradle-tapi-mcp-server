@@ -1,7 +1,6 @@
 package com.example.gradle.mcp.cache
 
-import com.example.gradle.mcp.build.BuildExecutionManager
-import com.example.gradle.mcp.connection.GradleConnectionManager
+import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
@@ -26,7 +25,7 @@ internal fun buildCacheStatusSchema(): Map<String, Any> =
         ),
     )
 
-context(connectionManager: GradleConnectionManager, buildExecutionManager: BuildExecutionManager)
+context(runtime: GradleMcpRuntime)
 fun cacheTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
@@ -34,21 +33,21 @@ fun cacheTools(): List<McpServerFeatures.SyncToolSpecification> =
             description = "Inspect Gradle build cache and configuration cache settings without a full build. Returns resolved cache properties (via properties -q), declared gradle.properties entries, local cache directory summaries, and optional last MCP build cache stats. Set probeConfigurationCache=true to run a lightweight configuration-cache compatibility check.",
             schema = buildCacheStatusSchema(),
         ) { args ->
-            if (buildExecutionManager.hasActiveBuild()) {
+            if (runtime.buildExecutionManager.hasActiveBuild()) {
                 error(
                     "Cannot inspect build cache while a Gradle build is running. " +
                         "Wait for the build to finish or call gradle_get_build_status.",
                 )
             }
             val options = BuildCacheStatusOptions.fromArgs(args)
-            val projectDirectory = connectionManager.connectedProjectDirectory()
+            val projectDirectory = runtime.connectionManager.connectedProjectDirectory()
                 ?: error("Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR.")
             val lastMcpBuild = if (options.includeLastMcpBuild) {
-                buildExecutionManager.lastMcpBuildInsight(projectDirectory)
+                runtime.buildExecutionManager.lastMcpBuildInsight(projectDirectory)
             } else {
                 null
             }
-            connectionManager.withConnectionResult { connection ->
+            runtime.connectionManager.withConnectionResult { connection ->
                 jsonResult(
                     BuildCacheStatusCollector.collect(
                         connection = connection,

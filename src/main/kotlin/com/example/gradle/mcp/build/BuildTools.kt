@@ -1,6 +1,6 @@
 package com.example.gradle.mcp.build
 
-import com.example.gradle.mcp.connection.GradleConnectionManager
+import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.protocol.booleanProperty
@@ -50,7 +50,7 @@ internal fun runOutputSchema(
         ),
     )
 
-context(connectionManager: GradleConnectionManager, buildExecutionManager: BuildExecutionManager)
+context(runtime: GradleMcpRuntime)
 fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
@@ -61,7 +61,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
             val outputLimit = OutputLimitOptions.fromArgs(args)
             val progressOptions = ProgressResponseOptions.fromArgs(args)
             jsonResult(
-                buildExecutionManager.status(
+                runtime.buildExecutionManager.status(
                     args.optionalString("buildId"),
                     outputLimit,
                     progressOptions,
@@ -89,10 +89,10 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
                 progressOptions = ProgressResponseOptions.fromArgs(args),
             )
             if (args.optionalBoolean("background", default = false)) {
-                jsonResult(buildExecutionManager.startBackground(request, exchange, progressToken))
+                jsonResult(runtime.buildExecutionManager.startBackground(request, exchange, progressToken))
             } else {
-                connectionManager.withConnectionResult { connection ->
-                    jsonResult(buildExecutionManager.runForeground(request, connection, exchange, progressToken))
+                runtime.connectionManager.withConnectionResult { connection ->
+                    jsonResult(runtime.buildExecutionManager.runForeground(request, connection, exchange, progressToken))
                 }
             }
         },
@@ -117,10 +117,10 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
                 progressOptions = ProgressResponseOptions.fromArgs(args),
             )
             if (args.optionalBoolean("background", default = false)) {
-                jsonResult(buildExecutionManager.startBackground(request, exchange, progressToken))
+                jsonResult(runtime.buildExecutionManager.startBackground(request, exchange, progressToken))
             } else {
-                connectionManager.withConnectionResult { connection ->
-                    jsonResult(buildExecutionManager.runForeground(request, connection, exchange, progressToken))
+                runtime.connectionManager.withConnectionResult { connection ->
+                    jsonResult(runtime.buildExecutionManager.runForeground(request, connection, exchange, progressToken))
                 }
             }
         },

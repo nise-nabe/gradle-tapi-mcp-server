@@ -28,7 +28,8 @@ fun main() {
         EofSignalingInputStream(System.`in`, transportClosed),
         System.out,
     )
-    val server = context(connectionManager, buildExecutionManager) {
+    val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+    val server = context(runtime) {
         McpServer.sync(transport)
             .serverInfo("gradle-tapi-mcp-server", "0.1.0")
             .requestTimeout(Duration.ofMinutes(30))
