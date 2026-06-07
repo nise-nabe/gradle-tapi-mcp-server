@@ -1,6 +1,5 @@
 package com.example.gradle.mcp.protocol
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.modelcontextprotocol.spec.McpSchema
 
 enum class McpErrorCode {
@@ -18,24 +17,24 @@ class McpException(
     cause: Throwable? = null,
 ) : Exception(message, cause)
 
-private val errorMapper = jacksonObjectMapper()
-
 fun structuredErrorResult(code: McpErrorCode, message: String): McpSchema.CallToolResult =
-    McpSchema.CallToolResult(
-        listOf(
-            McpSchema.TextContent(
-                errorMapper.writeValueAsString(
-                    mapOf(
-                        "error" to mapOf(
-                            "code" to code.name,
-                            "message" to message,
+    McpSchema.CallToolResult.builder()
+        .content(
+            listOf(
+                McpSchema.TextContent(
+                    mcpObjectMapper().writeValueAsString(
+                        mapOf(
+                            "error" to mapOf(
+                                "code" to code.name,
+                                "message" to message,
+                            ),
                         ),
                     ),
                 ),
             ),
-        ),
-        true,
-    )
+        )
+        .isError(true)
+        .build()
 
 fun mapExceptionToErrorCode(exception: Exception): McpErrorCode =
     when (exception) {

@@ -6,16 +6,14 @@ import com.example.gradle.mcp.cache.cacheTools
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.connection.connectionTools
 import com.example.gradle.mcp.model.modelTools
+import com.example.gradle.mcp.protocol.mcpJsonMapper
 import com.example.gradle.mcp.server.EofSignalingInputStream
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.modelcontextprotocol.server.McpServer
 import io.modelcontextprotocol.spec.McpSchema
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
-
-private val objectMapper = jacksonObjectMapper()
 
 fun main() {
     val connectionManager = GradleConnectionManager()
@@ -24,7 +22,7 @@ fun main() {
 
     val transportClosed = CountDownLatch(1)
     val transport = StdioServerTransportProvider(
-        objectMapper,
+        mcpJsonMapper,
         EofSignalingInputStream(System.`in`, transportClosed),
         System.out,
     )
