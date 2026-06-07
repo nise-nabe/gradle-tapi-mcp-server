@@ -11,15 +11,26 @@ import org.gradle.tooling.model.build.BuildEnvironment
 import org.gradle.tooling.model.gradle.BuildInvocations
 import org.gradle.tooling.model.gradle.ProjectPublications
 import java.time.Duration
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
 
 private val objectMapper = jacksonObjectMapper()
+
+private const val DISCONNECT_DURING_BUILD_WARNING =
+    "A build was still in progress. The server released its build slot immediately, but the Gradle " +
+        "daemon may briefly run overlapping Tooling API work until the previous call unwinds."
 
 fun main() {
     val connectionManager = GradleConnectionManager()
     val buildExecutionManager = BuildExecutionManager(connectionManager)
     connectionManager.tryAutoConnectFromEnvironment()
 
-    val transport = StdioServerTransportProvider(objectMapper)
+    val transportClosed = CountDownLatch(1)
+    val transport = StdioServerTransportProvider(
+        objectMapper,
+        EofSignalingInputStream(System.`in`, transportClosed),
+        System.out,
+    )
     val server = McpServer.sync(transport)
         .serverInfo("gradle-tapi-mcp-server", "0.1.0")
         .requestTimeout(Duration.ofMinutes(30))
@@ -32,13 +43,26 @@ fun main() {
         .tools(createTools(connectionManager, buildExecutionManager))
         .build()
 
-    Runtime.getRuntime().addShutdownHook(Thread {
-        buildExecutionManager.shutdown()
-        connectionManager.disconnect()
-        server.close()
-    })
+    val shutdownOnce = AtomicBoolean(false)
+    fun shutdownBestEffort() {
+        if (!shutdownOnce.compareAndSet(false, true)) {
+            return
+        }
+        runCatching { buildExecutionManager.shutdown() }
+        runCatching { connectionManager.disconnect() }
+        runCatching { server.closeGracefully() }
+        transportClosed.countDown()
+    }
 
-    joinNonDaemonWorkerThreads()
+    Runtime.getRuntime().addShutdownHook(Thread { shutdownBestEffort() })
+
+    try {
+        transportClosed.await()
+    } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+    } finally {
+        shutdownBestEffort()
+    }
 }
 
 private fun createTools(
@@ -48,7 +72,7 @@ private fun createTools(
     listOf(
         tool(
             name = "gradle_connect",
-            description = "Connect to a Gradle project via the Tooling API. Reuses an existing compatible daemon when available.",
+            description = "Connect to a Gradle project via the Tooling API. When no build is running, resets the active build slot and marks any running builds as failed before connecting; rejects the call while a build slot is held. Reuses an existing compatible daemon when available.",
             schema = objectSchema(
                 required = listOf("projectDirectory"),
                 properties = mapOf(
@@ -59,6 +83,13 @@ private fun createTools(
                 ),
             ),
         ) { args ->
+            if (buildExecutionManager.hasActiveBuild()) {
+                error(
+                    "Cannot connect while a Gradle build is running. " +
+                        "Wait for the build to finish or call gradle_disconnect.",
+                )
+            }
+            buildExecutionManager.resetBuildState("Preparing new Gradle connection")
             val config = ConnectionConfig(
                 projectDirectory = args.requiredString("projectDirectory"),
                 gradleUserHome = args.optionalString("gradleUserHome"),
@@ -69,17 +100,34 @@ private fun createTools(
         },
         tool(
             name = "gradle_connection_status",
-            description = "Return the current Tooling API connection status.",
+            description = "Return the current Tooling API connection status and a connect-time runtime stack snapshot (gradleVersion, javaHome, javaVersion). Stack fields are null with runtimeStackAvailable=false when the snapshot could not be loaded at connect. For a fresh query including gradleUserHome and jvmArguments, use gradle_get_build_environment.",
             schema = emptyObjectSchema(),
         ) { _ ->
             jsonResult(connectionManager.status())
         },
         tool(
             name = "gradle_disconnect",
-            description = "Close the active Tooling API project connection.",
+            description = "Close the active Tooling API project connection. If a build is still running, the server releases its build slot immediately; the Gradle daemon may briefly continue the prior Tooling API call until it unwinds. A warning field is included when a build was active.",
             schema = emptyObjectSchema(),
         ) { _ ->
-            jsonResult(connectionManager.disconnect() ?: mapOf("state" to "not_connected"))
+            val hadActiveBuild = buildExecutionManager.hasActiveBuild()
+            val disconnected = try {
+                connectionManager.disconnect()
+            } finally {
+                buildExecutionManager.onDisconnect()
+            }
+            val payload = buildMap<String, Any?> {
+                if (disconnected != null) {
+                    put("projectDirectory", disconnected.projectDirectory)
+                    put("state", disconnected.state)
+                } else {
+                    put("state", "not_connected")
+                }
+                if (hadActiveBuild) {
+                    put("warning", DISCONNECT_DURING_BUILD_WARNING)
+                }
+            }
+            jsonResult(payload)
         },
         tool(
             name = "gradle_get_build_environment",
@@ -92,13 +140,44 @@ private fun createTools(
             }
         },
         tool(
+            name = "gradle_get_build_cache_status",
+            description = "Inspect Gradle build cache and configuration cache settings without a full build. Returns resolved cache properties (via properties -q), declared gradle.properties entries, local cache directory summaries, and optional last MCP build cache stats. Set probeConfigurationCache=true to run a lightweight configuration-cache compatibility check.",
+            schema = buildCacheStatusSchema(),
+        ) { args ->
+            if (buildExecutionManager.hasActiveBuild()) {
+                error(
+                    "Cannot inspect build cache while a Gradle build is running. " +
+                        "Wait for the build to finish or call gradle_get_build_status.",
+                )
+            }
+            val options = BuildCacheStatusOptions.fromArgs(args)
+            val projectDirectory = connectionManager.connectedProjectDirectory()
+                ?: error("Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR.")
+            val lastMcpBuild = if (options.includeLastMcpBuild) {
+                buildExecutionManager.lastMcpBuildInsight(projectDirectory)
+            } else {
+                null
+            }
+            connectionManager.withConnectionResult { connection ->
+                jsonResult(
+                    BuildCacheStatusCollector.collect(
+                        connection = connection,
+                        projectDirectory = projectDirectory,
+                        options = options,
+                        lastMcpBuild = lastMcpBuild,
+                    ),
+                )
+            }
+        },
+        tool(
             name = "gradle_get_project_overview",
             description = "Fetch project hierarchy and task counts without task lists. Token-efficient default for project context ingestion.",
-            schema = emptyObjectSchema(),
-        ) { _ ->
+            schema = projectTreeSchema(),
+        ) { args ->
+            val treeOptions = ProjectTreeOptions.fromArgs(args)
             connectionManager.withConnectionResult { connection ->
                 val project = connection.getModel(GradleProject::class.java)
-                jsonResult(ModelSerializers.projectOverview(project))
+                jsonResult(ModelSerializers.projectOverview(project, treeOptions))
             }
         },
         tool(
@@ -107,9 +186,10 @@ private fun createTools(
             schema = modelQuerySchema(),
         ) { args ->
             val options = ModelQueryOptions.fromArgs(args)
+            val treeOptions = ProjectTreeOptions.fromArgs(args)
             connectionManager.withConnectionResult { connection ->
                 val project = connection.getModel(GradleProject::class.java)
-                jsonResult(ModelSerializers.gradleProject(project, options))
+                jsonResult(ModelSerializers.gradleProject(project, options, treeOptions))
             }
         },
         tool(
@@ -135,15 +215,22 @@ private fun createTools(
         },
         tool(
             name = "gradle_get_build_status",
-            description = "Return progress and partial output for a running or completed Gradle build started with background=true. Omit buildId to use the active or most recent build.",
+            description = "Return status and partial output for a running or completed Gradle build started with background=true. Set includeProgress=true for detailed progress (completedTasks, recentEvents). Omit buildId to use the active or most recent build.",
             schema = buildStatusSchema(),
         ) { args ->
             val outputLimit = OutputLimitOptions.fromArgs(args)
-            jsonResult(buildExecutionManager.status(args.optionalString("buildId"), outputLimit))
+            val progressOptions = ProgressResponseOptions.fromArgs(args)
+            jsonResult(
+                buildExecutionManager.status(
+                    args.optionalString("buildId"),
+                    outputLimit,
+                    progressOptions,
+                ),
+            )
         },
         tool(
             name = "gradle_run_tasks",
-            description = "Execute Gradle task paths and return captured stdout/stderr. Use background=true to start a long build and poll gradle_get_build_status. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
+            description = "Execute Gradle task paths and return captured stdout/stderr. Use background=true to start a long build and poll gradle_get_build_status. Set includeProgress=true for detailed progress on foreground runs. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
             schema = runOutputSchema(
                 required = listOf("tasks"),
                 extraProperties = mapOf(
@@ -159,6 +246,7 @@ private fun createTools(
                 arguments = args.optionalStringList("arguments").orEmpty(),
                 jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
                 outputLimit = OutputLimitOptions.fromArgs(args),
+                progressOptions = ProgressResponseOptions.fromArgs(args),
             )
             if (args.optionalBoolean("background", default = false)) {
                 jsonResult(buildExecutionManager.startBackground(request, exchange, progressToken))
@@ -170,7 +258,7 @@ private fun createTools(
         },
         tool(
             name = "gradle_run_tests",
-            description = "Execute JVM test classes and return captured stdout/stderr. Use background=true to start a long test run and poll gradle_get_build_status. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
+            description = "Execute JVM test classes and return captured stdout/stderr. Use background=true to start a long test run and poll gradle_get_build_status. Set includeProgress=true for detailed progress on foreground runs. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
             schema = runOutputSchema(
                 required = listOf("testClasses"),
                 extraProperties = mapOf(
@@ -186,6 +274,7 @@ private fun createTools(
                 arguments = args.optionalStringList("arguments").orEmpty(),
                 jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
                 outputLimit = OutputLimitOptions.fromArgs(args),
+                progressOptions = ProgressResponseOptions.fromArgs(args),
             )
             if (args.optionalBoolean("background", default = false)) {
                 jsonResult(buildExecutionManager.startBackground(request, exchange, progressToken))
@@ -283,6 +372,15 @@ private fun booleanProperty(description: String): Map<String, String> =
 private fun integerProperty(description: String): Map<String, String> =
     mapOf("type" to "integer", "description" to description)
 
+private fun projectTreeProperties(): Map<String, Any> =
+    mapOf(
+        "maxDepth" to integerProperty("Maximum project tree depth (root=0); deeper child projects are omitted"),
+        "maxChildren" to integerProperty("Maximum child projects per node (omit for unlimited)"),
+    )
+
+private fun projectTreeSchema(): Map<String, Any> =
+    objectSchema(properties = projectTreeProperties())
+
 private fun modelQueryProperties(): Map<String, Any> =
     mapOf(
         "includeTasks" to booleanProperty("Include task lists. Default false to save tokens."),
@@ -293,7 +391,7 @@ private fun modelQueryProperties(): Map<String, Any> =
     )
 
 private fun modelQuerySchema(): Map<String, Any> =
-    objectSchema(properties = modelQueryProperties())
+    objectSchema(properties = projectTreeProperties() + modelQueryProperties())
 
 private fun invocationsQuerySchema(): Map<String, Any> =
     objectSchema(
@@ -302,9 +400,34 @@ private fun invocationsQuerySchema(): Map<String, Any> =
         ),
     )
 
-private fun buildStatusSchema(): Map<String, Any> =
+private fun progressProperties(): Map<String, Any> =
+    mapOf(
+        "includeProgress" to booleanProperty(
+            "Include detailed progress (completedTasks, recentEvents). Default false to save tokens.",
+        ),
+    )
+
+private fun buildCacheStatusSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
+            "includeLastMcpBuild" to booleanProperty(
+                "Include task cache stats from the last MCP build run via gradle_run_tasks or gradle_run_tests (default true)",
+            ),
+            "includeLocalCacheDetails" to booleanProperty(
+                "Include local build-cache and configuration-cache directory summaries (default true)",
+            ),
+            "includeDeclaredProperties" to booleanProperty(
+                "Include cache-related entries from project and user gradle.properties files (default true)",
+            ),
+            "probeConfigurationCache" to booleanProperty(
+                "Run properties -q --configuration-cache to test configuration-cache compatibility (default false)",
+            ),
+        ),
+    )
+
+private fun buildStatusSchema(): Map<String, Any> =
+    objectSchema(
+        properties = progressProperties() + mapOf(
             "buildId" to stringProperty("Build ID returned by gradle_run_tasks or gradle_run_tests with background=true"),
             "maxOutputChars" to integerProperty(
                 "Maximum stdout/stderr characters to return per stream (default ${OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS})",
@@ -319,7 +442,7 @@ private fun runOutputSchema(
 ): Map<String, Any> =
     objectSchema(
         required = required,
-        properties = extraProperties + mapOf(
+        properties = extraProperties + progressProperties() + mapOf(
             "arguments" to stringArrayProperty("Additional Gradle command-line arguments"),
             "jvmArguments" to stringArrayProperty("Additional JVM arguments for the build"),
             "maxOutputChars" to integerProperty(
@@ -375,14 +498,3 @@ private fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boo
         else -> default
     }
 
-private fun joinNonDaemonWorkerThreads() {
-    Thread.getAllStackTraces().keys
-        .filter { !it.isDaemon && it != Thread.currentThread() }
-        .forEach { thread ->
-            try {
-                thread.join()
-            } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
-            }
-        }
-}

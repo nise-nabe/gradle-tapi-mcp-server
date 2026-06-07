@@ -48,6 +48,7 @@ class BuildProgressTracker(
             synchronized(lock) {
                 currentOperation = operation
                 recordEventLocked("START", operation)
+                true
             }
         }
     }
@@ -55,10 +56,14 @@ class BuildProgressTracker(
     fun markSucceeded() {
         notifyAfter {
             synchronized(lock) {
+                if (status != STATUS_RUNNING) {
+                    return@notifyAfter false
+                }
                 status = STATUS_SUCCEEDED
                 currentOperation = null
                 runningTasks.clear()
                 recordEventLocked("FINISH", "Build succeeded")
+                true
             }
         }
     }
@@ -66,10 +71,14 @@ class BuildProgressTracker(
     fun markFailed(message: String) {
         notifyAfter {
             synchronized(lock) {
+                if (status != STATUS_RUNNING) {
+                    return@notifyAfter false
+                }
                 status = STATUS_FAILED
                 currentOperation = null
                 runningTasks.clear()
                 recordEventLocked("FAIL", message)
+                true
             }
         }
     }
@@ -104,6 +113,7 @@ class BuildProgressTracker(
             notifyAfter {
                 synchronized(lock) {
                     handleGradleEvent(event)
+                    true
                 }
             }
         }
@@ -169,9 +179,10 @@ class BuildProgressTracker(
         }
     }
 
-    private fun notifyAfter(block: () -> Unit) {
-        block()
-        onUpdate?.invoke()
+    private fun notifyAfter(block: () -> Boolean) {
+        if (block()) {
+            onUpdate?.invoke()
+        }
     }
 
     private fun recordEventLocked(eventType: String, displayName: String, outcome: String? = null) {

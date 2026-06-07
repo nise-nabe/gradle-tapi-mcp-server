@@ -61,6 +61,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | `gradle_connection_status` | 接続確認 |
 | `gradle_disconnect` | 切断 |
 | `gradle_get_build_environment` | Gradle/Java 実行環境 |
+| `gradle_get_build_cache_status` | Build Cache / Configuration Cache 設定とローカルキャッシュ概要 |
 | `gradle_get_project_overview` | 階層 + taskCount（推奨） |
 | `gradle_get_project_model` | プロジェクトモデル（タスクはデフォルト省略） |
 | `gradle_get_build_invocations` | 実行可能タスク（セレクタはデフォルト省略） |
@@ -119,6 +120,20 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 ```
 
 → `gradle_get_project_overview`
+
+**Build Cache 調査（ビルド不要）**
+
+```json
+{}
+```
+
+→ `gradle_get_build_cache_status`
+
+Configuration Cache 互換性まで試す場合:
+
+```json
+{ "probeConfigurationCache": true }
+```
 
 **ビルド検証**
 

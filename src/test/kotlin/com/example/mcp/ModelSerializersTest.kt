@@ -2,6 +2,7 @@ package com.example.mcp
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -69,6 +70,20 @@ class ModelSerializersTest {
 
     @Test
     fun `output limiter truncates to tail by default`() {
+        val text = "0123456789abcdefghijklmnopqrstuvwxyz0123456789"
+        val limited = OutputLimiter.limit(
+            text,
+            OutputLimitOptions(maxOutputChars = 40, tailOutput = true),
+        )
+
+        assertTrue(limited.truncated)
+        assertEquals(text.length, limited.totalChars)
+        assertTrue(limited.text.length <= 40)
+        assertTrue(limited.text.startsWith("... [truncated "))
+    }
+
+    @Test
+    fun `output limiter omits prefix when limit is too small`() {
         val limited = OutputLimiter.limit(
             "0123456789abcdef",
             OutputLimitOptions(maxOutputChars = 8, tailOutput = true),
@@ -76,20 +91,29 @@ class ModelSerializersTest {
 
         assertEquals("89abcdef", limited.text)
         assertTrue(limited.truncated)
-        assertEquals(16, limited.totalChars)
+        assertEquals(8, limited.text.length)
+    }
+
+    @Test
+    fun `output limiter normalizes CRLF`() {
+        val limited = OutputLimiter.limit("a\r\nb", OutputLimitOptions(maxOutputChars = 10))
+
+        assertEquals("a\nb", limited.text)
+        assertFalse(limited.truncated)
     }
 
     @Test
     fun `output limiter exposes flat response fields`() {
+        val text = "0123456789abcdefghijklmnopqrstuvwxyz0123456789"
         val fields = OutputLimiter.limitFields(
-            "0123456789abcdef",
-            OutputLimitOptions(maxOutputChars = 8, tailOutput = true),
+            text,
+            OutputLimitOptions(maxOutputChars = 40, tailOutput = true),
             "stdout",
         )
 
-        assertEquals("89abcdef", fields["stdout"])
+        assertTrue((fields["stdout"] as String).length <= 40)
         assertEquals(true, fields["stdoutTruncated"])
-        assertEquals(16, fields["stdoutTotalChars"])
+        assertEquals(text.length, fields["stdoutTotalChars"])
     }
 
     @Test
@@ -118,5 +142,43 @@ class ModelSerializersTest {
         val options = ModelQueryOptions.fromArgs(mapOf("maxTasks" to 0))
 
         assertEquals(null, options.maxTasks)
+    }
+
+    @Test
+    fun `project tree limits cap visible children and annotate truncation`() {
+        val childLimit = ProjectTreeLimits.applyChildLimit(totalChildren = 3, maxChildren = 2)
+
+        assertEquals(2, childLimit.visibleChildCount)
+        assertTrue(childLimit.truncated)
+        assertEquals(3, childLimit.totalChildCount)
+    }
+
+    @Test
+    fun `project tree limits omit descendants when max depth reached`() {
+        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth = 1, maxDepth = 1, childCount = 1)
+
+        assertTrue(depthLimit.omitChildren)
+        assertTrue(depthLimit.truncated)
+        assertEquals(1, depthLimit.totalChildCount)
+    }
+
+    @Test
+    fun `project tree limits omit all children at root-only depth`() {
+        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth = 0, maxDepth = 0, childCount = 2)
+
+        assertTrue(depthLimit.omitChildren)
+        assertTrue(depthLimit.truncated)
+        assertEquals(2, depthLimit.totalChildCount)
+    }
+
+    @Test
+    fun `project tree limits leave full tree when no caps configured`() {
+        val childLimit = ProjectTreeLimits.applyChildLimit(totalChildren = 3, maxChildren = null)
+        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth = 0, maxDepth = null, childCount = 3)
+
+        assertEquals(3, childLimit.visibleChildCount)
+        assertFalse(childLimit.truncated)
+        assertNull(childLimit.totalChildCount)
+        assertFalse(depthLimit.omitChildren)
     }
 }

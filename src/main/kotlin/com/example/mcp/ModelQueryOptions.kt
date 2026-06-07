@@ -44,17 +44,57 @@ data class LimitedText(
 
 object OutputLimiter {
     fun limit(text: String, options: OutputLimitOptions): LimitedText {
-        if (text.length <= options.maxOutputChars) {
-            return LimitedText(text = text, truncated = false, totalChars = text.length)
+        val normalized = OutputNormalizer.normalizeNewlines(text)
+        if (normalized.length <= options.maxOutputChars) {
+            return LimitedText(text = normalized, truncated = false, totalChars = normalized.length)
         }
 
-        val excerpt = if (options.tailOutput) {
-            text.takeLast(options.maxOutputChars)
+        val maxPrefixLength = "... [truncated 999999999 chars] ...\n".length
+        if (options.maxOutputChars <= maxPrefixLength) {
+            val excerpt = if (options.tailOutput) {
+                normalized.takeLast(options.maxOutputChars)
+            } else {
+                normalized.take(options.maxOutputChars)
+            }
+            return LimitedText(
+                text = excerpt,
+                truncated = true,
+                totalChars = normalized.length,
+            )
+        }
+
+        val excerptBudget = options.maxOutputChars - maxPrefixLength
+        var excerpt = if (options.tailOutput) {
+            normalized.takeLast(excerptBudget)
         } else {
-            text.take(options.maxOutputChars)
+            normalized.take(excerptBudget)
         }
-
-        return LimitedText(text = excerpt, truncated = true, totalChars = text.length)
+        var omittedChars = normalized.length - excerpt.length
+        var prefix = "... [truncated $omittedChars chars] ...\n"
+        if (prefix.length + excerpt.length > options.maxOutputChars) {
+            val adjustedBudget = (options.maxOutputChars - prefix.length).coerceAtLeast(0)
+            excerpt = if (adjustedBudget == 0) {
+                ""
+            } else if (options.tailOutput) {
+                normalized.takeLast(adjustedBudget)
+            } else {
+                normalized.take(adjustedBudget)
+            }
+            omittedChars = normalized.length - excerpt.length
+            prefix = "... [truncated $omittedChars chars] ...\n"
+        }
+        val text = if (prefix.length + excerpt.length <= options.maxOutputChars) {
+            prefix + excerpt
+        } else if (options.tailOutput) {
+            normalized.takeLast(options.maxOutputChars)
+        } else {
+            normalized.take(options.maxOutputChars)
+        }
+        return LimitedText(
+            text = text,
+            truncated = true,
+            totalChars = normalized.length,
+        )
     }
 
     fun limitFields(text: String, options: OutputLimitOptions, fieldPrefix: String): Map<String, Any?> {
@@ -76,11 +116,19 @@ private fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boo
 private fun Map<String, Any>.optionalString(key: String): String? =
     (this[key] as? String)?.takeIf { it.isNotBlank() }
 
-private fun Map<String, Any>.optionalPositiveInt(key: String): Int? {
-    val parsed = when (val value = this[key]) {
+internal fun Map<String, Any>.optionalPositiveInt(key: String): Int? {
+    val parsed = parseOptionalInt(key)
+    return parsed?.takeIf { it > 0 }
+}
+
+internal fun Map<String, Any>.optionalNonNegativeInt(key: String): Int? {
+    val parsed = parseOptionalInt(key)
+    return parsed?.takeIf { it >= 0 }
+}
+
+private fun Map<String, Any>.parseOptionalInt(key: String): Int? =
+    when (val value = this[key]) {
         is Number -> value.toInt()
         is String -> value.toIntOrNull()
         else -> null
     }
-    return parsed?.takeIf { it > 0 }
-}
