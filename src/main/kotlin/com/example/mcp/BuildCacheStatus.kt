@@ -3,6 +3,7 @@ package com.example.mcp
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.model.build.BuildEnvironment
 import java.io.File
+import java.io.OutputStream
 import java.io.PrintStream
 import java.net.URI
 import java.nio.charset.StandardCharsets
@@ -403,6 +404,7 @@ object BuildCacheStatusCollector {
             .forTasks("properties")
             .addArguments("-q")
         launcher.setStandardOutput(PrintStream(capture.asOutputStream(), true, StandardCharsets.UTF_8))
+        launcher.setStandardError(PrintStream(OutputStream.nullOutputStream(), true, StandardCharsets.UTF_8))
         launcher.run()
         return capture.snapshotProperties()
     }
