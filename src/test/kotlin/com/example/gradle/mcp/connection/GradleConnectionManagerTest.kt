@@ -6,6 +6,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.gradle.tooling.ProjectConnection
@@ -179,7 +180,7 @@ class GradleConnectionManagerTest {
         val error = shouldThrow<IllegalStateException> {
             manager.withConnectionResult { 42 }
         }
-        error.message shouldContain "Another Gradle operation is in progress"
+        error.message.shouldNotBeNull() shouldContain "Another Gradle operation is in progress"
 
         releaseFirst.countDown()
         firstThread.join(2_000)
