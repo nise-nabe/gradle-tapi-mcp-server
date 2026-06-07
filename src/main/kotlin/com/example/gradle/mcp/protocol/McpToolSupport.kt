@@ -46,7 +46,5 @@ fun jsonResult(value: Any?): McpSchema.CallToolResult =
         .isError(false)
         .build()
 
-private fun extractArgs(request: McpSchema.CallToolRequest): Map<String, Any> {
-    @Suppress("UNCHECKED_CAST")
-    return request.arguments() as? Map<String, Any> ?: emptyMap()
-}
+private fun extractArgs(request: McpSchema.CallToolRequest): Map<String, Any> =
+    request.arguments()

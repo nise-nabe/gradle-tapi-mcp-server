@@ -3,12 +3,6 @@ plugins {
     application
 }
 
-kotlin {
-    compilerOptions {
-        freeCompilerArgs.add("-Xcontext-parameters")
-    }
-}
-
 group = "com.example"
 version = "0.1.0-SNAPSHOT"
 

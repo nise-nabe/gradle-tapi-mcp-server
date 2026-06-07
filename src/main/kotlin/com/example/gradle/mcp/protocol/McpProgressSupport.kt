@@ -81,8 +81,7 @@ internal object McpProgressSupport {
     }
 
     private fun nestedProgressToken(request: McpSchema.CallToolRequest): Any? {
-        @Suppress("UNCHECKED_CAST")
-        val args = request.arguments() as? Map<String, Any> ?: return null
+        val args = request.arguments()
         @Suppress("UNCHECKED_CAST")
         val nestedMeta = args["_meta"] as? Map<String, Any>
         return nestedMeta?.get("progressToken")
