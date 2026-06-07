@@ -1,6 +1,6 @@
 [versions]
 kotlin = "2.4.0"
-junit = "5.11.4"
+junit = "6.1.0"
 kotest = "6.1.11"
 mcp-bom = "0.10.0"
 slf4j = "2.0.18"
