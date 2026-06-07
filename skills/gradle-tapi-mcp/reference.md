@@ -19,7 +19,9 @@ No arguments.
 
 `gradle_disconnect` is non-blocking. If a build was active, the response may include `warning` explaining that the Gradle daemon can briefly overlap work until the prior Tooling API call unwinds.
 
-`gradle_connect` resets the active build slot and marks any running builds as failed before connecting. It fails fast while a build slot is still held.
+`gradle_connect` marks any running builds as failed before connecting. It rejects the call while foreground or background builds are still running.
+
+Multiple `background=true` builds may run concurrently on one connection (bounded by a server-side pool). When the pool is full, new background starts return `BUILD_ALREADY_RUNNING`.
 
 ## Query (read-only)
 
@@ -94,7 +96,7 @@ No arguments.
 | `maxOutputChars` | no | `8000` | Per-stream char limit |
 | `tailOutput` | no | `true` | Keep tail when truncating |
 | `includeProgress` | no | `false` | Include detailed `progress` object |
-| `background` | no | `false` | Return `buildId` immediately; poll with `gradle_get_build_status` |
+| `background` | no | `false` | Return `buildId` immediately; poll with `gradle_get_build_status` (multiple concurrent background builds allowed) |
 
 Response when `background=true`: `buildId`, `status`, `kind`, `message`.
 
@@ -116,7 +118,7 @@ Foreground responses include `outcome` (`SUCCESS` / `FAILED`), `buildSummary` (`
 
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `buildId` | no | active/latest | Build ID from a background run |
+| `buildId` | yes | — | Build ID from a background run |
 | `includeProgress` | no | `false` | Include detailed `progress` object |
 | `maxOutputChars` | no | `8000` | Per-stream char limit for stdout/stderr |
 | `tailOutput` | no | `true` | Keep tail when truncating |
@@ -136,7 +138,7 @@ Failed tool calls return JSON:
 }
 ```
 
-Codes: `NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`.
+Codes: `NOT_CONNECTED`, `BUILD_ALREADY_RUNNING` (max concurrent background builds reached), `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`.
 
 ## Environment variables (server startup)
 

@@ -8,8 +8,8 @@ import com.example.gradle.mcp.protocol.integerProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
 import com.example.gradle.mcp.protocol.optionalBoolean
-import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.optionalStringList
+import com.example.gradle.mcp.protocol.requiredString
 import com.example.gradle.mcp.protocol.requiredStringList
 import com.example.gradle.mcp.protocol.stringArrayProperty
 import com.example.gradle.mcp.protocol.stringProperty
@@ -25,6 +25,7 @@ internal fun progressProperties(): Map<String, Any> =
 
 internal fun buildStatusSchema(): Map<String, Any> =
     objectSchema(
+        required = listOf("buildId"),
         properties = progressProperties() + mapOf(
             "buildId" to stringProperty("Build ID returned by gradle_run_tasks or gradle_run_tests with background=true"),
             "maxOutputChars" to integerProperty(
@@ -55,14 +56,14 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_get_build_status",
-            description = "Return status and partial output for a running or completed Gradle build started with background=true. Set includeProgress=true for detailed progress (completedTasks, recentEvents). Omit buildId to use the active or most recent build.",
+            description = "Return status and partial output for a running or completed Gradle build started with background=true. buildId is required because multiple background builds may run concurrently. Set includeProgress=true for detailed progress (completedTasks, recentEvents).",
             schema = buildStatusSchema(),
         ) { args ->
             val outputLimit = OutputLimitOptions.fromArgs(args)
             val progressOptions = ProgressResponseOptions.fromArgs(args)
             jsonResult(
                 runtime.buildExecutionManager.status(
-                    args.optionalString("buildId"),
+                    args.requiredString("buildId"),
                     outputLimit,
                     progressOptions,
                 ),
@@ -70,7 +71,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_run_tasks",
-            description = "Execute Gradle task paths and return captured stdout/stderr. Use background=true to start a long build and poll gradle_get_build_status. Set includeProgress=true for detailed progress on foreground runs. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
+            description = "Execute Gradle task paths and return captured stdout/stderr. Use background=true to start a long build and poll gradle_get_build_status with the returned buildId; multiple background builds may run concurrently. Set includeProgress=true for detailed progress on foreground runs. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
             schema = runOutputSchema(
                 required = listOf("tasks"),
                 extraProperties = mapOf(
@@ -98,7 +99,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_run_tests",
-            description = "Execute JVM test classes and return captured stdout/stderr. Use background=true to start a long test run and poll gradle_get_build_status. Set includeProgress=true for detailed progress on foreground runs. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
+            description = "Execute JVM test classes and return captured stdout/stderr. Use background=true to start a long test run and poll gradle_get_build_status with the returned buildId; multiple background test runs may run concurrently. Set includeProgress=true for detailed progress on foreground runs. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
             schema = runOutputSchema(
                 required = listOf("testClasses"),
                 extraProperties = mapOf(

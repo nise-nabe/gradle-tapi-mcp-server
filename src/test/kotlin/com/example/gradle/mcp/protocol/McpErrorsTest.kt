@@ -28,6 +28,15 @@ class McpErrorsTest {
     }
 
     @Test
+    fun `maps max concurrent background builds exception`() {
+        val code = mapExceptionToErrorCode(
+            IllegalStateException("Maximum concurrent background builds (4) reached. Poll gradle_get_build_status."),
+        )
+
+        code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+    }
+
+    @Test
     fun `maps missing project directory to project not found`() {
         val code = mapExceptionToErrorCode(
             McpException(McpErrorCode.PROJECT_NOT_FOUND, "Project directory does not exist: /missing"),

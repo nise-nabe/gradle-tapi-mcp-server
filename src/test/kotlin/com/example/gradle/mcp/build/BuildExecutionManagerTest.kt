@@ -8,15 +8,19 @@ import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import org.gradle.tooling.ProjectConnection
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.lang.reflect.InvocationHandler
+import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
@@ -34,10 +38,19 @@ class BuildExecutionManagerTest {
     }
 
     @Test
-    fun `startBackground rejects when another build is running`() {
+    fun `startBackground allows concurrent builds`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            Proxy.newProxyInstance(
+                ProjectConnection::class.java.classLoader,
+                arrayOf(ProjectConnection::class.java),
+                InvocationHandler { _, _, _ -> null },
+            ) as ProjectConnection,
+        )
+        val concurrentManager = BuildExecutionManager(connectionManager)
         val tracker = BuildProgressTracker()
         tracker.markStarting("Gradle tasks: build")
-        manager.seedRunningBuildForTests(
+        concurrentManager.seedRunningBuildForTests(
             BuildRecord(
                 id = "running-build",
                 kind = BuildKind.TASKS,
@@ -49,21 +62,84 @@ class BuildExecutionManagerTest {
             ),
         )
 
-        val error = shouldThrow<McpException> {
-            manager.startBackground(
-                request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
-                exchange = null,
-                progressToken = null,
-            )
-        }
+        val result = concurrentManager.startBackground(
+            request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
+            exchange = null,
+            progressToken = null,
+        )
 
-        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
-        error.message shouldBe
-            "Another build is already running (buildId=running-build). Call gradle_get_build_status first."
+        result["buildId"] shouldNotBe "running-build"
+        result["status"] shouldBe "running"
     }
 
     @Test
-    fun `runForeground rejects when another build is running`() {
+    fun `hasActiveBuild reports foreground build while running`() {
+        val connectionManager = GradleConnectionManager()
+        val buildEntered = CountDownLatch(1)
+        val releaseBuild = CountDownLatch(1)
+        val connection = blockingProjectConnection(buildEntered, releaseBuild)
+        connectionManager.seedConnectionForTests(connection)
+        val manager = BuildExecutionManager(connectionManager)
+
+        val buildThread = Thread {
+            manager.runForeground(
+                request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
+                connection = connection,
+                exchange = null,
+                progressToken = null,
+            )
+        }.apply { isDaemon = true }
+        buildThread.start()
+
+        buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        manager.hasActiveBuild().shouldBeTrue()
+
+        releaseBuild.countDown()
+        buildThread.join(5_000)
+        manager.hasActiveBuild().shouldBeFalse()
+    }
+
+    @Test
+    fun `startBackground rejects when max concurrent background builds reached`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            Proxy.newProxyInstance(
+                ProjectConnection::class.java.classLoader,
+                arrayOf(ProjectConnection::class.java),
+                InvocationHandler { _, _, _ -> null },
+            ) as ProjectConnection,
+        )
+        val manager = BuildExecutionManager(connectionManager)
+        val executor = BuildExecutionManager::class.java
+            .getDeclaredField("executor")
+            .apply { isAccessible = true }
+            .get(manager) as ExecutorService
+        val maxBuilds = manager.maxConcurrentBackgroundBuilds()
+        val tasksStarted = CountDownLatch(maxBuilds)
+        val releaseTasks = CountDownLatch(1)
+        repeat(maxBuilds) {
+            executor.execute {
+                tasksStarted.countDown()
+                releaseTasks.await(5, TimeUnit.SECONDS)
+            }
+        }
+        tasksStarted.await(5, TimeUnit.SECONDS).shouldBeTrue()
+
+        val error = shouldThrow<McpException> {
+            manager.startBackground(
+                request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("other")),
+                exchange = null,
+                progressToken = null,
+            )
+        }
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.message.shouldNotBeNull() shouldContain "Maximum concurrent background builds"
+
+        releaseTasks.countDown()
+    }
+
+    @Test
+    fun `runForeground does not reject when another build is running`() {
         val tracker = BuildProgressTracker()
         tracker.markStarting("Gradle tasks: build")
         manager.seedRunningBuildForTests(
@@ -78,23 +154,26 @@ class BuildExecutionManagerTest {
             ),
         )
 
-        val unusedConnection = Proxy.newProxyInstance(
+        val connection = Proxy.newProxyInstance(
             ProjectConnection::class.java.classLoader,
             arrayOf(ProjectConnection::class.java),
-            InvocationHandler { _, _, _ -> null },
+            InvocationHandler { _, method, _ ->
+                if (method.name == "newBuild") {
+                    throw UnsupportedOperationException("simulated build failure")
+                }
+                null
+            },
         ) as ProjectConnection
-        val error = shouldThrow<McpException> {
-            manager.runForeground(
-                request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
-                connection = unusedConnection,
-                exchange = null,
-                progressToken = null,
-            )
-        }
 
-        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
-        error.message shouldBe
-            "Another build is already running (buildId=running-build). Call gradle_get_build_status first."
+        val result = manager.runForeground(
+            request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
+            connection = connection,
+            exchange = null,
+            progressToken = null,
+        )
+
+        result["status"] shouldBe "failed"
+        manager.hasActiveBuild().shouldBeTrue()
     }
 
     @Test
@@ -153,7 +232,7 @@ class BuildExecutionManagerTest {
     }
 
     @Test
-    fun `resetBuildState releases build slot and marks running build failed`() {
+    fun `resetBuildState marks running builds failed and clears active state`() {
         val tracker = BuildProgressTracker()
         tracker.markStarting("Gradle tasks: build")
         manager.seedRunningBuildForTests(
@@ -173,10 +252,11 @@ class BuildExecutionManagerTest {
         val status = manager.status("running-build", OutputLimitOptions(), ProgressResponseOptions())
         status["status"] shouldBe "failed"
         status["error"] shouldBe "Preparing new Gradle connection"
+        manager.hasActiveBuild().shouldBeFalse()
     }
 
     @Test
-    fun `onDisconnect releases build slot and marks running build failed`() {
+    fun `onDisconnect marks running builds failed`() {
         val tracker = BuildProgressTracker()
         tracker.markStarting("Gradle tasks: build")
         manager.seedRunningBuildForTests(
@@ -197,61 +277,16 @@ class BuildExecutionManagerTest {
         status["status"] shouldBe "failed"
         status["error"] shouldBe "Gradle connection closed"
 
-        val slotError = shouldThrow<McpException> {
+        val notConnected = shouldThrow<McpException> {
             manager.startBackground(
                 request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
                 exchange = null,
                 progressToken = null,
             )
         }
-        slotError.code shouldBe McpErrorCode.NOT_CONNECTED
-        slotError.message shouldBe
+        notConnected.code shouldBe McpErrorCode.NOT_CONNECTED
+        notConnected.message shouldBe
             "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR."
-    }
-
-    @Test
-    fun `stale runner finally does not release a new build slot`() {
-        val staleTracker = BuildProgressTracker()
-        staleTracker.markStarting("Gradle tasks: build")
-        val staleRecord = BuildRecord(
-            id = "stale-build",
-            kind = BuildKind.TASKS,
-            tasks = listOf("build"),
-            testClasses = emptyList(),
-            startedAt = Instant.now(),
-            progressTracker = staleTracker,
-            streams = CapturingStreams(),
-        )
-        manager.seedRunningBuildForTests(staleRecord)
-
-        manager.onDisconnect()
-
-        val newTracker = BuildProgressTracker()
-        newTracker.markStarting("Gradle tasks: test")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
-                id = "new-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("test"),
-                testClasses = emptyList(),
-                startedAt = Instant.now(),
-                progressTracker = newTracker,
-                streams = CapturingStreams(),
-            ),
-        )
-
-        manager.releaseBuildSlotIfActive(staleRecord)
-
-        val error = shouldThrow<McpException> {
-            manager.startBackground(
-                request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("other")),
-                exchange = null,
-                progressToken = null,
-            )
-        }
-        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
-        error.message shouldBe
-            "Another build is already running (buildId=new-build). Call gradle_get_build_status first."
     }
 
     @Test
@@ -277,14 +312,13 @@ class BuildExecutionManagerTest {
 
         val taskEntered = CountDownLatch(1)
         val releaseBlock = CountDownLatch(1)
-        val slotReleased = CountDownLatch(1)
+        val taskFinished = CountDownLatch(1)
         executor.execute {
             try {
                 taskEntered.countDown()
                 releaseBlock.await()
             } finally {
-                manager.releaseBuildSlotIfActive(record)
-                slotReleased.countDown()
+                taskFinished.countDown()
             }
         }
         taskEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
@@ -292,7 +326,7 @@ class BuildExecutionManagerTest {
         val shutdownThread = Thread { manager.shutdown() }.apply { isDaemon = true }
         shutdownThread.start()
 
-        slotReleased.await(500, TimeUnit.MILLISECONDS).shouldBeTrue()
+        taskFinished.await(500, TimeUnit.MILLISECONDS).shouldBeTrue()
         shutdownThread.join(10_000)
     }
 
@@ -393,3 +427,53 @@ class BuildExecutionManagerTest {
         (result["buildSummary"] as Map<*, *>)["resultLine"] shouldBe "BUILD SUCCESSFUL in 1s"
     }
 }
+
+private fun blockingProjectConnection(
+    buildEntered: CountDownLatch,
+    releaseBuild: CountDownLatch,
+): ProjectConnection =
+    Proxy.newProxyInstance(
+        ProjectConnection::class.java.classLoader,
+        arrayOf(ProjectConnection::class.java),
+        InvocationHandler { _, method, _ ->
+            when (method.name) {
+                "newBuild" -> chainingProxy(
+                    Class.forName("org.gradle.tooling.BuildLauncher"),
+                    onRun = {
+                        buildEntered.countDown()
+                        releaseBuild.await(5, TimeUnit.SECONDS)
+                    },
+                )
+                else -> defaultProxyReturn(method)
+            }
+        },
+    ) as ProjectConnection
+
+private fun chainingProxy(
+    interfaceClass: Class<*>,
+    onRun: () -> Unit,
+): Any {
+    val self = arrayOfNulls<Any>(1)
+    self[0] = Proxy.newProxyInstance(
+        interfaceClass.classLoader,
+        arrayOf(interfaceClass),
+        InvocationHandler { _, method, _ ->
+            when (method.name) {
+                "run" -> {
+                    onRun()
+                    null
+                }
+                else -> self[0]
+            }
+        },
+    )
+    return self[0]!!
+}
+
+private fun defaultProxyReturn(method: Method): Any? =
+    when (method.returnType) {
+        java.lang.Boolean.TYPE -> false
+        java.lang.Integer.TYPE, java.lang.Long.TYPE, java.lang.Short.TYPE, java.lang.Byte.TYPE -> 0
+        java.lang.Double.TYPE, java.lang.Float.TYPE -> 0
+        else -> null
+    }

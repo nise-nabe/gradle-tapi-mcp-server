@@ -55,7 +55,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_get_project_publications` | Publications |
 | `gradle_run_tasks` | Execute tasks; stdout/stderr truncated by default |
 | `gradle_run_tests` | Execute JVM test classes; stdout/stderr truncated by default |
-| `gradle_get_build_status` | Poll status/output for a background build; set `includeProgress: true` for detailed progress |
+| `gradle_get_build_status` | Poll status/output for a background build (`buildId` required); set `includeProgress: true` for detailed progress |
 
 ## Token-efficient usage
 
@@ -83,7 +83,7 @@ Tool errors return structured JSON: `{ "error": { "code": "NOT_CONNECTED", "mess
 
 ## Long-running builds
 
-For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` or `gradle_run_tests`. The tool returns immediately with a `buildId`. Poll `gradle_get_build_status` with that ID (or omit `buildId` to use the active build) to read:
+For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` or `gradle_run_tests`. The tool returns immediately with a `buildId`. Multiple background builds may run concurrently (up to a server-side limit). Poll `gradle_get_build_status` with that `buildId` (required) to read:
 
 - `status`: `running`, `succeeded`, or `failed`
 - `outcome` and `buildSummary` when the build has finished
@@ -94,9 +94,9 @@ When the MCP client supplies a progress token, the server may also emit MCP prog
 
 ## Disconnect during a build
 
-`gradle_disconnect` is non-blocking: the server releases its build slot and marks any running builds as failed immediately so a new connection or build can start. Completed build records remain available via `gradle_get_build_status`. If a Tooling API build was still running, the Gradle daemon may briefly continue that prior call until it unwinds. The disconnect response includes a `warning` field when a build was active.
+`gradle_disconnect` is non-blocking: the server marks any running builds as failed immediately so a new connection can start. Completed build records remain available via `gradle_get_build_status` while retained. If a Tooling API build was still running, the Gradle daemon may briefly continue that prior call until it unwinds. The disconnect response includes a `warning` field when a build was active.
 
-`gradle_connect` resets the active build slot and marks any running builds as failed before opening a new project connection. It rejects the call while a build slot is still held; wait for the build to finish or call `gradle_disconnect` first.
+`gradle_connect` marks any running builds as failed before opening a new project connection. It rejects the call while builds are still running; wait for them to finish or call `gradle_disconnect` first.
 
 ## Agent skill
 

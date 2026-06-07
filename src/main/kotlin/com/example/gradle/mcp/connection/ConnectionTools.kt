@@ -13,8 +13,8 @@ import io.modelcontextprotocol.server.McpServerFeatures
 import org.gradle.tooling.model.build.BuildEnvironment
 
 private const val DISCONNECT_DURING_BUILD_WARNING =
-    "A build was still in progress. The server released its build slot immediately, but the Gradle " +
-        "daemon may briefly run overlapping Tooling API work until the previous call unwinds."
+    "One or more builds were still in progress. The server marked them failed immediately, but the Gradle " +
+        "daemon may briefly run overlapping Tooling API work until the previous calls unwind."
 
 internal fun connectSchema(): Map<String, Any> =
     objectSchema(
@@ -32,7 +32,7 @@ fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_connect",
-            description = "Connect to a Gradle project via the Tooling API. Call when gradle_connection_status.connected=false or to switch projects; skip when GRADLE_PROJECT_DIR auto-connect already left the server connected. When no build is running, resets the active build slot and marks any running builds as failed before connecting; rejects the call while a build slot is held. Reuses an existing compatible daemon when available.",
+            description = "Connect to a Gradle project via the Tooling API. Call when gradle_connection_status.connected=false or to switch projects; skip when GRADLE_PROJECT_DIR auto-connect already left the server connected. When no build is running, marks any running builds as failed before connecting; rejects the call while builds are still running. Reuses an existing compatible daemon when available.",
             schema = connectSchema(),
         ) { args ->
             if (runtime.buildExecutionManager.hasActiveBuild()) {
@@ -59,7 +59,7 @@ fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_disconnect",
-            description = "Close the active Tooling API project connection. If a build is still running, the server releases its build slot immediately; the Gradle daemon may briefly continue the prior Tooling API call until it unwinds. A warning field is included when a build was active.",
+            description = "Close the active Tooling API project connection. If builds are still running, the server marks them failed immediately; the Gradle daemon may briefly continue prior Tooling API calls until they unwind. A warning field is included when builds were active.",
             schema = emptyObjectSchema(),
         ) { _ ->
             val hadActiveBuild = runtime.buildExecutionManager.hasActiveBuild()
