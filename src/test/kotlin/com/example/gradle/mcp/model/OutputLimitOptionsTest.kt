@@ -29,4 +29,15 @@ class OutputLimitOptionsTest {
         options.maxOutputChars shouldBe 1200
         options.tailOutput.shouldBeFalse()
     }
+
+    @Test
+    fun `fromArgs accepts zero maxOutputChars and rejects negative values`() {
+        val zeroLimit = OutputLimitOptions.fromArgs(mapOf("maxOutputChars" to 0))
+
+        zeroLimit.maxOutputChars shouldBe 0
+
+        val negativeLimit = OutputLimitOptions.fromArgs(mapOf("maxOutputChars" to -1))
+
+        negativeLimit.maxOutputChars shouldBe OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS
+    }
 }

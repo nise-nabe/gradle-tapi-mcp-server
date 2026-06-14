@@ -13,7 +13,7 @@ data class OutputLimitOptions(
         fun fromArgs(args: Map<String, Any>): OutputLimitOptions =
             OutputLimitOptions(
                 includeOutput = args.optionalBoolean("includeOutput", default = false),
-                maxOutputChars = args.optionalPositiveInt("maxOutputChars") ?: DEFAULT_MAX_OUTPUT_CHARS,
+                maxOutputChars = args.optionalNonNegativeInt("maxOutputChars") ?: DEFAULT_MAX_OUTPUT_CHARS,
                 tailOutput = args.optionalBoolean("tailOutput", default = true),
             )
     }
