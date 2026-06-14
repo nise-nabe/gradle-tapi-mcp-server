@@ -74,15 +74,15 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 
 ## 実行系の出力
 
-`gradle_run_tasks` / `gradle_run_tests` はデフォルトで各ストリーム最大 8000 文字に truncate する。
+`gradle_run_tasks` / `gradle_run_tests` はデフォルトで `stdout` / `stderr` を返さない（`includeOutput=false`）。`outcome`・`buildSummary`・失敗情報のみ返し、`UP-TO-DATE` などのタスクログは含めない。ログが必要なときは `includeOutput=true`。
 
-- `stdout` / `stderr` は文字列（CRLF は LF に正規化）
+- 出力ありのとき: `stdout` / `stderr` は文字列（CRLF は LF に正規化）、`maxOutputChars` 既定 8000
 - 切り詰め時: 先頭に `... [truncated N chars] ...`、フラグ `stdoutTruncated`, `stdoutTotalChars`
 - フォアグラウンド応答: `outcome`（`SUCCESS`/`FAILED`）、`buildSummary`（Gradle サマリー行）
 - 詳細 progress は `includeProgress=true` のときのみ（デフォルト false）
 - 末尾を残す: `tailOutput=true`（デフォルト）
 
-失敗時は `failedTasks` / `buildSummary.failureSummary` を先に確認し、必要なら `stdout` 末尾または `buildSummary.resultLine` を読む。完了ビルドでは `includeProgress` なしでも `failedTaskCount` / `failedTasks` が返る。
+失敗時は `failedTasks` / `buildSummary.failureSummary` を先に確認し、詳細ログが必要なら `includeOutput=true` で再取得する。完了ビルドでは `includeProgress` なしでも `failedTaskCount` / `failedTasks` が返る。
 
 ## 長時間ビルドの進捗確認
 

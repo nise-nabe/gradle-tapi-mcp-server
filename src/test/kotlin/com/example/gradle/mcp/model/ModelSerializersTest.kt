@@ -61,6 +61,18 @@ class ModelSerializersTest {
     }
 
     @Test
+    fun `output limiter omits text when limit is zero`() {
+        val limited = OutputLimiter.limit(
+            "BUILD SUCCESSFUL in 1s",
+            OutputLimitOptions(maxOutputChars = 0, tailOutput = true),
+        )
+
+        limited.text shouldBe ""
+        limited.truncated.shouldBeTrue()
+        limited.totalChars shouldBe "BUILD SUCCESSFUL in 1s".length
+    }
+
+    @Test
     fun `output limiter keeps short text unchanged`() {
         val limited = OutputLimiter.limit("ok", OutputLimitOptions(maxOutputChars = 10, tailOutput = true))
 

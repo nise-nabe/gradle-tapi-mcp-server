@@ -329,8 +329,8 @@ class BuildExecutionManager(
             )
             response.putAll(terminalFailureFields(progress))
         } else {
-            response.putAll(limitStreamFields(record.streams.stdoutSnapshot(), outputLimit, "stdout"))
-            response.putAll(limitStreamFields(record.streams.stderrSnapshot(), outputLimit, "stderr"))
+            response.putAll(optionalStreamFields(record.streams.stdoutSnapshot(), outputLimit, "stdout"))
+            response.putAll(optionalStreamFields(record.streams.stderrSnapshot(), outputLimit, "stderr"))
         }
         return response
     }
@@ -341,8 +341,10 @@ class BuildExecutionManager(
                 BuildKind.TASKS -> put("tasks", record.tasks)
                 BuildKind.TESTS -> put("testClasses", record.testClasses)
             }
-            putAll(limitStreamFields(record.streams.stdoutSnapshot(), outputLimit, "stdout"))
-            putAll(limitStreamFields(record.streams.stderrSnapshot(), outputLimit, "stderr"))
+            if (outputLimit.includeOutput) {
+                putAll(limitStreamFields(record.streams.stdoutSnapshot(), outputLimit, "stdout"))
+                putAll(limitStreamFields(record.streams.stderrSnapshot(), outputLimit, "stderr"))
+            }
             record.errorMessage?.let { put("error", it) }
         }
 
@@ -461,6 +463,17 @@ class BuildExecutionManager(
         private val MAX_CONCURRENT_BUILDS = maxOf(4, Runtime.getRuntime().availableProcessors())
         private const val MAX_RETAINED_BUILDS = 10
     }
+}
+
+private fun optionalStreamFields(
+    snapshot: CapturedStreamSnapshot,
+    outputLimit: OutputLimitOptions,
+    fieldPrefix: String,
+): Map<String, Any?> {
+    if (!outputLimit.includeOutput) {
+        return emptyMap()
+    }
+    return limitStreamFields(snapshot, outputLimit, fieldPrefix)
 }
 
 private fun limitStreamFields(

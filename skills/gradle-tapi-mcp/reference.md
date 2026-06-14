@@ -93,7 +93,8 @@ No arguments.
 | `tasks` | yes | — | Task paths (e.g. `["build"]`, `[":app:test"]`) |
 | `arguments` | no | `[]` | Extra Gradle CLI args |
 | `jvmArguments` | no | `[]` | JVM args for the build |
-| `maxOutputChars` | no | `8000` | Per-stream char limit |
+| `includeOutput` | no | `false` | Include stdout/stderr (task log). Default false returns outcome/buildSummary only |
+| `maxOutputChars` | no | `8000` | Per-stream char limit when `includeOutput=true` |
 | `tailOutput` | no | `true` | Keep tail when truncating |
 | `includeProgress` | no | `false` | Include detailed `progress` object |
 | `background` | no | `false` | Return `buildId` immediately; poll with `gradle_get_build_status` (multiple concurrent background builds allowed) |
@@ -109,7 +110,8 @@ Foreground responses include `outcome` (`SUCCESS` / `FAILED`), `buildSummary` (`
 | `testClasses` | yes | — | FQCN list |
 | `arguments` | no | `[]` | Extra Gradle CLI args |
 | `jvmArguments` | no | `[]` | JVM args |
-| `maxOutputChars` | no | `8000` | Per-stream char limit |
+| `includeOutput` | no | `false` | Include stdout/stderr (task log). Default false returns outcome/buildSummary only |
+| `maxOutputChars` | no | `8000` | Per-stream char limit when `includeOutput=true` |
 | `tailOutput` | no | `true` | Keep tail when truncating |
 | `includeProgress` | no | `false` | Include detailed `progress` object |
 | `background` | no | `false` | Return `buildId` immediately; poll with `gradle_get_build_status` |
@@ -120,7 +122,8 @@ Foreground responses include `outcome` (`SUCCESS` / `FAILED`), `buildSummary` (`
 |----------|----------|---------|-------------|
 | `buildId` | yes | — | Build ID from a background run |
 | `includeProgress` | no | `false` | Include detailed `progress` object |
-| `maxOutputChars` | no | `8000` | Per-stream char limit for stdout/stderr |
+| `includeOutput` | no | `false` | Include stdout/stderr for running/completed builds |
+| `maxOutputChars` | no | `8000` | Per-stream char limit when `includeOutput=true` |
 | `tailOutput` | no | `true` | Keep tail when truncating |
 
 Returns `status`, timestamps, and partial or final `stdout`/`stderr`. Completed builds also include `outcome` and `buildSummary`.

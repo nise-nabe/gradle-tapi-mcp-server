@@ -73,11 +73,11 @@ Use heavier tools only when required:
 - `maxDepth` / `maxChildren` on overview/model queries for large monorepos
 - `gradle_get_build_invocations` with `includeTaskSelectors=true` only when selectors matter
 
-`gradle_run_tasks` and `gradle_run_tests` keep `stdout`/`stderr` as strings and add `stdoutTruncated`, `stdoutTotalChars`, `stderrTruncated`, and `stderrTotalChars` when truncation happens. Truncated output is prefixed with `... [truncated N chars] ...` and newlines are normalized to LF.
+`gradle_run_tasks` and `gradle_run_tests` omit `stdout`/`stderr` by default (`includeOutput=false`) and return `outcome`, `buildSummary`, and failure fields only—no task log noise such as `UP-TO-DATE`. Set `includeOutput=true` to include captured streams (truncated per `maxOutputChars`, default `8000`; CRLF normalized to LF).
 
 Foreground responses include `outcome` (`SUCCESS` / `FAILED`) and `buildSummary` (parsed Gradle summary lines). Completed builds also include `failedTaskCount`, `failedTasks` (from Tooling API progress events), and `buildSummary.failureSummary` (parsed `> Task ... FAILED` / test failure lines from stdout). Set `includeProgress: true` to include the full progress object; default is omitted for token efficiency.
 
-Tune with `maxOutputChars` (default `8000`) and `tailOutput` (default `true`).
+Tune captured output with `includeOutput` (default `false`), `maxOutputChars` (default `8000` when included), and `tailOutput` (default `true`).
 
 Tool errors return structured JSON: `{ "error": { "code": "NOT_CONNECTED", "message": "..." } }`.
 
