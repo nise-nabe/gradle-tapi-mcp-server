@@ -1,18 +1,19 @@
 package com.example.gradle.mcp.build
 
+import com.example.gradle.mcp.build.persistence.BuildRecordStore
+import com.example.gradle.mcp.build.persistence.PersistedBuildViewFactory
 import com.example.gradle.mcp.cache.CompletedBuildSnapshot
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.model.OutputLimitOptions
-import com.example.gradle.mcp.model.OutputLimiter
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpProgressSupport
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
-import com.example.gradle.mcp.protocol.optionalProgressFields
-import com.example.gradle.mcp.protocol.terminalFailureFields
 import io.modelcontextprotocol.server.McpSyncServerExchange
 import io.modelcontextprotocol.spec.McpSchema
+import org.gradle.tooling.ConfigurableLauncher
 import org.gradle.tooling.ProjectConnection
+import java.io.File
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -25,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class BuildExecutionManager(
     private val connectionManager: GradleConnectionManager,
+    private val buildRecordStore: BuildRecordStore = BuildRecordStore(),
 ) {
     private val lifecycleLock = Any()
     private var executor: ExecutorService = newBuildExecutor()
@@ -82,9 +84,19 @@ class BuildExecutionManager(
                 start.record.progressTracker,
                 start.notifier,
             )
-            foregroundSuccessResponse(start.record, request, start.record.progressTracker)
+            BuildStatusAssembler.assemble(
+                view = BuildStatusView.fromRecord(start.record),
+                outputLimit = request.outputLimit,
+                progressOptions = request.progressOptions,
+                style = BuildStatusResponseStyle.FOREGROUND,
+            )
         } catch (_: Exception) {
-            foregroundFailureResponse(start.record, request, start.record.progressTracker)
+            BuildStatusAssembler.assemble(
+                view = BuildStatusView.fromRecord(start.record),
+                outputLimit = request.outputLimit,
+                progressOptions = request.progressOptions,
+                style = BuildStatusResponseStyle.FOREGROUND,
+            )
         } finally {
             pruneCompletedBuilds()
         }
@@ -94,12 +106,34 @@ class BuildExecutionManager(
         buildId: String,
         outputLimit: OutputLimitOptions,
         progressOptions: ProgressResponseOptions,
+        projectDirectoryHint: File? = null,
     ): Map<String, Any?> {
         val record = builds[buildId]
-            ?: return mapOf("status" to "not_found", "buildId" to buildId)
+        val projectDirectory = record?.projectDirectory?.let(::File)
+            ?: projectDirectoryHint
+            ?: connectionManager.connectedProjectDirectory()
+        val artifacts = if (shouldLoadDiskArtifacts(record)) {
+            projectDirectory?.let { buildRecordStore.loadArtifacts(it, buildId) }
+        } else {
+            null
+        }
 
-        return buildStatusResponse(record, outputLimit, progressOptions)
+        val view = when {
+            record != null && artifacts != null -> {
+                BuildStatusMerger.merge(
+                    BuildStatusView.fromRecord(record),
+                    PersistedBuildViewFactory.fromArtifacts(buildId, artifacts),
+                )
+            }
+            record != null -> BuildStatusView.fromRecord(record)
+            artifacts != null -> PersistedBuildViewFactory.fromArtifacts(buildId, artifacts)
+            else -> return mapOf("status" to "not_found", "buildId" to buildId)
+        }
+        return BuildStatusAssembler.assemble(view, outputLimit, progressOptions)
     }
+
+    private fun shouldLoadDiskArtifacts(record: BuildRecord?): Boolean =
+        record == null || record.progressTracker.snapshot().status != BuildProgressTracker.STATUS_RUNNING
 
     fun hasActiveBuild(): Boolean =
         builds.values.any { it.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING }
@@ -163,6 +197,7 @@ class BuildExecutionManager(
             record.finishedAt = Instant.now()
         }
         rememberCompletedBuild(record, outcome)
+        buildRecordStore.writeMcpResult(record, record.progressTracker.snapshot())
         return true
     }
 
@@ -244,19 +279,13 @@ class BuildExecutionManager(
                 BuildKind.TASKS -> {
                     val launcher = connection.newBuild()
                         .forTasks(*request.tasks.toTypedArray())
-                        .addArguments(request.arguments)
-                        .addJvmArguments(request.jvmArguments)
-                    tracker.configureLauncher(launcher)
-                    streams.applyTo(launcher)
+                    configureLauncher(launcher, record, request, streams, tracker)
                     launcher.run()
                 }
                 BuildKind.TESTS -> {
                     val launcher = connection.newTestLauncher()
                         .withJvmTestClasses(*request.testClasses.toTypedArray())
-                        .addArguments(request.arguments)
-                        .addJvmArguments(request.jvmArguments)
-                    tracker.configureLauncher(launcher)
-                    streams.applyTo(launcher)
+                    configureLauncher(launcher, record, request, streams, tracker)
                     launcher.run()
                 }
             }
@@ -270,81 +299,22 @@ class BuildExecutionManager(
         }
     }
 
-    private fun foregroundSuccessResponse(
+    private fun configureLauncher(
+        launcher: ConfigurableLauncher<*>,
         record: BuildRecord,
         request: BuildRunRequest,
+        streams: CapturingStreams,
         tracker: BuildProgressTracker,
-    ): Map<String, Any?> =
-        foregroundResponse(record, request, tracker, BuildProgressTracker.STATUS_SUCCEEDED)
-
-    private fun foregroundFailureResponse(
-        record: BuildRecord,
-        request: BuildRunRequest,
-        tracker: BuildProgressTracker,
-    ): Map<String, Any?> =
-        foregroundResponse(record, request, tracker, BuildProgressTracker.STATUS_FAILED)
-
-    private fun foregroundResponse(
-        record: BuildRecord,
-        request: BuildRunRequest,
-        tracker: BuildProgressTracker,
-        status: String,
-    ): Map<String, Any?> {
-        val buildSummary = BuildOutputParser.parse(record.streams.stdoutSnapshot().text)
-        val response = mutableMapOf<String, Any?>(
-            "status" to status,
-        )
-        BuildOutputParser.outcomeFromStatus(status)?.let { response["outcome"] = it }
-        response["buildSummary"] = BuildOutputParser.toResponseMap(buildSummary)
-        response.putAll(terminalFailureFields(tracker.snapshot()))
-        response.putAll(optionalProgressFields(request.progressOptions, tracker.snapshot()))
-        response.putAll(buildResult(record, request.outputLimit))
-        return response
+    ) {
+        GradleArgumentPolicy.requireNoInitScript(request.arguments)
+        val persistenceArguments = record.projectDirectory
+            ?.let { buildRecordStore.launcherArguments(File(it), record.id) }
+            .orEmpty()
+        launcher.addArguments(*(request.arguments + persistenceArguments).toTypedArray())
+        launcher.addJvmArguments(*request.jvmArguments.toTypedArray())
+        tracker.configureLauncher(launcher)
+        streams.applyTo(launcher)
     }
-
-    private fun buildStatusResponse(
-        record: BuildRecord,
-        outputLimit: OutputLimitOptions,
-        progressOptions: ProgressResponseOptions,
-    ): Map<String, Any?> {
-        val progress = record.progressTracker.snapshot()
-        val response = mutableMapOf<String, Any?>(
-            "buildId" to record.id,
-            "kind" to record.kind.name.lowercase(),
-            "status" to progress.status,
-            "startedAt" to record.startedAt.toString(),
-            "finishedAt" to record.finishedAt?.toString(),
-            "tasks" to record.tasks,
-            "testClasses" to record.testClasses,
-        )
-        response.putAll(optionalProgressFields(progressOptions, progress))
-        if (record.errorMessage != null) {
-            response["error"] = record.errorMessage
-        }
-        if (progress.status != BuildProgressTracker.STATUS_RUNNING) {
-            response.putAll(buildResult(record, outputLimit))
-            BuildOutputParser.outcomeFromStatus(progress.status)?.let { response["outcome"] = it }
-            response["buildSummary"] = BuildOutputParser.toResponseMap(
-                BuildOutputParser.parse(record.streams.stdoutSnapshot().text),
-            )
-            response.putAll(terminalFailureFields(progress))
-        } else {
-            response.putAll(limitStreamFields(record.streams.stdoutSnapshot(), outputLimit, "stdout"))
-            response.putAll(limitStreamFields(record.streams.stderrSnapshot(), outputLimit, "stderr"))
-        }
-        return response
-    }
-
-    private fun buildResult(record: BuildRecord, outputLimit: OutputLimitOptions): Map<String, Any?> =
-        buildMap {
-            when (record.kind) {
-                BuildKind.TASKS -> put("tasks", record.tasks)
-                BuildKind.TESTS -> put("testClasses", record.testClasses)
-            }
-            putAll(limitStreamFields(record.streams.stdoutSnapshot(), outputLimit, "stdout"))
-            putAll(limitStreamFields(record.streams.stderrSnapshot(), outputLimit, "stderr"))
-            record.errorMessage?.let { put("error", it) }
-        }
 
     private fun pruneCompletedBuilds() {
         val completed = builds.values
@@ -461,20 +431,4 @@ class BuildExecutionManager(
         private val MAX_CONCURRENT_BUILDS = maxOf(4, Runtime.getRuntime().availableProcessors())
         private const val MAX_RETAINED_BUILDS = 10
     }
-}
-
-private fun limitStreamFields(
-    snapshot: CapturedStreamSnapshot,
-    outputLimit: OutputLimitOptions,
-    fieldPrefix: String,
-): Map<String, Any?> {
-    if (!outputLimit.includeOutput) {
-        return emptyMap()
-    }
-    val limited = OutputLimiter.limit(snapshot.text, outputLimit)
-    return mapOf(
-        fieldPrefix to limited.text,
-        "${fieldPrefix}Truncated" to (limited.truncated || limited.totalChars < snapshot.totalChars),
-        "${fieldPrefix}TotalChars" to snapshot.totalChars,
-    )
 }

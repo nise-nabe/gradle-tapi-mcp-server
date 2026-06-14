@@ -1,0 +1,157 @@
+def recordDirPath = gradle.startParameter.projectProperties["mcp.recordDir"]
+// Event types must stay aligned with com.example.gradle.mcp.build.ProgressEventTypes (Kotlin).
+if (!recordDirPath) {
+    return
+}
+
+import org.gradle.api.tasks.testing.Test
+import org.gradle.api.tasks.testing.TestDescriptor
+import org.gradle.api.tasks.testing.TestListener
+import org.gradle.api.tasks.testing.TestResult
+
+def recordDir = file(recordDirPath)
+recordDir.mkdirs()
+
+def buildId = gradle.startParameter.projectProperties["mcp.buildId"]
+
+def readGradleResult() {
+    def file = new File(recordDir, "gradle-result.json")
+    if (!file.isFile()) {
+        return [:]
+    }
+    try {
+        return new groovy.json.JsonSlurper().parse(file) as Map
+    } catch (ignored) {
+        return [:]
+    }
+}
+
+def writeGradleResult(Map data) {
+    def target = new File(recordDir, "gradle-result.json")
+    def tmp = new File(recordDir, "gradle-result.json.tmp")
+    def json = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(data))
+    tmp.withWriter('UTF-8') { writer -> writer.write(json) }
+    if (!tmp.renameTo(target)) {
+        target.withWriter('UTF-8') { writer -> writer.write(json) }
+        tmp.delete()
+    }
+}
+
+def eventWriteLock = new Object()
+
+def appendEvent(Map event) {
+    def line = groovy.json.JsonOutput.toJson(event) + "\n"
+    synchronized(eventWriteLock) {
+        def events = new File(recordDir, "events.ndjson")
+        events.withWriterAppend('UTF-8') { writer ->
+            writer.write(line)
+        }
+    }
+}
+
+def heartbeatTimer = new java.util.Timer(true)
+def heartbeatIntervalMs = 15_000L
+
+def startHeartbeat() {
+    heartbeatTimer.scheduleAtFixedRate({
+        appendEvent([
+            ts          : java.time.Instant.now().toString(),
+            type        : "HEARTBEAT",
+            displayName : "Gradle build active",
+        ])
+    } as java.util.TimerTask, heartbeatIntervalMs, heartbeatIntervalMs)
+}
+
+gradle.projectsLoaded {
+    def taskNames = gradle.startParameter.taskNames
+    writeGradleResult([
+        schemaVersion: 1,
+        buildId       : buildId,
+        status        : "running",
+        startedAt     : java.time.Instant.now().toString(),
+        taskNames     : taskNames,
+    ])
+    appendEvent([
+        ts          : java.time.Instant.now().toString(),
+        type        : "START",
+        displayName : taskNames ? "Gradle tasks: ${taskNames.join(' ')}" : "Gradle build",
+    ])
+    startHeartbeat()
+}
+
+gradle.taskGraph.beforeTask { task ->
+    appendEvent([
+        ts          : java.time.Instant.now().toString(),
+        type        : "TASK_START",
+        displayName : task.path,
+    ])
+    if (task instanceof Test) {
+        task.addTestListener(new TestListener() {
+            @Override
+            void beforeSuite(TestDescriptor descriptor) {}
+
+            @Override
+            void afterSuite(TestDescriptor descriptor, TestResult result) {}
+
+            @Override
+            void beforeTest(TestDescriptor descriptor) {
+                appendEvent([
+                    ts          : java.time.Instant.now().toString(),
+                    type        : "TEST_START",
+                    displayName : "${descriptor.className}.${descriptor.name}",
+                ])
+            }
+
+            @Override
+            void afterTest(TestDescriptor descriptor, TestResult result) {
+                def type = "TEST_SUCCESS"
+                if (result.resultType == TestResult.ResultType.FAILURE) {
+                    type = "TEST_FAIL"
+                } else if (result.resultType == TestResult.ResultType.SKIPPED) {
+                    type = "TEST_SKIP"
+                }
+                appendEvent([
+                    ts          : java.time.Instant.now().toString(),
+                    type        : type,
+                    displayName : "${descriptor.className}.${descriptor.name}",
+                    outcome     : result.exception?.message,
+                ])
+            }
+        })
+    }
+}
+
+gradle.taskGraph.afterTask { task, state ->
+    def type = state.failure != null ? "TASK_FAIL" : (state.skipped ? "TASK_SKIP" : "TASK_SUCCESS")
+    appendEvent([
+        ts          : java.time.Instant.now().toString(),
+        type        : type,
+        displayName : task.path,
+        outcome     : state.failure?.message,
+    ])
+}
+
+gradle.buildFinished { result ->
+    heartbeatTimer.cancel()
+    def existing = readGradleResult()
+    def status = result.failure != null ? "failed" : "succeeded"
+    def payload = [
+        schemaVersion: 1,
+        buildId      : buildId ?: existing.buildId,
+        status       : status,
+        finishedAt   : java.time.Instant.now().toString(),
+        failure      : result.failure?.message,
+    ]
+    if (existing.startedAt != null) {
+        payload.startedAt = existing.startedAt
+    }
+    if (existing.taskNames != null) {
+        payload.taskNames = existing.taskNames
+    }
+    writeGradleResult(payload)
+    appendEvent([
+        ts    : java.time.Instant.now().toString(),
+        type  : "BUILD_FINISHED",
+        status: status,
+    ])
+}

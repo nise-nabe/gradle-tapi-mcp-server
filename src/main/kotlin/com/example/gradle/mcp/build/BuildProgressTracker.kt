@@ -13,12 +13,10 @@ class BuildProgressTracker(
     private val onUpdate: (() -> Unit)? = null,
 ) {
     private val lock = Any()
+    private val taskProgress = ProgressEventAccumulator()
 
     private var status: String = STATUS_RUNNING
     private var currentOperation: String? = null
-    private val completedTasks = LinkedHashSet<String>()
-    private val runningTasks = LinkedHashSet<String>()
-    private val failedTasks = LinkedHashSet<String>()
     private val recentEvents = ArrayDeque<ProgressEventSnapshot>()
     private var totalEventCount = 0
     private var lastNotifiedEventCount = 0
@@ -27,7 +25,7 @@ class BuildProgressTracker(
         notifyAfter {
             synchronized(lock) {
                 currentOperation = operation
-                recordEventLocked("START", operation)
+                recordEventLocked(ProgressEventTypes.START, operation)
                 true
             }
         }
@@ -41,8 +39,8 @@ class BuildProgressTracker(
                 }
                 status = STATUS_SUCCEEDED
                 currentOperation = null
-                runningTasks.clear()
-                recordEventLocked("FINISH", "Build succeeded")
+                taskProgress.clearRunning()
+                recordEventLocked(ProgressEventTypes.FINISH, "Build succeeded")
                 true
             }
         }
@@ -56,8 +54,8 @@ class BuildProgressTracker(
                 }
                 status = STATUS_FAILED
                 currentOperation = null
-                runningTasks.clear()
-                recordEventLocked("FAIL", message)
+                taskProgress.clearRunning()
+                recordEventLocked(ProgressEventTypes.FAIL, message)
                 true
             }
         }
@@ -65,15 +63,9 @@ class BuildProgressTracker(
 
     fun snapshot(): BuildProgressSnapshot =
         synchronized(lock) {
-            BuildProgressSnapshot(
+            taskProgress.snapshot(
                 status = status,
                 currentOperation = currentOperation,
-                completedTaskCount = completedTasks.size,
-                runningTaskCount = runningTasks.size,
-                failedTaskCount = failedTasks.size,
-                completedTasks = completedTasks.toList(),
-                runningTasks = runningTasks.toList(),
-                failedTasks = failedTasks.toList(),
                 recentEvents = recentEvents.toList(),
                 totalEventCount = totalEventCount,
             )
@@ -112,51 +104,46 @@ class BuildProgressTracker(
 
         when (event) {
             is TaskStartEvent -> {
-                runningTasks.add(displayName)
-                recordEventLocked("TASK_START", displayName)
+                applyTaskEvent(ProgressEventTypes.TASK_START, displayName)
             }
             is TaskFinishEvent -> {
-                runningTasks.remove(displayName)
                 when (val result = event.result) {
                     is org.gradle.tooling.events.task.TaskFailureResult -> {
-                        failedTasks.add(displayName)
                         val message = result.failures.firstOrNull()?.message ?: "failed"
-                        recordEventLocked("TASK_FAIL", displayName, message)
+                        applyTaskEvent(ProgressEventTypes.TASK_FAIL, displayName, message)
                     }
                     is org.gradle.tooling.events.task.TaskSkippedResult -> {
-                        completedTasks.add(displayName)
-                        recordEventLocked("TASK_SKIP", displayName)
+                        applyTaskEvent(ProgressEventTypes.TASK_SKIP, displayName)
                     }
                     else -> {
-                        completedTasks.add(displayName)
-                        recordEventLocked("TASK_SUCCESS", displayName)
+                        applyTaskEvent(ProgressEventTypes.TASK_SUCCESS, displayName)
                     }
                 }
             }
             is TestStartEvent -> {
-                runningTasks.add(displayName)
-                recordEventLocked("TEST_START", displayName)
+                applyTaskEvent(ProgressEventTypes.TEST_START, displayName)
             }
             is TestFinishEvent -> {
-                runningTasks.remove(displayName)
                 when (val result = event.result) {
                     is org.gradle.tooling.events.test.TestFailureResult -> {
-                        failedTasks.add(displayName)
                         val message = result.failures.firstOrNull()?.message ?: "failed"
-                        recordEventLocked("TEST_FAIL", displayName, message)
+                        applyTaskEvent(ProgressEventTypes.TEST_FAIL, displayName, message)
                     }
                     is org.gradle.tooling.events.test.TestSkippedResult -> {
-                        completedTasks.add(displayName)
-                        recordEventLocked("TEST_SKIP", displayName)
+                        applyTaskEvent(ProgressEventTypes.TEST_SKIP, displayName)
                     }
                     else -> {
-                        completedTasks.add(displayName)
-                        recordEventLocked("TEST_SUCCESS", displayName)
+                        applyTaskEvent(ProgressEventTypes.TEST_SUCCESS, displayName)
                     }
                 }
             }
             else -> recordEventLocked(event.javaClass.simpleName, displayName)
         }
+    }
+
+    private fun applyTaskEvent(eventType: String, displayName: String, outcome: String? = null) {
+        taskProgress.apply(eventType, displayName)
+        recordEventLocked(eventType, displayName, outcome)
     }
 
     private fun notifyAfter(block: () -> Boolean) {
