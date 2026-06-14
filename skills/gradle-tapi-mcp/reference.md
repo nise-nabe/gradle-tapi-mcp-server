@@ -101,7 +101,7 @@ No arguments.
 
 Response when `background=true`: `buildId`, `status`, `kind`, `message`.
 
-Foreground responses include `outcome` (`SUCCESS` / `FAILED`), `buildSummary` (`resultLine`, `taskSummaryLine`), and `progress` only when `includeProgress=true`.
+Foreground responses include `outcome` (`SUCCESS` / `FAILED`), `buildSummary` (`resultLine`, `taskSummaryLine`), `failedTaskCount`, `failedTasks`, and `buildSummary.failureSummary` on failure. `stdout`/`stderr` are omitted unless `includeOutput=true` (truncated per `maxOutputChars`; CRLF normalized to LF). `progress` only when `includeProgress=true`.
 
 ### gradle_run_tests
 
@@ -116,6 +116,8 @@ Foreground responses include `outcome` (`SUCCESS` / `FAILED`), `buildSummary` (`
 | `includeProgress` | no | `false` | Include detailed `progress` object |
 | `background` | no | `false` | Return `buildId` immediately; poll with `gradle_get_build_status` |
 
+Same foreground/background response shape as `gradle_run_tasks`.
+
 ### gradle_get_build_status
 
 | Argument | Required | Default | Description |
@@ -126,7 +128,7 @@ Foreground responses include `outcome` (`SUCCESS` / `FAILED`), `buildSummary` (`
 | `maxOutputChars` | no | `8000` | Per-stream char limit when `includeOutput=true` |
 | `tailOutput` | no | `true` | Keep tail when truncating |
 
-Returns `status`, timestamps, and partial or final `stdout`/`stderr`. Completed builds also include `outcome` and `buildSummary`.
+Returns `status`, timestamps, `outcome`, and `buildSummary`. Completed builds also include `failedTaskCount`, `failedTasks`, and `buildSummary.failureSummary` without `includeProgress`. `stdout`/`stderr` are included only when `includeOutput=true` (partial while running, final when completed). `progress` only when `includeProgress=true`.
 
 ## Errors
 
