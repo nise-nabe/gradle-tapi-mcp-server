@@ -28,6 +28,13 @@ object BuildOutputParser {
             }
         }
 
+    fun summaryFromStdout(stdout: String): Map<String, Any?>? {
+        if (stdout.isBlank()) {
+            return null
+        }
+        return toResponseMap(parse(stdout))
+    }
+
     fun outcomeFromStatus(status: String): String? =
         when (status) {
             BuildProgressTracker.STATUS_SUCCEEDED -> "SUCCESS"
