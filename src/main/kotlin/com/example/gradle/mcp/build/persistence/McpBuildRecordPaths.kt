@@ -36,9 +36,13 @@ object McpBuildRecordPaths {
         if (!isSafeBuildId(buildId)) {
             return null
         }
+        val projectRoot = projectDirectory.canonicalFile.toPath()
         val root = recordsRoot(projectDirectory).canonicalFile
-        val recordDir = File(root, buildId).canonicalFile
         val rootPath = root.toPath()
+        if (!rootPath.startsWith(projectRoot)) {
+            return null
+        }
+        val recordDir = File(root, buildId).canonicalFile
         val recordPath = recordDir.toPath()
         if (recordPath == rootPath || !recordPath.startsWith(rootPath)) {
             return null

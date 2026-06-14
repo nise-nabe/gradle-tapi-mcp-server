@@ -397,7 +397,9 @@ class BuildRecordStoreTest {
         val buildId = "stale-gradle-running"
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
         recordDir.mkdirs()
-        val staleFinishedAt = Instant.now().minusSeconds(120).toString()
+        val staleFinishedInstant = Instant.now().minusSeconds(120)
+        val staleFinishedAt = staleFinishedInstant.toString()
+        val preFinalizeEventTs = staleFinishedInstant.minusSeconds(30).toString()
         File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
             mcpObjectMapper().writeValueAsString(
                 GradleBuildResult(
@@ -427,7 +429,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
         File(recordDir, McpBuildRecordPaths.EVENTS_FILE).writeText(
-            """{"ts":"2026-06-14T10:00:30Z","type":"TASK_START","displayName":":app:build"}""" + "\n",
+            """{"ts":"$preFinalizeEventTs","type":"TASK_START","displayName":":app:build"}""" + "\n",
             StandardCharsets.UTF_8,
         )
 
@@ -627,6 +629,17 @@ class BuildRecordStoreTest {
         artifacts.stdout.text shouldBe ""
         artifacts.gradleResult.shouldBeNull()
         artifacts.mcpResult.shouldNotBeNull()
+    }
+
+    @Test
+    fun `recordDirectory rejects symlinked records root outside project`(@TempDir projectDir: File) {
+        val outsideRoot = File(projectDir.parentFile, "outside-mcp-builds-${System.nanoTime()}").apply { mkdirs() }
+        val gradleDir = File(projectDir, ".gradle").apply { mkdirs() }
+        val mcpBuildsLink = File(gradleDir, "mcp-builds")
+        assumeSymbolicLink(mcpBuildsLink, outsideRoot)
+
+        McpBuildRecordPaths.recordDirectory(projectDir, "escape-build") shouldBe null
+        store.loadArtifacts(projectDir, "escape-build") shouldBe null
     }
 
     @Test

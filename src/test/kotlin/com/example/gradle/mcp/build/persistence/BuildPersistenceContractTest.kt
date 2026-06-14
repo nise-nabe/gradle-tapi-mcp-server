@@ -76,7 +76,7 @@ class BuildPersistenceContractTest {
         val finishedAt = Instant.now().minusSeconds(120)
         BuildPersistenceContract.isStaleGradleRunning(
             mcpResult("failed", finishedAt),
-            listOf(event("2026-06-14T10:00:30Z", ProgressEventTypes.TASK_START, ":app:build")),
+            listOf(event(finishedAt.minusSeconds(30).toString(), ProgressEventTypes.TASK_START, ":app:build")),
         ) shouldBe true
     }
 
