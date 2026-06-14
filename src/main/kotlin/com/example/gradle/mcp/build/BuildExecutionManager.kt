@@ -468,6 +468,9 @@ private fun limitStreamFields(
     outputLimit: OutputLimitOptions,
     fieldPrefix: String,
 ): Map<String, Any?> {
+    if (!outputLimit.includeOutput) {
+        return emptyMap()
+    }
     val limited = OutputLimiter.limit(snapshot.text, outputLimit)
     return mapOf(
         fieldPrefix to limited.text,

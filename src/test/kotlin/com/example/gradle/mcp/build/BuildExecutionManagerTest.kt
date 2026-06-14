@@ -177,9 +177,38 @@ class BuildExecutionManagerTest {
     }
 
     @Test
-    fun `status returns running build progress and partial output`() {
+    fun `status omits partial output by default for running builds`() {
         val streams = CapturingStreams()
-        streams.stdoutText()
+        streams.appendStdoutForTests("> Task :app:compileJava UP-TO-DATE\n")
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        manager.seedRunningBuildForTests(
+            BuildRecord(
+                id = "running-build",
+                kind = BuildKind.TASKS,
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                startedAt = Instant.now(),
+                progressTracker = tracker,
+                streams = streams,
+            ),
+        )
+
+        val result = manager.status(
+            "running-build",
+            OutputLimitOptions(),
+            ProgressResponseOptions(includeProgress = false),
+        )
+
+        result["status"] shouldBe "running"
+        result["stdout"].shouldBeNull()
+        result["stderr"].shouldBeNull()
+    }
+
+    @Test
+    fun `status returns running build progress and partial output when includeOutput is true`() {
+        val streams = CapturingStreams()
+        streams.appendStdoutForTests("> Task :app:compileJava UP-TO-DATE\n")
         val tracker = BuildProgressTracker()
         tracker.markStarting("Gradle tasks: build")
         manager.seedRunningBuildForTests(
@@ -196,16 +225,17 @@ class BuildExecutionManagerTest {
 
         val resultWithoutProgress = manager.status(
             "running-build",
-            OutputLimitOptions(maxOutputChars = 100),
+            OutputLimitOptions(includeOutput = true, maxOutputChars = 100),
             ProgressResponseOptions(includeProgress = false),
         )
 
         resultWithoutProgress["status"] shouldBe "running"
         resultWithoutProgress["progress"].shouldBeNull()
+        (resultWithoutProgress["stdout"] as String) shouldContain "UP-TO-DATE"
 
         val resultWithProgress = manager.status(
             "running-build",
-            OutputLimitOptions(maxOutputChars = 100),
+            OutputLimitOptions(includeOutput = true, maxOutputChars = 100),
             ProgressResponseOptions(includeProgress = true),
         )
 
@@ -425,9 +455,39 @@ class BuildExecutionManagerTest {
         result["status"] shouldBe "succeeded"
         result["outcome"] shouldBe "SUCCESS"
         (result["buildSummary"] as Map<*, *>)["resultLine"] shouldBe "BUILD SUCCESSFUL in 1s"
+        result["stdout"].shouldBeNull()
+        result["stderr"].shouldBeNull()
         result["failedTaskCount"] shouldBe 0
         result["failedTasks"] shouldBe emptyList<String>()
         result["progress"].shouldBeNull()
+    }
+
+    @Test
+    fun `completed build status includes stdout when includeOutput is true`() {
+        val streams = CapturingStreams()
+        streams.appendStdoutForTests("BUILD SUCCESSFUL in 1s\n> Task :app:compileJava UP-TO-DATE\n")
+
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        tracker.markSucceeded()
+        val record = BuildRecord(
+            id = "completed-build-with-output",
+            kind = BuildKind.TASKS,
+            tasks = listOf("build"),
+            testClasses = emptyList(),
+            startedAt = Instant.now(),
+            progressTracker = tracker,
+            streams = streams,
+        ).also { it.finishedAt = Instant.now() }
+        manager.seedRunningBuildForTests(record)
+
+        val result = manager.status(
+            "completed-build-with-output",
+            OutputLimitOptions(includeOutput = true),
+            ProgressResponseOptions(),
+        )
+
+        (result["stdout"] as String) shouldContain "UP-TO-DATE"
     }
 
     @Test

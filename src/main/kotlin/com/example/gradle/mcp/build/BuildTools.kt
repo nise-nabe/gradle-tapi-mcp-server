@@ -23,15 +23,22 @@ internal fun progressProperties(): Map<String, Any> =
         ),
     )
 
+internal fun outputProperties(): Map<String, Any> =
+    mapOf(
+        "includeOutput" to booleanProperty(
+            "Include stdout/stderr in the response. Default false returns outcome and buildSummary only (no task log lines such as UP-TO-DATE).",
+        ),
+        "maxOutputChars" to integerProperty(
+            "When includeOutput is true, maximum stdout/stderr characters per stream (default ${OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS})",
+        ),
+        "tailOutput" to booleanProperty("When truncating output, keep the tail of each stream (default true)"),
+    )
+
 internal fun buildStatusSchema(): Map<String, Any> =
     objectSchema(
         required = listOf("buildId"),
-        properties = progressProperties() + mapOf(
+        properties = progressProperties() + outputProperties() + mapOf(
             "buildId" to stringProperty("Build ID returned by gradle_run_tasks or gradle_run_tests with background=true"),
-            "maxOutputChars" to integerProperty(
-                "Maximum stdout/stderr characters to return per stream (default ${OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS})",
-            ),
-            "tailOutput" to booleanProperty("When truncating, keep the tail of each stream (default true)"),
         ),
     )
 
@@ -41,13 +48,9 @@ internal fun runOutputSchema(
 ): Map<String, Any> =
     objectSchema(
         required = required,
-        properties = extraProperties + progressProperties() + mapOf(
+        properties = extraProperties + progressProperties() + outputProperties() + mapOf(
             "arguments" to stringArrayProperty("Additional Gradle command-line arguments"),
             "jvmArguments" to stringArrayProperty("Additional JVM arguments for the build"),
-            "maxOutputChars" to integerProperty(
-                "Maximum stdout/stderr characters to return per stream (default ${OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS})",
-            ),
-            "tailOutput" to booleanProperty("When truncating, keep the tail of each stream (default true)"),
         ),
     )
 
@@ -56,7 +59,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_get_build_status",
-            description = "Return status and partial output for a running or completed Gradle build started with background=true. buildId is required because multiple background builds may run concurrently. Completed builds include failedTaskCount, failedTasks, and buildSummary.failureSummary without includeProgress. Set includeProgress=true for the full progress object (completedTasks, recentEvents).",
+            description = "Return status for a running or completed Gradle build started with background=true. buildId is required because multiple background builds may run concurrently. Default response is outcome and buildSummary only (no stdout/stderr task log). Set includeOutput=true for captured stdout/stderr. Completed builds include failedTaskCount, failedTasks, and buildSummary.failureSummary without includeProgress. Set includeProgress=true for the full progress object (completedTasks, recentEvents).",
             schema = buildStatusSchema(),
         ) { args ->
             val outputLimit = OutputLimitOptions.fromArgs(args)
@@ -71,7 +74,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_run_tasks",
-            description = "Execute Gradle task paths and return captured stdout/stderr. Use background=true to start a long build and poll gradle_get_build_status with the returned buildId; multiple background builds may run concurrently. Set includeProgress=true for detailed progress on foreground runs. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
+            description = "Execute Gradle task paths and return build outcome and summary. stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. Use background=true to start a long build and poll gradle_get_build_status with the returned buildId; multiple background builds may run concurrently. Set includeProgress=true for detailed progress on foreground runs.",
             schema = runOutputSchema(
                 required = listOf("tasks"),
                 extraProperties = mapOf(
@@ -99,7 +102,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_run_tests",
-            description = "Execute JVM test classes and return captured stdout/stderr. Use background=true to start a long test run and poll gradle_get_build_status with the returned buildId; multiple background test runs may run concurrently. Set includeProgress=true for detailed progress on foreground runs. Output is truncated by default (maxOutputChars=8000, tailOutput=true).",
+            description = "Execute JVM test classes and return build outcome and summary. stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. Use background=true to start a long test run and poll gradle_get_build_status with the returned buildId; multiple background test runs may run concurrently. Set includeProgress=true for detailed progress on foreground runs.",
             schema = runOutputSchema(
                 required = listOf("testClasses"),
                 extraProperties = mapOf(
