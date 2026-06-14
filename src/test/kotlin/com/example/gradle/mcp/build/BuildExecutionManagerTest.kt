@@ -463,6 +463,34 @@ class BuildExecutionManagerTest {
     }
 
     @Test
+    fun `completed build status includes stdout when includeOutput is true`() {
+        val streams = CapturingStreams()
+        streams.appendStdoutForTests("BUILD SUCCESSFUL in 1s\n> Task :app:compileJava UP-TO-DATE\n")
+
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        tracker.markSucceeded()
+        val record = BuildRecord(
+            id = "completed-build-with-output",
+            kind = BuildKind.TASKS,
+            tasks = listOf("build"),
+            testClasses = emptyList(),
+            startedAt = Instant.now(),
+            progressTracker = tracker,
+            streams = streams,
+        ).also { it.finishedAt = Instant.now() }
+        manager.seedRunningBuildForTests(record)
+
+        val result = manager.status(
+            "completed-build-with-output",
+            OutputLimitOptions(includeOutput = true),
+            ProgressResponseOptions(),
+        )
+
+        (result["stdout"] as String) shouldContain "UP-TO-DATE"
+    }
+
+    @Test
     fun `completed failed build status includes failure fields without includeProgress`() {
         val streams = CapturingStreams()
         streams.appendStdoutForTests(
