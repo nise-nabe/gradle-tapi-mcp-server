@@ -88,7 +88,7 @@ For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` o
 - `status`: `running`, `succeeded`, or `failed`
 - `outcome` and `buildSummary` when the build has finished
 - `progress` (only when `includeProgress: true`): capped task lists and recent events
-- partial `stdout`/`stderr` while the build is still running
+- `stdout`/`stderr` only when `includeOutput: true` (partial while running, final when completed)
 
 When the MCP client supplies a progress token, the server may also emit MCP progress/logging notifications during the run.
 
