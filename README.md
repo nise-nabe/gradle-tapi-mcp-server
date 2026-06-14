@@ -86,15 +86,19 @@ Tool errors return structured JSON: `{ "error": { "code": "NOT_CONNECTED", "mess
 For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` or `gradle_run_tests`. The tool returns immediately with a `buildId`. Multiple background builds may run concurrently (up to a server-side limit). Poll `gradle_get_build_status` with that `buildId` (required) to read:
 
 - `status`: `running`, `succeeded`, or `failed`
+- `statusSource`: `memory` (in-process record) or `disk` (`.gradle/mcp-builds/<buildId>/`)
 - `outcome` and `buildSummary` when the build has finished
-- `progress` (only when `includeProgress: true`): capped task lists and recent events
-- `stdout`/`stderr` only when `includeOutput: true` (partial while running, final when completed)
+- `progress` (only when `includeProgress: true`): capped task lists and recent events; disk polls use `events.ndjson` (task and test events)
+- `stdout`/`stderr` only when `includeOutput: true` — live partial output while running only when the MCP server still holds the in-memory record; disk-only polls return streams after MCP finalizes logs at build end
+- optional `projectDirectory` when the in-memory record was evicted and the connected project differs (disk-only lookup)
+
+Build records persist under `.gradle/mcp-builds/<buildId>/`. Terminal status prefers `gradle-result.json` (Gradle init script) over stale MCP memory. When Gradle still reports `running` but MCP already finalized (e.g. disconnect) and `events.ndjson` shows no activity after MCP's `finishedAt`, MCP's terminal status is used instead (daemon likely dead). Terminal `buildSummary` follows the winning terminal authority: when Gradle's `gradle-result.json` is terminal, parse the fullest available stdout (`stdout.log` and any richer in-memory capture); stale `mcp-result.json` summaries are ignored. When MCP finalized the build, use `mcp-result.json`, then parsed `stdout.log` as fallback. Gradle-terminal failed builds include `failedTaskCount` / `failedTasks` from `events.ndjson` when present.
 
 When the MCP client supplies a progress token, the server may also emit MCP progress/logging notifications during the run.
 
 ## Disconnect during a build
 
-`gradle_disconnect` is non-blocking: the server marks any running builds as failed immediately so a new connection can start. Completed build records remain available via `gradle_get_build_status` while retained. If a Tooling API build was still running, the Gradle daemon may briefly continue that prior call until it unwinds. The disconnect response includes a `warning` field when a build was active.
+`gradle_disconnect` is non-blocking: the server marks any running builds as failed immediately so a new connection can start. If the Gradle daemon keeps running, on-disk `gradle-result.json` may still report `running` or `succeeded`; `gradle_get_build_status` prefers the disk record when it disagrees with the in-memory snapshot. Completed build records remain available via `gradle_get_build_status` (from memory or `.gradle/mcp-builds/`) while retained. If a Tooling API build was still running, the Gradle daemon may briefly continue that prior call until it unwinds. The disconnect response includes a `warning` field when a build was active.
 
 `gradle_connect` marks any running builds as failed before opening a new project connection. It rejects the call while builds are still running; wait for them to finish or call `gradle_disconnect` first.
 
