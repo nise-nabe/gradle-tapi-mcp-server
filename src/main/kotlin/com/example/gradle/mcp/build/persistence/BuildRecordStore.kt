@@ -24,6 +24,7 @@ class BuildRecordStore(
         return listOf(
             "-Pmcp.buildId=$buildId",
             "-Pmcp.recordDir=${recordDir.absolutePath}",
+            "-Pmcp.ccInitScript=${McpBuildInitScriptProvider.configurationCacheInitScriptPath()}",
             "--init-script",
             McpBuildInitScriptProvider.initScriptPath(),
         )

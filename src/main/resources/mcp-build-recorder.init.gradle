@@ -9,149 +9,215 @@ import org.gradle.api.tasks.testing.TestDescriptor
 import org.gradle.api.tasks.testing.TestListener
 import org.gradle.api.tasks.testing.TestResult
 
-def recordDir = file(recordDirPath)
-recordDir.mkdirs()
+def resolvedRecordDir = file(recordDirPath).absoluteFile
+resolvedRecordDir.mkdirs()
 
-def buildId = gradle.startParameter.projectProperties["mcp.buildId"]
-
-def readGradleResult() {
-    def file = new File(recordDir, "gradle-result.json")
-    if (!file.isFile()) {
-        return [:]
+class McpBuildRecorderSupport {
+    static String resolveBuildId(String preferred, Map existing) {
+        def id = preferred?.trim()
+        if (id) {
+            return id
+        }
+        def existingId = existing?.buildId
+        if (existingId instanceof String && existingId.trim()) {
+            return existingId.trim()
+        }
+        return null
     }
-    try {
-        return new groovy.json.JsonSlurper().parse(file) as Map
-    } catch (ignored) {
-        return [:]
+
+    static Map readGradleResult(String dirPath) {
+        def file = new File(dirPath, "gradle-result.json")
+        if (!file.isFile()) {
+            return [:]
+        }
+        try {
+            return new groovy.json.JsonSlurper().parse(file) as Map
+        } catch (ignored) {
+            return [:]
+        }
     }
-}
 
-def writeGradleResult(Map data) {
-    def target = new File(recordDir, "gradle-result.json")
-    def tmp = new File(recordDir, "gradle-result.json.tmp")
-    def json = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(data))
-    tmp.withWriter('UTF-8') { writer -> writer.write(json) }
-    if (!tmp.renameTo(target)) {
-        target.withWriter('UTF-8') { writer -> writer.write(json) }
-        tmp.delete()
+    static void writeGradleResult(String dirPath, Map data) {
+        def target = new File(dirPath, "gradle-result.json")
+        def tmp = new File(dirPath, "gradle-result.json.tmp")
+        def json = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(data))
+        tmp.withWriter('UTF-8') { writer -> writer.write(json) }
+        if (!tmp.renameTo(target)) {
+            target.withWriter('UTF-8') { writer -> writer.write(json) }
+            tmp.delete()
+        }
     }
-}
 
-def eventWriteLock = new Object()
-
-def appendEvent(Map event) {
-    def line = groovy.json.JsonOutput.toJson(event) + "\n"
-    synchronized(eventWriteLock) {
-        def events = new File(recordDir, "events.ndjson")
+    static void appendEvent(String dirPath, Map event) {
+        def line = groovy.json.JsonOutput.toJson(event) + "\n"
+        def events = new File(dirPath, "events.ndjson")
         events.withWriterAppend('UTF-8') { writer ->
             writer.write(line)
         }
     }
+
+    static void writeTerminalGradleResult(
+            String dirPath,
+            String preferredBuildId,
+            String status,
+            String failureMessage = null) {
+        def existing = readGradleResult(dirPath)
+        def payload = [
+            schemaVersion: 1,
+            buildId      : resolveBuildId(preferredBuildId, existing),
+            status       : status,
+            finishedAt   : java.time.Instant.now().toString(),
+            failure      : failureMessage,
+        ]
+        if (existing.startedAt != null) {
+            payload.startedAt = existing.startedAt
+        }
+        if (existing.taskNames != null) {
+            payload.taskNames = existing.taskNames
+        }
+        writeGradleResult(dirPath, payload)
+        appendEvent(dirPath, [
+            ts    : java.time.Instant.now().toString(),
+            type  : "BUILD_FINISHED",
+            status: status,
+        ])
+    }
 }
 
-def heartbeatTimer = new java.util.Timer(true)
-def heartbeatIntervalMs = 15_000L
+// Store on gradle.ext so listener closures survive configuration-cache serialization.
+gradle.ext.mcpRecordDirPath = resolvedRecordDir.absolutePath
+gradle.ext.mcpBuildId = gradle.startParameter.projectProperties["mcp.buildId"]
+gradle.ext.mcpEventWriteLock = new Object()
+gradle.ext.mcpHeartbeatIntervalMs = 15_000L
 
-def startHeartbeat() {
-    heartbeatTimer.scheduleAtFixedRate({
-        appendEvent([
+gradle.ext.mcpReadGradleResult = { ->
+    McpBuildRecorderSupport.readGradleResult(gradle.ext.mcpRecordDirPath)
+}
+
+gradle.ext.mcpWriteGradleResult = { Map data ->
+    McpBuildRecorderSupport.writeGradleResult(gradle.ext.mcpRecordDirPath, data)
+}
+
+gradle.ext.mcpAppendEvent = { Map event ->
+    synchronized(gradle.ext.mcpEventWriteLock) {
+        McpBuildRecorderSupport.appendEvent(gradle.ext.mcpRecordDirPath, event)
+    }
+}
+
+gradle.ext.mcpStartHeartbeat = { ->
+    if (gradle.ext.mcpHeartbeatTimer == null) {
+        gradle.ext.mcpHeartbeatTimer = new java.util.Timer(true)
+    }
+    gradle.ext.mcpHeartbeatTimer.scheduleAtFixedRate({
+        gradle.ext.mcpAppendEvent([
             ts          : java.time.Instant.now().toString(),
             type        : "HEARTBEAT",
             displayName : "Gradle build active",
         ])
-    } as java.util.TimerTask, heartbeatIntervalMs, heartbeatIntervalMs)
+    } as java.util.TimerTask, gradle.ext.mcpHeartbeatIntervalMs, gradle.ext.mcpHeartbeatIntervalMs)
+}
+
+gradle.ext.mcpFinalizeBuild = { String status, String failureMessage = null ->
+    gradle.ext.mcpHeartbeatTimer?.cancel()
+    McpBuildRecorderSupport.writeTerminalGradleResult(
+        gradle.ext.mcpRecordDirPath,
+        gradle.ext.mcpBuildId,
+        status,
+        failureMessage,
+    )
+}
+
+def configurationCacheRequested = gradle.startParameter.isConfigurationCacheRequested()
+def configurationCacheRecorderApisAvailable = false
+try {
+    Class.forName("org.gradle.api.flow.FlowScope")
+    Class.forName("org.gradle.build.event.BuildEventsListenerRegistry")
+    configurationCacheRecorderApisAvailable = true
+} catch (ClassNotFoundException | LinkageError ignored) {
+    configurationCacheRecorderApisAvailable = false
+}
+
+if (configurationCacheRequested && configurationCacheRecorderApisAvailable) {
+    def ccInitScript = gradle.startParameter.projectProperties["mcp.ccInitScript"]
+    if (ccInitScript) {
+        apply from: ccInitScript
+    }
 }
 
 gradle.projectsLoaded {
     def taskNames = gradle.startParameter.taskNames
-    writeGradleResult([
+    gradle.ext.mcpWriteGradleResult([
         schemaVersion: 1,
-        buildId       : buildId,
+        buildId       : McpBuildRecorderSupport.resolveBuildId(gradle.ext.mcpBuildId, [:]),
         status        : "running",
         startedAt     : java.time.Instant.now().toString(),
         taskNames     : taskNames,
     ])
-    appendEvent([
+    gradle.ext.mcpAppendEvent([
         ts          : java.time.Instant.now().toString(),
         type        : "START",
         displayName : taskNames ? "Gradle tasks: ${taskNames.join(' ')}" : "Gradle build",
     ])
-    startHeartbeat()
+    if (!configurationCacheRequested) {
+        gradle.ext.mcpStartHeartbeat()
+    }
 }
 
-gradle.taskGraph.beforeTask { task ->
-    appendEvent([
-        ts          : java.time.Instant.now().toString(),
-        type        : "TASK_START",
-        displayName : task.path,
-    ])
-    if (task instanceof Test) {
-        task.addTestListener(new TestListener() {
-            @Override
-            void beforeSuite(TestDescriptor descriptor) {}
+if (!configurationCacheRequested) {
+    gradle.taskGraph.beforeTask { task ->
+        gradle.ext.mcpAppendEvent([
+            ts          : java.time.Instant.now().toString(),
+            type        : "TASK_START",
+            displayName : task.path,
+        ])
+        if (task instanceof Test) {
+            task.addTestListener(new TestListener() {
+                @Override
+                void beforeSuite(TestDescriptor descriptor) {}
 
-            @Override
-            void afterSuite(TestDescriptor descriptor, TestResult result) {}
+                @Override
+                void afterSuite(TestDescriptor descriptor, TestResult result) {}
 
-            @Override
-            void beforeTest(TestDescriptor descriptor) {
-                appendEvent([
-                    ts          : java.time.Instant.now().toString(),
-                    type        : "TEST_START",
-                    displayName : "${descriptor.className}.${descriptor.name}",
-                ])
-            }
-
-            @Override
-            void afterTest(TestDescriptor descriptor, TestResult result) {
-                def type = "TEST_SUCCESS"
-                if (result.resultType == TestResult.ResultType.FAILURE) {
-                    type = "TEST_FAIL"
-                } else if (result.resultType == TestResult.ResultType.SKIPPED) {
-                    type = "TEST_SKIP"
+                @Override
+                void beforeTest(TestDescriptor descriptor) {
+                    gradle.ext.mcpAppendEvent([
+                        ts          : java.time.Instant.now().toString(),
+                        type        : "TEST_START",
+                        displayName : "${descriptor.className}.${descriptor.name}",
+                    ])
                 }
-                appendEvent([
-                    ts          : java.time.Instant.now().toString(),
-                    type        : type,
-                    displayName : "${descriptor.className}.${descriptor.name}",
-                    outcome     : result.exception?.message,
-                ])
-            }
-        })
-    }
-}
 
-gradle.taskGraph.afterTask { task, state ->
-    def type = state.failure != null ? "TASK_FAIL" : (state.skipped ? "TASK_SKIP" : "TASK_SUCCESS")
-    appendEvent([
-        ts          : java.time.Instant.now().toString(),
-        type        : type,
-        displayName : task.path,
-        outcome     : state.failure?.message,
-    ])
-}
+                @Override
+                void afterTest(TestDescriptor descriptor, TestResult result) {
+                    def type = "TEST_SUCCESS"
+                    if (result.resultType == TestResult.ResultType.FAILURE) {
+                        type = "TEST_FAIL"
+                    } else if (result.resultType == TestResult.ResultType.SKIPPED) {
+                        type = "TEST_SKIP"
+                    }
+                    gradle.ext.mcpAppendEvent([
+                        ts          : java.time.Instant.now().toString(),
+                        type        : type,
+                        displayName : "${descriptor.className}.${descriptor.name}",
+                        outcome     : result.exception?.message,
+                    ])
+                }
+            })
+        }
+    }
 
-gradle.buildFinished { result ->
-    heartbeatTimer.cancel()
-    def existing = readGradleResult()
-    def status = result.failure != null ? "failed" : "succeeded"
-    def payload = [
-        schemaVersion: 1,
-        buildId      : buildId ?: existing.buildId,
-        status       : status,
-        finishedAt   : java.time.Instant.now().toString(),
-        failure      : result.failure?.message,
-    ]
-    if (existing.startedAt != null) {
-        payload.startedAt = existing.startedAt
+    gradle.taskGraph.afterTask { task, state ->
+        def type = state.failure != null ? "TASK_FAIL" : (state.skipped ? "TASK_SKIP" : "TASK_SUCCESS")
+        gradle.ext.mcpAppendEvent([
+            ts          : java.time.Instant.now().toString(),
+            type        : type,
+            displayName : task.path,
+            outcome     : state.failure?.message,
+        ])
     }
-    if (existing.taskNames != null) {
-        payload.taskNames = existing.taskNames
+
+    gradle.buildFinished { result ->
+        def status = result.failure != null ? "failed" : "succeeded"
+        gradle.ext.mcpFinalizeBuild(status, result.failure?.message)
     }
-    writeGradleResult(payload)
-    appendEvent([
-        ts    : java.time.Instant.now().toString(),
-        type  : "BUILD_FINISHED",
-        status: status,
-    ])
 }

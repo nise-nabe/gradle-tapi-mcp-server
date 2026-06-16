@@ -30,6 +30,7 @@ class BuildRecordStoreTest {
 
         args shouldContain "-Pmcp.buildId=build-1"
         args shouldContain "-Pmcp.recordDir=${File(projectDir, ".gradle/mcp-builds/build-1").absolutePath}"
+        args.any { it.startsWith("-Pmcp.ccInitScript=") } shouldBe true
         args shouldContain "--init-script"
         args.last().shouldContain("mcp-build-recorder")
     }

@@ -1,0 +1,223 @@
+import org.gradle.api.flow.FlowAction
+import org.gradle.api.flow.FlowParameters
+import org.gradle.api.flow.FlowProviders
+import org.gradle.api.flow.FlowScope
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.services.BuildService
+import org.gradle.api.services.BuildServiceParameters
+import org.gradle.build.event.BuildEventsListenerRegistry
+import org.gradle.tooling.events.FinishEvent
+import org.gradle.tooling.events.OperationCompletionListener
+import org.gradle.tooling.events.task.TaskFailureResult
+import org.gradle.tooling.events.task.TaskFinishEvent
+import org.gradle.tooling.events.task.TaskSkippedResult
+
+class McpBuildRecorderSupport {
+    static String resolveBuildId(String preferred, Map existing) {
+        def id = preferred?.trim()
+        if (id) {
+            return id
+        }
+        def existingId = existing?.buildId
+        if (existingId instanceof String && existingId.trim()) {
+            return existingId.trim()
+        }
+        return null
+    }
+
+    static Map readGradleResult(String dirPath) {
+        def file = new File(dirPath, "gradle-result.json")
+        if (!file.isFile()) {
+            return [:]
+        }
+        try {
+            return new groovy.json.JsonSlurper().parse(file) as Map
+        } catch (ignored) {
+            return [:]
+        }
+    }
+
+    static void writeGradleResult(String dirPath, Map data) {
+        def target = new File(dirPath, "gradle-result.json")
+        def tmp = new File(dirPath, "gradle-result.json.tmp")
+        def json = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(data))
+        tmp.withWriter('UTF-8') { writer -> writer.write(json) }
+        if (!tmp.renameTo(target)) {
+            target.withWriter('UTF-8') { writer -> writer.write(json) }
+            tmp.delete()
+        }
+    }
+
+    static void appendEvent(String dirPath, Map event) {
+        def line = groovy.json.JsonOutput.toJson(event) + "\n"
+        def events = new File(dirPath, "events.ndjson")
+        events.withWriterAppend('UTF-8') { writer ->
+            writer.write(line)
+        }
+    }
+
+    static void writeTerminalGradleResult(
+            String dirPath,
+            String preferredBuildId,
+            String status,
+            String failureMessage = null) {
+        def existing = readGradleResult(dirPath)
+        def payload = [
+            schemaVersion: 1,
+            buildId      : resolveBuildId(preferredBuildId, existing),
+            status       : status,
+            finishedAt   : java.time.Instant.now().toString(),
+            failure      : failureMessage,
+        ]
+        if (existing.startedAt != null) {
+            payload.startedAt = existing.startedAt
+        }
+        if (existing.taskNames != null) {
+            payload.taskNames = existing.taskNames
+        }
+        writeGradleResult(dirPath, payload)
+        appendEvent(dirPath, [
+            ts    : java.time.Instant.now().toString(),
+            type  : "BUILD_FINISHED",
+            status: status,
+        ])
+    }
+}
+
+abstract class McpConfigurationCacheRecorderService
+        implements BuildService<McpConfigurationCacheRecorderService.Params>, OperationCompletionListener, AutoCloseable {
+
+    interface Params extends BuildServiceParameters {
+        Property<String> getRecordDirPath()
+        Property<String> getBuildId()
+    }
+
+    private static final long HEARTBEAT_INTERVAL_MS = 15_000L
+
+    private final Object writeLock = new Object()
+    private java.util.Timer heartbeatTimer
+
+    private void appendEvent(Map event) {
+        def line = groovy.json.JsonOutput.toJson(event) + "\n"
+        synchronized(writeLock) {
+            def events = new File(parameters.recordDirPath.get(), "events.ndjson")
+            events.withWriterAppend('UTF-8') { writer ->
+                writer.write(line)
+            }
+        }
+    }
+
+    void startHeartbeatIfNeeded() {
+        if (heartbeatTimer != null) {
+            return
+        }
+        def recordDir = new File(parameters.recordDirPath.get())
+        recordDir.mkdirs()
+        heartbeatTimer = new java.util.Timer(true)
+        heartbeatTimer.scheduleAtFixedRate({
+            appendEvent([
+                ts          : java.time.Instant.now().toString(),
+                type        : "HEARTBEAT",
+                displayName : "Gradle build active",
+            ])
+        } as java.util.TimerTask, HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS)
+    }
+
+    @Override
+    void onFinish(FinishEvent event) {
+        if (!(event instanceof TaskFinishEvent)) {
+            return
+        }
+        startHeartbeatIfNeeded()
+        TaskFinishEvent finish = (TaskFinishEvent) event
+        def result = finish.result
+        def type = "TASK_SUCCESS"
+        def outcome = null
+        if (result instanceof TaskFailureResult) {
+            type = "TASK_FAIL"
+            outcome = result.failure.message
+        } else if (result instanceof TaskSkippedResult) {
+            type = "TASK_SKIP"
+        }
+        appendEvent([
+            ts          : java.time.Instant.now().toString(),
+            type        : type,
+            displayName : finish.descriptor.taskPath,
+            outcome     : outcome,
+        ])
+    }
+
+    @Override
+    void close() {
+        if (heartbeatTimer != null) {
+            heartbeatTimer.cancel()
+            heartbeatTimer = null
+        }
+    }
+}
+
+abstract class McpBuildFinalizeFlowAction implements FlowAction<McpBuildFinalizeFlowAction.Params> {
+
+    interface Params extends FlowParameters {
+        @Input
+        Property<String> getRecordDirPath()
+
+        @Input
+        Property<String> getBuildId()
+
+        @Input
+        Property<Boolean> getBuildFailed()
+
+        @Input
+        Property<String> getFailureMessage()
+    }
+
+    @Override
+    void execute(Params parameters) {
+        def status = parameters.buildFailed.get() ? "failed" : "succeeded"
+        def failureMessage = parameters.failureMessage.getOrNull()
+        if (failureMessage != null && failureMessage.isEmpty()) {
+            failureMessage = null
+        }
+        McpBuildRecorderSupport.writeTerminalGradleResult(
+            parameters.recordDirPath.get(),
+            parameters.buildId.getOrNull(),
+            status,
+            failureMessage,
+        )
+    }
+}
+
+gradle.projectsLoaded {
+    def listenerProvider = gradle.sharedServices.registerIfAbsent(
+        "mcpConfigurationCacheRecorder",
+        McpConfigurationCacheRecorderService,
+    ) { spec ->
+        spec.parameters.recordDirPath.set(gradle.ext.mcpRecordDirPath)
+        def buildId = gradle.ext.mcpBuildId?.trim()
+        if (buildId) {
+            spec.parameters.buildId.set(buildId)
+        }
+    }
+    gradle.services.get(BuildEventsListenerRegistry).onTaskCompletion(listenerProvider)
+    listenerProvider.get().startHeartbeatIfNeeded()
+
+    def flowScope = gradle.services.get(FlowScope)
+    def flowProviders = gradle.services.get(FlowProviders)
+    flowScope.always(McpBuildFinalizeFlowAction) { spec ->
+        spec.parameters.recordDirPath.set(gradle.ext.mcpRecordDirPath)
+        def buildId = gradle.ext.mcpBuildId?.trim()
+        if (buildId) {
+            spec.parameters.buildId.set(buildId)
+        }
+        spec.parameters.buildFailed.set(
+            flowProviders.buildWorkResult.map { it.failure.present },
+        )
+        spec.parameters.failureMessage.set(
+            flowProviders.buildWorkResult.map { result ->
+                result.failure.map { failure -> failure.message }.orElse("")
+            },
+        )
+    }
+}
