@@ -20,10 +20,8 @@ fun tool(
 ): McpServerFeatures.SyncToolSpecification =
     McpServerFeatures.SyncToolSpecification.builder()
         .tool(
-            McpSchema.Tool.builder()
-                .name(name)
+            McpSchema.Tool.builder(name, mcpJsonMapper, mcpObjectMapper().writeValueAsString(schema))
                 .description(description)
-                .inputSchema(mcpJsonMapper, mcpObjectMapper().writeValueAsString(schema))
                 .build(),
         )
         .callHandler { exchange, request ->
@@ -42,7 +40,11 @@ fun tool(
 
 fun jsonResult(value: Any?): McpSchema.CallToolResult =
     McpSchema.CallToolResult.builder()
-        .content(listOf(McpSchema.TextContent(mcpObjectMapper().writeValueAsString(value))))
+        .content(
+            listOf(
+                McpSchema.TextContent.builder(mcpObjectMapper().writeValueAsString(value)).build(),
+            ),
+        )
         .isError(false)
         .build()
 

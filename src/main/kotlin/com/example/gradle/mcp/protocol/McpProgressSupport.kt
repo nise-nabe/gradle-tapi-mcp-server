@@ -71,10 +71,8 @@ internal object McpProgressSupport {
         }
         runCatching {
             exchange.loggingNotification(
-                McpSchema.LoggingMessageNotification.builder()
-                    .level(level)
+                McpSchema.LoggingMessageNotification.builder(level, message)
                     .logger("gradle-build")
-                    .data(message)
                     .build(),
             )
         }

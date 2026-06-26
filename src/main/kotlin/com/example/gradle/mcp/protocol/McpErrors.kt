@@ -21,7 +21,7 @@ fun structuredErrorResult(code: McpErrorCode, message: String): McpSchema.CallTo
     McpSchema.CallToolResult.builder()
         .content(
             listOf(
-                McpSchema.TextContent(
+                McpSchema.TextContent.builder(
                     mcpObjectMapper().writeValueAsString(
                         mapOf(
                             "error" to mapOf(
@@ -30,7 +30,7 @@ fun structuredErrorResult(code: McpErrorCode, message: String): McpSchema.CallTo
                             ),
                         ),
                     ),
-                ),
+                ).build(),
             ),
         )
         .isError(true)
