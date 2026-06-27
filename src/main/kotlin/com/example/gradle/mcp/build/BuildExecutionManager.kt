@@ -195,12 +195,12 @@ class BuildExecutionManager(
 
         val sorted = entries.values.sortedByDescending { it.sortInstant() }
         val limited = sorted.take(cappedLimit)
-        return mapOf(
-            "builds" to limited.map { it.toResponseMap() },
-            "projectDirectory" to projectPath,
-            "totalAvailable" to totalAvailable,
-            "truncated" to (totalAvailable > cappedLimit),
-        )
+        return buildMap {
+            put("builds", limited.map { it.toResponseMap() })
+            projectPath?.let { put("projectDirectory", it) }
+            put("totalAvailable", totalAvailable)
+            put("truncated", totalAvailable > cappedLimit)
+        }
     }
 
     private fun resolveProjectDirectory(hint: File?): File? =
