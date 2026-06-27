@@ -101,7 +101,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_list_builds",
-            description = "List recent MCP Gradle builds from in-memory records and .gradle/mcp-builds/ on disk. Does not require an active Tooling API connection. Use when a buildId was lost or to discover builds to poll with gradle_get_build_status. Returns buildId, status, kind, tasks/testClasses, timestamps, outcome, and recordSource (memory|disk). Sorted by finishedAt or startedAt, most recent first.",
+            description = "List recent MCP Gradle builds from in-memory records and .gradle/mcp-builds/ on disk. Does not require an active Tooling API connection. Use when a buildId was lost or to discover builds to poll with gradle_get_build_status. Each build summary always includes buildId, status, tasks, testClasses, and recordSource (memory|disk). Optional fields omitted when absent: kind, projectDirectory, startedAt, finishedAt, outcome (e.g. running builds omit outcome; Gradle-only disk records may omit kind). Sorted by finishedAt or startedAt, most recent first.",
             schema = listBuildsSchema(),
         ) { args ->
             val projectDirectory = resolveScopedProjectDirectory(args, ProjectDirectoryScope(runtime.connectionManager))

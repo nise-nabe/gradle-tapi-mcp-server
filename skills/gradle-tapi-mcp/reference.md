@@ -134,7 +134,7 @@ Same foreground/background response shape as `gradle_run_tasks`.
 | `projectDirectory` | no | connected project, then `GRADLE_PROJECT_DIR` | Project root for scanning `.gradle/mcp-builds/`. When provided explicitly, must stay within the connected project or `GRADLE_PROJECT_DIR` workspace boundary; otherwise `INVALID_ARGUMENT`. |
 | `limit` | no | `20` | Maximum builds to return (max `100`), most recent first |
 
-Does not require an active Tooling API connection. Returns `builds` (array of summaries with `buildId`, `status`, `kind`, `tasks`/`testClasses`, timestamps, `outcome`, `recordSource`), `projectDirectory` used for disk scan, `totalAvailable`, and `truncated`.
+Does not require an active Tooling API connection. Returns `builds` (array of summaries), `projectDirectory` used for disk scan when resolved, `totalAvailable`, and `truncated`. Each build always includes `buildId`, `status`, `tasks`, `testClasses`, and `recordSource`. Optional per-build fields omitted when absent: `kind`, `projectDirectory`, `startedAt`, `finishedAt`, `outcome` (e.g. running builds omit `outcome`; Gradle-only disk records may omit `kind`).
 
 ### gradle_cancel_build
 
