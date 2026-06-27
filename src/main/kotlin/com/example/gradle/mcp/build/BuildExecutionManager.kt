@@ -184,7 +184,7 @@ class BuildExecutionManager(
         }
 
         if (projectDirectory != null) {
-            val hydrateLimit = (cappedLimit + entries.size).coerceAtLeast(cappedLimit)
+            val hydrateLimit = cappedLimit
             buildRecordStore.listRecentBuildIds(projectDirectory, entries.keys, hydrateLimit)
                 .forEach { buildId ->
                     buildRecordStore.loadListSummary(projectDirectory, buildId)?.let { summary ->
