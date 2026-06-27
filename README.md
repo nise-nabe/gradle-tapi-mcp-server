@@ -50,19 +50,22 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_get_build_environment` | Gradle/Java environment including `javaVersion` (lightweight) |
 | `gradle_get_build_cache_status` | Build cache / configuration cache settings and local cache summaries |
 | `gradle_get_project_overview` | Project hierarchy and task counts only; optional `maxDepth` / `maxChildren` |
+| `gradle_get_gradle_build` | GradleBuild structure (root project tree, all projects, included/editable builds); optional `maxDepth` / `maxChildren` |
 | `gradle_get_project_model` | Project model; tasks omitted by default |
 | `gradle_get_build_invocations` | Runnable tasks; selectors omitted by default |
 | `gradle_get_project_publications` | Publications |
 | `gradle_run_tasks` | Execute tasks; stdout/stderr truncated by default |
-| `gradle_run_tests` | Execute JVM test classes; stdout/stderr truncated by default |
+| `gradle_run_tests` | Execute JVM tests by class, method, pattern, or task scope; stdout/stderr truncated by default |
+| `gradle_list_builds` | List recent MCP builds from memory and `.gradle/mcp-builds/` (no Tooling API required) |
 | `gradle_get_build_status` | Poll status/output for a background build (`buildId` required); set `includeProgress: true` for detailed progress |
+| `gradle_cancel_build` | Cancel a background build via Tooling API `CancellationToken` (`buildId` required) |
 
 ## Token-efficient usage
 
 Prefer this order for agent workflows such as project context ingestion:
 
 1. `gradle_get_build_environment` for resolved Gradle/Java versions
-2. `gradle_get_project_overview` for module hierarchy and task counts
+2. `gradle_get_project_overview` for module hierarchy and task counts (or `gradle_get_gradle_build` for composite/includeBuild repositories)
 3. `gradle_run_tasks` with `["build"]` or `["test"]` when verification is needed
 
 Use heavier tools only when required:
@@ -83,9 +86,9 @@ Tool errors return structured JSON: `{ "error": { "code": "NOT_CONNECTED", "mess
 
 ## Long-running builds
 
-For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` or `gradle_run_tests`. The tool returns immediately with a `buildId`. Multiple background builds may run concurrently (up to a server-side limit). Poll `gradle_get_build_status` with that `buildId` (required) to read:
+For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` or `gradle_run_tests`. The tool returns immediately with a `buildId`. Multiple background builds may run concurrently (up to a server-side limit). Call `gradle_cancel_build` with that `buildId` to stop an unneeded background run. Poll `gradle_get_build_status` with that `buildId` (required) to read:
 
-- `status`: `running`, `succeeded`, or `failed`
+- `status`: `running`, `succeeded`, `failed`, or `cancelled`
 - `statusSource`: `memory` (in-process record) or `disk` (`.gradle/mcp-builds/<buildId>/`)
 - `outcome` and `buildSummary` when the build has finished
 - `progress` (only when `includeProgress: true`): capped task lists and recent events; disk polls use `events.ndjson` (task and test events)
@@ -98,9 +101,9 @@ When the MCP client supplies a progress token, the server may also emit MCP prog
 
 ## Disconnect during a build
 
-`gradle_disconnect` is non-blocking: the server marks any running builds as failed immediately so a new connection can start. If the Gradle daemon keeps running, on-disk `gradle-result.json` may still report `running` or `succeeded`; `gradle_get_build_status` prefers the disk record when it disagrees with the in-memory snapshot. Completed build records remain available via `gradle_get_build_status` (from memory or `.gradle/mcp-builds/`) while retained. If a Tooling API build was still running, the Gradle daemon may briefly continue that prior call until it unwinds. The disconnect response includes a `warning` field when a build was active.
+`gradle_disconnect` is non-blocking: the server cancels any running builds via the Tooling API `CancellationToken` and marks them `cancelled` immediately so a new connection can start. If the Gradle daemon keeps running briefly, on-disk `gradle-result.json` may still report `running` or `succeeded`; `gradle_get_build_status` prefers the disk record when it disagrees with the in-memory snapshot. Completed build records remain available via `gradle_get_build_status` (from memory or `.gradle/mcp-builds/`) while retained. The disconnect response includes a `warning` field when a build was active.
 
-`gradle_connect` marks any running builds as failed before opening a new project connection. It rejects the call while builds are still running; wait for them to finish or call `gradle_disconnect` first.
+`gradle_connect` cancels any running builds before opening a new project connection. It rejects the call while builds are still running; wait for them to finish, call `gradle_cancel_build`, or call `gradle_disconnect` first.
 
 ## Agent skill
 

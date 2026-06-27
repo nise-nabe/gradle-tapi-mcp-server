@@ -17,9 +17,9 @@ No arguments.
 
 `gradle_connection_status` returns `connected`, `projectDirectory`, and a connect-time runtime stack snapshot (`gradleVersion`, `javaHome`, `javaVersion`, `runtimeStackAvailable`). It does not perform Gradle I/O on each call. Use `gradle_get_build_environment` for a fresh query including `gradleUserHome` and `jvmArguments`.
 
-`gradle_disconnect` is non-blocking. If a build was active, the response may include `warning` explaining that the Gradle daemon can briefly overlap work until the prior Tooling API call unwinds.
+`gradle_disconnect` is non-blocking. If a build was active, the response may include `warning` explaining that running builds were cancelled via the Tooling API CancellationToken.
 
-`gradle_connect` marks any running builds as failed before connecting. It rejects the call while foreground or background builds are still running.
+`gradle_connect` cancels any running builds before connecting. It rejects the call while foreground or background builds are still running.
 
 Multiple `background=true` builds may run concurrently on one connection (bounded by a server-side pool). When the pool is full, new background starts return `BUILD_ALREADY_RUNNING`.
 
@@ -55,6 +55,15 @@ Returns:
 | `maxChildren` | unlimited | Maximum child projects per node |
 
 Returns hierarchy with `taskCount` per project; no task lists. When truncated: `truncated: true`, `totalChildCount`.
+
+### gradle_get_gradle_build
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `maxDepth` | unlimited | Maximum project tree depth |
+| `maxChildren` | unlimited | Maximum child projects per node |
+
+Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`BasicGradleProject`), flat `projects`, `projectCount`, `includedBuilds`, and `editableBuilds`. No tasks. Nested composite builds reuse the same shape; already-visited builds return `{ buildRootDir, cycleReference: true }`.
 
 ### gradle_get_project_model
 
@@ -105,9 +114,16 @@ Foreground responses include `outcome` (`SUCCESS` / `FAILED`), `buildSummary` (`
 
 ### gradle_run_tests
 
+At least one selection mechanism is required: `testClasses`, `testMethods`, or `includePattern`/`includePatterns` (patterns also require `tasks`).
+
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `testClasses` | yes | — | FQCN list |
+| `testClasses` | no* | `[]` | FQCN list (`withJvmTestClasses` / `withTaskAndTestClasses`) |
+| `testMethods` | no* | — | Map `{"com.example.FooTest": ["method1"]}` or array `[{"class": "...", "methods": ["..."]}]` |
+| `taskPath` | no | — | Test task path for `withTaskAndTest*` (Gradle 6.1+). Requires `testClasses` or `testMethods` |
+| `includePattern` | no* | — | Single include pattern for `withTestsFor` TestSpec (Gradle 7.6+) |
+| `includePatterns` | no* | `[]` | Include patterns for `withTestsFor` TestSpec (Gradle 7.6+) |
+| `tasks` | no | `[]` | Test task paths for `TestLauncher.forTasks()` (Gradle 7.6+). Required with patterns |
 | `arguments` | no | `[]` | Extra Gradle CLI args |
 | `jvmArguments` | no | `[]` | JVM args |
 | `includeOutput` | no | `false` | Include stdout/stderr (task log). Default false returns outcome/buildSummary only |
@@ -116,7 +132,28 @@ Foreground responses include `outcome` (`SUCCESS` / `FAILED`), `buildSummary` (`
 | `includeProgress` | no | `false` | Include detailed `progress` object |
 | `background` | no | `false` | Return `buildId` immediately; poll with `gradle_get_build_status` |
 
+\* Provide exactly one of `testClasses`, `testMethods`, or `includePattern`/`includePatterns` (patterns also require `tasks`). Optional `taskPath` and `tasks` scope the selected tests.
+
+`taskPath` uses `withTaskAndTest*` when combined with classes or methods. `tasks` applies `TestLauncher.forTasks()` when non-empty.
+
 Same foreground/background response shape as `gradle_run_tasks`.
+
+### gradle_list_builds
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `projectDirectory` | no | connected project, then `GRADLE_PROJECT_DIR` | Project root for scanning `.gradle/mcp-builds/`. When provided explicitly, must stay within the connected project or `GRADLE_PROJECT_DIR` workspace boundary; otherwise `INVALID_ARGUMENT`. |
+| `limit` | no | `20` | Maximum builds to return (max `100`), most recent first |
+
+Does not require an active Tooling API connection. Returns `builds` (array of summaries), `projectDirectory` used for disk scan when resolved, `totalAvailable`, and `truncated`. Each build always includes `buildId`, `status`, `tasks`, `testClasses`, and `recordSource`. Optional per-build fields omitted when absent: `kind`, `projectDirectory`, `startedAt`, `finishedAt`, `outcome` (e.g. running builds omit `outcome`; Gradle-only disk records may omit `kind`).
+
+### gradle_cancel_build
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `buildId` | yes | Build ID from a background run |
+
+Cancels the Gradle daemon build via Tooling API `CancellationToken`. Returns immediately with cancellation requested; poll `gradle_get_build_status` until `status` is no longer `running`, then inspect the terminal status. No-op when the build already finished.
 
 ### gradle_get_build_status
 
@@ -129,7 +166,7 @@ Same foreground/background response shape as `gradle_run_tasks`.
 | `maxOutputChars` | no | `8000` | Per-stream char limit when `includeOutput=true` |
 | `tailOutput` | no | `true` | Keep tail when truncating |
 
-Returns `status`, timestamps, `outcome`, and `buildSummary`. Always includes `statusSource` (`memory` or `disk`). Disk-backed responses also include `liveProgress` (`false`), `progressAvailable`, and `recordDirectory`. When memory and disk disagree, Gradle on-disk status wins while Gradle is still active; stale Gradle `running` (MCP terminal, no post-finalize events in `events.ndjson`) falls back to MCP. Completed builds include `failedTaskCount`, `failedTasks`, and `buildSummary.failureSummary` without `includeProgress` when available (in-memory, MCP-terminal disk, or Gradle-terminal failed with `events.ndjson`). `stdout`/`stderr` are included only when `includeOutput=true`. While running, live output requires an in-memory record; disk-only polls return streams only after MCP finalizes logs at build end. `progress` only when `includeProgress=true` (disk progress from `events.ndjson`, including test events).
+Returns `status` (`running`, `succeeded`, `failed`, `cancelled`, or `not_found`), timestamps, `outcome`, and `buildSummary`. Always includes `statusSource` (`memory` or `disk`). Disk-backed responses also include `liveProgress` (`false`), `progressAvailable`, and `recordDirectory`. When memory and disk disagree, Gradle on-disk status wins while Gradle is still active; stale Gradle `running` (MCP terminal, no post-finalize events in `events.ndjson`) falls back to MCP. Completed builds include `failedTaskCount`, `failedTasks`, and `buildSummary.failureSummary` without `includeProgress` when available (in-memory, MCP-terminal disk, or Gradle-terminal failed with `events.ndjson`). `stdout`/`stderr` are included only when `includeOutput=true`. While running, live output requires an in-memory record; disk-only polls return streams only after MCP finalizes logs at build end. `progress` only when `includeProgress=true` (disk progress from `events.ndjson`, including test events).
 
 ## Errors
 
