@@ -56,6 +56,15 @@ Returns:
 
 Returns hierarchy with `taskCount` per project; no task lists. When truncated: `truncated: true`, `totalChildCount`.
 
+### gradle_get_gradle_build
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `maxDepth` | unlimited | Maximum project tree depth |
+| `maxChildren` | unlimited | Maximum child projects per node |
+
+Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`BasicGradleProject`), flat `projects`, `projectCount`, `includedBuilds`, and `editableBuilds`. No tasks. Nested composite builds reuse the same shape; already-visited builds return `{ buildRootDir, cycleReference: true }`.
+
 ### gradle_get_project_model
 
 | Argument | Default | Description |
