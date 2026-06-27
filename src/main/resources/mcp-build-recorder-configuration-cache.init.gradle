@@ -83,6 +83,22 @@ class McpBuildRecorderSupport {
             status: status,
         ])
     }
+
+    static String terminalStatus(boolean hasFailure, String failureClassName, String failureMessage) {
+        if (!hasFailure) {
+            return "succeeded"
+        }
+        return terminalStatusFromFailure(failureClassName, failureMessage)
+    }
+
+    static String terminalStatusFromFailure(String failureClassName, String failureMessage) {
+        if (failureClassName?.contains("BuildCancelled") ||
+            failureClassName?.contains("CancellationException") ||
+            (failureMessage?.toLowerCase()?.contains("cancel") ?: false)) {
+            return "cancelled"
+        }
+        return "failed"
+    }
 }
 
 abstract class McpConfigurationCacheRecorderService
@@ -170,16 +186,23 @@ abstract class McpBuildFinalizeFlowAction implements FlowAction<McpBuildFinalize
         Property<Boolean> getBuildFailed()
 
         @Input
+        Property<String> getFailureClassName()
+
+        @Input
         Property<String> getFailureMessage()
     }
 
     @Override
     void execute(Params parameters) {
-        def status = parameters.buildFailed.get() ? "failed" : "succeeded"
         def failureMessage = parameters.failureMessage.getOrNull()
         if (failureMessage != null && failureMessage.isEmpty()) {
             failureMessage = null
         }
+        def status = McpBuildRecorderSupport.terminalStatus(
+            parameters.buildFailed.get(),
+            parameters.failureClassName.getOrNull(),
+            failureMessage,
+        )
         McpBuildRecorderSupport.writeTerminalGradleResult(
             parameters.recordDirPath.get(),
             parameters.buildId.getOrNull(),
@@ -213,6 +236,11 @@ gradle.projectsLoaded {
         }
         spec.parameters.buildFailed.set(
             flowProviders.buildWorkResult.map { it.failure.present },
+        )
+        spec.parameters.failureClassName.set(
+            flowProviders.buildWorkResult.map { result ->
+                result.failure.map { failure -> failure.class.name }.orElse("")
+            },
         )
         spec.parameters.failureMessage.set(
             flowProviders.buildWorkResult.map { result ->
