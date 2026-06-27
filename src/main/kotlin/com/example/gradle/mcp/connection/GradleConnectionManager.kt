@@ -85,6 +85,7 @@ class GradleConnectionManager {
             connected = connection != null,
             projectDirectory = projectDirectory?.path,
             gradleVersion = env?.gradleVersion,
+            versionInfo = env?.versionInfo,
             javaHome = env?.javaHome,
             javaVersion = env?.javaVersion,
             runtimeStackAvailable = env != null,
