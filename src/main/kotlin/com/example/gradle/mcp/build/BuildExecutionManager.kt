@@ -176,14 +176,21 @@ class BuildExecutionManager(
                 )
             }
 
+        val totalAvailable = if (projectDirectory != null) {
+            val diskBuildIds = buildRecordStore.listBuildIds(projectDirectory)
+            entries.size + diskBuildIds.count { it !in entries }
+        } else {
+            entries.size
+        }
+
         if (projectDirectory != null) {
-            buildRecordStore.listBuildIds(projectDirectory).forEach { buildId ->
-                if (buildId !in entries) {
+            val hydrateLimit = (cappedLimit + entries.size).coerceAtLeast(cappedLimit)
+            buildRecordStore.listRecentBuildIds(projectDirectory, entries.keys, hydrateLimit)
+                .forEach { buildId ->
                     buildRecordStore.loadListSummary(projectDirectory, buildId)?.let { summary ->
                         entries[buildId] = summary
                     }
                 }
-            }
         }
 
         val sorted = entries.values.sortedByDescending { it.sortInstant() }
@@ -191,8 +198,8 @@ class BuildExecutionManager(
         return mapOf(
             "builds" to limited.map { it.toResponseMap() },
             "projectDirectory" to projectPath,
-            "totalAvailable" to sorted.size,
-            "truncated" to (sorted.size > cappedLimit),
+            "totalAvailable" to totalAvailable,
+            "truncated" to (totalAvailable > cappedLimit),
         )
     }
 

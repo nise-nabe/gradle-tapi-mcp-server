@@ -689,6 +689,16 @@ class BuildRecordStoreTest {
     }
 
     @Test
+    fun `listRecentBuildIds returns newest persisted builds excluding memory ids`(@TempDir projectDir: File) {
+        writeMcpResult(projectDir, "oldest", "2026-06-14T08:00:00Z", "2026-06-14T08:01:00Z")
+        writeMcpResult(projectDir, "middle", "2026-06-14T09:00:00Z", "2026-06-14T09:01:00Z")
+        writeMcpResult(projectDir, "newest", "2026-06-14T10:00:00Z", "2026-06-14T10:01:00Z")
+
+        store.listRecentBuildIds(projectDir, excludeBuildIds = setOf("middle"), limit = 2) shouldBe
+            listOf("newest", "oldest")
+    }
+
+    @Test
     fun `loadListSummary resolves disk status from persistence contract`(@TempDir projectDir: File) {
         val buildId = "listed-build"
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()

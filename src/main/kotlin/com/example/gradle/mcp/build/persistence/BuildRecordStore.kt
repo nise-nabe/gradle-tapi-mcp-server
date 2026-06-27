@@ -76,7 +76,25 @@ class BuildRecordStore(
         )
     }
 
-    fun listBuildIds(projectDirectory: File): List<String> {
+    fun listBuildIds(projectDirectory: File): List<String> =
+        listBuildIdEntries(projectDirectory).map { it.buildId }
+
+    fun listRecentBuildIds(
+        projectDirectory: File,
+        excludeBuildIds: Set<String>,
+        limit: Int,
+    ): List<String> =
+        listBuildIdEntries(projectDirectory)
+            .asSequence()
+            .filter { it.buildId !in excludeBuildIds }
+            .sortedByDescending { it.lastModified }
+            .take(limit)
+            .map { it.buildId }
+            .toList()
+
+    private data class BuildIdEntry(val buildId: String, val lastModified: Long)
+
+    private fun listBuildIdEntries(projectDirectory: File): List<BuildIdEntry> {
         val root = McpBuildRecordPaths.recordsRoot(projectDirectory)
         if (!root.isDirectory) {
             return emptyList()
@@ -94,7 +112,7 @@ class BuildRecordStore(
                 if (!hasPersistedResult(recordDir)) {
                     return@mapNotNull null
                 }
-                buildId
+                BuildIdEntry(buildId, recordDir.lastModified())
             }
             .orEmpty()
     }
