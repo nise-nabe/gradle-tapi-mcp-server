@@ -69,7 +69,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_cancel_build",
-            description = "Cancel a background Gradle build started with background=true. Uses the Tooling API CancellationToken to stop the Gradle daemon build. Returns immediately with cancellation requested; poll gradle_get_build_status until status is cancelled. No-op when the build already finished.",
+            description = "Cancel a background Gradle build started with background=true. Uses the Tooling API CancellationToken to stop the Gradle daemon build. Returns immediately with cancellation requested; poll gradle_get_build_status until status is no longer running, then inspect the terminal status (cancelled, succeeded, or failed). No-op when the build already finished.",
             schema = objectSchema(
                 required = listOf("buildId"),
                 properties = mapOf(

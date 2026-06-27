@@ -124,7 +124,7 @@ Same foreground/background response shape as `gradle_run_tasks`.
 |----------|----------|-------------|
 | `buildId` | yes | Build ID from a background run |
 
-Cancels the Gradle daemon build via Tooling API `CancellationToken`. Returns immediately with cancellation requested; poll `gradle_get_build_status` until `status` is `cancelled`. No-op when the build already finished.
+Cancels the Gradle daemon build via Tooling API `CancellationToken`. Returns immediately with cancellation requested; poll `gradle_get_build_status` until `status` is no longer `running`, then inspect the terminal status. No-op when the build already finished.
 
 ### gradle_get_build_status
 

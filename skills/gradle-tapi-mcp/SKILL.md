@@ -122,7 +122,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 
 → `gradle_get_build_status`（`status`, `outcome`, `buildSummary`；`stdout`/`stderr` は `includeOutput=true` 時のみ—ディスクのみポーリングでは完了まで空；`progress` は `includeProgress=true` 時のみ；`statusSource` は常に付与）
 
-`buildId` は必須（並行ビルド時の取り違え防止）。複数の `background=true` ビルドを同時実行できる（サーバー側の上限あり）。上限到達時は `BUILD_ALREADY_RUNNING` が返る。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` で `status: cancelled` を確認する。
+`buildId` は必須（並行ビルド時の取り違え防止）。複数の `background=true` ビルドを同時実行できる（サーバー側の上限あり）。上限到達時は `BUILD_ALREADY_RUNNING` が返る。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` を `running` でなくなるまでポーリングして終端ステータス（`cancelled` / `succeeded` / `failed`）を確認する。
 
 `gradle_connect` と `gradle_get_build_cache_status` はフォアグラウンド／バックグラウンド問わずビルド実行中は拒否される。
 

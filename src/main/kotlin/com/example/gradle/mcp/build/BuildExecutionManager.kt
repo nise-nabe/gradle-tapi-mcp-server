@@ -118,7 +118,7 @@ class BuildExecutionManager(
         return mapOf(
             "buildId" to buildId,
             "status" to BuildProgressTracker.STATUS_RUNNING,
-            "message" to "Cancellation requested. Poll gradle_get_build_status until status is cancelled.",
+            "message" to "Cancellation requested. Poll gradle_get_build_status until status is no longer running.",
         )
     }
 
