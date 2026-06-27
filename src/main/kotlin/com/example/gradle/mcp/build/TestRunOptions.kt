@@ -15,7 +15,10 @@ internal data class TestRunOptions(
 )
 
 internal fun parseTestRunOptions(args: Map<String, Any>): TestRunOptions {
-    val testClasses = args.optionalStringList("testClasses").orEmpty()
+    val testClasses = args.optionalStringList("testClasses")
+        .orEmpty()
+        .filter { it.isNotBlank() }
+        .distinct()
     val testMethods = parseTestMethods(args)
     val taskPath = args.optionalString("taskPath")
     val includePatterns = buildList {
@@ -165,6 +168,9 @@ private fun parseTestMethodsMap(raw: Map<*, *>): Map<String, List<String>> =
     raw.entries.associate { (key, value) ->
         val className = key as? String
             ?: throw invalidTestMethods("testMethods map keys must be strings")
+        if (className.isBlank()) {
+            throw invalidTestMethods("testMethods map keys must be non-blank")
+        }
         className to parseMethodNameList(value, "testMethods")
     }
 
@@ -177,6 +183,9 @@ private fun parseTestMethodsArray(raw: List<*>): Map<String, List<String>> {
             )
         val className = (entryMap["class"] ?: entryMap["className"] ?: entryMap["testClass"]) as? String
             ?: throw invalidTestMethods("testMethods array entries require a class name")
+        if (className.isBlank()) {
+            throw invalidTestMethods("testMethods array entries require a non-blank class name")
+        }
         val methods = parseMethodNameList(entryMap["methods"], "methods")
         result.getOrPut(className) { mutableListOf() }.addAll(methods)
     }
@@ -189,7 +198,7 @@ private fun parseMethodNameList(value: Any?, field: String): List<String> {
     if (list.any { it !is String }) {
         throw invalidTestMethods("$field values must contain only strings")
     }
-    return list.filterIsInstance<String>()
+    return list.filterIsInstance<String>().filter { it.isNotBlank() }
 }
 
 private fun invalidTestMethods(message: String): McpException =

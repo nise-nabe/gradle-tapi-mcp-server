@@ -96,6 +96,76 @@ class TestRunOptionsTest {
     }
 
     @Test
+    fun `parseTestRunOptions ignores blank and duplicate testClasses`() {
+        val options = parseTestRunOptions(
+            mapOf(
+                "testClasses" to listOf("", "  ", "com.example.FooTest", "com.example.FooTest"),
+            ),
+        )
+
+        options.testClasses shouldBe listOf("com.example.FooTest")
+    }
+
+    @Test
+    fun `parseTestRunOptions rejects blank testMethods map keys`() {
+        val error = shouldThrow<McpException> {
+            parseTestRunOptions(
+                mapOf(
+                    "testMethods" to mapOf("" to listOf("method1")),
+                ),
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldBe "testMethods map keys must be non-blank"
+    }
+
+    @Test
+    fun `parseTestRunOptions rejects blank testMethods array class names`() {
+        val error = shouldThrow<McpException> {
+            parseTestRunOptions(
+                mapOf(
+                    "testMethods" to listOf(
+                        mapOf("class" to "", "methods" to listOf("method1")),
+                    ),
+                ),
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldBe "testMethods array entries require a non-blank class name"
+    }
+
+    @Test
+    fun `parseTestRunOptions filters blank method names`() {
+        val options = parseTestRunOptions(
+            mapOf(
+                "testMethods" to mapOf(
+                    "com.example.FooTest" to listOf("", "  ", "method1", "method1"),
+                ),
+            ),
+        )
+
+        options.testMethods shouldBe mapOf("com.example.FooTest" to listOf("method1", "method1"))
+    }
+
+    @Test
+    fun `parseTestRunOptions rejects testMethods when all method names are blank`() {
+        val error = shouldThrow<McpException> {
+            parseTestRunOptions(
+                mapOf(
+                    "testMethods" to mapOf(
+                        "com.example.FooTest" to listOf("", "  "),
+                    ),
+                ),
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldBe "testMethods entries must contain at least one method name"
+    }
+
+    @Test
     fun `validate rejects includePatterns when tasks are blank after filtering`() {
         val error = shouldThrow<McpException> {
             parseTestRunOptions(
