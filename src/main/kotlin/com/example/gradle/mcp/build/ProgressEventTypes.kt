@@ -22,5 +22,7 @@ internal object ProgressEventTypes {
     const val TEST_SKIP = "TEST_SKIP"
     const val TEST_FAIL = "TEST_FAIL"
 
+    const val ROOT_FINISH = "ROOT_FINISH"
+
     val NON_ACTIONABLE: Set<String> = setOf(START, HEARTBEAT, BUILD_FINISHED)
 }

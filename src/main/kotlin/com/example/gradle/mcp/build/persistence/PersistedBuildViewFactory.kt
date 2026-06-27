@@ -46,6 +46,7 @@ internal object PersistedBuildViewFactory {
                     failedTasks = mcp.failedTasks,
                     recentEvents = emptyList(),
                     totalEventCount = 0,
+                    problems = mcp.problems,
                 )
             }
         } else {

@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.build
 
+import com.example.gradle.mcp.build.BuildProblemSnapshot
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import io.kotest.matchers.shouldBe
@@ -75,5 +76,54 @@ class BuildStatusAssemblerTest {
         response["statusSource"] shouldBe "disk"
         response["recordDirectory"] shouldBe "/tmp/record"
         response["liveProgress"] shouldBe false
+    }
+
+    @Test
+    fun `assemble includes problems for failed foreground builds without includeProgress`() {
+        val response = BuildStatusAssembler.assemble(
+            view = BuildStatusView(
+                buildId = "failed-build",
+                kind = "tasks",
+                status = BuildProgressTracker.STATUS_FAILED,
+                startedAt = "2026-06-14T10:00:00Z",
+                finishedAt = "2026-06-14T10:01:00Z",
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                error = "Build failed",
+                outcome = "FAILED",
+                buildSummary = mapOf("failureSummary" to listOf(":app:compileJava")),
+                progress = BuildProgressSnapshot(
+                    status = BuildProgressTracker.STATUS_FAILED,
+                    currentOperation = null,
+                    completedTaskCount = 0,
+                    runningTaskCount = 0,
+                    failedTaskCount = 1,
+                    completedTasks = emptyList(),
+                    runningTasks = emptyList(),
+                    failedTasks = listOf(":app:compileJava"),
+                    recentEvents = emptyList(),
+                    totalEventCount = 1,
+                    problems = listOf(
+                        BuildProblemSnapshot(
+                            label = "Compilation failed",
+                            severity = "error",
+                        ),
+                    ),
+                ),
+                progressAvailable = true,
+                stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+                stderr = CapturedStreamSnapshot(text = "", totalChars = 0),
+                statusSource = BuildStatusView.SOURCE_MEMORY,
+            ),
+            outputLimit = OutputLimitOptions(),
+            progressOptions = ProgressResponseOptions(),
+            style = BuildStatusResponseStyle.FOREGROUND,
+        )
+
+        response["buildSummary"] shouldBe mapOf("failureSummary" to listOf(":app:compileJava"))
+        (response["problems"] as List<*>).single().let { problem ->
+            (problem as Map<*, *>)["label"] shouldBe "Compilation failed"
+        }
+        response.containsKey("progress") shouldBe false
     }
 }
