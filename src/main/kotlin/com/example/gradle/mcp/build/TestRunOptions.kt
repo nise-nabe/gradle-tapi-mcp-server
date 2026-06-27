@@ -20,7 +20,9 @@ internal fun parseTestRunOptions(args: Map<String, Any>): TestRunOptions {
     val taskPath = args.optionalString("taskPath")
     val includePatterns = buildList {
         args.optionalString("includePattern")?.let { add(it) }
-        args.optionalStringList("includePatterns")?.let { addAll(it) }
+        args.optionalStringList("includePatterns")?.let { patterns ->
+            addAll(patterns.filter { it.isNotBlank() })
+        }
     }
     val tasks = args.optionalStringList("tasks").orEmpty()
     return TestRunOptions(
