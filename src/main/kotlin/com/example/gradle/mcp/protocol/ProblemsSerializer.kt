@@ -20,10 +20,21 @@ internal object ProblemsSerializer {
         target: MutableList<BuildProblemSnapshot>,
         additions: List<BuildProblemSnapshot>,
     ) {
-        val seen = target.mapTo(mutableSetOf()) { it.dedupeKey() }
+        val indexByKey = target.withIndex()
+            .associate { (index, problem) -> problem.dedupeKey() to index }
+            .toMutableMap()
         additions.forEach { problem ->
-            if (seen.add(problem.dedupeKey())) {
+            val key = problem.dedupeKey()
+            val existingIndex = indexByKey[key]
+            if (existingIndex == null) {
+                indexByKey[key] = target.size
                 target.add(problem)
+            } else {
+                val existing = target[existingIndex]
+                val mergedSolutions = (existing.solutions + problem.solutions).distinct()
+                if (mergedSolutions != existing.solutions) {
+                    target[existingIndex] = existing.copy(solutions = mergedSolutions)
+                }
             }
         }
     }

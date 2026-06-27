@@ -80,6 +80,21 @@ class ProblemsSerializerTest {
     }
 
     @Test
+    fun `mergeDistinct unions solutions when duplicate problems are merged`() {
+        val target = mutableListOf(
+            BuildProblemSnapshot(label = "A", details = "same", solutions = listOf("Fix A")),
+        )
+        val additions = listOf(
+            BuildProblemSnapshot(label = "A", details = "same", solutions = listOf("Fix B", "Fix A")),
+        )
+
+        ProblemsSerializer.mergeDistinct(target, additions)
+
+        target shouldHaveSize 1
+        target.single().solutions shouldBe listOf("Fix A", "Fix B")
+    }
+
+    @Test
     fun `mergeDistinct treats details and contextualLabel as distinct positions`() {
         val target = mutableListOf<BuildProblemSnapshot>()
         val additions = listOf(
