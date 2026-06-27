@@ -1,5 +1,7 @@
 package com.example.gradle.mcp.protocol
 
+import kotlin.math.truncate
+
 fun Map<String, Any>.requiredString(key: String): String {
     val value = this[key]
     if (value is String && value.isNotBlank()) {
@@ -54,7 +56,28 @@ fun Map<String, Any>.optionalNonNegativeInt(key: String): Int? =
 
 private fun Map<String, Any>.parseOptionalInt(key: String): Int? =
     when (val value = this[key]) {
-        is Number -> value.toInt()
+        is Number -> value.toExactIntOrNull()
         is String -> value.toIntOrNull()
         else -> null
     }
+
+private fun Number.toExactIntOrNull(): Int? {
+    val longValue = when (this) {
+        is Int -> return this
+        is Long -> this
+        is Short -> toLong()
+        is Byte -> toLong()
+        else -> {
+            val doubleValue = toDouble()
+            if (!doubleValue.isFinite() || doubleValue != truncate(doubleValue)) {
+                return null
+            }
+            doubleValue.toLong()
+        }
+    }
+    return if (longValue in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) {
+        longValue.toInt()
+    } else {
+        null
+    }
+}
