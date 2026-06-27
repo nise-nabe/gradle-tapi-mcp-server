@@ -12,6 +12,7 @@ import org.gradle.tooling.model.BuildIdentifier
 import org.gradle.tooling.model.DomainObjectSet
 import org.gradle.tooling.model.gradle.BasicGradleProject
 import org.gradle.tooling.model.gradle.GradleBuild
+import org.gradle.tooling.model.build.Help
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.lang.reflect.Method
@@ -277,6 +278,54 @@ class ModelSerializersTest {
         editableBuilds shouldHaveSize 1
         (editableBuilds.first() as Map<*, *>)["cycleReference"] shouldBe true
     }
+
+    @Test
+    fun `help serializer returns rendered text with truncation metadata`() {
+        val text = "USAGE: gradle [option...] [task...]\n" + "x".repeat(10_000)
+        val help = mockHelp(text)
+
+        val result = ModelSerializers.help(help, HelpLimitOptions(maxChars = 200, tailOutput = true))
+
+        (result["renderedText"] as String).length shouldBeLessThanOrEqual 200
+        result["renderedTextTruncated"] shouldBe true
+        result["renderedTextTotalChars"] shouldBe text.length
+    }
+
+    @Test
+    fun `help serializer keeps short help text unchanged`() {
+        val text = "USAGE: gradle [option...] [task...]"
+        val help = mockHelp(text)
+
+        val result = ModelSerializers.help(help)
+
+        result["renderedText"] shouldBe text
+        result["renderedTextTruncated"] shouldBe false
+        result["renderedTextTotalChars"] shouldBe text.length
+    }
+
+    @Test
+    fun `help limit options parse maxChars and tailOutput from args`() {
+        val options = HelpLimitOptions.fromArgs(
+            mapOf(
+                "maxChars" to 4_000,
+                "tailOutput" to false,
+            ),
+        )
+
+        options.maxChars shouldBe 4_000
+        options.tailOutput.shouldBeFalse()
+    }
+
+    private fun mockHelp(renderedText: String): Help =
+        Proxy.newProxyInstance(
+            Help::class.java.classLoader,
+            arrayOf(Help::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "getRenderedText" -> renderedText
+                else -> defaultProxyReturn(method)
+            }
+        } as Help
 
     private fun basicGradleProject(
         name: String,

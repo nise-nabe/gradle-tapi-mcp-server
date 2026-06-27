@@ -5,6 +5,7 @@ import com.example.gradle.mcp.connection.toMap
 import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.Task
 import org.gradle.tooling.model.build.BuildEnvironment
+import org.gradle.tooling.model.build.Help
 import org.gradle.tooling.model.gradle.BasicGradleProject
 import org.gradle.tooling.model.gradle.BuildInvocations
 import org.gradle.tooling.model.gradle.GradleBuild
@@ -13,6 +14,9 @@ import org.gradle.tooling.model.gradle.ProjectPublications
 object ModelSerializers {
     fun buildEnvironment(environment: BuildEnvironment): Map<String, Any?> =
         buildEnvironmentSnapshotFrom(environment).toMap()
+
+    fun help(help: Help, options: HelpLimitOptions = HelpLimitOptions()): Map<String, Any?> =
+        OutputLimiter.limitFields(help.renderedText, options.toOutputLimitOptions(), "renderedText")
 
     fun projectOverview(
         project: GradleProject,

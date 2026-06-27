@@ -29,6 +29,15 @@ Multiple `background=true` builds may run concurrently on one connection (bounde
 
 No arguments. Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `java.javaHome`, `java.javaVersion`, `java.jvmArguments`.
 
+### gradle_get_help
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `maxChars` | `8000` | Maximum rendered help characters to return |
+| `tailOutput` | `true` | When truncated, keep the tail of the help text |
+
+Returns `renderedText` (equivalent to `gradle --help`), plus `renderedTextTruncated` and `renderedTextTotalChars` when truncated. Requires Gradle 9.4+; returns `INVALID_ARGUMENT` when the Help model is unavailable.
+
 ### gradle_get_build_cache_status
 
 | Argument | Default | Description |
