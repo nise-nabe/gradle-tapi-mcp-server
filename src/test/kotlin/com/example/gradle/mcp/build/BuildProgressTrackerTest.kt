@@ -9,6 +9,9 @@ import io.kotest.matchers.shouldBe
 import org.gradle.tooling.Failure
 import org.gradle.tooling.events.FailureResult
 import org.gradle.tooling.events.FinishEvent
+import org.gradle.tooling.events.configuration.ProjectConfigurationFinishEvent
+import org.gradle.tooling.events.configuration.ProjectConfigurationStartEvent
+import org.gradle.tooling.events.configuration.ProjectConfigurationSuccessResult
 import org.gradle.tooling.events.problems.ContextualLabel
 import org.gradle.tooling.events.problems.Details
 import org.gradle.tooling.events.problems.Problem
@@ -191,6 +194,103 @@ class BuildProgressTrackerTest {
         snapshot.problems.single().severity shouldBe "error"
         snapshot.problems.single().contextualLabel shouldBe "Task :compileJava"
         snapshot.recentEvents.last().eventType shouldBe ProgressEventTypes.ROOT_FINISH
+    }
+
+    @Test
+    fun `tracks project configuration start and finish events`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+        val projectName = "Configure project :app"
+
+        val configStart = Proxy.newProxyInstance(
+            ProjectConfigurationStartEvent::class.java.classLoader,
+            arrayOf(ProjectConfigurationStartEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> projectName
+                    "getEventTime" -> 0L
+                    else -> null
+                }
+            },
+        ) as ProjectConfigurationStartEvent
+        listener.statusChanged(configStart)
+
+        var snapshot = tracker.snapshot()
+        snapshot.runningTaskCount shouldBe 0
+        snapshot.recentEvents.last().eventType shouldBe ProgressEventTypes.CONFIG_START
+        snapshot.recentEvents.last().displayName shouldBe projectName
+        snapshot.currentOperation shouldBe projectName
+
+        val configFinish = Proxy.newProxyInstance(
+            ProjectConfigurationFinishEvent::class.java.classLoader,
+            arrayOf(ProjectConfigurationFinishEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> projectName
+                    "getEventTime" -> 1L
+                    "getResult" -> Proxy.newProxyInstance(
+                        ProjectConfigurationSuccessResult::class.java.classLoader,
+                        arrayOf(ProjectConfigurationSuccessResult::class.java),
+                        InvocationHandler { _, _, _ -> null },
+                    )
+                    else -> null
+                }
+            },
+        ) as ProjectConfigurationFinishEvent
+        listener.statusChanged(configFinish)
+
+        snapshot = tracker.snapshot()
+        snapshot.runningTaskCount shouldBe 0
+        snapshot.completedTaskCount shouldBe 0
+        snapshot.recentEvents.last().eventType shouldBe ProgressEventTypes.CONFIG_FINISH
+    }
+
+    @Test
+    fun `tracks project configuration failure events`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+        val projectName = "Configure project :broken"
+        val failureMessage = "Could not compile build file"
+
+        val configFinish = Proxy.newProxyInstance(
+            ProjectConfigurationFinishEvent::class.java.classLoader,
+            arrayOf(ProjectConfigurationFinishEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> projectName
+                    "getEventTime" -> 1L
+                    "getResult" -> Proxy.newProxyInstance(
+                        org.gradle.tooling.events.configuration.ProjectConfigurationFailureResult::class.java.classLoader,
+                        arrayOf(org.gradle.tooling.events.configuration.ProjectConfigurationFailureResult::class.java),
+                        InvocationHandler { _, method, _ ->
+                            when (method.name) {
+                                "getFailures" -> listOf(
+                                    Proxy.newProxyInstance(
+                                        org.gradle.tooling.Failure::class.java.classLoader,
+                                        arrayOf(org.gradle.tooling.Failure::class.java),
+                                        InvocationHandler { _, method, _ ->
+                                            when (method.name) {
+                                                "getMessage" -> failureMessage
+                                                else -> null
+                                            }
+                                        },
+                                    ),
+                                )
+                                else -> null
+                            }
+                        },
+                    )
+                    else -> null
+                }
+            },
+        ) as ProjectConfigurationFinishEvent
+        listener.statusChanged(configFinish)
+
+        val snapshot = tracker.snapshot()
+        snapshot.runningTaskCount shouldBe 0
+        snapshot.failedTaskCount shouldBe 0
+        snapshot.recentEvents.last().eventType shouldBe ProgressEventTypes.CONFIG_FAIL
+        snapshot.recentEvents.last().outcome shouldBe failureMessage
     }
 
     @Test

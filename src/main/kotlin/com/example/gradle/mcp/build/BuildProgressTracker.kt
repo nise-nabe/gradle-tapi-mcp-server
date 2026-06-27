@@ -6,6 +6,8 @@ import org.gradle.tooling.events.FinishEvent
 import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.ProgressEvent
 import org.gradle.tooling.events.ProgressListener
+import org.gradle.tooling.events.configuration.ProjectConfigurationFinishEvent
+import org.gradle.tooling.events.configuration.ProjectConfigurationStartEvent
 import org.gradle.tooling.events.task.TaskFinishEvent
 import org.gradle.tooling.events.task.TaskStartEvent
 import org.gradle.tooling.events.test.TestFinishEvent
@@ -116,6 +118,7 @@ class BuildProgressTracker(
             OperationType.TASK,
             OperationType.TEST,
             OperationType.ROOT,
+            OperationType.PROJECT_CONFIGURATION,
         )
     }
 
@@ -157,6 +160,20 @@ class BuildProgressTracker(
                     }
                     else -> {
                         applyTaskEvent(ProgressEventTypes.TEST_SUCCESS, displayName)
+                    }
+                }
+            }
+            is ProjectConfigurationStartEvent -> {
+                recordEventLocked(ProgressEventTypes.CONFIG_START, displayName)
+            }
+            is ProjectConfigurationFinishEvent -> {
+                when (val result = event.result) {
+                    is org.gradle.tooling.events.configuration.ProjectConfigurationFailureResult -> {
+                        val message = result.failures.firstOrNull()?.message ?: "failed"
+                        recordEventLocked(ProgressEventTypes.CONFIG_FAIL, displayName, message)
+                    }
+                    else -> {
+                        recordEventLocked(ProgressEventTypes.CONFIG_FINISH, displayName)
                     }
                 }
             }

@@ -16,6 +16,7 @@ data class ConnectionStatus(
     val connected: Boolean,
     val projectDirectory: String?,
     val gradleVersion: String? = null,
+    val versionInfo: String? = null,
     val javaHome: String? = null,
     val javaVersion: String? = null,
     val runtimeStackAvailable: Boolean = false,
