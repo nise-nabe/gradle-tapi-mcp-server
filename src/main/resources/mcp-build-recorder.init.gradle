@@ -82,6 +82,22 @@ class McpBuildRecorderSupport {
             status: status,
         ])
     }
+
+    static String terminalStatus(boolean hasFailure, String failureClassName, String failureMessage) {
+        if (!hasFailure) {
+            return "succeeded"
+        }
+        return terminalStatusFromFailure(failureClassName, failureMessage)
+    }
+
+    static String terminalStatusFromFailure(String failureClassName, String failureMessage) {
+        if (failureClassName?.contains("BuildCancelled") ||
+            failureClassName?.contains("CancellationException") ||
+            (failureMessage?.toLowerCase()?.contains("cancel") ?: false)) {
+            return "cancelled"
+        }
+        return "failed"
+    }
 }
 
 // Store on gradle.ext so listener closures survive configuration-cache serialization.
@@ -217,7 +233,12 @@ if (!configurationCacheRequested) {
     }
 
     gradle.buildFinished { result ->
-        def status = result.failure != null ? "failed" : "succeeded"
-        gradle.ext.mcpFinalizeBuild(status, result.failure?.message)
+        def failure = result.failure
+        def status = McpBuildRecorderSupport.terminalStatus(
+            failure != null,
+            failure?.class?.name,
+            failure?.message,
+        )
+        gradle.ext.mcpFinalizeBuild(status, failure?.message)
     }
 }

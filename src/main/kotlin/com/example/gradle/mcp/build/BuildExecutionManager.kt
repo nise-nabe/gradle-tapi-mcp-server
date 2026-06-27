@@ -11,6 +11,7 @@ import com.example.gradle.mcp.protocol.McpProgressSupport
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import io.modelcontextprotocol.server.McpSyncServerExchange
 import io.modelcontextprotocol.spec.McpSchema
+import org.gradle.tooling.BuildCancelledException
 import org.gradle.tooling.ConfigurableLauncher
 import org.gradle.tooling.ProjectConnection
 import java.io.File
@@ -100,6 +101,25 @@ class BuildExecutionManager(
         } finally {
             pruneCompletedBuilds()
         }
+    }
+
+    fun cancelBuild(buildId: String): Map<String, Any?> {
+        val record = builds[buildId]
+            ?: throw McpException(McpErrorCode.INVALID_ARGUMENT, "Build not found: $buildId")
+        val status = record.progressTracker.snapshot().status
+        if (status != BuildProgressTracker.STATUS_RUNNING) {
+            return mapOf(
+                "buildId" to buildId,
+                "status" to status,
+                "message" to "Build is not running.",
+            )
+        }
+        record.cancellationTokenSource.cancel()
+        return mapOf(
+            "buildId" to buildId,
+            "status" to BuildProgressTracker.STATUS_RUNNING,
+            "message" to "Cancellation requested. Poll gradle_get_build_status until status is no longer running.",
+        )
     }
 
     fun status(
@@ -192,7 +212,7 @@ class BuildExecutionManager(
 
     fun resetBuildState(reason: String) {
         synchronized(lifecycleLock) {
-            markRunningBuildsFailed(reason)
+            markRunningBuildsCancelled(reason)
             replaceBuildExecutor()
         }
     }
@@ -203,7 +223,7 @@ class BuildExecutionManager(
 
     fun shutdown() {
         val executorToAwait = synchronized(lifecycleLock) {
-            markRunningBuildsFailed("Server shutting down")
+            markRunningBuildsCancelled("Server shutting down")
             val currentExecutor = executor
             currentExecutor.shutdownNow()
             currentExecutor
@@ -215,16 +235,21 @@ class BuildExecutionManager(
         }
     }
 
-    private fun markRunningBuildsFailed(reason: String) {
+    private fun markRunningBuildsCancelled(reason: String) {
         builds.values
             .filter { it.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING }
-            .forEach { record -> finalizeBuild(record, BuildTerminalOutcome.Failed(reason)) }
+            .forEach { record ->
+                record.cancellationTokenSource.cancel()
+                finalizeBuild(record, BuildTerminalOutcome.Cancelled(reason))
+            }
     }
 
     private sealed interface BuildTerminalOutcome {
         data object Succeeded : BuildTerminalOutcome
 
         data class Failed(val message: String) : BuildTerminalOutcome
+
+        data class Cancelled(val message: String) : BuildTerminalOutcome
     }
 
     private fun finalizeBuild(record: BuildRecord, outcome: BuildTerminalOutcome): Boolean {
@@ -234,15 +259,20 @@ class BuildExecutionManager(
         when (outcome) {
             BuildTerminalOutcome.Succeeded -> record.progressTracker.markSucceeded()
             is BuildTerminalOutcome.Failed -> record.progressTracker.markFailed(outcome.message)
+            is BuildTerminalOutcome.Cancelled -> record.progressTracker.markCancelled(outcome.message)
         }
         val expectedStatus = when (outcome) {
             BuildTerminalOutcome.Succeeded -> BuildProgressTracker.STATUS_SUCCEEDED
             is BuildTerminalOutcome.Failed -> BuildProgressTracker.STATUS_FAILED
+            is BuildTerminalOutcome.Cancelled -> BuildProgressTracker.STATUS_CANCELLED
         }
         if (record.progressTracker.snapshot().status != expectedStatus) {
             return false
         }
         if (outcome is BuildTerminalOutcome.Failed && record.errorMessage == null) {
+            record.errorMessage = outcome.message
+        }
+        if (outcome is BuildTerminalOutcome.Cancelled && record.errorMessage == null) {
             record.errorMessage = outcome.message
         }
         if (record.finishedAt == null) {
@@ -259,6 +289,7 @@ class BuildExecutionManager(
         val buildOutcome = when (outcome) {
             BuildTerminalOutcome.Succeeded -> "SUCCESS"
             is BuildTerminalOutcome.Failed -> "FAILED"
+            is BuildTerminalOutcome.Cancelled -> "CANCELLED"
         }
         lastCompletedBuildSnapshot = CompletedBuildSnapshot(
             buildId = record.id,
@@ -304,7 +335,7 @@ class BuildExecutionManager(
                 runBuild(record, request, connection, record.streams, record.progressTracker, notifier)
             }
         } catch (exception: Exception) {
-            finalizeBuild(record, BuildTerminalOutcome.Failed(exception.message ?: exception.toString()))
+            finalizeBuild(record, terminalOutcomeFor(exception))
             notifier.notifyFinal(record.progressTracker)
         } finally {
             pruneCompletedBuilds()
@@ -344,12 +375,19 @@ class BuildExecutionManager(
             finalizeBuild(record, BuildTerminalOutcome.Succeeded)
             notifier.notifyFinal(tracker)
         } catch (exception: Exception) {
-            val message = exception.message ?: exception.toString()
-            finalizeBuild(record, BuildTerminalOutcome.Failed(message))
+            val outcome = terminalOutcomeFor(exception)
+            finalizeBuild(record, outcome)
             notifier.notifyFinal(tracker)
             throw exception
         }
     }
+
+    private fun terminalOutcomeFor(exception: Exception): BuildTerminalOutcome =
+        if (exception is BuildCancelledException) {
+            BuildTerminalOutcome.Cancelled(exception.message ?: "Build cancelled")
+        } else {
+            BuildTerminalOutcome.Failed(exception.message ?: exception.toString())
+        }
 
     private fun configureLauncher(
         launcher: ConfigurableLauncher<*>,
@@ -364,6 +402,7 @@ class BuildExecutionManager(
             .orEmpty()
         launcher.addArguments(*(request.arguments + persistenceArguments).toTypedArray())
         launcher.addJvmArguments(*request.jvmArguments.toTypedArray())
+        launcher.withCancellationToken(record.cancellationTokenSource.token())
         tracker.configureLauncher(launcher)
         streams.applyTo(launcher)
     }

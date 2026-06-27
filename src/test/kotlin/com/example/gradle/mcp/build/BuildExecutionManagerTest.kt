@@ -576,6 +576,64 @@ class BuildExecutionManagerTest {
     }
 
     @Test
+    fun `cancelBuild requests cancellation for running build`() {
+        val tokenSource = org.gradle.tooling.GradleConnector.newCancellationTokenSource()
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        manager.seedRunningBuildForTests(
+            BuildRecord(
+                id = "cancellable-build",
+                kind = BuildKind.TASKS,
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                startedAt = Instant.now(),
+                progressTracker = tracker,
+                streams = CapturingStreams(),
+                cancellationTokenSource = tokenSource,
+            ),
+        )
+
+        val result = manager.cancelBuild("cancellable-build")
+
+        result["buildId"] shouldBe "cancellable-build"
+        result["status"] shouldBe "running"
+        tokenSource.token().isCancellationRequested.shouldBeTrue()
+    }
+
+    @Test
+    fun `cancelBuild returns current status for terminal build`() {
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        tracker.markCancelled("already done")
+        manager.seedRunningBuildForTests(
+            BuildRecord(
+                id = "done-build",
+                kind = BuildKind.TASKS,
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                startedAt = Instant.now(),
+                progressTracker = tracker,
+                streams = CapturingStreams(),
+            ),
+        )
+
+        val result = manager.cancelBuild("done-build")
+
+        result["status"] shouldBe "cancelled"
+        result["message"] shouldBe "Build is not running."
+    }
+
+    @Test
+    fun `cancelBuild throws for unknown build`() {
+        val error = shouldThrow<McpException> {
+            manager.cancelBuild("missing-build-id")
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "Build not found"
+    }
+
+    @Test
     fun `hasActiveBuild reports seeded running build`() {
         val tracker = BuildProgressTracker()
         tracker.markStarting("Gradle tasks: build")
@@ -595,7 +653,7 @@ class BuildExecutionManagerTest {
     }
 
     @Test
-    fun `resetBuildState marks running builds failed and clears active state`() {
+    fun `resetBuildState cancels running builds and clears active state`() {
         val tracker = BuildProgressTracker()
         tracker.markStarting("Gradle tasks: build")
         manager.seedRunningBuildForTests(
@@ -613,13 +671,13 @@ class BuildExecutionManagerTest {
         manager.resetBuildState("Preparing new Gradle connection")
 
         val status = manager.status("running-build", OutputLimitOptions(), ProgressResponseOptions())
-        status["status"] shouldBe "failed"
+        status["status"] shouldBe "cancelled"
         status["error"] shouldBe "Preparing new Gradle connection"
         manager.hasActiveBuild().shouldBeFalse()
     }
 
     @Test
-    fun `onDisconnect marks running builds failed`() {
+    fun `onDisconnect cancels running builds`() {
         val tracker = BuildProgressTracker()
         tracker.markStarting("Gradle tasks: build")
         manager.seedRunningBuildForTests(
@@ -637,7 +695,7 @@ class BuildExecutionManagerTest {
         manager.onDisconnect()
 
         val status = manager.status("running-build", OutputLimitOptions(), ProgressResponseOptions())
-        status["status"] shouldBe "failed"
+        status["status"] shouldBe "cancelled"
         status["error"] shouldBe "Gradle connection closed"
 
         val notConnected = shouldThrow<McpException> {

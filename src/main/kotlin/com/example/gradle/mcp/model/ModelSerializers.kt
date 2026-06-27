@@ -5,7 +5,9 @@ import com.example.gradle.mcp.connection.toMap
 import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.Task
 import org.gradle.tooling.model.build.BuildEnvironment
+import org.gradle.tooling.model.gradle.BasicGradleProject
 import org.gradle.tooling.model.gradle.BuildInvocations
+import org.gradle.tooling.model.gradle.GradleBuild
 import org.gradle.tooling.model.gradle.ProjectPublications
 
 object ModelSerializers {
@@ -45,6 +47,75 @@ object ModelSerializers {
                 )
             }
         }
+
+    fun gradleBuild(
+        build: GradleBuild,
+        treeOptions: ProjectTreeOptions = ProjectTreeOptions(),
+        visitedBuilds: MutableSet<String> = mutableSetOf(),
+    ): Map<String, Any?> {
+        val buildRootDir = build.buildIdentifier.rootDir.absolutePath
+        if (buildRootDir in visitedBuilds) {
+            return mapOf(
+                "buildRootDir" to buildRootDir,
+                "cycleReference" to true,
+            )
+        }
+        visitedBuilds.add(buildRootDir)
+        val projects = build.projects.toList()
+
+        return buildMap {
+            put("buildRootDir", buildRootDir)
+            put("rootProject", basicGradleProjectNode(build.rootProject, treeOptions, depth = 0))
+            put("projectCount", projects.size)
+            put("projects", projects.map(::basicGradleProjectSummary))
+            put(
+                "includedBuilds",
+                build.includedBuilds.map { included -> gradleBuild(included, treeOptions, visitedBuilds) },
+            )
+            put(
+                "editableBuilds",
+                build.editableBuilds.map { editable -> gradleBuild(editable, treeOptions, visitedBuilds) },
+            )
+        }
+    }
+
+    internal fun basicGradleProjectNode(
+        project: BasicGradleProject,
+        treeOptions: ProjectTreeOptions,
+        depth: Int,
+    ): Map<String, Any?> {
+        val result = mutableMapOf<String, Any?>(
+            "name" to project.name,
+            "path" to project.path,
+            "projectDirectory" to project.projectDirectory.absolutePath,
+        )
+        project.buildTreePath?.takeIf { it.isNotEmpty() }?.let { result["buildTreePath"] = it }
+
+        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth, treeOptions.maxDepth, project.children.size)
+        if (depthLimit.omitChildren) {
+            if (depthLimit.truncated) {
+                result["truncated"] = true
+                result["totalChildCount"] = depthLimit.totalChildCount
+            }
+            result["children"] = emptyList<Map<String, Any?>>()
+            return result
+        }
+
+        val allChildren = project.children.toList()
+        val childLimit = ProjectTreeLimits.applyChildLimit(allChildren.size, treeOptions.maxChildren)
+        val childrenToSerialize = allChildren.take(childLimit.visibleChildCount)
+
+        result["children"] = childrenToSerialize.map { child ->
+            basicGradleProjectNode(child, treeOptions, depth + 1)
+        }
+
+        if (childLimit.truncated) {
+            result["truncated"] = true
+            result["totalChildCount"] = childLimit.totalChildCount
+        }
+
+        return result
+    }
 
     fun projectPublications(publications: ProjectPublications): Map<String, Any?> = mapOf(
         "project" to mapOf(
@@ -142,6 +213,14 @@ object ModelSerializers {
                 "path" to task.path,
                 "group" to task.group,
             )
+        }
+
+    private fun basicGradleProjectSummary(project: BasicGradleProject): Map<String, Any?> =
+        buildMap {
+            put("name", project.name)
+            put("path", project.path)
+            put("projectDirectory", project.projectDirectory.absolutePath)
+            project.buildTreePath?.takeIf { it.isNotEmpty() }?.let { put("buildTreePath", it) }
         }
 
     private fun taskSnapshot(task: Task): TaskSnapshot =

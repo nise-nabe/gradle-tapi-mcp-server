@@ -13,8 +13,8 @@ import io.modelcontextprotocol.server.McpServerFeatures
 import org.gradle.tooling.model.build.BuildEnvironment
 
 private const val DISCONNECT_DURING_BUILD_WARNING =
-    "One or more builds were still in progress. The server marked them failed immediately, but the Gradle " +
-        "daemon may briefly run overlapping Tooling API work until the previous calls unwind."
+    "One or more builds were still in progress. The server cancelled them via the Tooling API " +
+        "CancellationToken and marked status cancelled."
 
 internal fun connectSchema(): Map<String, Any> =
     objectSchema(
@@ -32,13 +32,13 @@ fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_connect",
-            description = "Connect to a Gradle project via the Tooling API. Call when gradle_connection_status.connected=false or to switch projects; skip when GRADLE_PROJECT_DIR auto-connect already left the server connected. When no build is running, marks any running builds as failed before connecting; rejects the call while builds are still running. Reuses an existing compatible daemon when available.",
+            description = "Connect to a Gradle project via the Tooling API. Call when gradle_connection_status.connected=false or to switch projects; skip when GRADLE_PROJECT_DIR auto-connect already left the server connected. When no build is running, cancels any running builds before connecting; rejects the call while builds are still running. Reuses an existing compatible daemon when available.",
             schema = connectSchema(),
         ) { args ->
             if (runtime.buildExecutionManager.hasActiveBuild()) {
                 error(
                     "Cannot connect while a Gradle build is running. " +
-                        "Wait for the build to finish or call gradle_disconnect.",
+                        "Wait for the build to finish, call gradle_cancel_build, or call gradle_disconnect.",
                 )
             }
             runtime.buildExecutionManager.resetBuildState("Preparing new Gradle connection")
@@ -59,7 +59,7 @@ fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_disconnect",
-            description = "Close the active Tooling API project connection. If builds are still running, the server marks them failed immediately; the Gradle daemon may briefly continue prior Tooling API calls until they unwind. A warning field is included when builds were active.",
+            description = "Close the active Tooling API project connection. If builds are still running, the server cancels them via the Tooling API CancellationToken and marks status cancelled. A warning field is included when builds were active.",
             schema = emptyObjectSchema(),
         ) { _ ->
             val hadActiveBuild = runtime.buildExecutionManager.hasActiveBuild()

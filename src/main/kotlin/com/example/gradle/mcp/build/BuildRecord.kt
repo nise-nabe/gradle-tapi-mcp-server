@@ -1,5 +1,7 @@
 package com.example.gradle.mcp.build
 
+import org.gradle.tooling.CancellationTokenSource
+import org.gradle.tooling.GradleConnector
 import java.time.Instant
 
 data class BuildRecord(
@@ -11,6 +13,7 @@ data class BuildRecord(
     val progressTracker: BuildProgressTracker,
     val streams: CapturingStreams,
     val projectDirectory: String? = null,
+    val cancellationTokenSource: CancellationTokenSource = GradleConnector.newCancellationTokenSource(),
 ) {
     @Volatile
     var finishedAt: Instant? = null
