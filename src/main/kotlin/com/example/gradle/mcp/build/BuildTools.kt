@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.GradleMcpRuntime
+import com.example.gradle.mcp.connection.ProjectDirectoryScope
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.protocol.booleanProperty
@@ -39,12 +40,28 @@ internal fun outputProperties(): Map<String, Any> =
         "tailOutput" to booleanProperty("When truncating output, keep the tail of each stream (default true)"),
     )
 
+internal fun resolveScopedProjectDirectory(
+    args: Map<String, Any>,
+    scope: ProjectDirectoryScope,
+): File? =
+    args.optionalString("projectDirectory")?.let { path ->
+        val directory = File(path)
+        if (!directory.isDirectory) {
+            throw McpException(
+                McpErrorCode.INVALID_ARGUMENT,
+                "projectDirectory is not a directory: $path",
+            )
+        }
+        scope.requireWithinBoundary(directory)
+    }
+
 internal fun listBuildsSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
             "projectDirectory" to stringProperty(
                 "Gradle project root for scanning .gradle/mcp-builds/. Defaults to the connected project, " +
-                    "then GRADLE_PROJECT_DIR when set. In-memory builds from this server are always included.",
+                    "then GRADLE_PROJECT_DIR when set. Must stay within that workspace boundary when provided explicitly. " +
+                    "In-memory builds from this server are always included.",
             ),
             "limit" to integerProperty(
                 "Maximum builds to return, most recent first (default ${BuildExecutionManager.DEFAULT_LIST_BUILDS}, max ${BuildExecutionManager.MAX_LIST_BUILDS})",
@@ -59,7 +76,8 @@ internal fun buildStatusSchema(): Map<String, Any> =
             "buildId" to stringProperty("Build ID returned by gradle_run_tasks or gradle_run_tests with background=true"),
             "projectDirectory" to stringProperty(
                 "Gradle project root directory for disk-only status lookup when the in-memory record was evicted " +
-                    "and the MCP connection points at a different project. Defaults to the connected project.",
+                    "and the MCP connection points at a different project. Defaults to the connected project. " +
+                    "Must stay within the GRADLE_PROJECT_DIR or connected-project workspace boundary.",
             ),
         ),
     )
@@ -86,16 +104,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
             description = "List recent MCP Gradle builds from in-memory records and .gradle/mcp-builds/ on disk. Does not require an active Tooling API connection. Use when a buildId was lost or to discover builds to poll with gradle_get_build_status. Returns buildId, status, kind, tasks/testClasses, timestamps, outcome, and recordSource (memory|disk). Sorted by finishedAt or startedAt, most recent first.",
             schema = listBuildsSchema(),
         ) { args ->
-            val projectDirectory = args.optionalString("projectDirectory")?.let { path ->
-                val directory = File(path)
-                if (!directory.isDirectory) {
-                    throw McpException(
-                        McpErrorCode.INVALID_ARGUMENT,
-                        "projectDirectory is not a directory: $path",
-                    )
-                }
-                directory
-            }
+            val projectDirectory = resolveScopedProjectDirectory(args, ProjectDirectoryScope(runtime.connectionManager))
             val limit = args.optionalPositiveInt("limit") ?: BuildExecutionManager.DEFAULT_LIST_BUILDS
             jsonResult(runtime.buildExecutionManager.listBuilds(projectDirectory, limit))
         },
@@ -118,16 +127,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
         ) { args ->
             val outputLimit = OutputLimitOptions.fromArgs(args)
             val progressOptions = ProgressResponseOptions.fromArgs(args)
-            val projectDirectory = args.optionalString("projectDirectory")?.let { path ->
-                val directory = File(path)
-                if (!directory.isDirectory) {
-                    throw McpException(
-                        McpErrorCode.INVALID_ARGUMENT,
-                        "projectDirectory is not a directory: $path",
-                    )
-                }
-                directory
-            }
+            val projectDirectory = resolveScopedProjectDirectory(args, ProjectDirectoryScope(runtime.connectionManager))
             jsonResult(
                 runtime.buildExecutionManager.status(
                     args.requiredString("buildId"),
