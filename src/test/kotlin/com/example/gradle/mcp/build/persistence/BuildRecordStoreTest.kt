@@ -676,6 +676,76 @@ class BuildRecordStoreTest {
         )
     }
 
+    @Test
+    fun `listBuildIds returns persisted build directories`(@TempDir projectDir: File) {
+        val olderId = "older-build"
+        val newerId = "newer-build"
+        writeMcpResult(projectDir, olderId, "2026-06-14T09:00:00Z", "2026-06-14T09:01:00Z")
+        writeMcpResult(projectDir, newerId, "2026-06-14T10:00:00Z", "2026-06-14T10:01:00Z")
+        val leakedDir = File(projectDir, ".gradle/leaked-build")
+        leakedDir.mkdirs()
+        File(leakedDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText("{}", StandardCharsets.UTF_8)
+
+        store.listBuildIds(projectDir).toSet() shouldBe setOf(olderId, newerId)
+    }
+
+    @Test
+    fun `loadListSummary resolves disk status from persistence contract`(@TempDir projectDir: File) {
+        val buildId = "listed-build"
+        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        recordDir.mkdirs()
+        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
+            mcpObjectMapper().writeValueAsString(
+                McpBuildResult(
+                    buildId = buildId,
+                    kind = "tasks",
+                    tasks = listOf("build"),
+                    testClasses = emptyList(),
+                    projectDirectory = projectDir.absolutePath,
+                    startedAt = "2026-06-14T10:00:00Z",
+                    finishedAt = "2026-06-14T10:01:00Z",
+                    status = "succeeded",
+                    outcome = "SUCCESS",
+                ),
+            ),
+            StandardCharsets.UTF_8,
+        )
+
+        val summary = store.loadListSummary(projectDir, buildId).shouldNotBeNull()
+
+        summary.buildId shouldBe buildId
+        summary.status shouldBe "succeeded"
+        summary.outcome shouldBe "SUCCESS"
+        summary.recordSource shouldBe "disk"
+        summary.tasks shouldBe listOf("build")
+    }
+
+    private fun writeMcpResult(
+        projectDir: File,
+        buildId: String,
+        startedAt: String,
+        finishedAt: String,
+    ) {
+        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        recordDir.mkdirs()
+        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
+            mcpObjectMapper().writeValueAsString(
+                McpBuildResult(
+                    buildId = buildId,
+                    kind = "tasks",
+                    tasks = listOf("build"),
+                    testClasses = emptyList(),
+                    projectDirectory = projectDir.absolutePath,
+                    startedAt = startedAt,
+                    finishedAt = finishedAt,
+                    status = "succeeded",
+                    outcome = "SUCCESS",
+                ),
+            ),
+            StandardCharsets.UTF_8,
+        )
+    }
+
     private fun completedRecord(projectDir: File, buildId: String): BuildRecord {
         val streams = CapturingStreams()
         streams.appendStdoutForTests("BUILD SUCCESSFUL in 1s\n")

@@ -8,6 +8,7 @@ import com.example.gradle.mcp.protocol.integerProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.protocol.optionalPositiveInt
 import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.objectSchema
 import com.example.gradle.mcp.protocol.optionalBoolean
@@ -36,6 +37,19 @@ internal fun outputProperties(): Map<String, Any> =
             "When includeOutput is true, maximum stdout/stderr characters per stream (default ${OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS})",
         ),
         "tailOutput" to booleanProperty("When truncating output, keep the tail of each stream (default true)"),
+    )
+
+internal fun listBuildsSchema(): Map<String, Any> =
+    objectSchema(
+        properties = mapOf(
+            "projectDirectory" to stringProperty(
+                "Gradle project root for scanning .gradle/mcp-builds/. Defaults to the connected project, " +
+                    "then GRADLE_PROJECT_DIR when set. In-memory builds from this server are always included.",
+            ),
+            "limit" to integerProperty(
+                "Maximum builds to return, most recent first (default ${BuildExecutionManager.DEFAULT_LIST_BUILDS}, max ${BuildExecutionManager.MAX_LIST_BUILDS})",
+            ),
+        ),
     )
 
 internal fun buildStatusSchema(): Map<String, Any> =
@@ -67,6 +81,24 @@ internal fun runOutputSchema(
 context(runtime: GradleMcpRuntime)
 fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
+        tool(
+            name = "gradle_list_builds",
+            description = "List recent MCP Gradle builds from in-memory records and .gradle/mcp-builds/ on disk. Does not require an active Tooling API connection. Use when a buildId was lost or to discover builds to poll with gradle_get_build_status. Returns buildId, status, kind, tasks/testClasses, timestamps, outcome, and recordSource (memory|disk). Sorted by finishedAt or startedAt, most recent first.",
+            schema = listBuildsSchema(),
+        ) { args ->
+            val projectDirectory = args.optionalString("projectDirectory")?.let { path ->
+                val directory = File(path)
+                if (!directory.isDirectory) {
+                    throw McpException(
+                        McpErrorCode.INVALID_ARGUMENT,
+                        "projectDirectory is not a directory: $path",
+                    )
+                }
+                directory
+            }
+            val limit = args.optionalPositiveInt("limit") ?: BuildExecutionManager.DEFAULT_LIST_BUILDS
+            jsonResult(runtime.buildExecutionManager.listBuilds(projectDirectory, limit))
+        },
         tool(
             name = "gradle_get_build_status",
             description = "Return status for a running or completed Gradle build started with background=true. buildId is required because multiple background builds may run concurrently. Default response is outcome and buildSummary only (no stdout/stderr task log). Set includeOutput=true for captured stdout/stderr; while the build is running, live output is available only when the MCP server still holds the in-memory record—disk-only polls (after restart or memory eviction) return stdout/stderr only after MCP finalizes logs at build end. Disk-backed polls include statusSource (memory|disk), and when statusSource is disk also liveProgress=false, progressAvailable, and recordDirectory. Gradle on-disk records override in-memory status while Gradle is still active; stale Gradle running (MCP terminal, no post-finalize events) falls back to MCP. Optional projectDirectory locates disk artifacts when the in-memory record is gone and the connected project differs. Completed builds include failedTaskCount, failedTasks, and buildSummary.failureSummary without includeProgress when available (in-memory, MCP-terminal disk, or Gradle-terminal failed with events.ndjson). Set includeProgress=true for the full progress object (completedTasks, recentEvents); disk progress uses events.ndjson (task and test events).",

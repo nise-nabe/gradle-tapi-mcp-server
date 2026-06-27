@@ -45,3 +45,12 @@ fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boolean =
         is Boolean -> value
         else -> default
     }
+
+fun Map<String, Any>.optionalPositiveInt(key: String): Int? {
+    val parsed = when (val value = this[key]) {
+        is Number -> value.toInt()
+        is String -> value.toIntOrNull()
+        else -> null
+    }
+    return parsed?.takeIf { it > 0 }
+}
