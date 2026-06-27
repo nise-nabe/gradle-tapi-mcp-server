@@ -61,12 +61,13 @@ object ModelSerializers {
             )
         }
         visitedBuilds.add(buildRootDir)
+        val projects = build.projects.toList()
 
         return buildMap {
             put("buildRootDir", buildRootDir)
             put("rootProject", basicGradleProjectNode(build.rootProject, treeOptions, depth = 0))
-            put("projectCount", build.projects.size)
-            put("projects", build.projects.map(::basicGradleProjectSummary))
+            put("projectCount", projects.size)
+            put("projects", projects.map(::basicGradleProjectSummary))
             put(
                 "includedBuilds",
                 build.includedBuilds.map { included -> gradleBuild(included, treeOptions, visitedBuilds) },
