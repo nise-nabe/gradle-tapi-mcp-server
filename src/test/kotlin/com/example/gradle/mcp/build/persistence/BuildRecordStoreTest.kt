@@ -720,6 +720,46 @@ class BuildRecordStoreTest {
         summary.tasks shouldBe listOf("build")
     }
 
+    @Test
+    fun `loadListSummary outcome follows Gradle terminal authority over stale MCP outcome`(@TempDir projectDir: File) {
+        val buildId = "gradle-failed-build"
+        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        recordDir.mkdirs()
+        File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
+            mcpObjectMapper().writeValueAsString(
+                GradleBuildResult(
+                    buildId = buildId,
+                    status = "failed",
+                    startedAt = "2026-06-14T10:00:00Z",
+                    finishedAt = "2026-06-14T10:01:00Z",
+                    taskNames = listOf("build"),
+                ),
+            ),
+            StandardCharsets.UTF_8,
+        )
+        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
+            mcpObjectMapper().writeValueAsString(
+                McpBuildResult(
+                    buildId = buildId,
+                    kind = "tasks",
+                    tasks = listOf("build"),
+                    testClasses = emptyList(),
+                    projectDirectory = projectDir.absolutePath,
+                    startedAt = "2026-06-14T10:00:00Z",
+                    finishedAt = "2026-06-14T10:01:00Z",
+                    status = "failed",
+                    outcome = "SUCCESS",
+                ),
+            ),
+            StandardCharsets.UTF_8,
+        )
+
+        val summary = store.loadListSummary(projectDir, buildId).shouldNotBeNull()
+
+        summary.status shouldBe "failed"
+        summary.outcome shouldBe "FAILED"
+    }
+
     private fun writeMcpResult(
         projectDir: File,
         buildId: String,

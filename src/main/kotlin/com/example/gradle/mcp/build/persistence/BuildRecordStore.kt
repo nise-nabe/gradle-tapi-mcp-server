@@ -116,6 +116,13 @@ class BuildRecordStore(
         }
         val resolved = BuildPersistenceContract.resolve(gradleResult, mcpResult, events)
         val status = resolved.status
+        val outcome = when (resolved.terminalSource) {
+            BuildPersistenceContract.TerminalStatusSource.MCP ->
+                mcpResult?.outcome ?: BuildOutputParser.outcomeFromStatus(status)
+            BuildPersistenceContract.TerminalStatusSource.GRADLE,
+            BuildPersistenceContract.TerminalStatusSource.NONE,
+            -> BuildOutputParser.outcomeFromStatus(status)
+        }
         return BuildListEntry(
             buildId = buildId,
             status = status,
@@ -125,7 +132,7 @@ class BuildRecordStore(
             projectDirectory = mcpResult?.projectDirectory ?: projectDirectory.absolutePath,
             startedAt = mcpResult?.startedAt ?: gradleResult?.startedAt,
             finishedAt = mcpResult?.finishedAt ?: gradleResult?.finishedAt,
-            outcome = mcpResult?.outcome ?: BuildOutputParser.outcomeFromStatus(status),
+            outcome = outcome,
             recordSource = "disk",
         )
     }
