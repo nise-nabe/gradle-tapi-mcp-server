@@ -24,12 +24,8 @@ internal data class BuildListEntry(
             put("buildId", buildId)
             put("status", status)
             kind?.let { put("kind", it) }
-            if (tasks.isNotEmpty()) {
-                put("tasks", tasks)
-            }
-            if (testClasses.isNotEmpty()) {
-                put("testClasses", testClasses)
-            }
+            put("tasks", tasks)
+            put("testClasses", testClasses)
             projectDirectory?.let { put("projectDirectory", it) }
             startedAt?.let { put("startedAt", it) }
             finishedAt?.let { put("finishedAt", it) }
