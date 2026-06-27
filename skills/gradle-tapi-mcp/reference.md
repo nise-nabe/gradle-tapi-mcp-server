@@ -36,7 +36,7 @@ No arguments. Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `java.jav
 | `maxChars` | `8000` | Maximum rendered help characters to return |
 | `tailOutput` | `true` | When truncated, keep the tail of the help text |
 
-Returns `renderedText` (equivalent to `gradle --help`), plus `renderedTextTruncated` and `renderedTextTotalChars` when truncated. Requires Gradle 9.4+; returns `INVALID_ARGUMENT` when the Help model is unavailable.
+Returns `renderedText` (equivalent to `gradle --help`), `renderedTextTruncated`, and `renderedTextTotalChars`. Truncation metadata is always included; `renderedTextTruncated` is `false` when the full text fits within `maxChars`. Requires Gradle 9.4+; returns `INVALID_ARGUMENT` when the Help model is unavailable.
 
 ### gradle_get_build_cache_status
 
