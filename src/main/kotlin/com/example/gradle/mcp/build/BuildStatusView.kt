@@ -8,6 +8,9 @@ data class BuildStatusView(
     val finishedAt: String?,
     val tasks: List<String>,
     val testClasses: List<String>,
+    val testMethods: Map<String, List<String>> = emptyMap(),
+    val taskPath: String? = null,
+    val includePatterns: List<String> = emptyList(),
     val error: String?,
     val outcome: String?,
     val buildSummary: Map<String, Any?>?,
@@ -35,6 +38,9 @@ data class BuildStatusView(
                 finishedAt = record.finishedAt?.toString(),
                 tasks = record.tasks,
                 testClasses = record.testClasses,
+                testMethods = record.testMethods,
+                taskPath = record.taskPath,
+                includePatterns = record.includePatterns,
                 error = record.errorMessage,
                 outcome = if (isTerminal) {
                     BuildOutputParser.outcomeFromStatus(progress.status)

@@ -56,7 +56,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_get_build_invocations` | Runnable tasks; selectors omitted by default |
 | `gradle_get_project_publications` | Publications |
 | `gradle_run_tasks` | Execute tasks; stdout/stderr truncated by default |
-| `gradle_run_tests` | Execute JVM test classes; stdout/stderr truncated by default |
+| `gradle_run_tests` | Execute JVM tests by class, method, pattern, or task scope; stdout/stderr truncated by default |
 | `gradle_list_builds` | List recent MCP builds from memory and `.gradle/mcp-builds/` (no Tooling API required) |
 | `gradle_get_build_status` | Poll status/output for a background build (`buildId` required); set `includeProgress: true` for detailed progress |
 | `gradle_cancel_build` | Cancel a background build via Tooling API `CancellationToken` (`buildId` required) |

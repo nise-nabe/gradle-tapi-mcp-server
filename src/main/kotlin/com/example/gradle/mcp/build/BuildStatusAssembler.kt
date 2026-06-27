@@ -23,7 +23,14 @@ internal object BuildStatusAssembler {
         if (style == BuildStatusResponseStyle.FOREGROUND) {
             when (view.kind) {
                 "tasks" -> response["tasks"] = view.tasks
-                "tests" -> response["testClasses"] = view.testClasses
+                "tests" -> {
+                    response["testClasses"] = view.testClasses
+                    response.putTestRunSelection(
+                        testMethods = view.testMethods,
+                        taskPath = view.taskPath,
+                        includePatterns = view.includePatterns,
+                    )
+                }
             }
         }
 
@@ -33,6 +40,11 @@ internal object BuildStatusAssembler {
             response["finishedAt"] = view.finishedAt
             response["tasks"] = view.tasks
             response["testClasses"] = view.testClasses
+            response.putTestRunSelection(
+                testMethods = view.testMethods,
+                taskPath = view.taskPath,
+                includePatterns = view.includePatterns,
+            )
             response["statusSource"] = view.statusSource
         }
 

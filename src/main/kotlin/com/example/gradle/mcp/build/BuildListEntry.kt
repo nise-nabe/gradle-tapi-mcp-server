@@ -8,6 +8,9 @@ internal data class BuildListEntry(
     val kind: String?,
     val tasks: List<String>,
     val testClasses: List<String>,
+    val testMethods: Map<String, List<String>> = emptyMap(),
+    val taskPath: String? = null,
+    val includePatterns: List<String> = emptyList(),
     val projectDirectory: String?,
     val startedAt: String?,
     val finishedAt: String?,
@@ -26,6 +29,11 @@ internal data class BuildListEntry(
             kind?.let { put("kind", it) }
             put("tasks", tasks)
             put("testClasses", testClasses)
+            putTestRunSelection(
+                testMethods = testMethods,
+                taskPath = taskPath,
+                includePatterns = includePatterns,
+            )
             projectDirectory?.let { put("projectDirectory", it) }
             startedAt?.let { put("startedAt", it) }
             finishedAt?.let { put("finishedAt", it) }

@@ -123,9 +123,16 @@ Foreground responses include `outcome` (`SUCCESS` / `FAILED`), `buildSummary` (`
 
 ### gradle_run_tests
 
+At least one selection mechanism is required: `testClasses`, `testMethods`, or `includePattern`/`includePatterns` (patterns also require `tasks`).
+
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `testClasses` | yes | — | FQCN list |
+| `testClasses` | no* | `[]` | FQCN list (`withJvmTestClasses` / `withTaskAndTestClasses`) |
+| `testMethods` | no* | — | Map `{"com.example.FooTest": ["method1"]}` or array `[{"class": "...", "methods": ["..."]}]` |
+| `taskPath` | no | — | Test task path for `withTaskAndTest*` (Gradle 6.1+). Requires `testClasses` or `testMethods` |
+| `includePattern` | no* | — | Single include pattern for `withTestsFor` TestSpec (Gradle 7.6+) |
+| `includePatterns` | no* | `[]` | Include patterns for `withTestsFor` TestSpec (Gradle 7.6+) |
+| `tasks` | no | `[]` | Test task paths for `TestLauncher.forTasks()` (Gradle 7.6+). Required with patterns |
 | `arguments` | no | `[]` | Extra Gradle CLI args |
 | `jvmArguments` | no | `[]` | JVM args |
 | `includeOutput` | no | `false` | Include stdout/stderr (task log). Default false returns outcome/buildSummary only |
@@ -133,6 +140,10 @@ Foreground responses include `outcome` (`SUCCESS` / `FAILED`), `buildSummary` (`
 | `tailOutput` | no | `true` | Keep tail when truncating |
 | `includeProgress` | no | `false` | Include detailed `progress` object |
 | `background` | no | `false` | Return `buildId` immediately; poll with `gradle_get_build_status` |
+
+\* Provide exactly one of `testClasses`, `testMethods`, or `includePattern`/`includePatterns` (patterns also require `tasks`). Optional `taskPath` and `tasks` scope the selected tests.
+
+`taskPath` uses `withTaskAndTest*` when combined with classes or methods. `tasks` applies `TestLauncher.forTasks()` when non-empty.
 
 Same foreground/background response shape as `gradle_run_tasks`.
 

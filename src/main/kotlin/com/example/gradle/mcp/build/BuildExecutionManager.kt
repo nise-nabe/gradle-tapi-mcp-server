@@ -58,14 +58,22 @@ class BuildExecutionManager(
             }
         }
 
-        return mapOf(
-            "buildId" to buildId,
-            "status" to BuildProgressTracker.STATUS_RUNNING,
-            "kind" to request.kind.name.lowercase(),
-            "tasks" to request.tasks,
-            "testClasses" to request.testClasses,
-            "message" to "Build started in background. Poll gradle_get_build_status with this buildId.",
-        )
+        return buildMap {
+            put("buildId", buildId)
+            put("status", BuildProgressTracker.STATUS_RUNNING)
+            put("kind", request.kind.name.lowercase())
+            put("tasks", request.tasks)
+            put("testClasses", request.testClasses)
+            putTestRunSelection(
+                testMethods = request.testMethods,
+                taskPath = request.taskPath,
+                includePatterns = request.includePatterns,
+            )
+            put(
+                "message",
+                "Build started in background. Poll gradle_get_build_status with this buildId.",
+            )
+        }
     }
 
     fun runForeground(
@@ -168,6 +176,9 @@ class BuildExecutionManager(
                     kind = record.kind.name.lowercase(),
                     tasks = record.tasks,
                     testClasses = record.testClasses,
+                    testMethods = record.testMethods,
+                    taskPath = record.taskPath,
+                    includePatterns = record.includePatterns,
                     projectDirectory = record.projectDirectory,
                     startedAt = record.startedAt.toString(),
                     finishedAt = record.finishedAt?.toString(),
@@ -338,6 +349,9 @@ class BuildExecutionManager(
             kind = request.kind,
             tasks = request.tasks,
             testClasses = request.testClasses,
+            testMethods = request.testMethods,
+            taskPath = request.taskPath,
+            includePatterns = request.includePatterns,
             startedAt = Instant.now(),
             progressTracker = tracker,
             streams = streams,
@@ -373,7 +387,7 @@ class BuildExecutionManager(
     ) {
         val operationLabel = when (request.kind) {
             BuildKind.TASKS -> "Gradle tasks: ${request.tasks.joinToString()}"
-            BuildKind.TESTS -> "Gradle tests: ${request.testClasses.joinToString()}"
+            BuildKind.TESTS -> describeTestOperation(request)
         }
         tracker.markStarting(operationLabel)
         notifier.notifyIfNeeded(tracker)
@@ -387,8 +401,7 @@ class BuildExecutionManager(
                     launcher.run()
                 }
                 BuildKind.TESTS -> {
-                    val launcher = connection.newTestLauncher()
-                        .withJvmTestClasses(*request.testClasses.toTypedArray())
+                    val launcher = configureTestLauncher(connection.newTestLauncher(), request)
                     configureLauncher(launcher, record, request, streams, tracker)
                     launcher.run()
                 }
