@@ -91,13 +91,17 @@ class BuildRecordStore(
                     return@mapNotNull null
                 }
                 val recordDir = recordDirectory(projectDirectory, buildId) ?: return@mapNotNull null
-                if (readGradleResult(recordDir) == null && readMcpResult(recordDir) == null) {
+                if (!hasPersistedResult(recordDir)) {
                     return@mapNotNull null
                 }
                 buildId
             }
             .orEmpty()
     }
+
+    private fun hasPersistedResult(recordDir: File): Boolean =
+        McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE) != null ||
+            McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE) != null
 
     internal fun loadListSummary(projectDirectory: File, buildId: String): BuildListEntry? {
         val recordDir = recordDirectory(projectDirectory, buildId) ?: return null

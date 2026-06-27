@@ -682,9 +682,8 @@ class BuildRecordStoreTest {
         val newerId = "newer-build"
         writeMcpResult(projectDir, olderId, "2026-06-14T09:00:00Z", "2026-06-14T09:01:00Z")
         writeMcpResult(projectDir, newerId, "2026-06-14T10:00:00Z", "2026-06-14T10:01:00Z")
-        val leakedDir = File(projectDir, ".gradle/leaked-build")
-        leakedDir.mkdirs()
-        File(leakedDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText("{}", StandardCharsets.UTF_8)
+        val emptyRecordDir = store.recordDirectory(projectDir, "empty-build").shouldNotBeNull()
+        emptyRecordDir.mkdirs()
 
         store.listBuildIds(projectDir).toSet() shouldBe setOf(olderId, newerId)
     }
