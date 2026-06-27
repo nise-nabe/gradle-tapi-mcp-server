@@ -26,7 +26,8 @@ application {
 
 testing {
     suites {
-        val test by getting(JvmTestSuite::class) {
+        @Suppress("UnstableApiUsage")
+        getByName<JvmTestSuite>("test") {
             useJUnitJupiter(libs.versions.junit.get())
             dependencies {
                 implementation(platform(libs.kotest.bom))
