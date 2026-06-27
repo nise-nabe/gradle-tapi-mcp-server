@@ -112,10 +112,16 @@ class BuildRecordStore(
                 if (!hasPersistedResult(recordDir)) {
                     return@mapNotNull null
                 }
-                BuildIdEntry(buildId, recordDir.lastModified())
+                BuildIdEntry(buildId, persistedResultLastModified(recordDir))
             }
             .orEmpty()
     }
+
+    private fun persistedResultLastModified(recordDir: File): Long =
+        listOfNotNull(
+            McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE),
+            McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE),
+        ).maxOfOrNull { it.lastModified() } ?: recordDir.lastModified()
 
     private fun hasPersistedResult(recordDir: File): Boolean =
         McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE) != null ||
