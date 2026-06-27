@@ -84,6 +84,33 @@ class TestRunOptionsTest {
     }
 
     @Test
+    fun `parseTestRunOptions ignores blank and duplicate tasks`() {
+        val options = parseTestRunOptions(
+            mapOf(
+                "testClasses" to listOf("com.example.FooTest"),
+                "tasks" to listOf("", "  ", ":app:test", ":app:test"),
+            ),
+        )
+
+        options.tasks shouldBe listOf(":app:test")
+    }
+
+    @Test
+    fun `validate rejects includePatterns when tasks are blank after filtering`() {
+        val error = shouldThrow<McpException> {
+            parseTestRunOptions(
+                mapOf(
+                    "includePatterns" to listOf("com.example.*"),
+                    "tasks" to listOf("", "  "),
+                ),
+            ).validate()
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldBe "includePattern/includePatterns requires tasks for test task scoping"
+    }
+
+    @Test
     fun `toBuildRunRequest populates testClasses from testMethods keys for reporting`() {
         val request = TestRunOptions(
             testMethods = mapOf("com.example.FooTest" to listOf("method1")),

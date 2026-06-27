@@ -24,7 +24,10 @@ internal fun parseTestRunOptions(args: Map<String, Any>): TestRunOptions {
             addAll(patterns.filter { it.isNotBlank() })
         }
     }
-    val tasks = args.optionalStringList("tasks").orEmpty()
+    val tasks = args.optionalStringList("tasks")
+        .orEmpty()
+        .filter { it.isNotBlank() }
+        .distinct()
     return TestRunOptions(
         testClasses = testClasses,
         testMethods = testMethods,
@@ -148,7 +151,9 @@ private fun parseTestMethods(args: Map<String, Any>): Map<String, List<String>> 
     return when (raw) {
         is Map<*, *> -> parseTestMethodsMap(raw)
         is List<*> -> parseTestMethodsArray(raw)
-        else -> throw invalidTestMethods("testMethods must be an object map or array of {class, methods} entries")
+        else -> throw invalidTestMethods(
+            "testMethods must be an object map or array of entries with class/className/testClass and methods",
+        )
     }.also { methods ->
         if (methods.values.any { it.isEmpty() }) {
             throw invalidTestMethods("testMethods entries must contain at least one method name")
@@ -167,7 +172,9 @@ private fun parseTestMethodsArray(raw: List<*>): Map<String, List<String>> {
     val result = LinkedHashMap<String, MutableList<String>>()
     for (entry in raw) {
         val entryMap = entry as? Map<*, *>
-            ?: throw invalidTestMethods("testMethods array entries must be objects with class and methods")
+            ?: throw invalidTestMethods(
+                "testMethods array entries must be objects with class/className/testClass and methods",
+            )
         val className = (entryMap["class"] ?: entryMap["className"] ?: entryMap["testClass"]) as? String
             ?: throw invalidTestMethods("testMethods array entries require a class name")
         val methods = parseMethodNameList(entryMap["methods"], "methods")
