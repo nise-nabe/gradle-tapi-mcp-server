@@ -140,7 +140,6 @@ class BuildExecutionManager(
         val entries = LinkedHashMap<String, BuildListEntry>()
         builds.values
             .asSequence()
-            .filter { record -> projectPath == null || record.projectDirectory == projectPath }
             .forEach { record ->
                 val snapshot = record.progressTracker.snapshot()
                 entries[record.id] = BuildListEntry(
