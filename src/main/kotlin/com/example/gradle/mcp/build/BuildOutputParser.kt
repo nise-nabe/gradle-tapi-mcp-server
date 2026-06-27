@@ -39,6 +39,7 @@ object BuildOutputParser {
         when (status) {
             BuildProgressTracker.STATUS_SUCCEEDED -> "SUCCESS"
             BuildProgressTracker.STATUS_FAILED -> "FAILED"
+            BuildProgressTracker.STATUS_CANCELLED -> "CANCELLED"
             else -> null
         }
 

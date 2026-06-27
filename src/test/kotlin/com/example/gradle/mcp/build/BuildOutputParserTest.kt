@@ -105,6 +105,7 @@ class BuildOutputParserTest {
     fun `maps terminal build status to outcome`() {
         assertEquals("SUCCESS", BuildOutputParser.outcomeFromStatus(BuildProgressTracker.STATUS_SUCCEEDED))
         assertEquals("FAILED", BuildOutputParser.outcomeFromStatus(BuildProgressTracker.STATUS_FAILED))
+        assertEquals("CANCELLED", BuildOutputParser.outcomeFromStatus(BuildProgressTracker.STATUS_CANCELLED))
         assertNull(BuildOutputParser.outcomeFromStatus(BuildProgressTracker.STATUS_RUNNING))
     }
 }
