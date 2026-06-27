@@ -127,7 +127,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 
 `buildId` は必須（並行ビルド時の取り違え防止）。複数の `background=true` ビルドを同時実行できる（サーバー側の上限あり）。上限到達時は `BUILD_ALREADY_RUNNING` が返る。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` を `running` でなくなるまでポーリングして終端ステータス（`cancelled` / `succeeded` / `failed`）を確認する。
 
-`buildId` を失ったときは `gradle_list_builds` で直近の MCP ビルドを探し、見つかった `buildId` で `gradle_get_build_status` をポーリングする。TAPI 接続は不要（メモリ上のビルドは常に含まれる。ディスク走査は `projectDirectory`、接続中プロジェクト、または `GRADLE_PROJECT_DIR` を使用）。
+`buildId` を失ったときは `gradle_list_builds` で直近の MCP ビルドを探し、見つかった `buildId` で `gradle_get_build_status` をポーリングする。TAPI 接続は不要（メモリ上のビルドは常に含まれる。ディスク走査は `projectDirectory`、接続中プロジェクト、または `GRADLE_PROJECT_DIR` を使用）。`projectDirectory` を明示する場合は、接続中プロジェクトまたは `GRADLE_PROJECT_DIR` で許可境界が定義されている必要がある（未定義だと `INVALID_ARGUMENT`）。
 
 `gradle_connect` と `gradle_get_build_cache_status` はフォアグラウンド／バックグラウンド問わずビルド実行中は拒否される。
 
