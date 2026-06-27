@@ -5,7 +5,6 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
-import io.kotest.matchers.maps.shouldContainKey
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
@@ -265,14 +264,14 @@ class ModelSerializersTest {
 
         val serialized = ModelSerializers.gradleBuild(root)
 
-        serialized["buildRootDir"] shouldBe "/root"
+        serialized["buildRootDir"] shouldBe root.buildIdentifier.rootDir.absolutePath
         serialized["projectCount"] shouldBe 2
         val projects = serialized["projects"] as List<*>
         projects shouldHaveSize 2
         val includedBuilds = serialized["includedBuilds"] as List<*>
         includedBuilds shouldHaveSize 1
         val includedBuild = includedBuilds.first() as Map<*, *>
-        includedBuild["buildRootDir"] shouldBe "/included"
+        includedBuild["buildRootDir"] shouldBe included.buildIdentifier.rootDir.absolutePath
         includedBuild["projectCount"] shouldBe 1
         val editableBuilds = serialized["editableBuilds"] as List<*>
         editableBuilds shouldHaveSize 1
