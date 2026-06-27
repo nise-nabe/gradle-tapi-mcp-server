@@ -72,7 +72,7 @@ internal object ProblemsSerializer {
             severity === Severity.ERROR -> "error"
             severity === Severity.WARNING -> "warning"
             severity === Severity.ADVICE -> "advice"
-            severity.isKnown -> "unknown"
+            !severity.isKnown -> "unknown"
             else -> null
         }
 }

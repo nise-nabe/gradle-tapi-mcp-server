@@ -8,5 +8,6 @@ data class BuildProblemSnapshot(
     val contextualLabel: String? = null,
 ) {
     internal fun dedupeKey(): String =
-        listOfNotNull(label, details, contextualLabel, severity).joinToString("\u0000")
+        listOf(label, details.orEmpty(), contextualLabel.orEmpty(), severity.orEmpty())
+            .joinToString("\u0000")
 }

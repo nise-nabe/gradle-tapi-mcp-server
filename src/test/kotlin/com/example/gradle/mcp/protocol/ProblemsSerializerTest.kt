@@ -79,6 +79,49 @@ class ProblemsSerializerTest {
         target.map { it.label } shouldBe listOf("A", "B", "C")
     }
 
+    @Test
+    fun `mergeDistinct treats details and contextualLabel as distinct positions`() {
+        val target = mutableListOf<BuildProblemSnapshot>()
+        val additions = listOf(
+            BuildProblemSnapshot(label = "L", details = null, contextualLabel = "X"),
+            BuildProblemSnapshot(label = "L", details = "X", contextualLabel = null),
+        )
+
+        ProblemsSerializer.mergeDistinct(target, additions)
+
+        target shouldHaveSize 2
+    }
+
+    @Test
+    fun `fromFailure maps unknown severity to unknown`() {
+        val problem = problemProxy(
+            displayName = "Future problem",
+            details = "details",
+            severity = unknownSeverityProxy(),
+            solutions = emptyList(),
+            contextualLabel = null,
+        )
+        val failure = failureProxy(message = "Build failed", problems = listOf(problem))
+
+        val extracted = ProblemsSerializer.fromFailure(failure)
+
+        extracted shouldHaveSize 1
+        extracted.single().severity shouldBe "unknown"
+    }
+
+    private fun unknownSeverityProxy(): Severity =
+        Proxy.newProxyInstance(
+            Severity::class.java.classLoader,
+            arrayOf(Severity::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "isKnown" -> false
+                    "toString" -> "UNKNOWN_FUTURE_SEVERITY"
+                    else -> null
+                }
+            },
+        ) as Severity
+
     private fun failureResultProxy(failures: List<Failure>): FailureResult =
         Proxy.newProxyInstance(
             FailureResult::class.java.classLoader,

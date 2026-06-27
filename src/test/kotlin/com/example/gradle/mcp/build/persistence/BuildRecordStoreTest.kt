@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.build.persistence
 
 import com.example.gradle.mcp.build.BuildKind
+import com.example.gradle.mcp.build.BuildProblemSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildRecord
 import com.example.gradle.mcp.build.BuildStatusAssembler
@@ -525,6 +526,71 @@ class BuildRecordStoreTest {
         status["status"] shouldBe "failed"
         status["failedTaskCount"] shouldBe 1
         status["failedTasks"] shouldBe listOf(":app:broken")
+    }
+
+    @Test
+    fun `loadStatus includes persisted problems on gradle terminal failed`(@TempDir projectDir: File) {
+        val buildId = "gradle-failed-with-persisted-problems"
+        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        recordDir.mkdirs()
+        File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
+            mcpObjectMapper().writeValueAsString(
+                GradleBuildResult(
+                    buildId = buildId,
+                    status = "failed",
+                    startedAt = "2026-06-14T10:00:00Z",
+                    finishedAt = "2026-06-14T10:02:00Z",
+                    failure = "Execution failed for task ':app:broken'.",
+                    taskNames = listOf("build"),
+                ),
+            ),
+            StandardCharsets.UTF_8,
+        )
+        File(recordDir, McpBuildRecordPaths.EVENTS_FILE).writeText(
+            """
+            {"ts":"2026-06-14T10:01:00Z","type":"TASK_START","displayName":":app:broken"}
+            {"ts":"2026-06-14T10:01:30Z","type":"TASK_FAIL","displayName":":app:broken","outcome":"broken"}
+            {"ts":"2026-06-14T10:02:00Z","type":"BUILD_FINISHED","status":"failed"}
+            """.trimIndent() + "\n",
+            StandardCharsets.UTF_8,
+        )
+        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
+            mcpObjectMapper().writeValueAsString(
+                McpBuildResult(
+                    buildId = buildId,
+                    kind = "tasks",
+                    tasks = listOf("build"),
+                    testClasses = emptyList(),
+                    projectDirectory = projectDir.absolutePath,
+                    startedAt = "2026-06-14T10:00:00Z",
+                    finishedAt = "2026-06-14T10:02:00Z",
+                    status = "failed",
+                    outcome = "FAILED",
+                    failedTaskCount = 1,
+                    failedTasks = listOf(":app:broken"),
+                    problems = listOf(
+                        BuildProblemSnapshot(
+                            label = "Compilation failed",
+                            details = "cannot find symbol",
+                            severity = "error",
+                            contextualLabel = "Task :app:broken",
+                        ),
+                    ),
+                ),
+            ),
+            StandardCharsets.UTF_8,
+        )
+
+        val status = loadStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+            .shouldNotBeNull()
+
+        status["status"] shouldBe "failed"
+        (status["problems"] as List<*>).single().let { problem ->
+            (problem as Map<*, *>)["label"] shouldBe "Compilation failed"
+            problem["details"] shouldBe "cannot find symbol"
+            problem["severity"] shouldBe "error"
+            problem["contextualLabel"] shouldBe "Task :app:broken"
+        }
     }
 
     @Test
