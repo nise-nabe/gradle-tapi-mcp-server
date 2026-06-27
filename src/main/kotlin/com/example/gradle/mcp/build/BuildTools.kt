@@ -169,7 +169,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
         tool(
             name = "gradle_run_tests",
             description = "Execute JVM tests with class, method, pattern, or task-scoped selection and return build outcome and summary. " +
-                "Provide at least one of testClasses, testMethods, or includePattern/includePatterns (patterns require tasks). " +
+                "Provide exactly one of testClasses, testMethods, or includePattern/includePatterns (patterns require tasks). " +
                 "Optional taskPath scopes classes/methods via withTaskAndTest*; optional tasks limits test tasks via TestLauncher.forTasks(). " +
                 "stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. " +
                 "Use background=true to start a long test run and poll gradle_get_build_status with the returned buildId; " +

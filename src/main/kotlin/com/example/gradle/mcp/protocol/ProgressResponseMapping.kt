@@ -17,10 +17,13 @@ internal fun terminalFailureFields(snapshot: BuildProgressSnapshot): Map<String,
     if (snapshot.status == BuildProgressTracker.STATUS_RUNNING) {
         emptyMap()
     } else {
-        mapOf(
-            "failedTaskCount" to snapshot.failedTaskCount,
-            "failedTasks" to snapshot.failedTasks,
-        )
+        buildMap {
+            put("failedTaskCount", snapshot.failedTaskCount)
+            put("failedTasks", snapshot.failedTasks)
+            if (snapshot.status == BuildProgressTracker.STATUS_FAILED && snapshot.problems.isNotEmpty()) {
+                put("problems", ProblemsSerializer.toResponseMaps(snapshot.problems))
+            }
+        }
     }
 
 internal fun BuildProgressSnapshot.toResponseMap(): Map<String, Any?> =

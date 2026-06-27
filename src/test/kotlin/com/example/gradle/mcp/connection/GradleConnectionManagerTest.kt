@@ -29,6 +29,7 @@ class GradleConnectionManagerTest {
         status.connected.shouldBeFalse()
         status.projectDirectory.shouldBeNull()
         status.gradleVersion.shouldBeNull()
+        status.versionInfo.shouldBeNull()
         status.javaHome.shouldBeNull()
         status.javaVersion.shouldBeNull()
         status.runtimeStackAvailable.shouldBeFalse()
@@ -39,22 +40,41 @@ class GradleConnectionManagerTest {
         val getModelCalls = AtomicInteger(0)
         val connection = connectionProxy(getModelCalls)
         val snapshot = BuildEnvironmentSnapshot(
-            gradleVersion = "8.14",
+            gradleVersion = "9.6",
             gradleUserHome = "/gradle/home",
             javaHome = "/jdk/home",
             javaVersion = "21.0.2",
             jvmArguments = listOf("-Xmx2g"),
+            versionInfo = "Gradle 9.6\nBuild time: 2026-01-01",
         )
         manager.seedConnectionForTests(connection, environment = snapshot)
 
         val status = manager.status()
 
         status.connected.shouldBeTrue()
-        status.gradleVersion shouldBe "8.14"
+        status.gradleVersion shouldBe "9.6"
+        status.versionInfo shouldBe "Gradle 9.6\nBuild time: 2026-01-01"
         status.javaHome shouldBe "/jdk/home"
         status.javaVersion shouldBe "21.0.2"
         status.runtimeStackAvailable.shouldBeTrue()
         getModelCalls.get() shouldBe 0
+    }
+
+    @Test
+    fun `status omits versionInfo when snapshot has none`() {
+        val connection = connectionProxy(AtomicInteger(0))
+        manager.seedConnectionForTests(
+            connection,
+            environment = BuildEnvironmentSnapshot(
+                gradleVersion = "8.14",
+                gradleUserHome = "/gradle/home",
+                javaHome = "/jdk/home",
+                javaVersion = "21.0.2",
+                jvmArguments = emptyList(),
+            ),
+        )
+
+        manager.status().versionInfo.shouldBeNull()
     }
 
     @Test
@@ -66,6 +86,7 @@ class GradleConnectionManagerTest {
 
         status.connected.shouldBeTrue()
         status.gradleVersion.shouldBeNull()
+        status.versionInfo.shouldBeNull()
         status.javaHome.shouldBeNull()
         status.javaVersion.shouldBeNull()
         status.runtimeStackAvailable.shouldBeFalse()
@@ -91,6 +112,7 @@ class GradleConnectionManagerTest {
         status.connected.shouldBeFalse()
         status.runtimeStackAvailable.shouldBeFalse()
         status.gradleVersion.shouldBeNull()
+        status.versionInfo.shouldBeNull()
     }
 
     @Test

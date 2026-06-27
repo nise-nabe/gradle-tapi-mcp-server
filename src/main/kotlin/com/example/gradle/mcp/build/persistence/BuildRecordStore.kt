@@ -55,6 +55,7 @@ class BuildRecordStore(
             buildSummary = BuildOutputParser.toResponseMap(buildSummary),
             failedTaskCount = progress.failedTaskCount,
             failedTasks = progress.failedTasks,
+            problems = progress.problems,
             stdoutTotalChars = stdout.totalChars,
             stderrTotalChars = stderr.totalChars,
         )

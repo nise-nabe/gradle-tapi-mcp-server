@@ -4,6 +4,7 @@ import com.example.gradle.mcp.build.BuildOutputParser
 import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildStatusView
+import com.example.gradle.mcp.protocol.ProblemsSerializer
 
 internal object PersistedBuildViewFactory {
     fun fromArtifacts(
@@ -46,12 +47,18 @@ internal object PersistedBuildViewFactory {
                     failedTasks = mcp.failedTasks,
                     recentEvents = emptyList(),
                     totalEventCount = 0,
+                    problems = mcp.problems,
                 )
             }
         } else {
             null
         }
-        val progress = progressFromEvents ?: progressFromMcp
+        val progress = attachPersistedProblems(
+            progress = progressFromEvents ?: progressFromMcp,
+            mcpResult = artifacts.mcpResult,
+            status = status,
+            isRunning = isRunning,
+        )
         val progressAvailable = progress != null
 
         return BuildStatusView(
@@ -88,6 +95,45 @@ internal object PersistedBuildViewFactory {
             statusSource = BuildStatusView.SOURCE_DISK,
             recordDirectory = artifacts.recordDir.absolutePath,
         )
+    }
+
+    private fun attachPersistedProblems(
+        progress: BuildProgressSnapshot?,
+        mcpResult: McpBuildResult?,
+        status: String,
+        isRunning: Boolean,
+    ): BuildProgressSnapshot? {
+        val persistedProblems = mcpResult?.problems.orEmpty()
+        if (persistedProblems.isEmpty()) {
+            return progress
+        }
+        if (progress != null) {
+            val mergedProblems = progress.problems.toMutableList()
+            ProblemsSerializer.mergeDistinct(mergedProblems, persistedProblems)
+            return if (mergedProblems == progress.problems) {
+                progress
+            } else {
+                progress.copy(problems = mergedProblems)
+            }
+        }
+        if (isRunning) {
+            return null
+        }
+        return mcpResult?.let { mcp ->
+            BuildProgressSnapshot(
+                status = status,
+                currentOperation = null,
+                completedTaskCount = 0,
+                runningTaskCount = 0,
+                failedTaskCount = mcp.failedTaskCount,
+                completedTasks = emptyList(),
+                runningTasks = emptyList(),
+                failedTasks = mcp.failedTasks,
+                recentEvents = emptyList(),
+                totalEventCount = 0,
+                problems = persistedProblems,
+            )
+        }
     }
 
     private fun diskProgressFromEvents(

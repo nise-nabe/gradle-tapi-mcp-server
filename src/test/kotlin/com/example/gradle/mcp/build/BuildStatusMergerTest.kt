@@ -2,6 +2,7 @@ package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.build.persistence.PersistedBuildArtifacts
 import com.example.gradle.mcp.build.persistence.PersistedBuildViewFactory
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -115,6 +116,67 @@ class BuildStatusMergerTest {
         merged.recordDirectory shouldBe "/tmp/record"
     }
 
+    @Test
+    fun `merge unions problems from disk and memory progress`() {
+        val memory = failedView(
+            buildId = "failed-merge",
+            progress = progressSnapshot(
+                failedTaskCount = 1,
+                failedTasks = listOf(":app:broken"),
+                totalEventCount = 3,
+                problems = listOf(
+                    BuildProblemSnapshot(label = "From memory", details = "memory-only"),
+                ),
+            ),
+        )
+        val disk = failedView(
+            buildId = "failed-merge",
+            progress = progressSnapshot(
+                failedTaskCount = 0,
+                totalEventCount = 1,
+                problems = listOf(
+                    BuildProblemSnapshot(label = "From disk", details = "disk-only"),
+                ),
+            ),
+        )
+
+        val merged = BuildStatusMerger.merge(memory, disk)
+
+        merged.progress?.failedTaskCount shouldBe 1
+        merged.progress?.failedTasks shouldBe listOf(":app:broken")
+        merged.progress?.totalEventCount shouldBe 3
+        merged.progress?.problems.orEmpty() shouldHaveSize 2
+        merged.progress?.problems?.map { it.label } shouldBe listOf("From memory", "From disk")
+    }
+
+    @Test
+    fun `merge unions solutions when disk and memory share the same problem`() {
+        val sharedProblem = BuildProblemSnapshot(
+            label = "Compilation failed",
+            details = "cannot find symbol",
+            solutions = listOf("Fix imports"),
+        )
+        val memory = failedView(
+            buildId = "failed-merge",
+            progress = progressSnapshot(
+                problems = listOf(sharedProblem),
+            ),
+        )
+        val disk = failedView(
+            buildId = "failed-merge",
+            progress = progressSnapshot(
+                problems = listOf(
+                    sharedProblem.copy(solutions = listOf("Add dependency")),
+                ),
+            ),
+        )
+
+        val merged = BuildStatusMerger.merge(memory, disk)
+
+        merged.progress?.problems.orEmpty() shouldHaveSize 1
+        merged.progress?.problems?.single()?.solutions shouldBe listOf("Fix imports", "Add dependency")
+    }
+
     private fun recordWithStdout(stdout: String): BuildRecord {
         val streams = CapturingStreams()
         streams.appendStdoutForTests(stdout)
@@ -172,5 +234,48 @@ class BuildStatusMergerTest {
             status = status,
             buildSummary = buildSummary,
             recordDirectory = recordDirectory,
+        )
+
+    private fun failedView(
+        buildId: String,
+        progress: BuildProgressSnapshot,
+    ): BuildStatusView =
+        BuildStatusView(
+            buildId = buildId,
+            kind = "tasks",
+            status = BuildProgressTracker.STATUS_FAILED,
+            startedAt = "2026-06-14T10:00:00Z",
+            finishedAt = "2026-06-14T10:01:00Z",
+            tasks = listOf("build"),
+            testClasses = emptyList(),
+            error = "Build failed",
+            outcome = "FAILED",
+            buildSummary = null,
+            progress = progress,
+            progressAvailable = true,
+            stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+            stderr = CapturedStreamSnapshot(text = "", totalChars = 0),
+            statusSource = BuildStatusView.SOURCE_MEMORY,
+            recordDirectory = null,
+        )
+
+    private fun progressSnapshot(
+        failedTaskCount: Int = 0,
+        failedTasks: List<String> = emptyList(),
+        totalEventCount: Int = 0,
+        problems: List<BuildProblemSnapshot> = emptyList(),
+    ): BuildProgressSnapshot =
+        BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_FAILED,
+            currentOperation = null,
+            completedTaskCount = 0,
+            runningTaskCount = 0,
+            failedTaskCount = failedTaskCount,
+            completedTasks = emptyList(),
+            runningTasks = emptyList(),
+            failedTasks = failedTasks,
+            recentEvents = emptyList(),
+            totalEventCount = totalEventCount,
+            problems = problems,
         )
 }

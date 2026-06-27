@@ -437,6 +437,7 @@ class BuildExecutionManager(
         launcher.addArguments(*(request.arguments + persistenceArguments).toTypedArray())
         launcher.addJvmArguments(*request.jvmArguments.toTypedArray())
         launcher.withCancellationToken(record.cancellationTokenSource.token())
+        launcher.withDetailedFailure()
         tracker.configureLauncher(launcher)
         streams.applyTo(launcher)
     }
@@ -497,7 +498,7 @@ class BuildExecutionManager(
             val snapshot = tracker.snapshot()
             val latest = snapshot.recentEvents.lastOrNull() ?: return
             val level = when (latest.eventType) {
-                "TASK_FAIL", "TEST_FAIL", "FAIL" -> McpSchema.LoggingLevel.ERROR
+                "TASK_FAIL", "TEST_FAIL", "CONFIG_FAIL", "FAIL" -> McpSchema.LoggingLevel.ERROR
                 "TASK_SKIP", "TEST_SKIP" -> McpSchema.LoggingLevel.WARNING
                 else -> McpSchema.LoggingLevel.INFO
             }
