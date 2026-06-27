@@ -51,12 +51,7 @@ internal object PersistedBuildViewFactory {
         } else {
             null
         }
-        val progress = attachPersistedProblems(
-            progress = progressFromEvents ?: progressFromMcp,
-            mcpResult = artifacts.mcpResult,
-            status = status,
-            isRunning = isRunning,
-        )
+        val progress = progressFromEvents ?: progressFromMcp
         val progressAvailable = progress != null
 
         return BuildStatusView(
@@ -90,43 +85,6 @@ internal object PersistedBuildViewFactory {
             statusSource = BuildStatusView.SOURCE_DISK,
             recordDirectory = artifacts.recordDir.absolutePath,
         )
-    }
-
-    private fun attachPersistedProblems(
-        progress: BuildProgressSnapshot?,
-        mcpResult: McpBuildResult?,
-        status: String,
-        isRunning: Boolean,
-    ): BuildProgressSnapshot? {
-        val persistedProblems = mcpResult?.problems.orEmpty()
-        if (persistedProblems.isEmpty()) {
-            return progress
-        }
-        if (progress != null) {
-            return if (progress.problems.isEmpty()) {
-                progress.copy(problems = persistedProblems)
-            } else {
-                progress
-            }
-        }
-        if (isRunning) {
-            return null
-        }
-        return mcpResult?.let { mcp ->
-            BuildProgressSnapshot(
-                status = status,
-                currentOperation = null,
-                completedTaskCount = 0,
-                runningTaskCount = 0,
-                failedTaskCount = mcp.failedTaskCount,
-                completedTasks = emptyList(),
-                runningTasks = emptyList(),
-                failedTasks = mcp.failedTasks,
-                recentEvents = emptyList(),
-                totalEventCount = 0,
-                problems = persistedProblems,
-            )
-        }
     }
 
     private fun diskProgressFromEvents(
