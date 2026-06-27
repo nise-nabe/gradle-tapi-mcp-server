@@ -6,4 +6,5 @@ data class BuildEnvironmentSnapshot(
     val javaHome: String?,
     val javaVersion: String?,
     val jvmArguments: List<String>,
+    val versionInfo: String? = null,
 )

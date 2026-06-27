@@ -90,7 +90,7 @@ fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_connection_status",
-            description = "Return the current Tooling API connection status and a connect-time runtime stack snapshot (gradleVersion, javaHome, javaVersion). Prefer calling this first: when GRADLE_PROJECT_DIR is set in the MCP server env (for example \${workspaceFolder} in Cursor mcp.json), the server auto-connects on startup so other Gradle tools work without gradle_connect. Auto-connect is best-effort, adds startup time (~1-2s with a warm daemon; longer on cold or large projects), and omit GRADLE_PROJECT_DIR when faster MCP startup matters. Stack fields are null with runtimeStackAvailable=false when the snapshot could not be loaded at connect. If connected=false, call gradle_connect or set GRADLE_PROJECT_DIR and restart MCP. For a fresh query including gradleUserHome and jvmArguments, use gradle_get_build_environment.",
+            description = "Return the current Tooling API connection status and a connect-time runtime stack snapshot (gradleVersion, versionInfo on Gradle 9.4+, javaHome, javaVersion). Prefer calling this first: when GRADLE_PROJECT_DIR is set in the MCP server env (for example \${workspaceFolder} in Cursor mcp.json), the server auto-connects on startup so other Gradle tools work without gradle_connect. Auto-connect is best-effort, adds startup time (~1-2s with a warm daemon; longer on cold or large projects), and omit GRADLE_PROJECT_DIR when faster MCP startup matters. Stack fields are null with runtimeStackAvailable=false when the snapshot could not be loaded at connect. If connected=false, call gradle_connect or set GRADLE_PROJECT_DIR and restart MCP. For a fresh query including gradleUserHome and jvmArguments, use gradle_get_build_environment.",
             schema = emptyObjectSchema(),
         ) { _ ->
             jsonResult(runtime.connectionManager.status())
@@ -121,7 +121,7 @@ fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_get_build_environment",
-            description = "Fetch BuildEnvironment (Gradle version, Gradle user home, Java home). Lightweight; prefer this over project model for stack checks.",
+            description = "Fetch BuildEnvironment (Gradle version, Gradle user home, Java home, versionInfo). versionInfo is the gradle --version output when the connected Gradle is 9.4+; omitted on older Gradle. Lightweight; prefer this over project model for stack checks.",
             schema = emptyObjectSchema(),
         ) { _ ->
             runtime.connectionManager.withConnectionResult { connection ->
