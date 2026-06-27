@@ -699,6 +699,14 @@ class BuildRecordStoreTest {
     }
 
     @Test
+    fun `listRecentBuildIds returns empty list for non-positive limit`(@TempDir projectDir: File) {
+        writeMcpResult(projectDir, "build-one", "2026-06-14T10:00:00Z", "2026-06-14T10:01:00Z")
+
+        store.listRecentBuildIds(projectDir, excludeBuildIds = emptySet(), limit = 0) shouldBe emptyList()
+        store.listRecentBuildIds(projectDir, excludeBuildIds = emptySet(), limit = -1) shouldBe emptyList()
+    }
+
+    @Test
     fun `loadListSummary resolves disk status from persistence contract`(@TempDir projectDir: File) {
         val buildId = "listed-build"
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()

@@ -83,14 +83,18 @@ class BuildRecordStore(
         projectDirectory: File,
         excludeBuildIds: Set<String>,
         limit: Int,
-    ): List<String> =
-        listBuildIdEntries(projectDirectory)
+    ): List<String> {
+        if (limit <= 0) {
+            return emptyList()
+        }
+        return listBuildIdEntries(projectDirectory)
             .asSequence()
             .filter { it.buildId !in excludeBuildIds }
             .sortedByDescending { it.lastModified }
             .take(limit)
             .map { it.buildId }
             .toList()
+    }
 
     private data class BuildIdEntry(val buildId: String, val lastModified: Long)
 
