@@ -50,6 +50,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_get_build_environment` | Gradle/Java environment including `javaVersion` (lightweight) |
 | `gradle_get_build_cache_status` | Build cache / configuration cache settings and local cache summaries |
 | `gradle_get_project_overview` | Project hierarchy and task counts only; optional `maxDepth` / `maxChildren` |
+| `gradle_get_gradle_build` | GradleBuild structure (root project tree, all projects, included/editable builds); optional `maxDepth` / `maxChildren` |
 | `gradle_get_project_model` | Project model; tasks omitted by default |
 | `gradle_get_build_invocations` | Runnable tasks; selectors omitted by default |
 | `gradle_get_project_publications` | Publications |
@@ -62,7 +63,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 Prefer this order for agent workflows such as project context ingestion:
 
 1. `gradle_get_build_environment` for resolved Gradle/Java versions
-2. `gradle_get_project_overview` for module hierarchy and task counts
+2. `gradle_get_project_overview` for module hierarchy and task counts (or `gradle_get_gradle_build` for composite/includeBuild repositories)
 3. `gradle_run_tasks` with `["build"]` or `["test"]` when verification is needed
 
 Use heavier tools only when required:
