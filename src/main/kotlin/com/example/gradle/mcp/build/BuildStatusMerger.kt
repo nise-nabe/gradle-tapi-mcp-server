@@ -1,5 +1,7 @@
 package com.example.gradle.mcp.build
 
+import com.example.gradle.mcp.protocol.ProblemsSerializer
+
 /**
  * Merges in-memory and disk [BuildStatusView]s. Gradle on-disk records win when status
  * disagrees (for example MCP marked a build failed on disconnect while Gradle kept running).
@@ -78,12 +80,21 @@ internal object BuildStatusMerger {
         when {
             disk == null -> memory
             memory == null -> disk
-            disk.failedTaskCount > memory.failedTaskCount -> disk
-            memory.failedTaskCount > disk.failedTaskCount -> memory
-            disk.problems.size > memory.problems.size -> disk
-            memory.problems.size > disk.problems.size -> memory
-            disk.totalEventCount > memory.totalEventCount -> disk
-            memory.totalEventCount > disk.totalEventCount -> memory
-            else -> memory
+            else -> {
+                val (base, other) = when {
+                    disk.failedTaskCount > memory.failedTaskCount -> disk to memory
+                    memory.failedTaskCount > disk.failedTaskCount -> memory to disk
+                    disk.totalEventCount > memory.totalEventCount -> disk to memory
+                    memory.totalEventCount > disk.totalEventCount -> memory to disk
+                    else -> memory to disk
+                }
+                val mergedProblems = base.problems.toMutableList()
+                ProblemsSerializer.mergeDistinct(mergedProblems, other.problems)
+                if (mergedProblems == base.problems) {
+                    base
+                } else {
+                    base.copy(problems = mergedProblems)
+                }
+            }
         }
 }

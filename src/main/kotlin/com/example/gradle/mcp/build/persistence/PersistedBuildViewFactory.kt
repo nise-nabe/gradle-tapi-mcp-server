@@ -4,6 +4,7 @@ import com.example.gradle.mcp.build.BuildOutputParser
 import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildStatusView
+import com.example.gradle.mcp.protocol.ProblemsSerializer
 
 internal object PersistedBuildViewFactory {
     fun fromArtifacts(
@@ -104,10 +105,12 @@ internal object PersistedBuildViewFactory {
             return progress
         }
         if (progress != null) {
-            return if (progress.problems.isEmpty()) {
-                progress.copy(problems = persistedProblems)
-            } else {
+            val mergedProblems = progress.problems.toMutableList()
+            ProblemsSerializer.mergeDistinct(mergedProblems, persistedProblems)
+            return if (mergedProblems == progress.problems) {
                 progress
+            } else {
+                progress.copy(problems = mergedProblems)
             }
         }
         if (isRunning) {
