@@ -30,3 +30,6 @@ internal fun booleanProperty(description: String): Map<String, String> =
 
 internal fun integerProperty(description: String): Map<String, String> =
     mapOf("type" to "integer", "description" to description)
+
+internal fun objectProperty(description: String): Map<String, String> =
+    mapOf("type" to "object", "description" to description)

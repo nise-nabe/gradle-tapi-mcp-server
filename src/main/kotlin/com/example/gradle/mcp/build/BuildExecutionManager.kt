@@ -373,7 +373,7 @@ class BuildExecutionManager(
     ) {
         val operationLabel = when (request.kind) {
             BuildKind.TASKS -> "Gradle tasks: ${request.tasks.joinToString()}"
-            BuildKind.TESTS -> "Gradle tests: ${request.testClasses.joinToString()}"
+            BuildKind.TESTS -> describeTestOperation(request)
         }
         tracker.markStarting(operationLabel)
         notifier.notifyIfNeeded(tracker)
@@ -387,8 +387,7 @@ class BuildExecutionManager(
                     launcher.run()
                 }
                 BuildKind.TESTS -> {
-                    val launcher = connection.newTestLauncher()
-                        .withJvmTestClasses(*request.testClasses.toTypedArray())
+                    val launcher = configureTestLauncher(connection.newTestLauncher(), request)
                     configureLauncher(launcher, record, request, streams, tracker)
                     launcher.run()
                 }
