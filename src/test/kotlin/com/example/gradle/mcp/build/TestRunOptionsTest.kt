@@ -84,6 +84,31 @@ class TestRunOptionsTest {
     }
 
     @Test
+    fun `describeTestOperation formats taskPath with testMethods as class hash methods`() {
+        val description = describeTestOperation(
+            BuildRunRequest(
+                kind = BuildKind.TESTS,
+                testMethods = mapOf("com.example.FooTest" to listOf("method1", "method2")),
+                taskPath = ":app:test",
+            ),
+        )
+
+        description shouldBe "Gradle tests: :app:test methods com.example.FooTest#method1, method2"
+    }
+
+    @Test
+    fun `describeTestOperation formats testMethods without taskPath as class hash methods`() {
+        val description = describeTestOperation(
+            BuildRunRequest(
+                kind = BuildKind.TESTS,
+                testMethods = mapOf("com.example.FooTest" to listOf("method1")),
+            ),
+        )
+
+        description shouldBe "Gradle tests: com.example.FooTest#method1"
+    }
+
+    @Test
     fun `validate rejects includePatterns without tasks`() {
         val error = shouldThrow<McpException> {
             TestRunOptions(includePatterns = listOf("com.example.*")).validate()

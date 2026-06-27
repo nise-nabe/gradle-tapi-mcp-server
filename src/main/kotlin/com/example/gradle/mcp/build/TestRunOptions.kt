@@ -86,7 +86,7 @@ internal fun describeTestOperation(request: BuildRunRequest): String =
         append(
             when {
                 !request.taskPath.isNullOrBlank() && request.testMethods.isNotEmpty() ->
-                    "${request.taskPath} methods ${request.testMethods.keys.joinToString()}"
+                    "${request.taskPath} methods ${request.testMethods.entries.joinToString { "${it.key}#${it.value.joinToString()}" }}"
                 !request.taskPath.isNullOrBlank() ->
                     "${request.taskPath} classes ${request.testClasses.joinToString()}"
                 request.testMethods.isNotEmpty() ->

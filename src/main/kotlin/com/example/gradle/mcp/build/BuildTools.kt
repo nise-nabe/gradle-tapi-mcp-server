@@ -12,7 +12,7 @@ import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.optionalPositiveInt
 import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.objectSchema
-import com.example.gradle.mcp.protocol.objectProperty
+import com.example.gradle.mcp.protocol.testMethodsProperty
 import com.example.gradle.mcp.protocol.optionalBoolean
 import com.example.gradle.mcp.protocol.optionalStringList
 import com.example.gradle.mcp.protocol.requiredString
@@ -179,7 +179,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
                 required = emptyList(),
                 extraProperties = mapOf(
                     "testClasses" to stringArrayProperty("Fully qualified JVM test class names (withJvmTestClasses / withTaskAndTestClasses)"),
-                    "testMethods" to objectProperty(
+                    "testMethods" to testMethodsProperty(
                         "Map of class name to method names, e.g. {\"com.example.FooTest\": [\"method1\"]}, " +
                             "or array form [{\"class\": \"com.example.FooTest\", \"methods\": [\"method1\"]}]",
                     ),

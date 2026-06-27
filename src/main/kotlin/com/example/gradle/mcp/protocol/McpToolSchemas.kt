@@ -33,3 +33,28 @@ internal fun integerProperty(description: String): Map<String, String> =
 
 internal fun objectProperty(description: String): Map<String, String> =
     mapOf("type" to "object", "description" to description)
+
+internal fun testMethodsProperty(description: String): Map<String, Any> =
+    mapOf(
+        "description" to description,
+        "oneOf" to listOf(
+            mapOf(
+                "type" to "object",
+                "additionalProperties" to mapOf(
+                    "type" to "array",
+                    "items" to mapOf("type" to "string"),
+                ),
+            ),
+            mapOf(
+                "type" to "array",
+                "items" to objectSchema(
+                    properties = mapOf(
+                        "class" to stringProperty("Fully qualified JVM test class name"),
+                        "className" to stringProperty("Alias for class"),
+                        "testClass" to stringProperty("Alias for class"),
+                        "methods" to stringArrayProperty("Method names in the test class"),
+                    ),
+                ),
+            ),
+        ),
+    )
