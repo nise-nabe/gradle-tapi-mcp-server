@@ -20,7 +20,7 @@
 - `.gitignore` excludes `.cursor/`; `gradle-wrapper.jar` is explicitly un-ignored so clones can run `./gradlew`.
 - Agent skill at `skills/gradle-tapi-mcp/` (install to `~/.cursor/skills/` globally) documents token-efficient MCP workflows: prefer `gradle_get_project_overview`; use `gradle_get_build_cache_status` for cache settings; task lists omitted unless `includeTasks=true`; run output omitted by default (`includeOutput=false`; outcome/buildSummary only).
 - MCP tool errors use structured `McpException` with `McpErrorCode` (`NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`); `mapExceptionToErrorCode` maps legacy `IllegalStateException` messages.
-- Long Gradle builds: set `background=true` on `gradle_run_tasks`/`gradle_run_tests`, then poll `gradle_get_build_status` for progress and partial output.
+- Long Gradle builds: set `background=true` on `gradle_run_tasks`/`gradle_run_tests`, then poll `gradle_get_build_status` for progress and partial output; call `gradle_cancel_build` to stop unneeded background runs.
 - Cursor MCP config launches the JAR via `java -jar` with `GRADLE_PROJECT_DIR=${workspaceFolder}` (workspace `.cursor/mcp.json` or global `~/.cursor/mcp.json`).
 - After MCP server code changes, rebuild the JAR (`./gradlew jar`) and restart MCP servers in Cursor.
 - `main` is branch-protected; push feature branches and open PRs instead of pushing directly to `main`.
