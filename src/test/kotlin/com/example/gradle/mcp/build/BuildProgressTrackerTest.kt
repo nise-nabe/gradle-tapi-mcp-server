@@ -14,6 +14,28 @@ import java.lang.reflect.Proxy
 
 class BuildProgressTrackerTest {
     @Test
+    fun `markCancelled does not overwrite succeeded status`() {
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        tracker.markSucceeded()
+
+        tracker.markCancelled("late cancellation")
+
+        tracker.snapshot().status shouldBe BuildProgressTracker.STATUS_SUCCEEDED
+    }
+
+    @Test
+    fun `markFailed does not overwrite cancelled status`() {
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        tracker.markCancelled("Build cancelled")
+
+        tracker.markFailed("late failure")
+
+        tracker.snapshot().status shouldBe BuildProgressTracker.STATUS_CANCELLED
+    }
+
+    @Test
     fun `markFailed does not overwrite succeeded status`() {
         val tracker = BuildProgressTracker()
         tracker.markStarting("Gradle tasks: build")

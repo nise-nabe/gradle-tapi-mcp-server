@@ -61,6 +61,21 @@ class BuildProgressTracker(
         }
     }
 
+    fun markCancelled(message: String) {
+        notifyAfter {
+            synchronized(lock) {
+                if (status != STATUS_RUNNING) {
+                    return@notifyAfter false
+                }
+                status = STATUS_CANCELLED
+                currentOperation = null
+                taskProgress.clearRunning()
+                recordEventLocked(ProgressEventTypes.CANCEL, message)
+                true
+            }
+        }
+    }
+
     fun snapshot(): BuildProgressSnapshot =
         synchronized(lock) {
             taskProgress.snapshot(
@@ -171,6 +186,7 @@ class BuildProgressTracker(
         const val STATUS_RUNNING = "running"
         const val STATUS_SUCCEEDED = "succeeded"
         const val STATUS_FAILED = "failed"
+        const val STATUS_CANCELLED = "cancelled"
 
         private const val MAX_RECENT_EVENTS = 30
     }

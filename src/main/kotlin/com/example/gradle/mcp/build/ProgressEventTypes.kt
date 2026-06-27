@@ -8,6 +8,7 @@ internal object ProgressEventTypes {
     const val START = "START"
     const val FINISH = "FINISH"
     const val FAIL = "FAIL"
+    const val CANCEL = "CANCEL"
     const val HEARTBEAT = "HEARTBEAT"
     const val BUILD_FINISHED = "BUILD_FINISHED"
 
