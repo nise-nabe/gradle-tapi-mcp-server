@@ -11,6 +11,7 @@ import com.example.gradle.mcp.protocol.tool
 import io.modelcontextprotocol.server.McpServerFeatures
 import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.gradle.BuildInvocations
+import org.gradle.tooling.model.gradle.GradleBuild
 import org.gradle.tooling.model.gradle.ProjectPublications
 
 internal fun projectTreeProperties(): Map<String, Any> =
@@ -53,6 +54,17 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             runtime.connectionManager.withConnectionResult { connection ->
                 val project = connection.getModel(GradleProject::class.java)
                 jsonResult(ModelSerializers.projectOverview(project, treeOptions))
+            }
+        },
+        tool(
+            name = "gradle_get_gradle_build",
+            description = "Fetch GradleBuild structure: root project tree, all projects, included builds, and editable builds. Lightweight and read-only; no tasks. Prefer for composite or includeBuild repositories.",
+            schema = projectTreeSchema(),
+        ) { args ->
+            val treeOptions = ProjectTreeOptions.fromArgs(args)
+            runtime.connectionManager.withConnectionResult { connection ->
+                val build = connection.getModel(GradleBuild::class.java)
+                jsonResult(ModelSerializers.gradleBuild(build, treeOptions))
             }
         },
         tool(

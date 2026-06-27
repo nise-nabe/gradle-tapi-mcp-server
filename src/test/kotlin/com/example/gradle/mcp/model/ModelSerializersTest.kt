@@ -3,11 +3,20 @@ package com.example.gradle.mcp.model
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
+import org.gradle.tooling.model.BuildIdentifier
+import org.gradle.tooling.model.DomainObjectSet
+import org.gradle.tooling.model.gradle.BasicGradleProject
+import org.gradle.tooling.model.gradle.GradleBuild
 import org.junit.jupiter.api.Test
+import java.io.File
+import java.lang.reflect.Method
+import java.lang.reflect.Proxy
+import java.util.AbstractSet
 
 class ModelSerializersTest {
     private val tasks = listOf(
@@ -193,4 +202,153 @@ class ModelSerializersTest {
         childLimit.totalChildCount.shouldBeNull()
         depthLimit.omitChildren.shouldBeFalse()
     }
+
+    @Test
+    fun `basicGradleProjectNode applies maxDepth and maxChildren`() {
+        val root = basicGradleProject(
+            name = "root",
+            path = ":",
+            directory = File("/root"),
+            children = listOf(
+                basicGradleProject(
+                    name = "a",
+                    path = ":a",
+                    directory = File("/root/a"),
+                    children = listOf(
+                        basicGradleProject("a1", ":a:a1", File("/root/a/a1")),
+                    ),
+                ),
+                basicGradleProject("b", ":b", File("/root/b")),
+            ),
+        )
+
+        val node = ModelSerializers.basicGradleProjectNode(
+            root,
+            ProjectTreeOptions(maxDepth = 1, maxChildren = 1),
+            depth = 0,
+        )
+
+        node["truncated"] shouldBe true
+        node["totalChildCount"] shouldBe 2
+        val children = node["children"] as List<*>
+        children shouldHaveSize 1
+        val child = children.first() as Map<*, *>
+        child["name"] shouldBe "a"
+        child["children"] shouldBe emptyList<Map<String, Any?>>()
+        child["truncated"] shouldBe true
+        child["totalChildCount"] shouldBe 1
+    }
+
+    @Test
+    fun `gradleBuild serializes projects and nested included builds`() {
+        val included = gradleBuild(
+            rootDir = File("/included"),
+            rootProject = basicGradleProject("included", ":", File("/included")),
+            projects = listOf(basicGradleProject("included", ":", File("/included"))),
+        )
+        val root = gradleBuild(
+            rootDir = File("/root"),
+            rootProject = basicGradleProject(
+                name = "root",
+                path = ":",
+                directory = File("/root"),
+                children = listOf(basicGradleProject("app", ":app", File("/root/app"))),
+            ),
+            projects = listOf(
+                basicGradleProject("root", ":", File("/root")),
+                basicGradleProject("app", ":app", File("/root/app")),
+            ),
+            includedBuilds = listOf(included),
+            editableBuilds = listOf(included),
+        )
+
+        val serialized = ModelSerializers.gradleBuild(root)
+
+        serialized["buildRootDir"] shouldBe root.buildIdentifier.rootDir.absolutePath
+        serialized["projectCount"] shouldBe 2
+        val projects = serialized["projects"] as List<*>
+        projects shouldHaveSize 2
+        val includedBuilds = serialized["includedBuilds"] as List<*>
+        includedBuilds shouldHaveSize 1
+        val includedBuild = includedBuilds.first() as Map<*, *>
+        includedBuild["buildRootDir"] shouldBe included.buildIdentifier.rootDir.absolutePath
+        includedBuild["projectCount"] shouldBe 1
+        val editableBuilds = serialized["editableBuilds"] as List<*>
+        editableBuilds shouldHaveSize 1
+        (editableBuilds.first() as Map<*, *>)["cycleReference"] shouldBe true
+    }
+
+    private fun basicGradleProject(
+        name: String,
+        path: String,
+        directory: File,
+        buildTreePath: String? = null,
+        children: List<BasicGradleProject> = emptyList(),
+    ): BasicGradleProject =
+        Proxy.newProxyInstance(
+            BasicGradleProject::class.java.classLoader,
+            arrayOf(BasicGradleProject::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "getName" -> name
+                "getPath" -> path
+                "getProjectDirectory" -> directory
+                "getBuildTreePath" -> buildTreePath
+                "getParent" -> null
+                "getChildren" -> domainObjectSet(children)
+                "getProjectIdentifier" -> null
+                else -> defaultProxyReturn(method)
+            }
+        } as BasicGradleProject
+
+    private fun gradleBuild(
+        rootDir: File,
+        rootProject: BasicGradleProject,
+        projects: List<BasicGradleProject>,
+        includedBuilds: List<GradleBuild> = emptyList(),
+        editableBuilds: List<GradleBuild> = emptyList(),
+    ): GradleBuild =
+        Proxy.newProxyInstance(
+            GradleBuild::class.java.classLoader,
+            arrayOf(GradleBuild::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "getBuildIdentifier" -> buildIdentifier(rootDir)
+                "getRootProject" -> rootProject
+                "getProjects" -> domainObjectSet(projects)
+                "getIncludedBuilds" -> domainObjectSet(includedBuilds)
+                "getEditableBuilds" -> domainObjectSet(editableBuilds)
+                else -> defaultProxyReturn(method)
+            }
+        } as GradleBuild
+
+    private fun buildIdentifier(rootDir: File): BuildIdentifier =
+        Proxy.newProxyInstance(
+            BuildIdentifier::class.java.classLoader,
+            arrayOf(BuildIdentifier::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "getRootDir" -> rootDir
+                else -> defaultProxyReturn(method)
+            }
+        } as BuildIdentifier
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> domainObjectSet(items: List<T>): DomainObjectSet<T> =
+        object : AbstractSet<T>(), DomainObjectSet<T> {
+            override fun iterator(): MutableIterator<T> = items.toMutableList().iterator()
+
+            override val size: Int get() = items.size
+
+            override fun getAll(): List<T> = items
+
+            override fun getAt(index: Int): T = items[index]
+        }
+
+    private fun defaultProxyReturn(method: Method): Any? =
+        when (method.returnType) {
+            Boolean::class.javaPrimitiveType, Boolean::class.javaObjectType -> false
+            Int::class.javaPrimitiveType, Int::class.javaObjectType -> 0
+            else -> null
+        }
 }

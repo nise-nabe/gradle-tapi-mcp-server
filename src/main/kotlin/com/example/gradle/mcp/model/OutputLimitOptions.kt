@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.model
 
 import com.example.gradle.mcp.protocol.optionalBoolean
+import com.example.gradle.mcp.protocol.optionalNonNegativeInt
 
 data class OutputLimitOptions(
     val includeOutput: Boolean = false,
