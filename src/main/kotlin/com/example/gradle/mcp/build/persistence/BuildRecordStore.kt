@@ -1,7 +1,9 @@
 package com.example.gradle.mcp.build.persistence
 
+import com.example.gradle.mcp.build.BuildListEntry
 import com.example.gradle.mcp.build.BuildOutputParser
 import com.example.gradle.mcp.build.BuildProgressSnapshot
+import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildRecord
 import com.example.gradle.mcp.build.ProgressEventTypes
 import com.example.gradle.mcp.build.CapturedStreamSnapshot
@@ -71,6 +73,112 @@ class BuildRecordStore(
         writeAtomically(
             File(recordDir, McpBuildRecordPaths.STDERR_LOG),
             stderr.text,
+        )
+    }
+
+    fun listBuildIds(projectDirectory: File): List<String> =
+        listBuildSortEntries(projectDirectory).map { it.buildId }
+
+    fun listRecentBuildIds(
+        projectDirectory: File,
+        excludeBuildIds: Set<String>,
+        limit: Int,
+    ): List<String> {
+        if (limit <= 0) {
+            return emptyList()
+        }
+        return listBuildSortEntries(projectDirectory)
+            .asSequence()
+            .filter { it.buildId !in excludeBuildIds }
+            .sortedByDescending { it.sortEpochMillis }
+            .take(limit)
+            .map { it.buildId }
+            .toList()
+    }
+
+    internal fun listBuildSortEntries(projectDirectory: File): List<BuildSortEntry> {
+        val root = McpBuildRecordPaths.recordsRoot(projectDirectory)
+        if (!root.isDirectory) {
+            return emptyList()
+        }
+        return root.listFiles()
+            ?.mapNotNull { entry ->
+                if (!entry.isDirectory) {
+                    return@mapNotNull null
+                }
+                val buildId = entry.name
+                if (!McpBuildRecordPaths.isSafeBuildId(buildId)) {
+                    return@mapNotNull null
+                }
+                val recordDir = recordDirectory(projectDirectory, buildId) ?: return@mapNotNull null
+                if (!hasPersistedResult(recordDir)) {
+                    return@mapNotNull null
+                }
+                BuildSortEntry(buildId, persistedResultSortEpoch(recordDir))
+            }
+            .orEmpty()
+    }
+
+    internal data class BuildSortEntry(val buildId: String, val sortEpochMillis: Long)
+
+    private fun persistedResultSortEpoch(recordDir: File): Long {
+        val mcpResult = readMcpResult(recordDir)
+        val gradleResult = readGradleResult(recordDir)
+        val finishedAt = mcpResult?.finishedAt ?: gradleResult?.finishedAt
+        val startedAt = mcpResult?.startedAt ?: gradleResult?.startedAt
+        return parseInstantEpoch(finishedAt)
+            ?: parseInstantEpoch(startedAt)
+            ?: persistedResultLastModified(recordDir)
+    }
+
+    private fun parseInstantEpoch(value: String?): Long? =
+        value?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
+
+    private fun persistedResultLastModified(recordDir: File): Long =
+        listOfNotNull(
+            McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE),
+            McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE),
+        ).maxOfOrNull { it.lastModified() } ?: recordDir.lastModified()
+
+    private fun hasPersistedResult(recordDir: File): Boolean =
+        McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE) != null ||
+            McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE) != null
+
+    internal fun loadListSummary(projectDirectory: File, buildId: String): BuildListEntry? {
+        val recordDir = recordDirectory(projectDirectory, buildId) ?: return null
+        if (!recordDir.isDirectory) {
+            return null
+        }
+        val gradleResult = readGradleResult(recordDir)
+        val mcpResult = readMcpResult(recordDir)
+        if (gradleResult == null && mcpResult == null) {
+            return null
+        }
+        val events = if (gradleResult?.status == BuildProgressTracker.STATUS_RUNNING && mcpResult != null) {
+            readEvents(recordDir)
+        } else {
+            emptyList()
+        }
+        val resolved = BuildPersistenceContract.resolve(gradleResult, mcpResult, events)
+        val status = resolved.status
+        val outcome = when (resolved.terminalSource) {
+            BuildPersistenceContract.TerminalStatusSource.MCP ->
+                mcpResult?.outcome ?: BuildOutputParser.outcomeFromStatus(status)
+            BuildPersistenceContract.TerminalStatusSource.GRADLE,
+            BuildPersistenceContract.TerminalStatusSource.NONE,
+            -> BuildOutputParser.outcomeFromStatus(status)
+        }
+        return BuildListEntry(
+            buildId = buildId,
+            status = status,
+            kind = mcpResult?.kind,
+            tasks = mcpResult?.tasks ?: gradleResult?.taskNames.orEmpty(),
+            testClasses = mcpResult?.testClasses.orEmpty(),
+            projectDirectory = mcpResult?.projectDirectory ?: projectDirectory.absolutePath,
+            startedAt = mcpResult?.startedAt ?: gradleResult?.startedAt,
+            finishedAt = mcpResult?.finishedAt ?: gradleResult?.finishedAt,
+            outcome = outcome,
+            recordSource = "disk",
         )
     }
 

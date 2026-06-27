@@ -152,6 +152,79 @@ class BuildExecutionManager(
         return BuildStatusAssembler.assemble(view, outputLimit, progressOptions)
     }
 
+    fun listBuilds(projectDirectoryHint: File?, limit: Int): Map<String, Any?> {
+        val cappedLimit = limit.coerceIn(1, MAX_LIST_BUILDS)
+        val projectDirectory = resolveProjectDirectory(projectDirectoryHint)
+        val projectPath = projectDirectory?.absolutePath
+
+        val entries = LinkedHashMap<String, BuildListEntry>()
+        builds.values
+            .asSequence()
+            .forEach { record ->
+                val snapshot = record.progressTracker.snapshot()
+                entries[record.id] = BuildListEntry(
+                    buildId = record.id,
+                    status = snapshot.status,
+                    kind = record.kind.name.lowercase(),
+                    tasks = record.tasks,
+                    testClasses = record.testClasses,
+                    projectDirectory = record.projectDirectory,
+                    startedAt = record.startedAt.toString(),
+                    finishedAt = record.finishedAt?.toString(),
+                    outcome = BuildOutputParser.outcomeFromStatus(snapshot.status),
+                    recordSource = "memory",
+                )
+            }
+
+        val totalAvailable = if (projectDirectory != null) {
+            val diskBuildIds = buildRecordStore.listBuildIds(projectDirectory)
+            entries.size + diskBuildIds.count { it !in entries }
+        } else {
+            entries.size
+        }
+
+        if (projectDirectory != null) {
+            val diskCandidates = buildRecordStore.listBuildSortEntries(projectDirectory)
+                .filter { it.buildId !in entries }
+            val topDiskIds = buildList {
+                entries.forEach { (buildId, entry) ->
+                    add(buildId to entry.sortInstant().toEpochMilli())
+                }
+                diskCandidates.forEach { candidate ->
+                    add(candidate.buildId to candidate.sortEpochMillis)
+                }
+            }
+                .sortedByDescending { it.second }
+                .take(cappedLimit)
+                .map { it.first }
+                .toSet()
+            diskCandidates
+                .filter { it.buildId in topDiskIds }
+                .forEach { candidate ->
+                    buildRecordStore.loadListSummary(projectDirectory, candidate.buildId)?.let { summary ->
+                        entries[candidate.buildId] = summary
+                    }
+                }
+        }
+
+        val sorted = entries.values.sortedByDescending { it.sortInstant() }
+        val limited = sorted.take(cappedLimit)
+        return buildMap {
+            put("builds", limited.map { it.toResponseMap() })
+            projectPath?.let { put("projectDirectory", it) }
+            put("totalAvailable", totalAvailable)
+            put("truncated", totalAvailable > cappedLimit)
+        }
+    }
+
+    private fun resolveProjectDirectory(hint: File?): File? =
+        hint
+            ?: connectionManager.connectedProjectDirectory()
+            ?: System.getenv("GRADLE_PROJECT_DIR")
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::File)
+                ?.takeIf { it.isDirectory }
+
     private fun shouldLoadDiskArtifacts(record: BuildRecord?): Boolean =
         record == null || record.progressTracker.snapshot().status != BuildProgressTracker.STATUS_RUNNING
 
@@ -469,5 +542,7 @@ class BuildExecutionManager(
     companion object {
         private val MAX_CONCURRENT_BUILDS = maxOf(4, Runtime.getRuntime().availableProcessors())
         private const val MAX_RETAINED_BUILDS = 10
+        internal const val DEFAULT_LIST_BUILDS = 20
+        internal const val MAX_LIST_BUILDS = 100
     }
 }
