@@ -41,6 +41,9 @@ private fun fetchHelpModel(connection: ProjectConnection): Help =
     try {
         connection.getModel(Help::class.java)
     } catch (exception: Exception) {
+        if (exception is InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
         when (exception) {
             is UnknownModelException, is UnsupportedVersionException -> throw McpException(
                 McpErrorCode.INVALID_ARGUMENT,
