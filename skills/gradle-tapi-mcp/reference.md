@@ -27,7 +27,7 @@ Multiple `background=true` builds may run concurrently on one connection (bounde
 
 ### gradle_get_build_environment
 
-No arguments. Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `java.javaHome`, `java.javaVersion`, `java.jvmArguments`.
+No arguments. Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `gradle.versionInfo` (when Gradle 9.4+; same text as `gradle --version`), `java.javaHome`, `java.javaVersion`, `java.jvmArguments`.
 
 ### gradle_get_build_cache_status
 
@@ -155,7 +155,7 @@ Cancels the Gradle daemon build via Tooling API `CancellationToken`. Returns imm
 | `maxOutputChars` | no | `8000` | Per-stream char limit when `includeOutput=true` |
 | `tailOutput` | no | `true` | Keep tail when truncating |
 
-Returns `status` (`running`, `succeeded`, `failed`, `cancelled`, or `not_found`), timestamps, `outcome`, and `buildSummary`. Always includes `statusSource` (`memory` or `disk`). Disk-backed responses also include `liveProgress` (`false`), `progressAvailable`, and `recordDirectory`. When memory and disk disagree, Gradle on-disk status wins while Gradle is still active; stale Gradle `running` (MCP terminal, no post-finalize events in `events.ndjson`) falls back to MCP. Completed builds include `failedTaskCount`, `failedTasks`, and `buildSummary.failureSummary` without `includeProgress` when available (in-memory, MCP-terminal disk, or Gradle-terminal failed with `events.ndjson`). `stdout`/`stderr` are included only when `includeOutput=true`. While running, live output requires an in-memory record; disk-only polls return streams only after MCP finalizes logs at build end. `progress` only when `includeProgress=true` (disk progress from `events.ndjson`, including test events).
+Returns `status` (`running`, `succeeded`, `failed`, `cancelled`, or `not_found`), timestamps, `outcome`, and `buildSummary`. Always includes `statusSource` (`memory` or `disk`). Disk-backed responses also include `liveProgress` (`false`), `progressAvailable`, and `recordDirectory`. When memory and disk disagree, Gradle on-disk status wins while Gradle is still active; stale Gradle `running` (MCP terminal, no post-finalize events in `events.ndjson`) falls back to MCP. Completed builds include `failedTaskCount`, `failedTasks`, and `buildSummary.failureSummary` without `includeProgress` when available (in-memory, MCP-terminal disk, or Gradle-terminal failed with `events.ndjson`). `stdout`/`stderr` are included only when `includeOutput=true`. While running, live output requires an in-memory record; disk-only polls return streams only after MCP finalizes logs at build end. `progress` only when `includeProgress=true` (disk progress from `events.ndjson`, including task, test, and project-configuration events).
 
 ## Errors
 
