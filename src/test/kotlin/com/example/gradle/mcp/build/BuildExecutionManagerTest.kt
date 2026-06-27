@@ -1153,6 +1153,87 @@ class BuildExecutionManagerTest {
         result["totalAvailable"] shouldBe 3
         result["truncated"] shouldBe true
     }
+
+    @Test
+    fun `listBuilds ranks disk builds by persisted timestamps not file mtime`(@TempDir projectDir: File) {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            connection = Proxy.newProxyInstance(
+                ProjectConnection::class.java.classLoader,
+                arrayOf(ProjectConnection::class.java),
+                InvocationHandler { _, _, _ -> null },
+            ) as ProjectConnection,
+            projectDirectory = projectDir,
+        )
+        val store = BuildRecordStore()
+        val manager = BuildExecutionManager(connectionManager, store)
+
+        val olderMemoryTracker = BuildProgressTracker()
+        olderMemoryTracker.markStarting("Gradle tasks: build")
+        olderMemoryTracker.markSucceeded()
+        manager.seedRunningBuildForTests(
+            BuildRecord(
+                id = "memory-build",
+                kind = BuildKind.TASKS,
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                startedAt = Instant.parse("2026-06-14T08:00:00Z"),
+                progressTracker = olderMemoryTracker,
+                streams = CapturingStreams(),
+                projectDirectory = projectDir.absolutePath,
+            ).also { it.finishedAt = Instant.parse("2026-06-14T08:01:00Z") },
+        )
+
+        val newerDiskId = "newer-disk-build"
+        val newerRecordDir = store.recordDirectory(projectDir, newerDiskId).shouldNotBeNull()
+        newerRecordDir.mkdirs()
+        val newerResultFile = File(newerRecordDir, McpBuildRecordPaths.MCP_RESULT_FILE)
+        newerResultFile.writeText(
+            mcpObjectMapper().writeValueAsString(
+                McpBuildResult(
+                    buildId = newerDiskId,
+                    kind = "tasks",
+                    tasks = listOf("check"),
+                    testClasses = emptyList(),
+                    projectDirectory = projectDir.absolutePath,
+                    startedAt = "2026-06-14T12:00:00Z",
+                    finishedAt = "2026-06-14T12:01:00Z",
+                    status = "succeeded",
+                    outcome = "SUCCESS",
+                ),
+            ),
+            StandardCharsets.UTF_8,
+        )
+        newerResultFile.setLastModified(Instant.parse("2026-06-14T01:00:00Z").toEpochMilli())
+
+        val staleDiskId = "stale-disk-build"
+        val staleRecordDir = store.recordDirectory(projectDir, staleDiskId).shouldNotBeNull()
+        staleRecordDir.mkdirs()
+        val staleResultFile = File(staleRecordDir, McpBuildRecordPaths.MCP_RESULT_FILE)
+        staleResultFile.writeText(
+            mcpObjectMapper().writeValueAsString(
+                McpBuildResult(
+                    buildId = staleDiskId,
+                    kind = "tasks",
+                    tasks = listOf("build"),
+                    testClasses = emptyList(),
+                    projectDirectory = projectDir.absolutePath,
+                    startedAt = "2026-06-14T06:00:00Z",
+                    finishedAt = "2026-06-14T06:01:00Z",
+                    status = "succeeded",
+                    outcome = "SUCCESS",
+                ),
+            ),
+            StandardCharsets.UTF_8,
+        )
+        staleResultFile.setLastModified(Instant.parse("2026-06-14T23:00:00Z").toEpochMilli())
+
+        val result = manager.listBuilds(projectDir, limit = 1)
+        val builds = result["builds"] as List<*>
+
+        builds.map { (it as Map<*, *>)["buildId"] } shouldBe listOf(newerDiskId)
+        (builds.single() as Map<*, *>)["recordSource"] shouldBe "disk"
+    }
 }
 
 private fun blockingProjectConnection(

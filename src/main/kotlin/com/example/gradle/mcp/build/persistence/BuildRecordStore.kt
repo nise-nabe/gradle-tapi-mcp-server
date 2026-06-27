@@ -77,7 +77,7 @@ class BuildRecordStore(
     }
 
     fun listBuildIds(projectDirectory: File): List<String> =
-        listBuildIdEntries(projectDirectory).map { it.buildId }
+        listBuildSortEntries(projectDirectory).map { it.buildId }
 
     fun listRecentBuildIds(
         projectDirectory: File,
@@ -87,18 +87,16 @@ class BuildRecordStore(
         if (limit <= 0) {
             return emptyList()
         }
-        return listBuildIdEntries(projectDirectory)
+        return listBuildSortEntries(projectDirectory)
             .asSequence()
             .filter { it.buildId !in excludeBuildIds }
-            .sortedByDescending { it.lastModified }
+            .sortedByDescending { it.sortEpochMillis }
             .take(limit)
             .map { it.buildId }
             .toList()
     }
 
-    private data class BuildIdEntry(val buildId: String, val lastModified: Long)
-
-    private fun listBuildIdEntries(projectDirectory: File): List<BuildIdEntry> {
+    internal fun listBuildSortEntries(projectDirectory: File): List<BuildSortEntry> {
         val root = McpBuildRecordPaths.recordsRoot(projectDirectory)
         if (!root.isDirectory) {
             return emptyList()
@@ -116,10 +114,25 @@ class BuildRecordStore(
                 if (!hasPersistedResult(recordDir)) {
                     return@mapNotNull null
                 }
-                BuildIdEntry(buildId, persistedResultLastModified(recordDir))
+                BuildSortEntry(buildId, persistedResultSortEpoch(recordDir))
             }
             .orEmpty()
     }
+
+    internal data class BuildSortEntry(val buildId: String, val sortEpochMillis: Long)
+
+    private fun persistedResultSortEpoch(recordDir: File): Long {
+        val mcpResult = readMcpResult(recordDir)
+        val gradleResult = readGradleResult(recordDir)
+        val finishedAt = mcpResult?.finishedAt ?: gradleResult?.finishedAt
+        val startedAt = mcpResult?.startedAt ?: gradleResult?.startedAt
+        return parseInstantEpoch(finishedAt)
+            ?: parseInstantEpoch(startedAt)
+            ?: persistedResultLastModified(recordDir)
+    }
+
+    private fun parseInstantEpoch(value: String?): Long? =
+        value?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
 
     private fun persistedResultLastModified(recordDir: File): Long =
         listOfNotNull(

@@ -184,11 +184,25 @@ class BuildExecutionManager(
         }
 
         if (projectDirectory != null) {
-            val hydrateLimit = cappedLimit
-            buildRecordStore.listRecentBuildIds(projectDirectory, entries.keys, hydrateLimit)
-                .forEach { buildId ->
-                    buildRecordStore.loadListSummary(projectDirectory, buildId)?.let { summary ->
-                        entries[buildId] = summary
+            val diskCandidates = buildRecordStore.listBuildSortEntries(projectDirectory)
+                .filter { it.buildId !in entries }
+            val topDiskIds = buildList {
+                entries.forEach { (buildId, entry) ->
+                    add(buildId to entry.sortInstant().toEpochMilli())
+                }
+                diskCandidates.forEach { candidate ->
+                    add(candidate.buildId to candidate.sortEpochMillis)
+                }
+            }
+                .sortedByDescending { it.second }
+                .take(cappedLimit)
+                .map { it.first }
+                .toSet()
+            diskCandidates
+                .filter { it.buildId in topDiskIds }
+                .forEach { candidate ->
+                    buildRecordStore.loadListSummary(projectDirectory, candidate.buildId)?.let { summary ->
+                        entries[candidate.buildId] = summary
                     }
                 }
         }
