@@ -12,6 +12,7 @@ import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.optionalPositiveInt
 import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.objectSchema
+import com.example.gradle.mcp.protocol.objectProperty
 import com.example.gradle.mcp.protocol.optionalBoolean
 import com.example.gradle.mcp.protocol.optionalStringList
 import com.example.gradle.mcp.protocol.requiredString
@@ -167,19 +168,37 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_run_tests",
-            description = "Execute JVM test classes and return build outcome and summary. stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. Use background=true to start a long test run and poll gradle_get_build_status with the returned buildId; call gradle_cancel_build to stop an unneeded background test run. Multiple background test runs may run concurrently. Set includeProgress=true for detailed progress on foreground runs.",
+            description = "Execute JVM tests with class, method, pattern, or task-scoped selection and return build outcome and summary. " +
+                "Provide at least one of testClasses, testMethods, or includePattern/includePatterns (patterns require tasks). " +
+                "Optional taskPath scopes classes/methods via withTaskAndTest*; optional tasks limits test tasks via TestLauncher.forTasks(). " +
+                "stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. " +
+                "Use background=true to start a long test run and poll gradle_get_build_status with the returned buildId; " +
+                "call gradle_cancel_build to stop an unneeded background test run. Multiple background test runs may run concurrently. " +
+                "Set includeProgress=true for detailed progress on foreground runs.",
             schema = runOutputSchema(
-                required = listOf("testClasses"),
+                required = emptyList(),
                 extraProperties = mapOf(
-                    "testClasses" to stringArrayProperty("Fully qualified JVM test class names"),
+                    "testClasses" to stringArrayProperty("Fully qualified JVM test class names (withJvmTestClasses / withTaskAndTestClasses)"),
+                    "testMethods" to objectProperty(
+                        "Map of class name to method names, e.g. {\"com.example.FooTest\": [\"method1\"]}, " +
+                            "or array form [{\"class\": \"com.example.FooTest\", \"methods\": [\"method1\"]}]",
+                    ),
+                    "taskPath" to stringProperty(
+                        "Gradle test task path for withTaskAndTestClasses / withTaskAndTestMethods (Gradle 6.1+). Requires testClasses or testMethods.",
+                    ),
+                    "includePattern" to stringProperty("Single test include pattern for withTestsFor TestSpec API (Gradle 7.6+). Requires tasks."),
+                    "includePatterns" to stringArrayProperty(
+                        "Test include patterns for withTestsFor TestSpec API (Gradle 7.6+). Requires tasks.",
+                    ),
+                    "tasks" to stringArrayProperty(
+                        "Optional Gradle test task paths for TestLauncher.forTasks() (Gradle 7.6+). Required when using includePattern/includePatterns.",
+                    ),
                     "background" to booleanProperty("Start the test run in the background and return a buildId immediately (default false)"),
                 ),
             ),
         ) { exchange, args, progressToken ->
-            val testClasses = args.requiredStringList("testClasses")
-            val request = BuildRunRequest(
-                kind = BuildKind.TESTS,
-                testClasses = testClasses,
+            val testOptions = parseTestRunOptions(args).validate()
+            val request = testOptions.toBuildRunRequest(
                 arguments = args.optionalStringList("arguments").orEmpty(),
                 jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
                 outputLimit = OutputLimitOptions.fromArgs(args),
