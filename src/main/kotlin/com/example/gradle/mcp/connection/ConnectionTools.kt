@@ -83,7 +83,7 @@ fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_get_build_environment",
-            description = "Fetch BuildEnvironment (Gradle version, Gradle user home, Java home). Lightweight; prefer this over project model for stack checks.",
+            description = "Fetch BuildEnvironment (Gradle version, Gradle user home, Java home, versionInfo). versionInfo is the gradle --version output when the connected Gradle is 9.4+; omitted on older Gradle. Lightweight; prefer this over project model for stack checks.",
             schema = emptyObjectSchema(),
         ) { _ ->
             runtime.connectionManager.withConnectionResult { connection ->
