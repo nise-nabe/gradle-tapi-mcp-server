@@ -136,6 +136,52 @@ class BuildPersistenceContractTest {
         resolved.terminalSource shouldBe BuildPersistenceContract.TerminalStatusSource.GRADLE
     }
 
+    @Test
+    fun `resolve treats gradle cancelled as terminal`() {
+        val resolved = BuildPersistenceContract.resolve(
+            gradleResult = GradleBuildResult(
+                buildId = "cancelled-build",
+                status = BuildProgressTracker.STATUS_CANCELLED,
+                finishedAt = "2026-06-14T10:02:00Z",
+            ),
+            mcpResult = McpBuildResult(
+                buildId = "cancelled-build",
+                kind = "tasks",
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                projectDirectory = "/tmp/project",
+                startedAt = "2026-06-14T10:00:00Z",
+                finishedAt = "2026-06-14T10:01:00Z",
+                status = BuildProgressTracker.STATUS_CANCELLED,
+                outcome = "CANCELLED",
+            ),
+        )
+
+        resolved.status shouldBe BuildProgressTracker.STATUS_CANCELLED
+        resolved.terminalSource shouldBe BuildPersistenceContract.TerminalStatusSource.GRADLE
+    }
+
+    @Test
+    fun `resolve uses mcp cancelled when gradle result is absent`() {
+        val resolved = BuildPersistenceContract.resolve(
+            gradleResult = null,
+            mcpResult = McpBuildResult(
+                buildId = "mcp-cancelled",
+                kind = "tasks",
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                projectDirectory = "/tmp/project",
+                startedAt = "2026-06-14T10:00:00Z",
+                finishedAt = "2026-06-14T10:01:00Z",
+                status = BuildProgressTracker.STATUS_CANCELLED,
+                outcome = "CANCELLED",
+            ),
+        )
+
+        resolved.status shouldBe BuildProgressTracker.STATUS_CANCELLED
+        resolved.terminalSource shouldBe BuildPersistenceContract.TerminalStatusSource.MCP
+    }
+
     private fun mcpResult(status: String, finishedAt: Instant): McpBuildResult =
         McpBuildResult(
             buildId = "build-1",

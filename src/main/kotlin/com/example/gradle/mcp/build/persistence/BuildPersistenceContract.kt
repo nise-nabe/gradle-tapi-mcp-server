@@ -40,7 +40,8 @@ internal object BuildPersistenceContract {
     ): ResolvedPersistence {
         val gradleStatus = gradleResult?.status
         if (gradleStatus == BuildProgressTracker.STATUS_SUCCEEDED ||
-            gradleStatus == BuildProgressTracker.STATUS_FAILED
+            gradleStatus == BuildProgressTracker.STATUS_FAILED ||
+            gradleStatus == BuildProgressTracker.STATUS_CANCELLED
         ) {
             return ResolvedPersistence(gradleStatus, TerminalStatusSource.GRADLE)
         }
