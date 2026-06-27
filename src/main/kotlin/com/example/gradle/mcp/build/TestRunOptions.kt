@@ -72,7 +72,7 @@ internal fun TestRunOptions.toBuildRunRequest(
     BuildRunRequest(
         kind = BuildKind.TESTS,
         tasks = tasks,
-        testClasses = testClasses,
+        testClasses = testClasses.ifEmpty { testMethods.keys.toList() },
         testMethods = testMethods,
         taskPath = taskPath,
         includePatterns = includePatterns,
@@ -170,7 +170,7 @@ private fun parseTestMethodsArray(raw: List<*>): Map<String, List<String>> {
             ?: throw invalidTestMethods("testMethods array entries must be objects with class and methods")
         val className = (entryMap["class"] ?: entryMap["className"] ?: entryMap["testClass"]) as? String
             ?: throw invalidTestMethods("testMethods array entries require a class name")
-        val methods = parseMethodNameList(entryMap["methods"], "testMethods")
+        val methods = parseMethodNameList(entryMap["methods"], "methods")
         result.getOrPut(className) { mutableListOf() }.addAll(methods)
     }
     return result.mapValues { (_, methods) -> methods.distinct() }

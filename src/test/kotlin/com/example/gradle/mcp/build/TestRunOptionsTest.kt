@@ -59,6 +59,62 @@ class TestRunOptionsTest {
     }
 
     @Test
+    fun `parseTestRunOptions ignores blank includePatterns entries`() {
+        val options = parseTestRunOptions(
+            mapOf(
+                "includePatterns" to listOf("", "  ", "com.example.*"),
+                "tasks" to listOf(":app:test"),
+            ),
+        )
+
+        options.includePatterns shouldBe listOf("com.example.*")
+    }
+
+    @Test
+    fun `parseTestRunOptions ignores blank includePatterns when testClasses provided`() {
+        val options = parseTestRunOptions(
+            mapOf(
+                "testClasses" to listOf("com.example.FooTest"),
+                "includePatterns" to listOf(""),
+            ),
+        )
+
+        options.testClasses shouldBe listOf("com.example.FooTest")
+        options.includePatterns shouldBe emptyList()
+    }
+
+    @Test
+    fun `toBuildRunRequest populates testClasses from testMethods keys for reporting`() {
+        val request = TestRunOptions(
+            testMethods = mapOf("com.example.FooTest" to listOf("method1")),
+        ).toBuildRunRequest(
+            arguments = emptyList(),
+            jvmArguments = emptyList(),
+            outputLimit = com.example.gradle.mcp.model.OutputLimitOptions(),
+            progressOptions = com.example.gradle.mcp.protocol.ProgressResponseOptions(),
+        )
+
+        request.testClasses shouldBe listOf("com.example.FooTest")
+        request.testMethods shouldBe mapOf("com.example.FooTest" to listOf("method1"))
+    }
+
+    @Test
+    fun `parseTestRunOptions reports methods field in array form validation errors`() {
+        val error = shouldThrow<McpException> {
+            parseTestRunOptions(
+                mapOf(
+                    "testMethods" to listOf(
+                        mapOf("class" to "com.example.FooTest", "methods" to listOf(1)),
+                    ),
+                ),
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldBe "methods values must contain only strings"
+    }
+
+    @Test
     fun `validate rejects missing selection mechanism`() {
         val error = shouldThrow<McpException> {
             TestRunOptions().validate()
