@@ -80,6 +80,8 @@ internal object BuildStatusMerger {
             memory == null -> disk
             disk.failedTaskCount > memory.failedTaskCount -> disk
             memory.failedTaskCount > disk.failedTaskCount -> memory
+            disk.problems.size > memory.problems.size -> disk
+            memory.problems.size > disk.problems.size -> memory
             disk.totalEventCount > memory.totalEventCount -> disk
             memory.totalEventCount > disk.totalEventCount -> memory
             else -> memory
