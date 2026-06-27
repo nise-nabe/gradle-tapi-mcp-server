@@ -22,6 +22,8 @@ internal object ProgressEventTypes {
     const val TEST_SKIP = "TEST_SKIP"
     const val TEST_FAIL = "TEST_FAIL"
 
+    const val ROOT_FINISH = "ROOT_FINISH"
+
     const val CONFIG_START = "CONFIG_START"
     const val CONFIG_FINISH = "CONFIG_FINISH"
     const val CONFIG_FAIL = "CONFIG_FAIL"

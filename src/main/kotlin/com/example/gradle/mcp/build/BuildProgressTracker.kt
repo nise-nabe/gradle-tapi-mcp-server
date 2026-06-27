@@ -1,5 +1,8 @@
 package com.example.gradle.mcp.build
 
+import com.example.gradle.mcp.protocol.ProblemsSerializer
+import org.gradle.tooling.events.FailureResult
+import org.gradle.tooling.events.FinishEvent
 import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.ProgressEvent
 import org.gradle.tooling.events.ProgressListener
@@ -20,6 +23,7 @@ class BuildProgressTracker(
     private var status: String = STATUS_RUNNING
     private var currentOperation: String? = null
     private val recentEvents = ArrayDeque<ProgressEventSnapshot>()
+    private val problems = mutableListOf<BuildProblemSnapshot>()
     private var totalEventCount = 0
     private var lastNotifiedEventCount = 0
 
@@ -85,6 +89,7 @@ class BuildProgressTracker(
                 currentOperation = currentOperation,
                 recentEvents = recentEvents.toList(),
                 totalEventCount = totalEventCount,
+                problems = problems.toList(),
             )
         }
 
@@ -112,6 +117,7 @@ class BuildProgressTracker(
             asGradleListener(),
             OperationType.TASK,
             OperationType.TEST,
+            OperationType.ROOT,
             OperationType.PROJECT_CONFIGURATION,
         )
     }
@@ -127,6 +133,7 @@ class BuildProgressTracker(
             is TaskFinishEvent -> {
                 when (val result = event.result) {
                     is org.gradle.tooling.events.task.TaskFailureResult -> {
+                        collectProblemsFromFailureResult(result)
                         val message = result.failures.firstOrNull()?.message ?: "failed"
                         applyTaskEvent(ProgressEventTypes.TASK_FAIL, displayName, message)
                     }
@@ -144,6 +151,7 @@ class BuildProgressTracker(
             is TestFinishEvent -> {
                 when (val result = event.result) {
                     is org.gradle.tooling.events.test.TestFailureResult -> {
+                        collectProblemsFromFailureResult(result)
                         val message = result.failures.firstOrNull()?.message ?: "failed"
                         applyTaskEvent(ProgressEventTypes.TEST_FAIL, displayName, message)
                     }
@@ -169,8 +177,22 @@ class BuildProgressTracker(
                     }
                 }
             }
+            is FinishEvent -> {
+                when (val result = event.result) {
+                    is FailureResult -> collectProblemsFromFailureResult(result)
+                }
+                recordEventLocked(ProgressEventTypes.ROOT_FINISH, displayName)
+            }
             else -> recordEventLocked(event.javaClass.simpleName, displayName)
         }
+    }
+
+    private fun collectProblemsFromFailureResult(result: FailureResult) {
+        val extracted = ProblemsSerializer.fromFailureResult(result)
+        if (extracted.isEmpty()) {
+            return
+        }
+        ProblemsSerializer.mergeDistinct(problems, extracted)
     }
 
     private fun applyTaskEvent(eventType: String, displayName: String, outcome: String? = null) {

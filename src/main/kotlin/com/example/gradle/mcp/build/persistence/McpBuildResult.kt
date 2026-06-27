@@ -1,5 +1,7 @@
 package com.example.gradle.mcp.build.persistence
 
+import com.example.gradle.mcp.build.BuildProblemSnapshot
+
 data class McpBuildResult(
     val schemaVersion: Int = 1,
     val buildId: String,
@@ -15,6 +17,7 @@ data class McpBuildResult(
     val buildSummary: Map<String, Any?>? = null,
     val failedTaskCount: Int = 0,
     val failedTasks: List<String> = emptyList(),
+    val problems: List<BuildProblemSnapshot> = emptyList(),
     val stdoutTotalChars: Int = 0,
     val stderrTotalChars: Int = 0,
 )

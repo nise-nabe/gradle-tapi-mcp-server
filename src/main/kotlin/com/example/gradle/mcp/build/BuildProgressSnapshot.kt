@@ -18,4 +18,5 @@ data class BuildProgressSnapshot(
     val failedTasks: List<String>,
     val recentEvents: List<ProgressEventSnapshot>,
     val totalEventCount: Int,
+    val problems: List<BuildProblemSnapshot> = emptyList(),
 )

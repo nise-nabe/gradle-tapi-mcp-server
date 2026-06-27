@@ -34,6 +34,7 @@ internal class ProgressEventAccumulator {
         currentOperation: String?,
         recentEvents: List<ProgressEventSnapshot>,
         totalEventCount: Int,
+        problems: List<BuildProblemSnapshot> = emptyList(),
     ): BuildProgressSnapshot =
         BuildProgressSnapshot(
             status = status,
@@ -46,5 +47,6 @@ internal class ProgressEventAccumulator {
             failedTasks = failedTasks.toList(),
             recentEvents = recentEvents,
             totalEventCount = totalEventCount,
+            problems = problems,
         )
 }
