@@ -13,7 +13,7 @@ internal fun noopProjectConnection(): ProjectConnection =
     Proxy.newProxyInstance(
         ProjectConnection::class.java.classLoader,
         arrayOf(ProjectConnection::class.java),
-        InvocationHandler { _, _, _ -> null },
+        InvocationHandler { _, method, _ -> defaultProxyReturn(method) },
     ) as ProjectConnection
 
 internal fun GradleConnectionManager.seedNoopConnection(projectDirectory: File? = null) {
@@ -67,8 +67,14 @@ private fun chainingProxy(
 
 private fun defaultProxyReturn(method: Method): Any? =
     when (method.returnType) {
+        java.lang.Void.TYPE -> null
         java.lang.Boolean.TYPE -> false
-        java.lang.Integer.TYPE, java.lang.Long.TYPE, java.lang.Short.TYPE, java.lang.Byte.TYPE -> 0
-        java.lang.Double.TYPE, java.lang.Float.TYPE -> 0
+        java.lang.Integer.TYPE -> 0
+        java.lang.Long.TYPE -> 0L
+        java.lang.Short.TYPE -> 0.toShort()
+        java.lang.Byte.TYPE -> 0.toByte()
+        java.lang.Character.TYPE -> '\u0000'
+        java.lang.Float.TYPE -> 0f
+        java.lang.Double.TYPE -> 0.0
         else -> null
     }
