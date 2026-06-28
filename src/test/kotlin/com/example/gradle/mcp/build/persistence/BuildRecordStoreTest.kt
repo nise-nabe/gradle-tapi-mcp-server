@@ -820,24 +820,6 @@ class BuildRecordStoreTest {
     }
 
     @Test
-    fun `listRecentBuildIds returns newest persisted builds excluding memory ids`(@TempDir projectDir: File) {
-        writeMcpResult(projectDir, "oldest", "2026-06-14T08:00:00Z", "2026-06-14T08:01:00Z")
-        writeMcpResult(projectDir, "middle", "2026-06-14T09:00:00Z", "2026-06-14T09:01:00Z")
-        writeMcpResult(projectDir, "newest", "2026-06-14T10:00:00Z", "2026-06-14T10:01:00Z")
-
-        store.listRecentBuildIds(projectDir, excludeBuildIds = setOf("middle"), limit = 2) shouldBe
-            listOf("newest", "oldest")
-    }
-
-    @Test
-    fun `listRecentBuildIds returns empty list for non-positive limit`(@TempDir projectDir: File) {
-        writeMcpResult(projectDir, "build-one", "2026-06-14T10:00:00Z", "2026-06-14T10:01:00Z")
-
-        store.listRecentBuildIds(projectDir, excludeBuildIds = emptySet(), limit = 0) shouldBe emptyList()
-        store.listRecentBuildIds(projectDir, excludeBuildIds = emptySet(), limit = -1) shouldBe emptyList()
-    }
-
-    @Test
     fun `loadListSummary resolves disk status from persistence contract`(@TempDir projectDir: File) {
         val buildId = "listed-build"
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
@@ -932,26 +914,6 @@ class BuildRecordStoreTest {
             ),
             StandardCharsets.UTF_8,
         )
-    }
-
-    @Test
-    fun `listRecentBuildIds ranks by persisted timestamps not file mtime`(@TempDir projectDir: File) {
-        writeMcpResult(projectDir, "older-build", "2026-06-14T06:00:00Z", "2026-06-14T06:01:00Z")
-        writeMcpResult(projectDir, "newer-build", "2026-06-14T12:00:00Z", "2026-06-14T12:01:00Z")
-
-        val olderResultFile = File(
-            store.recordDirectory(projectDir, "older-build").shouldNotBeNull(),
-            McpBuildRecordPaths.MCP_RESULT_FILE,
-        )
-        val newerResultFile = File(
-            store.recordDirectory(projectDir, "newer-build").shouldNotBeNull(),
-            McpBuildRecordPaths.MCP_RESULT_FILE,
-        )
-        olderResultFile.setLastModified(Instant.parse("2026-06-14T23:00:00Z").toEpochMilli())
-        newerResultFile.setLastModified(Instant.parse("2026-06-14T01:00:00Z").toEpochMilli())
-
-        store.listRecentBuildIds(projectDir, excludeBuildIds = emptySet(), limit = 1) shouldBe
-            listOf("newer-build")
     }
 
     private fun completedRecord(projectDir: File, buildId: String): BuildRecord {

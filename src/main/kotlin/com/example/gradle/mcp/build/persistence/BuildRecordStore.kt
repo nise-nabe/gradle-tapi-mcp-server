@@ -83,23 +83,6 @@ class BuildRecordStore(
     fun listBuildIds(projectDirectory: File): List<String> =
         listBuildSortEntries(projectDirectory).map { it.buildId }
 
-    fun listRecentBuildIds(
-        projectDirectory: File,
-        excludeBuildIds: Set<String>,
-        limit: Int,
-    ): List<String> {
-        if (limit <= 0) {
-            return emptyList()
-        }
-        return listBuildSortEntries(projectDirectory)
-            .asSequence()
-            .filter { it.buildId !in excludeBuildIds }
-            .sortedByDescending { it.sortEpochMillis }
-            .take(limit)
-            .map { it.buildId }
-            .toList()
-    }
-
     internal fun listBuildSortEntries(projectDirectory: File): List<BuildSortEntry> {
         val root = McpBuildRecordPaths.recordsRoot(projectDirectory)
         if (!root.isDirectory) {
