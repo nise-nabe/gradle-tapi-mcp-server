@@ -2,6 +2,7 @@ package com.example.gradle.mcp.build.persistence
 
 import com.example.gradle.mcp.build.BuildProblemSnapshot
 import com.example.gradle.mcp.build.TestRunSelection
+import com.fasterxml.jackson.annotation.JsonIgnore
 
 data class McpBuildResult(
     val schemaVersion: Int = 2,
@@ -25,6 +26,7 @@ data class McpBuildResult(
     val stdoutTotalChars: Int = 0,
     val stderrTotalChars: Int = 0,
 ) {
+    @get:JsonIgnore
     val selection: TestRunSelection? =
         TestRunSelection.fromPersistedFlat(testClasses, testMethods, taskPath, includePatterns)
 }

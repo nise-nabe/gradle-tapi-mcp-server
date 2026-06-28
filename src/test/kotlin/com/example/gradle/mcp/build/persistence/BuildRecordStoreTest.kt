@@ -59,6 +59,13 @@ class BuildRecordStoreTest {
             methods = mapOf("com.example.FooTest" to listOf("method1")),
             taskPath = ":app:test",
         )
+
+        val json = File(
+            store.recordDirectory(projectDir, "method-selection-build").shouldNotBeNull(),
+            McpBuildRecordPaths.MCP_RESULT_FILE,
+        ).readText(StandardCharsets.UTF_8)
+        json.shouldContain("\"testMethods\"")
+        json.contains("\"selection\"") shouldBe false
     }
 
     @Test
