@@ -185,13 +185,12 @@ class BuildExecutionManager(
 
     fun listBuilds(projectDirectoryHint: File?, limit: Int): Map<String, Any?> {
         val cappedLimit = limit.coerceIn(1, MAX_LIST_BUILDS)
-        val projectDirectory = resolveProjectDirectory(projectDirectoryHint)
-        val projectPath = projectDirectory?.absolutePath
+        val diskProjectDirectory = resolveProjectDirectory(projectDirectoryHint)
 
         val entries = LinkedHashMap<String, BuildListEntry>()
         builds.values
             .asSequence()
-            .filter { record -> record.matchesProject(projectDirectory) }
+            .filter { record -> record.matchesProject(projectDirectoryHint) }
             .forEach { record ->
                 val snapshot = record.progressTracker.snapshot()
                 entries[record.id] = BuildListEntry(
@@ -211,15 +210,15 @@ class BuildExecutionManager(
                 )
             }
 
-        val totalAvailable = if (projectDirectory != null) {
-            val diskBuildIds = buildRecordStore.listBuildIds(projectDirectory)
+        val totalAvailable = if (diskProjectDirectory != null) {
+            val diskBuildIds = buildRecordStore.listBuildIds(diskProjectDirectory)
             entries.size + diskBuildIds.count { it !in entries }
         } else {
             entries.size
         }
 
-        if (projectDirectory != null) {
-            val diskCandidates = buildRecordStore.listBuildSortEntries(projectDirectory)
+        if (diskProjectDirectory != null) {
+            val diskCandidates = buildRecordStore.listBuildSortEntries(diskProjectDirectory)
                 .filter { it.buildId !in entries }
             val topDiskIds = buildList {
                 entries.forEach { (buildId, entry) ->
@@ -236,7 +235,7 @@ class BuildExecutionManager(
             diskCandidates
                 .filter { it.buildId in topDiskIds }
                 .forEach { candidate ->
-                    buildRecordStore.loadListSummary(projectDirectory, candidate.buildId)?.let { summary ->
+                    buildRecordStore.loadListSummary(diskProjectDirectory, candidate.buildId)?.let { summary ->
                         entries[candidate.buildId] = summary
                     }
                 }
@@ -246,7 +245,7 @@ class BuildExecutionManager(
         val limited = sorted.take(cappedLimit)
         return buildMap {
             put("builds", limited.map { it.toResponseMap() })
-            projectPath?.let { put("projectDirectory", it) }
+            (projectDirectoryHint ?: diskProjectDirectory)?.absolutePath?.let { put("projectDirectory", it) }
             put("totalAvailable", totalAvailable)
             put("truncated", totalAvailable > cappedLimit)
         }
@@ -277,6 +276,11 @@ class BuildExecutionManager(
 
     fun onDisconnect(projectDirectory: File? = null) {
         resetBuildState("Gradle connection closed", projectDirectory)
+        if (projectDirectory == null) {
+            lastCompletedBuildSnapshots.clear()
+        } else {
+            lastCompletedBuildSnapshots.remove(ProjectDirectoryResolver.canonicalKey(projectDirectory))
+        }
     }
 
     private fun shouldReplaceExecutor(projectDirectory: File?): Boolean =

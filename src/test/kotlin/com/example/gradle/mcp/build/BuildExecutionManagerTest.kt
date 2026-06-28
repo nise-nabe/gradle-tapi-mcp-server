@@ -1358,6 +1358,139 @@ class BuildExecutionManagerTest {
         builds.map { (it as Map<*, *>)["buildId"] } shouldBe listOf(newerDiskId)
         (builds.single() as Map<*, *>)["recordSource"] shouldBe "disk"
     }
+
+    @Test
+    fun `listBuilds without projectDirectory returns all in-memory builds across projects`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            connection = Proxy.newProxyInstance(
+                ProjectConnection::class.java.classLoader,
+                arrayOf(ProjectConnection::class.java),
+                InvocationHandler { _, _, _ -> null },
+            ) as ProjectConnection,
+            projectDirectory = projectA,
+        )
+        val manager = BuildExecutionManager(connectionManager)
+
+        manager.seedRunningBuildForTests(
+            BuildRecord(
+                id = "build-a",
+                kind = BuildKind.TASKS,
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                startedAt = Instant.parse("2026-06-14T10:00:00Z"),
+                progressTracker = BuildProgressTracker().also { it.markStarting("Gradle tasks: build") },
+                streams = CapturingStreams(),
+                projectDirectory = projectA.absolutePath,
+            ),
+        )
+        manager.seedRunningBuildForTests(
+            BuildRecord(
+                id = "build-b",
+                kind = BuildKind.TASKS,
+                tasks = listOf("check"),
+                testClasses = emptyList(),
+                startedAt = Instant.parse("2026-06-14T09:00:00Z"),
+                progressTracker = BuildProgressTracker().also { it.markStarting("Gradle tasks: check") },
+                streams = CapturingStreams(),
+                projectDirectory = projectB.absolutePath,
+            ),
+        )
+
+        val result = manager.listBuilds(projectDirectoryHint = null, limit = 10)
+        val builds = result["builds"] as List<*>
+
+        result["projectDirectory"] shouldBe projectA.absolutePath
+        result["totalAvailable"] shouldBe 2
+        builds.map { (it as Map<*, *>)["buildId"] } shouldBe listOf("build-a", "build-b")
+    }
+
+    @Test
+    fun `onDisconnect clears last completed build snapshot for disconnected project`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            connection = Proxy.newProxyInstance(
+                ProjectConnection::class.java.classLoader,
+                arrayOf(ProjectConnection::class.java),
+                InvocationHandler { _, _, _ -> null },
+            ) as ProjectConnection,
+            projectDirectory = projectA,
+        )
+        val scopedManager = BuildExecutionManager(connectionManager)
+        scopedManager.seedLastCompletedBuildForTests(
+            CompletedBuildSnapshot(
+                buildId = "a1",
+                kind = BuildKind.TASKS,
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                finishedAt = Instant.now(),
+                outcome = "SUCCESS",
+                stdout = "",
+                projectDirectory = projectA.absolutePath,
+            ),
+        )
+        scopedManager.seedLastCompletedBuildForTests(
+            CompletedBuildSnapshot(
+                buildId = "b1",
+                kind = BuildKind.TASKS,
+                tasks = listOf("check"),
+                testClasses = emptyList(),
+                finishedAt = Instant.now(),
+                outcome = "SUCCESS",
+                stdout = "",
+                projectDirectory = projectB.absolutePath,
+            ),
+        )
+
+        connectionManager.disconnect(projectA)
+        scopedManager.onDisconnect(projectA)
+
+        scopedManager.lastCompletedBuildSnapshot(projectA).shouldBeNull()
+        scopedManager.lastCompletedBuildSnapshot(projectB).shouldNotBeNull()
+    }
+
+    @Test
+    fun `onDisconnect without projectDirectory clears all last completed build snapshots`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val manager = BuildExecutionManager(GradleConnectionManager())
+        manager.seedLastCompletedBuildForTests(
+            CompletedBuildSnapshot(
+                buildId = "a1",
+                kind = BuildKind.TASKS,
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                finishedAt = Instant.now(),
+                outcome = "SUCCESS",
+                stdout = "",
+                projectDirectory = projectA.absolutePath,
+            ),
+        )
+        manager.seedLastCompletedBuildForTests(
+            CompletedBuildSnapshot(
+                buildId = "b1",
+                kind = BuildKind.TASKS,
+                tasks = listOf("check"),
+                testClasses = emptyList(),
+                finishedAt = Instant.now(),
+                outcome = "SUCCESS",
+                stdout = "",
+                projectDirectory = projectB.absolutePath,
+            ),
+        )
+
+        manager.onDisconnect()
+
+        manager.lastCompletedBuildSnapshot(projectA).shouldBeNull()
+        manager.lastCompletedBuildSnapshot(projectB).shouldBeNull()
+    }
 }
 
 private fun blockingProjectConnection(
