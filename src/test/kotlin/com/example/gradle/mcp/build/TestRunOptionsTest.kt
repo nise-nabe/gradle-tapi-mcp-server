@@ -2,6 +2,7 @@ package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -232,6 +233,7 @@ class TestRunOptionsTest {
         val request = TestRunOptions(
             testMethods = mapOf("com.example.FooTest" to listOf("method1")),
         ).toBuildRunRequest(
+            projectDirectory = testProjectDirectory,
             arguments = emptyList(),
             jvmArguments = emptyList(),
             outputLimit = com.example.gradle.mcp.model.OutputLimitOptions(),
@@ -287,6 +289,7 @@ class TestRunOptionsTest {
     fun `describeTestOperation formats taskPath with testMethods as class hash methods`() {
         val description = describeTestOperation(
             BuildRunRequest(
+                projectDirectory = testProjectDirectory,
                 kind = BuildKind.TESTS,
                 testMethods = mapOf("com.example.FooTest" to listOf("method1", "method2")),
                 taskPath = ":app:test",
@@ -300,6 +303,7 @@ class TestRunOptionsTest {
     fun `describeTestOperation formats testMethods without taskPath as class hash methods`() {
         val description = describeTestOperation(
             BuildRunRequest(
+                projectDirectory = testProjectDirectory,
                 kind = BuildKind.TESTS,
                 testMethods = mapOf("com.example.FooTest" to listOf("method1")),
             ),
@@ -355,6 +359,7 @@ class TestRunOptionsTest {
     fun `describeTestOperation separates multiple testMethods classes with semicolons`() {
         val description = describeTestOperation(
             BuildRunRequest(
+                projectDirectory = testProjectDirectory,
                 kind = BuildKind.TESTS,
                 testMethods = mapOf(
                     "com.example.FooTest" to listOf("method1", "method2"),

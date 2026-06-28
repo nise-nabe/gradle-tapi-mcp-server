@@ -8,6 +8,7 @@ import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.optionalStringList
 import com.example.gradle.mcp.protocol.testMethodsClassPropertyNames
 import org.gradle.tooling.TestLauncher
+import java.io.File
 
 internal data class TestRunOptions(
     val testClasses: List<String> = emptyList(),
@@ -88,12 +89,14 @@ internal fun TestRunOptions.validate(): TestRunOptions {
 }
 
 internal fun TestRunOptions.toBuildRunRequest(
+    projectDirectory: File,
     arguments: List<String>,
     jvmArguments: List<String>,
     outputLimit: OutputLimitOptions,
     progressOptions: ProgressResponseOptions,
 ): BuildRunRequest =
     BuildRunRequest(
+        projectDirectory = projectDirectory,
         kind = BuildKind.TESTS,
         tasks = tasks,
         testClasses = testClasses.ifEmpty { testMethods.keys.toList() },

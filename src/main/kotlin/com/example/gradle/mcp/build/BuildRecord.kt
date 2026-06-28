@@ -1,7 +1,9 @@
 package com.example.gradle.mcp.build
 
+import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import org.gradle.tooling.CancellationTokenSource
 import org.gradle.tooling.GradleConnector
+import java.io.File
 import java.time.Instant
 
 data class BuildRecord(
@@ -23,4 +25,8 @@ data class BuildRecord(
 
     @Volatile
     var errorMessage: String? = null
+
+    fun matchesProject(projectDirectory: File?): Boolean =
+        projectDirectory == null ||
+            ProjectDirectoryResolver.sameProject(this.projectDirectory, projectDirectory)
 }

@@ -8,6 +8,7 @@ import com.example.gradle.mcp.cache.CompletedBuildSnapshot
 import com.example.gradle.mcp.protocol.mcpObjectMapper
 import com.example.gradle.mcp.cache.lastMcpBuildInsight
 import com.example.gradle.mcp.connection.GradleConnectionManager
+import com.example.gradle.mcp.support.testProjectDirectory
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
@@ -396,7 +397,7 @@ class BuildExecutionManagerTest {
         )
 
         val result = concurrentManager.startBackground(
-            request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
+            request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
             exchange = null,
             progressToken = null,
         )
@@ -416,7 +417,7 @@ class BuildExecutionManagerTest {
 
         val buildThread = Thread {
             manager.runForeground(
-                request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
+                request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
                 connection = connection,
                 exchange = null,
                 progressToken = null,
@@ -460,7 +461,7 @@ class BuildExecutionManagerTest {
 
         val error = shouldThrow<McpException> {
             manager.startBackground(
-                request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("other")),
+                request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("other")),
                 exchange = null,
                 progressToken = null,
             )
@@ -499,7 +500,7 @@ class BuildExecutionManagerTest {
         ) as ProjectConnection
 
         val result = manager.runForeground(
-            request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
+            request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
             connection = connection,
             exchange = null,
             progressToken = null,
@@ -573,6 +574,36 @@ class BuildExecutionManagerTest {
         )
 
         (resultWithProgress["progress"] as Map<*, *>)["status"] shouldBe "running"
+    }
+
+    @Test
+    fun `status rejects projectDirectory hint that does not match in-memory build`(@TempDir projectA: File, @TempDir projectB: File) {
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        manager.seedRunningBuildForTests(
+            BuildRecord(
+                id = "scoped-build",
+                kind = BuildKind.TASKS,
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                startedAt = Instant.now(),
+                progressTracker = tracker,
+                streams = CapturingStreams(),
+                projectDirectory = projectA.absolutePath,
+            ),
+        )
+
+        val error = shouldThrow<McpException> {
+            manager.status(
+                buildId = "scoped-build",
+                outputLimit = OutputLimitOptions(),
+                progressOptions = ProgressResponseOptions(),
+                projectDirectoryHint = projectB,
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldBe "Build scoped-build does not belong to project ${projectB.path}"
     }
 
     @Test
@@ -677,6 +708,40 @@ class BuildExecutionManagerTest {
     }
 
     @Test
+    fun `cancelBuild resolves build by id without projectDirectory hint`(@TempDir projectA: File, @TempDir projectB: File) {
+        val connectionManager = GradleConnectionManager()
+        val connection = Proxy.newProxyInstance(
+            ProjectConnection::class.java.classLoader,
+            arrayOf(ProjectConnection::class.java),
+            InvocationHandler { _, _, _ -> null },
+        ) as ProjectConnection
+        connectionManager.seedConnectionForTests(connection, projectDirectory = projectA)
+        connectionManager.seedConnectionForTests(connection, projectDirectory = projectB)
+        val scopedManager = BuildExecutionManager(connectionManager)
+        val tokenSource = org.gradle.tooling.GradleConnector.newCancellationTokenSource()
+        val tracker = BuildProgressTracker()
+        tracker.markStarting("Gradle tasks: build")
+        scopedManager.seedRunningBuildForTests(
+            BuildRecord(
+                id = "multi-project-build",
+                kind = BuildKind.TASKS,
+                tasks = listOf("build"),
+                testClasses = emptyList(),
+                startedAt = Instant.now(),
+                progressTracker = tracker,
+                streams = CapturingStreams(),
+                cancellationTokenSource = tokenSource,
+                projectDirectory = projectA.absolutePath,
+            ),
+        )
+
+        val result = scopedManager.cancelBuild("multi-project-build")
+
+        result["buildId"] shouldBe "multi-project-build"
+        tokenSource.token().isCancellationRequested.shouldBeTrue()
+    }
+
+    @Test
     fun `onDisconnect cancels running builds`() {
         val tracker = BuildProgressTracker()
         tracker.markStarting("Gradle tasks: build")
@@ -700,14 +765,40 @@ class BuildExecutionManagerTest {
 
         val notConnected = shouldThrow<McpException> {
             manager.startBackground(
-                request = BuildRunRequest(kind = BuildKind.TASKS, tasks = listOf("test")),
+                request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
                 exchange = null,
                 progressToken = null,
             )
         }
         notConnected.code shouldBe McpErrorCode.NOT_CONNECTED
-        notConnected.message shouldBe
-            "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR."
+        notConnected.message.shouldNotBeNull() shouldContain testProjectDirectory.path
+    }
+
+    @Test
+    fun `onDisconnect replaces executor when last project is disconnected`(@TempDir project: File) {
+        val connectionManager = GradleConnectionManager()
+        val connection = Proxy.newProxyInstance(
+            ProjectConnection::class.java.classLoader,
+            arrayOf(ProjectConnection::class.java),
+            InvocationHandler { _, _, _ -> null },
+        ) as ProjectConnection
+        connectionManager.seedConnectionForTests(connection, projectDirectory = project)
+        val scopedManager = BuildExecutionManager(connectionManager)
+
+        val executorBefore = BuildExecutionManager::class.java
+            .getDeclaredField("executor")
+            .apply { isAccessible = true }
+            .get(scopedManager) as ExecutorService
+
+        connectionManager.disconnect(project)
+        scopedManager.onDisconnect(project)
+
+        val executorAfter = BuildExecutionManager::class.java
+            .getDeclaredField("executor")
+            .apply { isAccessible = true }
+            .get(scopedManager) as ExecutorService
+
+        executorBefore shouldNotBe executorAfter
     }
 
     @Test
@@ -770,7 +861,7 @@ class BuildExecutionManagerTest {
 
         manager.resetBuildState("Gradle connection closed")
 
-        val snapshot = manager.lastCompletedBuildSnapshot()
+        val snapshot = manager.lastCompletedBuildSnapshot(projectDir)
         snapshot.shouldNotBeNull()
         snapshot.projectDirectory shouldBe projectDir.absolutePath
     }
