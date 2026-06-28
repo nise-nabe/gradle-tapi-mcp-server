@@ -11,6 +11,7 @@ import com.example.gradle.mcp.protocol.integerProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
 import com.example.gradle.mcp.protocol.optionalString
+import com.example.gradle.mcp.protocol.projectDirectoryProperty
 import com.example.gradle.mcp.protocol.requiredString
 import com.example.gradle.mcp.protocol.stringProperty
 import com.example.gradle.mcp.protocol.tool
@@ -20,10 +21,11 @@ import org.gradle.tooling.UnknownModelException
 import org.gradle.tooling.UnsupportedVersionException
 import org.gradle.tooling.model.build.BuildEnvironment
 import org.gradle.tooling.model.build.Help
+import java.io.File
 
 private const val DISCONNECT_DURING_BUILD_WARNING =
-    "One or more builds were still in progress. The server cancelled them via the Tooling API " +
-        "CancellationToken and marked status cancelled."
+    "One or more builds were still in progress for the disconnected project(s). The server cancelled them " +
+        "via the Tooling API CancellationToken and marked status cancelled."
 
 internal fun helpSchema(): Map<String, Any> =
     objectSchema(
@@ -33,6 +35,9 @@ internal fun helpSchema(): Map<String, Any> =
             ),
             "tailOutput" to booleanProperty(
                 "When truncated, keep the tail of the help text (default true)",
+            ),
+            "projectDirectory" to projectDirectoryProperty(
+                "Gradle project root to query. Defaults to GRADLE_PROJECT_DIR when set.",
             ),
         ),
     )
@@ -65,23 +70,43 @@ internal fun connectSchema(): Map<String, Any> =
         ),
     )
 
+private fun connectionStatusSchema(): Map<String, Any> =
+    objectSchema(
+        properties = mapOf(
+            "projectDirectory" to projectDirectoryProperty(
+                "Gradle project root to inspect. Omit to list all active connections plus the default project.",
+            ),
+        ),
+    )
+
+private fun disconnectSchema(): Map<String, Any> =
+    objectSchema(
+        properties = mapOf(
+            "projectDirectory" to projectDirectoryProperty(
+                "Gradle project root to disconnect. Omit to disconnect all active connections.",
+            ),
+        ),
+    )
+
 context(runtime: GradleMcpRuntime)
 fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_connect",
-            description = "Connect to a Gradle project via the Tooling API. Call when gradle_connection_status.connected=false or to switch projects; skip when GRADLE_PROJECT_DIR auto-connect already left the server connected. When no build is running, cancels any running builds before connecting; rejects the call while builds are still running. Reuses an existing compatible daemon when available.",
+            description = "Connect to a Gradle project via the Tooling API without disconnecting other projects. Call when gradle_connection_status shows the target is not connected, or to register an additional project. Rejects the call while a build is running for the same projectDirectory. Reuses an existing compatible daemon when available.",
             schema = connectSchema(),
         ) { args ->
-            if (runtime.buildExecutionManager.hasActiveBuild()) {
+            val projectDirectory = ProjectDirectoryResolver.canonicalDirectory(
+                args.requiredString("projectDirectory"),
+            )
+            if (runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
                 error(
-                    "Cannot connect while a Gradle build is running. " +
+                    "Cannot connect while a Gradle build is running for ${projectDirectory.path}. " +
                         "Wait for the build to finish, call gradle_cancel_build, or call gradle_disconnect.",
                 )
             }
-            runtime.buildExecutionManager.resetBuildState("Preparing new Gradle connection")
             val config = ConnectionConfig(
-                projectDirectory = args.requiredString("projectDirectory"),
+                projectDirectory = projectDirectory.path,
                 gradleUserHome = args.optionalString("gradleUserHome"),
                 gradleVersion = args.optionalString("gradleVersion"),
                 gradleInstallation = args.optionalString("gradleInstallation"),
@@ -90,28 +115,43 @@ fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_connection_status",
-            description = "Return the current Tooling API connection status and a connect-time runtime stack snapshot (gradleVersion, versionInfo on Gradle 9.4+, javaHome, javaVersion). Prefer calling this first: when GRADLE_PROJECT_DIR is set in the MCP server env (for example \${workspaceFolder} in Cursor mcp.json), the server auto-connects on startup so other Gradle tools work without gradle_connect. Auto-connect is best-effort, adds startup time (~1-2s with a warm daemon; longer on cold or large projects), and omit GRADLE_PROJECT_DIR when faster MCP startup matters. Stack fields are null with runtimeStackAvailable=false when the snapshot could not be loaded at connect. If connected=false, call gradle_connect or set GRADLE_PROJECT_DIR and restart MCP. For a fresh query including gradleUserHome and jvmArguments, use gradle_get_build_environment.",
-            schema = emptyObjectSchema(),
-        ) { _ ->
-            jsonResult(runtime.connectionManager.status())
+            description = "Return Tooling API connection status. Omit projectDirectory to list every active connection (connections[]) plus defaultProjectDirectory and legacy flat fields for the default project. With projectDirectory, return status for that project only. When GRADLE_PROJECT_DIR is set, the server auto-connects that project on startup. Use gradle_get_build_environment for a fresh query including gradleUserHome and jvmArguments.",
+            schema = connectionStatusSchema(),
+        ) { args ->
+            val projectDirectory = args.optionalString("projectDirectory")
+                ?.let(ProjectDirectoryResolver::canonicalDirectory)
+            jsonResult(runtime.connectionManager.status(projectDirectory))
         },
         tool(
             name = "gradle_disconnect",
-            description = "Close the active Tooling API project connection. If builds are still running, the server cancels them via the Tooling API CancellationToken and marks status cancelled. A warning field is included when builds were active.",
-            schema = emptyObjectSchema(),
-        ) { _ ->
-            val hadActiveBuild = runtime.buildExecutionManager.hasActiveBuild()
+            description = "Close one or all Tooling API project connections. Omit projectDirectory to disconnect all projects. Running builds for the disconnected project(s) are cancelled via the Tooling API CancellationToken.",
+            schema = disconnectSchema(),
+        ) { args ->
+            val projectDirectory = args.optionalString("projectDirectory")
+                ?.let(ProjectDirectoryResolver::canonicalDirectory)
+            val hadActiveBuild = if (projectDirectory != null) {
+                runtime.buildExecutionManager.hasActiveBuild(projectDirectory)
+            } else {
+                runtime.buildExecutionManager.hasActiveBuild()
+            }
             val disconnected = try {
-                runtime.connectionManager.disconnect()
+                if (projectDirectory != null) {
+                    runtime.connectionManager.disconnect(projectDirectory)?.let { listOf(it) }.orEmpty()
+                } else {
+                    runtime.connectionManager.disconnectAll()
+                }
             } finally {
-                runtime.buildExecutionManager.onDisconnect()
+                runtime.buildExecutionManager.onDisconnect(projectDirectory)
             }
             val payload = buildMap<String, Any?> {
-                if (disconnected != null) {
-                    put("projectDirectory", disconnected.projectDirectory)
-                    put("state", disconnected.state)
-                } else {
+                if (disconnected.isEmpty()) {
                     put("state", "not_connected")
+                } else if (disconnected.size == 1) {
+                    put("projectDirectory", disconnected.single().projectDirectory)
+                    put("state", disconnected.single().state)
+                } else {
+                    put("state", "disconnected")
+                    put("projectDirectories", disconnected.map { it.projectDirectory })
                 }
                 if (hadActiveBuild) {
                     put("warning", DISCONNECT_DURING_BUILD_WARNING)
@@ -122,9 +162,10 @@ fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
         tool(
             name = "gradle_get_build_environment",
             description = "Fetch BuildEnvironment (Gradle version, Gradle user home, Java home, versionInfo). versionInfo is the gradle --version output when the connected Gradle is 9.4+; omitted on older Gradle. Lightweight; prefer this over project model for stack checks.",
-            schema = emptyObjectSchema(),
-        ) { _ ->
-            runtime.connectionManager.withConnectionResult { connection ->
+            schema = connectionStatusSchema(),
+        ) { args ->
+            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val environment = connection.getModel(BuildEnvironment::class.java)
                 jsonResult(ModelSerializers.buildEnvironment(environment))
             }
@@ -135,7 +176,8 @@ fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
             schema = helpSchema(),
         ) { args ->
             val limitOptions = HelpLimitOptions.fromArgs(args)
-            runtime.connectionManager.withConnectionResult { connection ->
+            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val help = fetchHelpModel(connection)
                 jsonResult(ModelSerializers.help(help, limitOptions))
             }

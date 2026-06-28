@@ -19,7 +19,7 @@ class ProjectDirectoryScopeTest {
         val workspace = workspaceRoot.resolve("workspace").also { it.mkdirs() }
 
         val scope = ProjectDirectoryScope(
-            connectedProjectDirectory = { connected },
+            connectedProjectDirectories = { listOf(connected) },
             workspaceProjectDirectory = { workspace },
         )
 
@@ -27,11 +27,24 @@ class ProjectDirectoryScopeTest {
     }
 
     @Test
+    fun `allowedRoots includes all connected projects`() {
+        val projectA = workspaceRoot.resolve("project-a").also { it.mkdirs() }
+        val projectB = workspaceRoot.resolve("project-b").also { it.mkdirs() }
+
+        val scope = ProjectDirectoryScope(
+            connectedProjectDirectories = { listOf(projectA, projectB) },
+            workspaceProjectDirectory = { null },
+        )
+
+        scope.allowedRoots().shouldContainExactlyInAnyOrder(listOf(projectA, projectB))
+    }
+
+    @Test
     fun `requireWithinBoundary accepts workspace root and subdirectories`() {
         val workspace = workspaceRoot.resolve("workspace").also { it.mkdirs() }
         val subProject = workspace.resolve("sub").also { it.mkdirs() }
         val scope = ProjectDirectoryScope(
-            connectedProjectDirectory = { null },
+            connectedProjectDirectories = { emptyList() },
             workspaceProjectDirectory = { workspace },
         )
 
@@ -45,7 +58,7 @@ class ProjectDirectoryScopeTest {
         val projectA = workspace.resolve("project-a").also { it.mkdirs() }
         val projectB = workspace.resolve("project-b").also { it.mkdirs() }
         val scope = ProjectDirectoryScope(
-            connectedProjectDirectory = { projectB },
+            connectedProjectDirectories = { listOf(projectB) },
             workspaceProjectDirectory = { workspace },
         )
 
@@ -57,7 +70,7 @@ class ProjectDirectoryScopeTest {
         val workspace = workspaceRoot.resolve("workspace").also { it.mkdirs() }
         val outside = workspaceRoot.resolve("outside").also { it.mkdirs() }
         val scope = ProjectDirectoryScope(
-            connectedProjectDirectory = { workspace },
+            connectedProjectDirectories = { listOf(workspace) },
             workspaceProjectDirectory = { null },
         )
 
@@ -72,7 +85,7 @@ class ProjectDirectoryScopeTest {
     fun `requireWithinBoundary rejects explicit paths when no boundary is configured`() {
         val project = workspaceRoot.resolve("project").also { it.mkdirs() }
         val scope = ProjectDirectoryScope(
-            connectedProjectDirectory = { null },
+            connectedProjectDirectories = { emptyList() },
             workspaceProjectDirectory = { null },
         )
 

@@ -6,18 +6,18 @@ import java.io.File
 import java.nio.file.Path
 
 class ProjectDirectoryScope(
-    private val connectedProjectDirectory: () -> File?,
-    private val workspaceProjectDirectory: () -> File? = ::workspaceDirectoryFromEnvironment,
+    private val connectedProjectDirectories: () -> List<File>,
+    private val workspaceProjectDirectory: () -> File? = ProjectDirectoryResolver::workspaceFromEnvironment,
 ) {
     constructor(connectionManager: GradleConnectionManager) : this(
-        connectedProjectDirectory = { connectionManager.connectedProjectDirectory() },
+        connectedProjectDirectories = { connectionManager.connectedProjectDirectories() },
     )
 
     fun allowedRoots(): List<File> =
         buildList {
-            connectedProjectDirectory()?.let { add(it) }
+            connectedProjectDirectories().forEach { add(it) }
             workspaceProjectDirectory()?.let { add(it) }
-        }
+        }.distinctBy { it.canonicalFile.absolutePath }
 
     fun requireWithinBoundary(directory: File): File {
         val allowedRoots = allowedRoots()
@@ -42,12 +42,4 @@ class ProjectDirectoryScope(
 
     private fun isSameOrContainedIn(candidate: Path, root: Path): Boolean =
         candidate == root || candidate.startsWith(root)
-
-    companion object {
-        private fun workspaceDirectoryFromEnvironment(): File? =
-            System.getenv("GRADLE_PROJECT_DIR")
-                ?.takeIf { it.isNotBlank() }
-                ?.let(::File)
-                ?.takeIf { it.isDirectory }
-    }
 }
