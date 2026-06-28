@@ -5,15 +5,15 @@ import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
-import com.example.gradle.mcp.protocol.projectDirectoryProperty
+import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.tool
 import io.modelcontextprotocol.server.McpServerFeatures
 
 internal fun buildCacheStatusSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
-            "projectDirectory" to projectDirectoryProperty(
-                "Gradle project root to inspect. Defaults to GRADLE_PROJECT_DIR when set.",
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
+                "Gradle project root to inspect.",
             ),
             "includeLastMcpBuild" to booleanProperty(
                 "Include task cache stats from the last MCP build run via gradle_run_tasks or gradle_run_tests (default true)",

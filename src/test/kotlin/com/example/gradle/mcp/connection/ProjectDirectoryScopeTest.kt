@@ -82,6 +82,33 @@ class ProjectDirectoryScopeTest {
     }
 
     @Test
+    fun `allowedRoots deduplicates equivalent connected and workspace paths`() {
+        val project = workspaceRoot.resolve("project").also { it.mkdirs() }
+
+        val scope = ProjectDirectoryScope(
+            connectedProjectDirectories = { listOf(project) },
+            workspaceProjectDirectory = { File(project.path) },
+        )
+
+        scope.allowedRoots().shouldContainExactlyInAnyOrder(listOf(project.canonicalFile))
+    }
+
+    @Test
+    fun `allowedRoots tolerates missing workspace directory`(@TempDir dir: File) {
+        val connected = workspaceRoot.resolve("connected").also { it.mkdirs() }
+        val missingWorkspace = File(dir, "removed-workspace").absoluteFile
+
+        val scope = ProjectDirectoryScope(
+            connectedProjectDirectories = { listOf(connected) },
+            workspaceProjectDirectory = { missingWorkspace },
+        )
+
+        scope.allowedRoots().shouldContainExactlyInAnyOrder(
+            listOf(connected.canonicalFile, missingWorkspace.absoluteFile),
+        )
+    }
+
+    @Test
     fun `requireWithinBoundary rejects explicit paths when no boundary is configured`() {
         val project = workspaceRoot.resolve("project").also { it.mkdirs() }
         val scope = ProjectDirectoryScope(

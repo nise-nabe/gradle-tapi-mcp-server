@@ -12,6 +12,7 @@ import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
 import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.projectDirectoryProperty
+import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.requiredString
 import com.example.gradle.mcp.protocol.stringProperty
 import com.example.gradle.mcp.protocol.tool
@@ -36,8 +37,8 @@ internal fun helpSchema(): Map<String, Any> =
             "tailOutput" to booleanProperty(
                 "When truncated, keep the tail of the help text (default true)",
             ),
-            "projectDirectory" to projectDirectoryProperty(
-                "Gradle project root to query. Defaults to GRADLE_PROJECT_DIR when set.",
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
+                "Gradle project root to query.",
             ),
         ),
     )

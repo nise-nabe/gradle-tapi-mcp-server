@@ -21,6 +21,14 @@ internal fun stringProperty(description: String): Map<String, String> =
 internal fun projectDirectoryProperty(description: String): Map<String, String> =
     stringProperty(description)
 
+internal const val RESOLVE_REQUIRED_PROJECT_DIRECTORY_DEFAULT_SUFFIX =
+    "When omitted, uses the default connected project if available; " +
+        "otherwise the sole connected project when GRADLE_PROJECT_DIR is set but not connected; " +
+        "otherwise GRADLE_PROJECT_DIR."
+
+internal fun resolveRequiredProjectDirectoryProperty(purpose: String): Map<String, String> =
+    projectDirectoryProperty("$purpose $RESOLVE_REQUIRED_PROJECT_DIRECTORY_DEFAULT_SUFFIX")
+
 internal fun stringArrayProperty(description: String, minItems: Int? = null): Map<String, Any> =
     buildMap {
         put("type", "array")

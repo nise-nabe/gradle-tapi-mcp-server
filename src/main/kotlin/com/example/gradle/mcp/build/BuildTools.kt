@@ -18,6 +18,7 @@ import com.example.gradle.mcp.protocol.requiredStringList
 import com.example.gradle.mcp.protocol.stringArrayProperty
 import com.example.gradle.mcp.protocol.stringProperty
 import com.example.gradle.mcp.protocol.projectDirectoryProperty
+import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.tool
 import io.modelcontextprotocol.server.McpServerFeatures
 
@@ -59,9 +60,8 @@ internal fun buildStatusSchema(): Map<String, Any> =
         required = listOf("buildId"),
         properties = progressProperties() + outputProperties() + mapOf(
             "buildId" to stringProperty("Build ID returned by gradle_run_tasks or gradle_run_tests with background=true"),
-            "projectDirectory" to projectDirectoryProperty(
-                "Gradle project root for disk-only status lookup when the in-memory record was evicted. " +
-                    "Defaults to GRADLE_PROJECT_DIR or the default connected project.",
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
+                "Gradle project root for disk-only status lookup when the in-memory record was evicted.",
             ),
         ),
     )
@@ -73,8 +73,8 @@ internal fun runOutputSchema(
     objectSchema(
         required = required,
         properties = mapOf(
-            "projectDirectory" to projectDirectoryProperty(
-                "Gradle project root to build. Defaults to GRADLE_PROJECT_DIR when set.",
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
+                "Gradle project root to build.",
             ),
         ) + extraProperties + progressProperties() + outputProperties() + mapOf(
             "arguments" to stringArrayProperty(

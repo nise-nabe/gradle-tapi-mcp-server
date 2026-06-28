@@ -173,6 +173,24 @@ class ProjectDirectoryResolverTest {
     }
 
     @Test
+    fun `workspaceFromEnvironment ignores non-directory override`(@TempDir dir: File) {
+        val file = File(dir, "not-a-directory.txt").also { it.writeText("x") }
+
+        withWorkspaceDirectory(file) {
+            ProjectDirectoryResolver.workspaceFromEnvironment().shouldBeNull()
+        }
+    }
+
+    @Test
+    fun `workspaceFromEnvironment canonicalizes directory override`(@TempDir dir: File) {
+        val project = dir.resolve("project").also { it.mkdirs() }
+
+        withWorkspaceDirectory(File(project.path)) {
+            ProjectDirectoryResolver.workspaceFromEnvironment() shouldBe project.canonicalFile
+        }
+    }
+
+    @Test
     fun `resolveOptionalHint returns null when projectDirectory is omitted`() {
         ProjectDirectoryResolver.resolveOptionalHint(emptyMap()).shouldBeNull()
     }

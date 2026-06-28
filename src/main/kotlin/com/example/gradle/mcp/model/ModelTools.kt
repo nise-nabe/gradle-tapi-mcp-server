@@ -6,7 +6,7 @@ import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.integerProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
-import com.example.gradle.mcp.protocol.projectDirectoryProperty
+import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.stringProperty
 import com.example.gradle.mcp.protocol.tool
 import io.modelcontextprotocol.server.McpServerFeatures
@@ -19,8 +19,8 @@ internal fun projectTreeProperties(): Map<String, Any> =
     mapOf(
         "maxDepth" to integerProperty("Maximum project tree depth (root=0); deeper child projects are omitted"),
         "maxChildren" to integerProperty("Maximum child projects per node (omit for unlimited)"),
-        "projectDirectory" to projectDirectoryProperty(
-            "Gradle project root to query. Defaults to GRADLE_PROJECT_DIR when set.",
+        "projectDirectory" to resolveRequiredProjectDirectoryProperty(
+            "Gradle project root to query.",
         ),
     )
 
@@ -42,8 +42,8 @@ internal fun modelQuerySchema(): Map<String, Any> =
 internal fun invocationsQuerySchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
-            "projectDirectory" to projectDirectoryProperty(
-                "Gradle project root to query. Defaults to GRADLE_PROJECT_DIR when set.",
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
+                "Gradle project root to query.",
             ),
         ) + modelQueryProperties() + mapOf(
             "includeTaskSelectors" to booleanProperty("Include task selectors. Default false to save tokens."),
@@ -53,8 +53,8 @@ internal fun invocationsQuerySchema(): Map<String, Any> =
 internal fun publicationsSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
-            "projectDirectory" to projectDirectoryProperty(
-                "Gradle project root to query. Defaults to GRADLE_PROJECT_DIR when set.",
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
+                "Gradle project root to query.",
             ),
         ),
     )

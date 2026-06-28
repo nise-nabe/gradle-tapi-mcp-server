@@ -9,12 +9,11 @@ object ProjectDirectoryResolver {
     internal var workspaceDirectoryOverride: File? = null
 
     fun workspaceFromEnvironment(): File? =
-        workspaceDirectoryOverride
+        workspaceDirectory(workspaceDirectoryOverride)
             ?: System.getenv("GRADLE_PROJECT_DIR")
                 ?.takeIf { it.isNotBlank() }
                 ?.let(::File)
-                ?.takeIf { it.isDirectory }
-                ?.canonicalFile
+                ?.let(::workspaceDirectory)
 
     fun canonicalDirectory(path: String): File {
         val directory = File(path).absoluteFile
@@ -32,6 +31,9 @@ object ProjectDirectoryResolver {
 
     fun sameProject(storedPath: String?, directory: File): Boolean =
         storedPath?.let { canonicalKey(File(it)) == canonicalKey(directory) } == true
+
+    private fun workspaceDirectory(directory: File?): File? =
+        directory?.takeIf { it.isDirectory }?.let(::bestEffortCanonical)
 
     private fun bestEffortCanonical(directory: File): File =
         runCatching { directory.canonicalFile }.getOrElse { directory.absoluteFile }

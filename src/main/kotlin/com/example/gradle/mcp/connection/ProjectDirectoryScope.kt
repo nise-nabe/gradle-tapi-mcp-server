@@ -17,7 +17,7 @@ class ProjectDirectoryScope(
         buildList {
             connectedProjectDirectories().forEach { add(it) }
             workspaceProjectDirectory()?.let { add(it) }
-        }.distinctBy { it.canonicalFile.absolutePath }
+        }.distinctBy { ProjectDirectoryResolver.canonicalKey(it) }
 
     fun requireWithinBoundary(directory: File): File {
         val allowedRoots = allowedRoots()
