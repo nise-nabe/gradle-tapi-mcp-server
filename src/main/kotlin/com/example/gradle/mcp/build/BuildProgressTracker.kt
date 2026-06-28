@@ -169,6 +169,7 @@ class BuildProgressTracker(
             is ProjectConfigurationFinishEvent -> {
                 when (val result = event.result) {
                     is org.gradle.tooling.events.configuration.ProjectConfigurationFailureResult -> {
+                        collectProblemsFromFailureResult(result)
                         val message = result.failures.firstOrNull()?.message ?: "failed"
                         recordEventLocked(ProgressEventTypes.CONFIG_FAIL, displayName, message)
                     }
