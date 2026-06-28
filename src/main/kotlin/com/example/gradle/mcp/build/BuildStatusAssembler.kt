@@ -25,11 +25,7 @@ internal object BuildStatusAssembler {
                 "tasks" -> response["tasks"] = view.tasks
                 "tests" -> {
                     response["testClasses"] = view.testClasses
-                    response.putTestRunSelection(
-                        testMethods = view.testMethods,
-                        taskPath = view.taskPath,
-                        includePatterns = view.includePatterns,
-                    )
+                    response.putTestRunSelection(view.selection)
                 }
             }
         }
@@ -40,11 +36,7 @@ internal object BuildStatusAssembler {
             response["finishedAt"] = view.finishedAt
             response["tasks"] = view.tasks
             response["testClasses"] = view.testClasses
-            response.putTestRunSelection(
-                testMethods = view.testMethods,
-                taskPath = view.taskPath,
-                includePatterns = view.includePatterns,
-            )
+            response.putTestRunSelection(view.selection)
             response["statusSource"] = view.statusSource
         }
 

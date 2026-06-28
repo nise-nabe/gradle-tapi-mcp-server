@@ -73,10 +73,7 @@ internal object PersistedBuildViewFactory {
             },
             tasks = artifacts.mcpResult?.tasks?.takeIf { it.isNotEmpty() }
                 ?: artifacts.gradleResult?.taskNames.orEmpty(),
-            testClasses = artifacts.mcpResult?.testClasses.orEmpty(),
-            testMethods = artifacts.mcpResult?.testMethods.orEmpty(),
-            taskPath = artifacts.mcpResult?.taskPath,
-            includePatterns = artifacts.mcpResult?.includePatterns.orEmpty(),
+            selection = artifacts.mcpResult?.selection,
             error = BuildPersistenceContract.resolveError(
                 artifacts.gradleResult,
                 artifacts.mcpResult,

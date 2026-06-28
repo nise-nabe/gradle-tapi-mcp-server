@@ -11,80 +11,42 @@ import org.gradle.tooling.TestLauncher
 import java.io.File
 
 internal data class TestRunOptions(
-    val testClasses: List<String> = emptyList(),
-    val testMethods: Map<String, List<String>> = emptyMap(),
-    val taskPath: String? = null,
-    val includePatterns: List<String> = emptyList(),
+    val selection: TestRunSelection? = null,
     val tasks: List<String> = emptyList(),
-)
+) {
+    val testClasses: List<String> get() = selection.testClassesForReporting()
+    val testMethods: Map<String, List<String>> get() = selection.testMethodsOrEmpty()
+    val taskPath: String? get() = selection.taskPathOrNull()
+    val includePatterns: List<String> get() = selection.includePatternsOrEmpty()
+}
 
 internal fun parseTestRunOptions(args: Map<String, Any>): TestRunOptions {
-    val testClasses = args.optionalStringList("testClasses")
-        .orEmpty()
-        .filter { it.isNotBlank() }
-        .distinct()
+    val testClasses = args.optionalStringList("testClasses").orEmpty().filter { it.isNotBlank() }.distinct()
     val testMethods = parseTestMethods(args)
     val taskPath = args.optionalString("taskPath")
     val includePatterns = buildList {
         args.optionalString("includePattern")?.takeIf { it.isNotBlank() }?.let { add(it) }
-        args.optionalStringList("includePatterns")?.let { patterns ->
-            addAll(patterns.filter { it.isNotBlank() })
-        }
+        args.optionalStringList("includePatterns")?.let { patterns -> addAll(patterns.filter { it.isNotBlank() }) }
     }.distinct()
-    val tasks = args.optionalStringList("tasks")
-        .orEmpty()
-        .filter { it.isNotBlank() }
-        .distinct()
-    return TestRunOptions(
-        testClasses = testClasses,
-        testMethods = testMethods,
-        taskPath = taskPath,
-        includePatterns = includePatterns,
-        tasks = tasks,
-    )
+    val tasks = args.optionalStringList("tasks").orEmpty().filter { it.isNotBlank() }.distinct()
+    val selection = TestRunSelection.fromFlat(testClasses, testMethods, taskPath, includePatterns)
+    return TestRunOptions(selection = selection, tasks = tasks)
 }
 
-internal fun TestRunOptions.validate(): TestRunOptions {
-    val hasClasses = testClasses.isNotEmpty()
-    val hasMethods = testMethods.isNotEmpty()
-    val hasPatterns = includePatterns.isNotEmpty()
-
-    if (!hasClasses && !hasMethods && !hasPatterns) {
-        throw McpException(
+internal fun TestRunOptions.validate(inputTaskPath: String? = null): TestRunOptions {
+    val selection = this.selection
+        ?: throw McpException(
             McpErrorCode.INVALID_ARGUMENT,
             "At least one of testClasses, testMethods, or includePattern/includePatterns must be provided",
         )
-    }
-
-    val selectionModes = listOf(hasClasses, hasMethods, hasPatterns).count { it }
-    if (selectionModes > 1) {
-        throw McpException(
-            McpErrorCode.INVALID_ARGUMENT,
-            "Specify only one of testClasses, testMethods, or includePattern/includePatterns",
-        )
-    }
-
-    if (!taskPath.isNullOrBlank() && !hasClasses && !hasMethods) {
+    val taskPathToCheck = inputTaskPath ?: selection.taskPath
+    if (!taskPathToCheck.isNullOrBlank() && selection is TestRunSelection.Patterns) {
         throw McpException(
             McpErrorCode.INVALID_ARGUMENT,
             "taskPath requires non-empty testClasses or testMethods",
         )
     }
-
-    if (hasPatterns && tasks.isEmpty()) {
-        throw McpException(
-            McpErrorCode.INVALID_ARGUMENT,
-            "includePattern/includePatterns requires tasks for test task scoping",
-        )
-    }
-
-    if (!taskPath.isNullOrBlank() && tasks.isNotEmpty() && taskPath !in tasks) {
-        throw McpException(
-            McpErrorCode.INVALID_ARGUMENT,
-            "tasks must include taskPath when both are specified",
-        )
-    }
-
+    selection.validateWithTasks(tasks)
     return this
 }
 
@@ -99,10 +61,7 @@ internal fun TestRunOptions.toBuildRunRequest(
         projectDirectory = projectDirectory,
         kind = BuildKind.TESTS,
         tasks = tasks,
-        testClasses = testClasses.ifEmpty { testMethods.keys.toList() },
-        testMethods = testMethods,
-        taskPath = taskPath,
-        includePatterns = includePatterns,
+        selection = selection,
         arguments = arguments,
         jvmArguments = jvmArguments,
         outputLimit = outputLimit,
@@ -118,17 +77,23 @@ internal fun describeTestOperation(request: BuildRunRequest): String =
     buildString {
         append("Gradle tests: ")
         append(
-            when {
-                !request.taskPath.isNullOrBlank() && request.testMethods.isNotEmpty() ->
-                    "${request.taskPath} methods ${formatTestMethodsLabel(request.testMethods)}"
-                !request.taskPath.isNullOrBlank() ->
-                    "${request.taskPath} classes ${request.testClasses.joinToString()}"
-                request.testMethods.isNotEmpty() ->
-                    formatTestMethodsLabel(request.testMethods)
-                request.includePatterns.isNotEmpty() ->
-                    "patterns ${request.includePatterns.joinToString()}"
-                else ->
-                    request.testClasses.joinToString()
+            when (val selection = request.selection) {
+                is TestRunSelection.Classes -> {
+                    if (!selection.taskPath.isNullOrBlank()) {
+                        "${selection.taskPath} classes ${selection.classes.joinToString()}"
+                    } else {
+                        selection.classes.joinToString()
+                    }
+                }
+                is TestRunSelection.Methods -> {
+                    if (!selection.taskPath.isNullOrBlank()) {
+                        "${selection.taskPath} methods ${formatTestMethodsLabel(selection.methods)}"
+                    } else {
+                        formatTestMethodsLabel(selection.methods)
+                    }
+                }
+                is TestRunSelection.Patterns -> "patterns ${selection.patterns.joinToString()}"
+                null -> ""
             },
         )
         if (request.tasks.isNotEmpty()) {
@@ -136,55 +101,40 @@ internal fun describeTestOperation(request: BuildRunRequest): String =
         }
     }
 
-internal fun configureTestLauncher(
-    launcher: TestLauncher,
-    request: BuildRunRequest,
-): TestLauncher {
+internal fun configureTestLauncher(launcher: TestLauncher, request: BuildRunRequest): TestLauncher {
     var configured = launcher
     if (request.tasks.isNotEmpty()) {
         configured = configured.forTasks(*request.tasks.toTypedArray())
     }
-
-    val taskPath = request.taskPath
-    return when {
-        !taskPath.isNullOrBlank() -> {
-            if (request.testMethods.isNotEmpty()) {
-                request.testMethods.entries.fold(configured) { acc, (className, methods) ->
+    return when (val selection = request.selection) {
+        is TestRunSelection.Classes -> {
+            val taskPath = selection.taskPath
+            if (!taskPath.isNullOrBlank()) {
+                configured.withTaskAndTestClasses(taskPath, selection.classes)
+            } else {
+                configured.withJvmTestClasses(*selection.classes.toTypedArray())
+            }
+        }
+        is TestRunSelection.Methods -> {
+            val taskPath = selection.taskPath
+            if (!taskPath.isNullOrBlank()) {
+                selection.methods.entries.fold(configured) { acc, (className, methods) ->
                     acc.withTaskAndTestMethods(taskPath, className, methods)
                 }
             } else {
-                configured.withTaskAndTestClasses(taskPath, request.testClasses)
-            }
-        }
-        request.testMethods.isNotEmpty() -> {
-            request.testMethods.entries.fold(configured) { acc, (className, methods) ->
-                acc.withJvmTestMethods(className, methods)
-            }
-        }
-        request.includePatterns.isNotEmpty() -> {
-            configured.withTestsFor { specs ->
-                for (path in request.tasks) {
-                    specs.forTaskPath(path).includePatterns(request.includePatterns)
+                selection.methods.entries.fold(configured) { acc, (className, methods) ->
+                    acc.withJvmTestMethods(className, methods)
                 }
             }
         }
-        else -> {
-            configured.withJvmTestClasses(*request.testClasses.toTypedArray())
+        is TestRunSelection.Patterns -> {
+            configured.withTestsFor { specs ->
+                for (path in request.tasks) {
+                    specs.forTaskPath(path).includePatterns(selection.patterns)
+                }
+            }
         }
-    }
-}
-
-internal fun MutableMap<String, Any?>.putTestRunSelection(
-    testMethods: Map<String, List<String>> = emptyMap(),
-    taskPath: String? = null,
-    includePatterns: List<String> = emptyList(),
-) {
-    if (testMethods.isNotEmpty()) {
-        put("testMethods", testMethods)
-    }
-    taskPath?.takeIf { it.isNotBlank() }?.let { put("taskPath", it) }
-    if (includePatterns.isNotEmpty()) {
-        put("includePatterns", includePatterns)
+        null -> configured
     }
 }
 
@@ -206,11 +156,8 @@ private fun parseTestMethods(args: Map<String, Any>): Map<String, List<String>> 
 
 private fun parseTestMethodsMap(raw: Map<*, *>): Map<String, List<String>> =
     raw.entries.associate { (key, value) ->
-        val className = key as? String
-            ?: throw invalidTestMethods("testMethods map keys must be strings")
-        if (className.isBlank()) {
-            throw invalidTestMethods("testMethods map keys must be non-blank")
-        }
+        val className = key as? String ?: throw invalidTestMethods("testMethods map keys must be strings")
+        if (className.isBlank()) throw invalidTestMethods("testMethods map keys must be non-blank")
         className to parseMethodNameList(value, "testMethods")
     }
 
@@ -246,11 +193,8 @@ private fun parseTestMethodsArrayClassName(entryMap: Map<*, *>): String {
 }
 
 private fun parseMethodNameList(value: Any?, field: String): List<String> {
-    val list = value as? List<*>
-        ?: throw invalidTestMethods("$field values must be string arrays")
-    if (list.any { it !is String }) {
-        throw invalidTestMethods("$field values must contain only strings")
-    }
+    val list = value as? List<*> ?: throw invalidTestMethods("$field values must be string arrays")
+    if (list.any { it !is String }) throw invalidTestMethods("$field values must contain only strings")
     return list.filterIsInstance<String>().filter { it.isNotBlank() }.distinct()
 }
 

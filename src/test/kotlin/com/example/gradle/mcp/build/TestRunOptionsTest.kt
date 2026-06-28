@@ -13,6 +13,7 @@ class TestRunOptionsTest {
         val options = parseTestRunOptions(mapOf("testClasses" to listOf("com.example.FooTest")))
 
         options.testClasses shouldBe listOf("com.example.FooTest")
+        options.selection shouldBe TestRunSelection.Classes(listOf("com.example.FooTest"))
     }
 
     @Test
@@ -26,6 +27,9 @@ class TestRunOptionsTest {
         )
 
         options.testMethods shouldBe mapOf("com.example.FooTest" to listOf("method1", "method2"))
+        options.selection shouldBe TestRunSelection.Methods(
+            mapOf("com.example.FooTest" to listOf("method1", "method2")),
+        )
     }
 
     @Test
@@ -231,7 +235,7 @@ class TestRunOptionsTest {
     @Test
     fun `toBuildRunRequest populates testClasses from testMethods keys for reporting`() {
         val request = TestRunOptions(
-            testMethods = mapOf("com.example.FooTest" to listOf("method1")),
+            selection = TestRunSelection.Methods(mapOf("com.example.FooTest" to listOf("method1"))),
         ).toBuildRunRequest(
             projectDirectory = testProjectDirectory,
             arguments = emptyList(),
@@ -275,10 +279,9 @@ class TestRunOptionsTest {
     fun `validate rejects taskPath without classes or methods`() {
         val error = shouldThrow<McpException> {
             TestRunOptions(
-                taskPath = ":app:test",
-                includePatterns = listOf("com.example.*"),
+                selection = TestRunSelection.Patterns(listOf("com.example.*")),
                 tasks = listOf(":app:test"),
-            ).validate()
+            ).validate(inputTaskPath = ":app:test")
         }
 
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
@@ -291,8 +294,10 @@ class TestRunOptionsTest {
             BuildRunRequest(
                 projectDirectory = testProjectDirectory,
                 kind = BuildKind.TESTS,
-                testMethods = mapOf("com.example.FooTest" to listOf("method1", "method2")),
-                taskPath = ":app:test",
+                selection = TestRunSelection.Methods(
+                    methods = mapOf("com.example.FooTest" to listOf("method1", "method2")),
+                    taskPath = ":app:test",
+                ),
             ),
         )
 
@@ -305,7 +310,9 @@ class TestRunOptionsTest {
             BuildRunRequest(
                 projectDirectory = testProjectDirectory,
                 kind = BuildKind.TESTS,
-                testMethods = mapOf("com.example.FooTest" to listOf("method1")),
+                selection = TestRunSelection.Methods(
+                    methods = mapOf("com.example.FooTest" to listOf("method1")),
+                ),
             ),
         )
 
@@ -315,10 +322,12 @@ class TestRunOptionsTest {
     @Test
     fun `validate rejects multiple selection mechanisms`() {
         val error = shouldThrow<McpException> {
-            TestRunOptions(
-                testClasses = listOf("com.example.FooTest"),
-                testMethods = mapOf("com.example.FooTest" to listOf("method1")),
-            ).validate()
+            parseTestRunOptions(
+                mapOf(
+                    "testClasses" to listOf("com.example.FooTest"),
+                    "testMethods" to mapOf("com.example.FooTest" to listOf("method1")),
+                ),
+            )
         }
 
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
@@ -329,10 +338,12 @@ class TestRunOptionsTest {
     @Test
     fun `validate rejects testClasses combined with includePatterns`() {
         val error = shouldThrow<McpException> {
-            TestRunOptions(
-                testClasses = listOf("com.example.FooTest"),
-                includePatterns = listOf("com.example.*"),
-                tasks = listOf(":app:test"),
+            parseTestRunOptions(
+                mapOf(
+                    "testClasses" to listOf("com.example.FooTest"),
+                    "includePatterns" to listOf("com.example.*"),
+                    "tasks" to listOf(":app:test"),
+                ),
             ).validate()
         }
 
@@ -345,8 +356,10 @@ class TestRunOptionsTest {
     fun `validate rejects tasks that omit taskPath when both are specified`() {
         val error = shouldThrow<McpException> {
             TestRunOptions(
-                testClasses = listOf("com.example.FooTest"),
-                taskPath = ":app:test",
+                selection = TestRunSelection.Classes(
+                    classes = listOf("com.example.FooTest"),
+                    taskPath = ":app:test",
+                ),
                 tasks = listOf(":other:test"),
             ).validate()
         }
@@ -361,9 +374,11 @@ class TestRunOptionsTest {
             BuildRunRequest(
                 projectDirectory = testProjectDirectory,
                 kind = BuildKind.TESTS,
-                testMethods = mapOf(
-                    "com.example.FooTest" to listOf("method1", "method2"),
-                    "com.example.BarTest" to listOf("method3"),
+                selection = TestRunSelection.Methods(
+                    methods = mapOf(
+                        "com.example.FooTest" to listOf("method1", "method2"),
+                        "com.example.BarTest" to listOf("method3"),
+                    ),
                 ),
             ),
         )
@@ -372,9 +387,22 @@ class TestRunOptionsTest {
     }
 
     @Test
+    fun `fromPersistedFlat reconstructs method selection when testClasses are reporting duplicates`() {
+        TestRunSelection.fromPersistedFlat(
+            testClasses = listOf("com.example.FooTest"),
+            testMethods = mapOf("com.example.FooTest" to listOf("method1")),
+            taskPath = ":app:test",
+            includePatterns = emptyList(),
+        ) shouldBe TestRunSelection.Methods(
+            methods = mapOf("com.example.FooTest" to listOf("method1")),
+            taskPath = ":app:test",
+        )
+    }
+
+    @Test
     fun `validate rejects includePatterns without tasks`() {
         val error = shouldThrow<McpException> {
-            TestRunOptions(includePatterns = listOf("com.example.*")).validate()
+            TestRunOptions(selection = TestRunSelection.Patterns(listOf("com.example.*"))).validate()
         }
 
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
