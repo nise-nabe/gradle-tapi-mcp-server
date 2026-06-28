@@ -90,7 +90,7 @@ Tool errors return structured JSON: `{ "error": { "code": "NOT_CONNECTED", "mess
 One MCP server process can hold **multiple Gradle project connections** at once.
 
 1. `gradle_connect` with each project root (does not disconnect other projects)
-2. Pass optional `projectDirectory` on query/build tools; omit to use `GRADLE_PROJECT_DIR`
+2. Pass optional `projectDirectory` on query/build tools. When omitted, the server uses the default connected project, then `GRADLE_PROJECT_DIR` when set and connected, or the sole connected project when the workspace env is unset or not connected. With **multiple** connections and no usable workspace default, `projectDirectory` is **required**.
 3. `gradle_connection_status` without arguments returns `connections[]` plus legacy flat fields for the default project
 4. `gradle_disconnect` with `projectDirectory` closes one project; omit to close all
 5. Background builds are scoped per project; concurrent builds across projects share the global pool limit

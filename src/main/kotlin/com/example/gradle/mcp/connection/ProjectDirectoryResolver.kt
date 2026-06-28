@@ -64,7 +64,7 @@ object ProjectDirectoryResolver {
         boundary: ((File) -> File)? = null,
     ): File? =
         args.optionalString("projectDirectory")?.let { path ->
-            val directory = canonicalDirectory(path)
+            val directory = bestEffortDirectory(path)
             boundary?.invoke(directory) ?: directory
         }
 

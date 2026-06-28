@@ -110,7 +110,8 @@ fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
                 args.requiredString("projectDirectory"),
             )
             if (runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
-                error(
+                throw McpException(
+                    McpErrorCode.BUILD_ALREADY_RUNNING,
                     "Cannot connect while a Gradle build is running for ${projectDirectory.path}. " +
                         "Wait for the build to finish, call gradle_cancel_build, or call gradle_disconnect.",
                 )

@@ -201,4 +201,12 @@ class ProjectDirectoryResolverTest {
     fun `resolveOptionalHint returns null when projectDirectory is omitted`() {
         ProjectDirectoryResolver.resolveOptionalHint(emptyMap()).shouldBeNull()
     }
+
+    @Test
+    fun `resolveOptionalHint accepts missing directory paths`(@TempDir dir: File) {
+        val missing = File(dir, "removed-project")
+        ProjectDirectoryResolver.resolveOptionalHint(
+            mapOf("projectDirectory" to missing.path),
+        ) shouldBe missing
+    }
 }

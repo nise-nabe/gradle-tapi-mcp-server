@@ -2,6 +2,8 @@ package com.example.gradle.mcp.cache
 
 import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
+import com.example.gradle.mcp.protocol.McpErrorCode
+import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
@@ -40,7 +42,8 @@ fun cacheTools(): List<McpServerFeatures.SyncToolSpecification> =
         ) { args ->
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
             if (runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
-                error(
+                throw McpException(
+                    McpErrorCode.BUILD_ALREADY_RUNNING,
                     "Cannot inspect build cache while a Gradle build is running for ${projectDirectory.path}. " +
                         "Wait for the build to finish or call gradle_get_build_status.",
                 )
