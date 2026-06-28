@@ -162,6 +162,7 @@ class BuildExecutionManager(
         val projectDirectory = record?.projectDirectory?.let(::File)
             ?: projectDirectoryHint
             ?: connectionManager.defaultProjectDirectory()
+            ?: ProjectDirectoryResolver.workspaceFromEnvironment()
         val artifacts = if (shouldLoadDiskArtifacts(record)) {
             projectDirectory?.let { buildRecordStore.loadArtifacts(it, buildId) }
         } else {

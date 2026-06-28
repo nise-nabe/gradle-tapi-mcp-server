@@ -9,6 +9,7 @@ import com.example.gradle.mcp.protocol.mcpObjectMapper
 import com.example.gradle.mcp.cache.lastMcpBuildInsight
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.support.testProjectDirectory
+import com.example.gradle.mcp.support.withWorkspaceDirectory
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
@@ -83,6 +84,38 @@ class BuildExecutionManagerTest {
         result["status"] shouldBe "succeeded"
         result["outcome"] shouldBe "SUCCESS"
         result["buildId"] shouldBe buildId
+    }
+
+    @Test
+    fun `status loads persisted build from workspace env when disconnected`(@TempDir projectDir: File) {
+        val store = BuildRecordStore()
+        val manager = BuildExecutionManager(GradleConnectionManager(), store)
+        val buildId = "workspace-disk-build"
+        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        recordDir.mkdirs()
+        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
+            mcpObjectMapper().writeValueAsString(
+                McpBuildResult(
+                    buildId = buildId,
+                    kind = "tasks",
+                    tasks = listOf("build"),
+                    testClasses = emptyList(),
+                    projectDirectory = projectDir.absolutePath,
+                    startedAt = "2026-06-14T10:00:00Z",
+                    finishedAt = "2026-06-14T10:01:00Z",
+                    status = "succeeded",
+                    outcome = "SUCCESS",
+                ),
+            ),
+            StandardCharsets.UTF_8,
+        )
+
+        withWorkspaceDirectory(projectDir) {
+            val result = manager.status(buildId, OutputLimitOptions(), ProgressResponseOptions())
+
+            result["status"] shouldBe "succeeded"
+            result["buildId"] shouldBe buildId
+        }
     }
 
     @Test

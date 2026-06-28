@@ -43,8 +43,10 @@ internal fun listBuildsSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
             "projectDirectory" to projectDirectoryProperty(
-                "Gradle project root for in-memory and disk build records. Defaults to GRADLE_PROJECT_DIR, " +
-                    "then the default connected project. Must stay within an active connection or workspace boundary.",
+                "Gradle project root for in-memory and disk build records. Optional; when omitted, lists " +
+                    "in-memory builds without a Tooling API connection. When provided, must stay within an " +
+                    "active connection or workspace boundary. Defaults to GRADLE_PROJECT_DIR or the default " +
+                    "connected project for disk lookup.",
             ),
             "limit" to integerProperty(
                 "Maximum builds to return, most recent first (default ${BuildExecutionManager.DEFAULT_LIST_BUILDS}, max ${BuildExecutionManager.MAX_LIST_BUILDS})",
@@ -91,9 +93,8 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
             schema = listBuildsSchema(),
         ) { args ->
             val scope = ProjectDirectoryScope(runtime.connectionManager)
-            val projectDirectory = ProjectDirectoryResolver.resolveWithBoundary(
+            val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
                 args,
-                runtime.connectionManager,
                 boundary = scope::requireWithinBoundary,
             )
             val limit = args.optionalPositiveInt("limit") ?: BuildExecutionManager.DEFAULT_LIST_BUILDS

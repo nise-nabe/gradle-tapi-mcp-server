@@ -41,7 +41,11 @@ internal fun modelQuerySchema(): Map<String, Any> =
 
 internal fun invocationsQuerySchema(): Map<String, Any> =
     objectSchema(
-        properties = projectTreeProperties() + modelQueryProperties() + mapOf(
+        properties = mapOf(
+            "projectDirectory" to projectDirectoryProperty(
+                "Gradle project root to query. Defaults to GRADLE_PROJECT_DIR when set.",
+            ),
+        ) + modelQueryProperties() + mapOf(
             "includeTaskSelectors" to booleanProperty("Include task selectors. Default false to save tokens."),
         ),
     )
