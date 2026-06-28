@@ -2,12 +2,15 @@ package com.example.gradle.mcp.cache
 
 import com.example.gradle.mcp.build.BuildExecutionManager
 import com.example.gradle.mcp.build.BuildOutputParser
+import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import java.io.File
 
 fun BuildExecutionManager.lastMcpBuildInsight(projectDirectory: File): LastMcpBuildInsight? {
-    val snapshot = lastCompletedBuildSnapshot() ?: return null
+    val snapshot = lastCompletedBuildSnapshot(projectDirectory) ?: return null
     val snapshotProject = snapshot.projectDirectory ?: return null
-    if (snapshotProject != projectDirectory.absolutePath) {
+    if (ProjectDirectoryResolver.canonicalKey(File(snapshotProject)) !=
+        ProjectDirectoryResolver.canonicalKey(projectDirectory)
+    ) {
         return null
     }
     val summary = BuildOutputParser.parse(snapshot.stdout)

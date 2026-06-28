@@ -18,6 +18,9 @@ internal fun objectSchema(
 internal fun stringProperty(description: String): Map<String, String> =
     mapOf("type" to "string", "description" to description)
 
+internal fun projectDirectoryProperty(description: String): Map<String, String> =
+    stringProperty(description)
+
 internal fun stringArrayProperty(description: String, minItems: Int? = null): Map<String, Any> =
     buildMap {
         put("type", "array")
