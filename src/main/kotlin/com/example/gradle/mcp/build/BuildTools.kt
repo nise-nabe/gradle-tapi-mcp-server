@@ -60,8 +60,10 @@ internal fun buildStatusSchema(): Map<String, Any> =
         required = listOf("buildId"),
         properties = progressProperties() + outputProperties() + mapOf(
             "buildId" to stringProperty("Build ID returned by gradle_run_tasks or gradle_run_tests with background=true"),
-            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
-                "Gradle project root for disk-only status lookup when the in-memory record was evicted.",
+            "projectDirectory" to projectDirectoryProperty(
+                "Gradle project root for disk-only status lookup when the in-memory record was evicted. " +
+                    "Optional; when omitted, uses the in-memory record's project, then the default connected " +
+                    "project, then GRADLE_PROJECT_DIR. Does not require a Tooling API connection.",
             ),
         ),
     )

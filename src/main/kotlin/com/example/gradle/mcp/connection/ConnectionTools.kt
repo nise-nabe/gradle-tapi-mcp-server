@@ -80,6 +80,15 @@ private fun connectionStatusSchema(): Map<String, Any> =
         ),
     )
 
+private fun buildEnvironmentSchema(): Map<String, Any> =
+    objectSchema(
+        properties = mapOf(
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
+                "Gradle project root to query.",
+            ),
+        ),
+    )
+
 private fun disconnectSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
@@ -163,7 +172,7 @@ fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
         tool(
             name = "gradle_get_build_environment",
             description = "Fetch BuildEnvironment (Gradle version, Gradle user home, Java home, versionInfo). versionInfo is the gradle --version output when the connected Gradle is 9.4+; omitted on older Gradle. Lightweight; prefer this over project model for stack checks.",
-            schema = connectionStatusSchema(),
+            schema = buildEnvironmentSchema(),
         ) { args ->
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
