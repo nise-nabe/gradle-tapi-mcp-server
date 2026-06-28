@@ -14,13 +14,16 @@ data class ConnectionConfig(
             normalizedGradleInstallation == other.normalizedGradleInstallation
 
     private val normalizedGradleUserHome: String?
-        get() = gradleUserHome?.takeIf { it.isNotBlank() }
+        get() = gradleUserHome?.takeIf { it.isNotBlank() }?.let(::normalizePath)
 
     private val normalizedGradleVersion: String?
         get() = gradleVersion?.takeIf { it.isNotBlank() }
 
     private val normalizedGradleInstallation: String?
-        get() = gradleInstallation?.takeIf { it.isNotBlank() }
+        get() = gradleInstallation?.takeIf { it.isNotBlank() }?.let(::normalizePath)
+
+    private fun normalizePath(path: String): String =
+        ProjectDirectoryResolver.canonicalKey(File(path))
 }
 
 data class ConnectionInfo(

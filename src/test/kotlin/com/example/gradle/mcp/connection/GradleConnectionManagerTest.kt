@@ -213,6 +213,80 @@ class GradleConnectionManagerTest {
     }
 
     @Test
+    fun `ensureConnected accepts equivalent gradleUserHome paths`(@TempDir project: File, @TempDir gradleHome: File) {
+        val connection = connectionProxy(AtomicInteger(0))
+        manager.seedConnectionForTests(
+            connection,
+            projectDirectory = project,
+            config = ConnectionConfig(
+                projectDirectory = project.path,
+                gradleUserHome = gradleHome.absolutePath,
+            ),
+        )
+
+        val info = manager.ensureConnected(
+            ConnectionConfig(
+                projectDirectory = project.path,
+                gradleUserHome = File(gradleHome.path).path,
+            ),
+        )
+
+        info.state shouldBe "connected"
+    }
+
+    @Test
+    fun `ensureConnected accepts equivalent gradleInstallation paths`(
+        @TempDir project: File,
+        @TempDir gradleInstallation: File,
+    ) {
+        val connection = connectionProxy(AtomicInteger(0))
+        manager.seedConnectionForTests(
+            connection,
+            projectDirectory = project,
+            config = ConnectionConfig(
+                projectDirectory = project.path,
+                gradleInstallation = gradleInstallation.absolutePath,
+            ),
+        )
+
+        val info = manager.ensureConnected(
+            ConnectionConfig(
+                projectDirectory = project.path,
+                gradleInstallation = File(gradleInstallation.path).path,
+            ),
+        )
+
+        info.state shouldBe "connected"
+    }
+
+    @Test
+    fun `disconnect finds connection after project directory is removed`(@TempDir project: File) {
+        val connection = connectionProxy(AtomicInteger(0))
+        manager.seedConnectionForTests(connection, projectDirectory = project)
+        manager.isConnected(project).shouldBeTrue()
+
+        project.deleteRecursively()
+        val removedPath = project.absolutePath
+
+        val disconnected = manager.disconnect(ProjectDirectoryResolver.bestEffortDirectory(removedPath))
+
+        disconnected?.state shouldBe "disconnected"
+        manager.isConnected(ProjectDirectoryResolver.bestEffortDirectory(removedPath)).shouldBeFalse()
+    }
+
+    @Test
+    fun `status finds connection after project directory is removed`(@TempDir project: File) {
+        val canonicalPath = project.canonicalFile.path
+        val connection = connectionProxy(AtomicInteger(0))
+        manager.seedConnectionForTests(connection, projectDirectory = project)
+        project.deleteRecursively()
+
+        val status = manager.status(ProjectDirectoryResolver.bestEffortDirectory(canonicalPath))
+
+        status.bool("connected").shouldBeTrue()
+    }
+
+    @Test
     fun `status omits misleading legacy flat fields when default project is ambiguous`(
         @TempDir projectA: File,
         @TempDir projectB: File,

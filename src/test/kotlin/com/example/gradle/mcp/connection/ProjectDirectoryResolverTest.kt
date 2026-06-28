@@ -17,6 +17,13 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class ProjectDirectoryResolverTest {
     @Test
+    fun `bestEffortDirectory does not require directory to exist`(@TempDir dir: File) {
+        val missing = File(dir, "removed-project").absoluteFile
+
+        ProjectDirectoryResolver.bestEffortDirectory(missing.path) shouldBe missing
+    }
+
+    @Test
     fun `canonicalDirectory rejects non-directory paths`(@TempDir dir: File) {
         val missing = File(dir, "missing").absolutePath
 

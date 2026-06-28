@@ -26,6 +26,9 @@ object ProjectDirectoryResolver {
         return directory.canonicalFile
     }
 
+    fun bestEffortDirectory(path: String): File =
+        bestEffortCanonical(File(path).absoluteFile)
+
     fun canonicalKey(directory: File): String =
         bestEffortCanonical(directory).absolutePath
 

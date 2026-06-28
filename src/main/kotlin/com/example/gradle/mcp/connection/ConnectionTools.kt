@@ -129,7 +129,7 @@ fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
             schema = connectionStatusSchema(),
         ) { args ->
             val projectDirectory = args.optionalString("projectDirectory")
-                ?.let(ProjectDirectoryResolver::canonicalDirectory)
+                ?.let(ProjectDirectoryResolver::bestEffortDirectory)
             jsonResult(runtime.connectionManager.status(projectDirectory))
         },
         tool(
@@ -138,7 +138,7 @@ fun connectionTools(): List<McpServerFeatures.SyncToolSpecification> =
             schema = disconnectSchema(),
         ) { args ->
             val projectDirectory = args.optionalString("projectDirectory")
-                ?.let(ProjectDirectoryResolver::canonicalDirectory)
+                ?.let(ProjectDirectoryResolver::bestEffortDirectory)
             val hadActiveBuild = if (projectDirectory != null) {
                 runtime.buildExecutionManager.hasActiveBuild(projectDirectory)
             } else {
