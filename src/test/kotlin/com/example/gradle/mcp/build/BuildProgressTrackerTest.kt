@@ -251,6 +251,13 @@ class BuildProgressTrackerTest {
         val listener = tracker.asGradleListener()
         val projectName = "Configure project :broken"
         val failureMessage = "Could not compile build file"
+        val problem = problemProxy(
+            displayName = "Script compilation failed",
+            details = "Unresolved reference: foo",
+            severity = Severity.ERROR,
+            contextualLabel = projectName,
+        )
+        val failure = failureProxy(problems = listOf(problem))
 
         val configFinish = Proxy.newProxyInstance(
             ProjectConfigurationFinishEvent::class.java.classLoader,
@@ -271,6 +278,7 @@ class BuildProgressTrackerTest {
                                         InvocationHandler { _, method, _ ->
                                             when (method.name) {
                                                 "getMessage" -> failureMessage
+                                                "getProblems" -> failure.problems
                                                 else -> null
                                             }
                                         },
@@ -291,6 +299,11 @@ class BuildProgressTrackerTest {
         snapshot.failedTaskCount shouldBe 0
         snapshot.recentEvents.last().eventType shouldBe ProgressEventTypes.CONFIG_FAIL
         snapshot.recentEvents.last().outcome shouldBe failureMessage
+        snapshot.problems shouldHaveSize 1
+        snapshot.problems.single().label shouldBe "Script compilation failed"
+        snapshot.problems.single().details shouldBe "Unresolved reference: foo"
+        snapshot.problems.single().severity shouldBe "error"
+        snapshot.problems.single().contextualLabel shouldBe projectName
     }
 
     @Test
