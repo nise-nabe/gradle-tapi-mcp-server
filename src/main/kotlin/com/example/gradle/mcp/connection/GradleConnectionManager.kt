@@ -68,7 +68,9 @@ class GradleConnectionManager {
             return disconnectAll().lastOrNull()
         }
         val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
-        val removed = pool.remove(key) ?: return null
+        val removed = synchronized(pool) {
+            pool.remove(key)
+        } ?: return null
         closeQuietly(removed.connection)
         return ConnectionInfo(removed.projectDirectory.path, "disconnected")
     }

@@ -4,6 +4,7 @@ import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.support.withWorkspaceDirectory
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import org.gradle.tooling.ProjectConnection
@@ -32,6 +33,20 @@ class ProjectDirectoryResolverTest {
         val nested = dir.resolve("project").also { it.mkdirs() }
         ProjectDirectoryResolver.canonicalKey(nested) shouldBe
             ProjectDirectoryResolver.canonicalKey(File(nested.path))
+    }
+
+    @Test
+    fun `canonicalKey falls back to absolute path for missing directories`(@TempDir dir: File) {
+        val missing = File(dir, "removed-project").absoluteFile
+        ProjectDirectoryResolver.canonicalKey(missing) shouldBe missing.absolutePath
+    }
+
+    @Test
+    fun `sameProject does not throw for stale stored paths`(@TempDir dir: File) {
+        val active = dir.resolve("active").also { it.mkdirs() }
+        val stale = File(dir, "removed-project").absolutePath
+
+        ProjectDirectoryResolver.sameProject(stale, active).shouldBeFalse()
     }
 
     @Test

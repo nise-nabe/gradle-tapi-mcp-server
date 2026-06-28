@@ -43,10 +43,10 @@ internal fun listBuildsSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
             "projectDirectory" to projectDirectoryProperty(
-                "Gradle project root for in-memory and disk build records. Optional; when omitted, lists " +
-                    "in-memory builds without a Tooling API connection. When provided, must stay within an " +
-                    "active connection or workspace boundary. Defaults to GRADLE_PROJECT_DIR or the default " +
-                    "connected project for disk lookup.",
+                "Gradle project root to scope in-memory and disk build records. Optional; when omitted, returns " +
+                    "all in-memory builds and also includes disk records when GRADLE_PROJECT_DIR or the default " +
+                    "connected project can be resolved (no Tooling API connection required). When provided, must " +
+                    "stay within an active connection or workspace boundary.",
             ),
             "limit" to integerProperty(
                 "Maximum builds to return, most recent first (default ${BuildExecutionManager.DEFAULT_LIST_BUILDS}, max ${BuildExecutionManager.MAX_LIST_BUILDS})",

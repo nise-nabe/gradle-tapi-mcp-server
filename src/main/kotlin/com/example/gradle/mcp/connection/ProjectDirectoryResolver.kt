@@ -28,10 +28,13 @@ object ProjectDirectoryResolver {
     }
 
     fun canonicalKey(directory: File): String =
-        directory.canonicalFile.absolutePath
+        bestEffortCanonical(directory).absolutePath
 
     fun sameProject(storedPath: String?, directory: File): Boolean =
         storedPath?.let { canonicalKey(File(it)) == canonicalKey(directory) } == true
+
+    private fun bestEffortCanonical(directory: File): File =
+        runCatching { directory.canonicalFile }.getOrElse { directory.absoluteFile }
 
     fun resolveOptional(args: Map<String, Any>): File? =
         args.optionalString("projectDirectory")?.let(::canonicalDirectory)
