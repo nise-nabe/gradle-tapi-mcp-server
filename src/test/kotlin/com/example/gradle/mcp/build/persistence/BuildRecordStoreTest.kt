@@ -2,6 +2,7 @@ package com.example.gradle.mcp.build.persistence
 
 import com.example.gradle.mcp.build.BuildKind
 import com.example.gradle.mcp.build.BuildProblemSnapshot
+import com.example.gradle.mcp.build.TestRunSelection
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildRecord
 import com.example.gradle.mcp.build.BuildStatusAssembler
@@ -34,6 +35,30 @@ class BuildRecordStoreTest {
         args.any { it.startsWith("-Pmcp.ccInitScript=") } shouldBe true
         args shouldContain "--init-script"
         args.last().shouldContain("mcp-build-recorder")
+    }
+
+    @Test
+    fun `readMcpResult reconstructs method selection from persisted flat fields`(@TempDir projectDir: File) {
+        val record = completedRecord(projectDir, "method-selection-build").copy(
+            kind = BuildKind.TESTS,
+            tasks = listOf(":app:test"),
+            selection = TestRunSelection.Methods(
+                methods = mapOf("com.example.FooTest" to listOf("method1")),
+                taskPath = ":app:test",
+            ),
+        )
+        store.writeMcpResult(record, record.progressTracker.snapshot())
+
+        val mcpResult = store.readMcpResult(
+            store.recordDirectory(projectDir, "method-selection-build").shouldNotBeNull(),
+        ).shouldNotBeNull()
+
+        mcpResult.testClasses shouldBe listOf("com.example.FooTest")
+        mcpResult.testMethods shouldBe mapOf("com.example.FooTest" to listOf("method1"))
+        mcpResult.selection shouldBe TestRunSelection.Methods(
+            methods = mapOf("com.example.FooTest" to listOf("method1")),
+            taskPath = ":app:test",
+        )
     }
 
     @Test

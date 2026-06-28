@@ -48,6 +48,19 @@ sealed interface TestRunSelection {
                 else -> null
             }
         }
+
+        fun fromPersistedFlat(
+            testClasses: List<String>,
+            testMethods: Map<String, List<String>>,
+            taskPath: String?,
+            includePatterns: List<String>,
+        ): TestRunSelection? =
+            when {
+                testMethods.isNotEmpty() -> Methods(testMethods, taskPath)
+                includePatterns.isNotEmpty() -> Patterns(includePatterns)
+                testClasses.isNotEmpty() -> Classes(testClasses, taskPath)
+                else -> null
+            }
     }
 }
 

@@ -70,6 +70,19 @@ class TestRunOptionsTest {
     }
 
     @Test
+    fun `fromPersistedFlat reconstructs method selection when testClasses are reporting duplicates`() {
+        TestRunSelection.fromPersistedFlat(
+            testClasses = listOf("com.example.FooTest"),
+            testMethods = mapOf("com.example.FooTest" to listOf("method1")),
+            taskPath = ":app:test",
+            includePatterns = emptyList(),
+        ) shouldBe TestRunSelection.Methods(
+            methods = mapOf("com.example.FooTest" to listOf("method1")),
+            taskPath = ":app:test",
+        )
+    }
+
+    @Test
     fun `validate rejects includePatterns without tasks`() {
         val error = shouldThrow<McpException> {
             TestRunOptions(selection = TestRunSelection.Patterns(listOf("com.example.*"))).validate()

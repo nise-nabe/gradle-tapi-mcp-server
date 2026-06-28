@@ -26,5 +26,5 @@ data class McpBuildResult(
     val stderrTotalChars: Int = 0,
 ) {
     val selection: TestRunSelection? =
-        TestRunSelection.fromFlat(testClasses, testMethods, taskPath, includePatterns)
+        TestRunSelection.fromPersistedFlat(testClasses, testMethods, taskPath, includePatterns)
 }
