@@ -7,16 +7,18 @@ internal data class BuildListEntry(
     val status: String,
     val kind: String?,
     val tasks: List<String>,
-    val testClasses: List<String>,
-    val testMethods: Map<String, List<String>> = emptyMap(),
-    val taskPath: String? = null,
-    val includePatterns: List<String> = emptyList(),
+    val selection: TestRunSelection? = null,
     val projectDirectory: String?,
     val startedAt: String?,
     val finishedAt: String?,
     val outcome: String?,
     val recordSource: String,
 ) {
+    val testClasses: List<String> get() = selection.testClassesForReporting()
+    val testMethods: Map<String, List<String>> get() = selection.testMethodsOrEmpty()
+    val taskPath: String? get() = selection.taskPathOrNull()
+    val includePatterns: List<String> get() = selection.includePatternsOrEmpty()
+
     fun sortInstant(): Instant =
         parseInstant(finishedAt)
             ?: parseInstant(startedAt)
@@ -29,11 +31,7 @@ internal data class BuildListEntry(
             kind?.let { put("kind", it) }
             put("tasks", tasks)
             put("testClasses", testClasses)
-            putTestRunSelection(
-                testMethods = testMethods,
-                taskPath = taskPath,
-                includePatterns = includePatterns,
-            )
+            putTestRunSelection(selection)
             projectDirectory?.let { put("projectDirectory", it) }
             startedAt?.let { put("startedAt", it) }
             finishedAt?.let { put("finishedAt", it) }

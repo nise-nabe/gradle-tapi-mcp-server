@@ -7,10 +7,7 @@ data class BuildStatusView(
     val startedAt: String?,
     val finishedAt: String?,
     val tasks: List<String>,
-    val testClasses: List<String>,
-    val testMethods: Map<String, List<String>> = emptyMap(),
-    val taskPath: String? = null,
-    val includePatterns: List<String> = emptyList(),
+    val selection: TestRunSelection? = null,
     val error: String?,
     val outcome: String?,
     val buildSummary: Map<String, Any?>?,
@@ -21,6 +18,11 @@ data class BuildStatusView(
     val statusSource: String,
     val recordDirectory: String? = null,
 ) {
+    val testClasses: List<String> get() = selection.testClassesForReporting()
+    val testMethods: Map<String, List<String>> get() = selection.testMethodsOrEmpty()
+    val taskPath: String? get() = selection.taskPathOrNull()
+    val includePatterns: List<String> get() = selection.includePatternsOrEmpty()
+
     companion object {
         const val SOURCE_MEMORY = "memory"
         const val SOURCE_DISK = "disk"
@@ -37,10 +39,7 @@ data class BuildStatusView(
                 startedAt = record.startedAt.toString(),
                 finishedAt = record.finishedAt?.toString(),
                 tasks = record.tasks,
-                testClasses = record.testClasses,
-                testMethods = record.testMethods,
-                taskPath = record.taskPath,
-                includePatterns = record.includePatterns,
+                selection = record.selection,
                 error = record.errorMessage,
                 outcome = if (isTerminal) {
                     BuildOutputParser.outcomeFromStatus(progress.status)

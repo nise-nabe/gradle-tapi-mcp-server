@@ -10,16 +10,18 @@ data class BuildRecord(
     val id: String,
     val kind: BuildKind,
     val tasks: List<String>,
-    val testClasses: List<String>,
-    val testMethods: Map<String, List<String>> = emptyMap(),
-    val taskPath: String? = null,
-    val includePatterns: List<String> = emptyList(),
+    val selection: TestRunSelection? = null,
     val startedAt: Instant,
     val progressTracker: BuildProgressTracker,
     val streams: CapturingStreams,
     val projectDirectory: String? = null,
     val cancellationTokenSource: CancellationTokenSource = GradleConnector.newCancellationTokenSource(),
 ) {
+    val testClasses: List<String> get() = selection.testClassesForReporting()
+    val testMethods: Map<String, List<String>> get() = selection.testMethodsOrEmpty()
+    val taskPath: String? get() = selection.taskPathOrNull()
+    val includePatterns: List<String> get() = selection.includePatternsOrEmpty()
+
     @Volatile
     var finishedAt: Instant? = null
 

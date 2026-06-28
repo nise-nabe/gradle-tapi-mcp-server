@@ -12,6 +12,7 @@ import com.example.gradle.mcp.protocol.optionalPositiveInt
 import com.example.gradle.mcp.protocol.objectSchema
 import com.example.gradle.mcp.protocol.testMethodsProperty
 import com.example.gradle.mcp.protocol.optionalBoolean
+import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.optionalStringList
 import com.example.gradle.mcp.protocol.requiredString
 import com.example.gradle.mcp.protocol.requiredStringList
@@ -210,7 +211,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
             ),
         ) { exchange, args, progressToken ->
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-            val testOptions = parseTestRunOptions(args).validate()
+            val testOptions = parseTestRunOptions(args).validate(args.optionalString("taskPath"))
             val request = testOptions.toBuildRunRequest(
                 projectDirectory = projectDirectory,
                 arguments = args.optionalStringList("arguments").orEmpty(),

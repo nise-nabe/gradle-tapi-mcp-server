@@ -926,7 +926,6 @@ class BuildRecordStoreTest {
             id = buildId,
             kind = BuildKind.TASKS,
             tasks = listOf("build"),
-            testClasses = emptyList(),
             startedAt = Instant.parse("2026-06-14T10:00:00Z"),
             progressTracker = tracker,
             streams = streams,

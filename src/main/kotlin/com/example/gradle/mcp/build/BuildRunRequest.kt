@@ -8,12 +8,14 @@ data class BuildRunRequest(
     val projectDirectory: File,
     val kind: BuildKind,
     val tasks: List<String> = emptyList(),
-    val testClasses: List<String> = emptyList(),
-    val testMethods: Map<String, List<String>> = emptyMap(),
-    val taskPath: String? = null,
-    val includePatterns: List<String> = emptyList(),
+    val selection: TestRunSelection? = null,
     val arguments: List<String> = emptyList(),
     val jvmArguments: List<String> = emptyList(),
     val outputLimit: OutputLimitOptions = OutputLimitOptions(),
     val progressOptions: ProgressResponseOptions = ProgressResponseOptions(),
-)
+) {
+    val testClasses: List<String> get() = selection.testClassesForReporting()
+    val testMethods: Map<String, List<String>> get() = selection.testMethodsOrEmpty()
+    val taskPath: String? get() = selection.taskPathOrNull()
+    val includePatterns: List<String> get() = selection.includePatternsOrEmpty()
+}

@@ -64,11 +64,7 @@ class BuildExecutionManager(
             put("kind", request.kind.name.lowercase())
             put("tasks", request.tasks)
             put("testClasses", request.testClasses)
-            putTestRunSelection(
-                testMethods = request.testMethods,
-                taskPath = request.taskPath,
-                includePatterns = request.includePatterns,
-            )
+            putTestRunSelection(request.selection)
             put(
                 "message",
                 "Build started in background. Poll gradle_get_build_status with this buildId.",
@@ -198,10 +194,7 @@ class BuildExecutionManager(
                     status = snapshot.status,
                     kind = record.kind.name.lowercase(),
                     tasks = record.tasks,
-                    testClasses = record.testClasses,
-                    testMethods = record.testMethods,
-                    taskPath = record.taskPath,
-                    includePatterns = record.includePatterns,
+                    selection = record.selection,
                     projectDirectory = record.projectDirectory,
                     startedAt = record.startedAt.toString(),
                     finishedAt = record.finishedAt?.toString(),
@@ -387,10 +380,7 @@ class BuildExecutionManager(
             id = UUID.randomUUID().toString(),
             kind = request.kind,
             tasks = request.tasks,
-            testClasses = request.testClasses,
-            testMethods = request.testMethods,
-            taskPath = request.taskPath,
-            includePatterns = request.includePatterns,
+            selection = request.selection,
             startedAt = Instant.now(),
             progressTracker = tracker,
             streams = streams,
