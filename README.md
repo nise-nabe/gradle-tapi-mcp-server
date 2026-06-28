@@ -35,7 +35,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 
 | Variable | Description |
 |----------|-------------|
-| `GRADLE_PROJECT_DIR` | Auto-connect on startup |
+| `GRADLE_PROJECT_DIR` | Default project; auto-connect on startup |
 | `GRADLE_USER_HOME` | Optional Gradle user home |
 | `GRADLE_VERSION` | Optional explicit Gradle version |
 | `GRADLE_INSTALLATION` | Optional local Gradle installation |
@@ -44,9 +44,9 @@ Add to `.cursor/mcp.json` in your Gradle project:
 
 | Tool | Description |
 |------|-------------|
-| `gradle_connect` | Connect to a project directory |
-| `gradle_connection_status` | Current connection state plus connect-time Gradle/Java snapshot (`gradleVersion`, `versionInfo` on Gradle 9.4+, `runtimeStackAvailable`) |
-| `gradle_disconnect` | Close the connection |
+| `gradle_connect` | Connect to a project directory (keeps other projects connected) |
+| `gradle_connection_status` | Connection state for one project or all active connections (`connections[]`, `defaultProjectDirectory`) |
+| `gradle_disconnect` | Close one project (`projectDirectory`) or all connections (omit) |
 | `gradle_get_build_environment` | Gradle/Java environment including `javaVersion` and `versionInfo` (`gradle --version` text on Gradle 9.4+; lightweight) |
 | `gradle_get_help` | Gradle CLI help text (`gradle --help` equivalent); optional `maxChars` / `tailOutput`; requires Gradle 9.4+ |
 | `gradle_get_build_cache_status` | Build cache / configuration cache settings and local cache summaries |
@@ -85,6 +85,22 @@ Tune captured output with `includeOutput` (default `false`), `maxOutputChars` (d
 
 Tool errors return structured JSON: `{ "error": { "code": "NOT_CONNECTED", "message": "..." } }`.
 
+## Multiple projects
+
+One MCP server process can hold **multiple Gradle project connections** at once.
+
+1. `gradle_connect` with each project root (does not disconnect other projects)
+2. Pass optional `projectDirectory` on query/build tools; omit to use `GRADLE_PROJECT_DIR`
+3. `gradle_connection_status` without arguments returns `connections[]` plus legacy flat fields for the default project
+4. `gradle_disconnect` with `projectDirectory` closes one project; omit to close all
+5. Background builds are scoped per project; concurrent builds across projects share the global pool limit
+
+Example:
+
+```json
+{ "projectDirectory": "/path/to/other-repo", "tasks": ["build"], "background": true }
+```
+
 ## Long-running builds
 
 For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` or `gradle_run_tests`. The tool returns immediately with a `buildId`. Multiple background builds may run concurrently (up to a server-side limit). Call `gradle_cancel_build` with that `buildId` to stop an unneeded background run. Poll `gradle_get_build_status` with that `buildId` (required) to read:
@@ -102,9 +118,9 @@ When the MCP client supplies a progress token, the server may also emit MCP prog
 
 ## Disconnect during a build
 
-`gradle_disconnect` is non-blocking: the server cancels any running builds via the Tooling API `CancellationToken` and marks them `cancelled` immediately so a new connection can start. If the Gradle daemon keeps running briefly, on-disk `gradle-result.json` may still report `running` or `succeeded`; `gradle_get_build_status` prefers the disk record when it disagrees with the in-memory snapshot. Completed build records remain available via `gradle_get_build_status` (from memory or `.gradle/mcp-builds/`) while retained. The disconnect response includes a `warning` field when a build was active.
+`gradle_disconnect` is non-blocking: the server cancels running builds for the disconnected project(s) via the Tooling API `CancellationToken` and marks them `cancelled`. If the Gradle daemon keeps running briefly, on-disk `gradle-result.json` may still report `running` or `succeeded`; `gradle_get_build_status` prefers the disk record when it disagrees with the in-memory snapshot. Completed build records remain available via `gradle_get_build_status` (from memory or `.gradle/mcp-builds/`) while retained. The disconnect response includes a `warning` field when a build was active.
 
-`gradle_connect` cancels any running builds before opening a new project connection. It rejects the call while builds are still running; wait for them to finish, call `gradle_cancel_build`, or call `gradle_disconnect` first.
+`gradle_connect` registers an additional project connection without closing others. It rejects the call while a build is still running for the same `projectDirectory`.
 
 ## Agent skill
 
