@@ -6,101 +6,132 @@ import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.model.build.BuildEnvironment
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 class GradleConnectionManager {
-    private val lock = Any()
-    private var connection: ProjectConnection? = null
-    private var projectDirectory: File? = null
-    private var cachedEnvironment: BuildEnvironmentSnapshot? = null
+    private data class PooledConnection(
+        val projectDirectory: File,
+        val connection: ProjectConnection,
+        val cachedEnvironment: BuildEnvironmentSnapshot?,
+        val config: ConnectionConfig,
+    )
 
-    fun connect(config: ConnectionConfig): ConnectionInfo {
-        val projectDir = File(config.projectDirectory).absoluteFile
-        if (!projectDir.isDirectory) {
-            throw McpException(
-                McpErrorCode.PROJECT_NOT_FOUND,
-                "Project directory does not exist: ${projectDir.path}",
-            )
+    private val pool = ConcurrentHashMap<String, PooledConnection>()
+
+    fun ensureConnected(config: ConnectionConfig): ConnectionInfo {
+        val projectDir = validateProjectDirectory(config.projectDirectory)
+        val key = ProjectDirectoryResolver.canonicalKey(projectDir)
+        val normalizedConfig = config.copy(projectDirectory = projectDir.path)
+
+        pool[key]?.let { existing ->
+            return existingConnectionInfo(existing, normalizedConfig, projectDir)
         }
-
-        disconnect()
 
         val connector = GradleConnector.newConnector().forProjectDirectory(projectDir)
-        config.gradleInstallation?.let { connector.useInstallation(File(it).absoluteFile) }
-        config.gradleVersion?.let { connector.useGradleVersion(it) }
-        config.gradleUserHome?.let { connector.useGradleUserHomeDir(File(it).absoluteFile) }
+        normalizedConfig.gradleInstallation?.let { connector.useInstallation(File(it).absoluteFile) }
+        normalizedConfig.gradleVersion?.let { connector.useGradleVersion(it) }
+        normalizedConfig.gradleUserHome?.let { connector.useGradleUserHomeDir(File(it).absoluteFile) }
 
         val newConnection = connector.connect()
-        val snapshot = try {
-            buildEnvironmentSnapshotFrom(newConnection.getModel(BuildEnvironment::class.java))
-        } catch (exception: Exception) {
-            if (exception is InterruptedException) {
-                Thread.currentThread().interrupt()
-            }
-            null
-        }
+        val snapshot = loadEnvironmentSnapshot(newConnection)
+        val newPooled = PooledConnection(projectDir, newConnection, snapshot, normalizedConfig)
 
-        synchronized(lock) {
-            val previousConnection = connection
-            if (previousConnection != null && previousConnection !== newConnection) {
-                previousConnection.close()
+        synchronized(pool) {
+            pool.putIfAbsent(key, newPooled)?.let { existing ->
+                closeQuietly(newConnection)
+                return existingConnectionInfo(existing, normalizedConfig, projectDir)
             }
-            connection = newConnection
-            projectDirectory = projectDir
-            cachedEnvironment = snapshot
         }
-
         return ConnectionInfo(projectDir.path, "connected")
     }
 
+    fun connect(config: ConnectionConfig): ConnectionInfo = ensureConnected(config)
+
+    fun requireConnection(projectDirectory: File): ProjectConnection = borrowConnection(projectDirectory)
+
+    fun withConnection(projectDirectory: File, block: (ProjectConnection) -> Unit) {
+        block(borrowConnection(projectDirectory))
+    }
+
+    fun <T> withConnectionResult(projectDirectory: File, block: (ProjectConnection) -> T): T =
+        block(borrowConnection(projectDirectory))
+
     fun withConnection(block: (ProjectConnection) -> Unit) {
-        block(borrowConnection())
+        withConnection(requireDefaultProjectDirectory(), block)
     }
 
     fun <T> withConnectionResult(block: (ProjectConnection) -> T): T =
-        block(borrowConnection())
+        withConnectionResult(requireDefaultProjectDirectory(), block)
 
-    private fun borrowConnection(): ProjectConnection = synchronized(lock) {
-        connection ?: throw McpException(
-            McpErrorCode.NOT_CONNECTED,
-            "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR.",
-        )
+    fun disconnect(projectDirectory: File? = null): ConnectionInfo? {
+        if (projectDirectory == null) {
+            return disconnectAll().lastOrNull()
+        }
+        val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
+        val removed = synchronized(pool) {
+            pool.remove(key)
+        } ?: return null
+        closeQuietly(removed.connection)
+        return ConnectionInfo(removed.projectDirectory.path, "disconnected")
     }
 
-    fun disconnect(): ConnectionInfo? = synchronized(lock) {
-        val previous = projectDirectory?.path
-        connection?.close()
-        connection = null
-        projectDirectory = null
-        cachedEnvironment = null
-        previous?.let { ConnectionInfo(it, "disconnected") }
+    fun disconnectAll(): List<ConnectionInfo> {
+        val removed = synchronized(pool) {
+            val snapshot = pool.values.toList()
+            pool.clear()
+            snapshot
+        }
+        return removed.map { pooled ->
+            closeQuietly(pooled.connection)
+            ConnectionInfo(pooled.projectDirectory.path, "disconnected")
+        }
     }
 
-    fun connectedProjectDirectory(): File? = synchronized(lock) {
-        projectDirectory
+    fun connectedProjectDirectory(): File? = defaultProjectDirectory()
+
+    fun defaultProjectDirectory(): File? {
+        val workspace = ProjectDirectoryResolver.workspaceFromEnvironment()
+        if (workspace != null) {
+            if (pool.containsKey(ProjectDirectoryResolver.canonicalKey(workspace))) {
+                return workspace
+            }
+            return null
+        }
+        if (pool.size == 1) {
+            return pool.values.first().projectDirectory
+        }
+        return null
     }
 
-    fun status(): ConnectionStatus = synchronized(lock) {
-        val env = cachedEnvironment
-        ConnectionStatus(
-            connected = connection != null,
-            projectDirectory = projectDirectory?.path,
-            gradleVersion = env?.gradleVersion,
-            versionInfo = env?.versionInfo,
-            javaHome = env?.javaHome,
-            javaVersion = env?.javaVersion,
-            runtimeStackAvailable = env != null,
-        )
+    fun connectedProjectDirectories(): List<File> =
+        pool.values.map { it.projectDirectory }.sortedBy { it.path }
+
+    fun isConnected(projectDirectory: File): Boolean =
+        pool.containsKey(ProjectDirectoryResolver.canonicalKey(projectDirectory))
+
+    fun status(projectDirectory: File? = null): Map<String, Any?> {
+        if (projectDirectory != null) {
+            return connectionStatus(projectDirectory).toResponseMap()
+        }
+        val default = defaultProjectDirectory()
+        val connections = pool.values
+            .map { pooled -> connectionStatus(pooled.projectDirectory) }
+            .sortedBy { it.projectDirectory }
+        return MultiConnectionStatus(
+            defaultProjectDirectory = default?.path,
+            connections = connections,
+        ).toResponseMap()
     }
 
     fun tryAutoConnectFromEnvironment() {
-        val projectDir = System.getenv("GRADLE_PROJECT_DIR")?.takeIf { it.isNotBlank() } ?: return
-        if (isConnected()) {
+        val projectDir = ProjectDirectoryResolver.workspaceFromEnvironment() ?: return
+        if (isConnected(projectDir)) {
             return
         }
         try {
             connect(
                 ConnectionConfig(
-                    projectDirectory = projectDir,
+                    projectDirectory = projectDir.path,
                     gradleUserHome = System.getenv("GRADLE_USER_HOME")?.takeIf { it.isNotBlank() },
                     gradleVersion = System.getenv("GRADLE_VERSION")?.takeIf { it.isNotBlank() },
                     gradleInstallation = System.getenv("GRADLE_INSTALLATION")?.takeIf { it.isNotBlank() },
@@ -115,19 +146,96 @@ class GradleConnectionManager {
         }
     }
 
-    private fun isConnected(): Boolean = synchronized(lock) {
-        connection != null
-    }
-
     internal fun seedConnectionForTests(
         connection: ProjectConnection,
         projectDirectory: File = File("."),
         environment: BuildEnvironmentSnapshot? = null,
+        config: ConnectionConfig? = null,
     ) {
-        synchronized(lock) {
-            this.connection = connection
-            this.projectDirectory = projectDirectory
-            this.cachedEnvironment = environment
+        val canonical = projectDirectory.canonicalFile
+        pool[ProjectDirectoryResolver.canonicalKey(canonical)] =
+            PooledConnection(
+                projectDirectory = canonical,
+                connection = connection,
+                cachedEnvironment = environment,
+                config = config ?: ConnectionConfig(projectDirectory = canonical.path),
+            )
+    }
+
+    private fun existingConnectionInfo(
+        existing: PooledConnection,
+        config: ConnectionConfig,
+        projectDir: File,
+    ): ConnectionInfo {
+        if (!existing.config.hasSameConnectionSettings(config)) {
+            throw McpException(
+                McpErrorCode.INVALID_ARGUMENT,
+                "Project ${projectDir.path} is already connected with different Gradle settings. " +
+                    "Call gradle_disconnect first or use matching gradleUserHome, gradleVersion, " +
+                    "and gradleInstallation.",
+            )
+        }
+        return ConnectionInfo(projectDir.path, "connected")
+    }
+
+    private fun connectionStatus(projectDirectory: File): ConnectionStatus {
+        val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
+        val pooled = pool[key]
+        val env = pooled?.cachedEnvironment
+        return ConnectionStatus(
+            connected = pooled != null,
+            projectDirectory = projectDirectory.path,
+            gradleVersion = env?.gradleVersion,
+            versionInfo = env?.versionInfo,
+            javaHome = env?.javaHome,
+            javaVersion = env?.javaVersion,
+            runtimeStackAvailable = env != null,
+        )
+    }
+
+    private fun borrowConnection(projectDirectory: File): ProjectConnection {
+        val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
+        val pooled = pool[key]
+            ?: throw McpException(
+                McpErrorCode.NOT_CONNECTED,
+                "Not connected to Gradle project: ${projectDirectory.path}. Call gradle_connect first.",
+            )
+        return pooled.connection
+    }
+
+    private fun requireDefaultProjectDirectory(): File =
+        defaultProjectDirectory()
+            ?: throw McpException(
+                McpErrorCode.NOT_CONNECTED,
+                "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR.",
+            )
+
+    private fun validateProjectDirectory(path: String): File {
+        val projectDir = File(path).absoluteFile
+        if (!projectDir.isDirectory) {
+            throw McpException(
+                McpErrorCode.PROJECT_NOT_FOUND,
+                "Project directory does not exist: ${projectDir.path}",
+            )
+        }
+        return projectDir.canonicalFile
+    }
+
+    private fun loadEnvironmentSnapshot(connection: ProjectConnection): BuildEnvironmentSnapshot? =
+        try {
+            buildEnvironmentSnapshotFrom(connection.getModel(BuildEnvironment::class.java))
+        } catch (exception: Exception) {
+            if (exception is InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+            null
+        }
+
+    private fun closeQuietly(connection: ProjectConnection) {
+        try {
+            connection.close()
+        } catch (_: Exception) {
+            // Best-effort close.
         }
     }
 }

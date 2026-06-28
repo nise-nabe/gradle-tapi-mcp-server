@@ -52,7 +52,7 @@ fun main() {
             return
         }
         runCatching { buildExecutionManager.shutdown() }
-        runCatching { connectionManager.disconnect() }
+        runCatching { connectionManager.disconnectAll() }
         runCatching { server.closeGracefully() }
         transportClosed.countDown()
     }

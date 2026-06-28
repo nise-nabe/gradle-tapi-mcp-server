@@ -1,11 +1,12 @@
 package com.example.gradle.mcp.model
 
 import com.example.gradle.mcp.ConnectionScope
+import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.protocol.booleanProperty
-import com.example.gradle.mcp.protocol.emptyObjectSchema
 import com.example.gradle.mcp.protocol.integerProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
+import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.stringProperty
 import com.example.gradle.mcp.protocol.tool
 import io.modelcontextprotocol.server.McpServerFeatures
@@ -18,6 +19,9 @@ internal fun projectTreeProperties(): Map<String, Any> =
     mapOf(
         "maxDepth" to integerProperty("Maximum project tree depth (root=0); deeper child projects are omitted"),
         "maxChildren" to integerProperty("Maximum child projects per node (omit for unlimited)"),
+        "projectDirectory" to resolveRequiredProjectDirectoryProperty(
+            "Gradle project root to query.",
+        ),
     )
 
 internal fun projectTreeSchema(): Map<String, Any> =
@@ -37,8 +41,21 @@ internal fun modelQuerySchema(): Map<String, Any> =
 
 internal fun invocationsQuerySchema(): Map<String, Any> =
     objectSchema(
-        properties = modelQueryProperties() + mapOf(
+        properties = mapOf(
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
+                "Gradle project root to query.",
+            ),
+        ) + modelQueryProperties() + mapOf(
             "includeTaskSelectors" to booleanProperty("Include task selectors. Default false to save tokens."),
+        ),
+    )
+
+internal fun publicationsSchema(): Map<String, Any> =
+    objectSchema(
+        properties = mapOf(
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
+                "Gradle project root to query.",
+            ),
         ),
     )
 
@@ -51,7 +68,8 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             schema = projectTreeSchema(),
         ) { args ->
             val treeOptions = ProjectTreeOptions.fromArgs(args)
-            runtime.connectionManager.withConnectionResult { connection ->
+            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val project = connection.getModel(GradleProject::class.java)
                 jsonResult(ModelSerializers.projectOverview(project, treeOptions))
             }
@@ -62,7 +80,8 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             schema = projectTreeSchema(),
         ) { args ->
             val treeOptions = ProjectTreeOptions.fromArgs(args)
-            runtime.connectionManager.withConnectionResult { connection ->
+            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val build = connection.getModel(GradleBuild::class.java)
                 jsonResult(ModelSerializers.gradleBuild(build, treeOptions))
             }
@@ -74,7 +93,8 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
         ) { args ->
             val options = ModelQueryOptions.fromArgs(args)
             val treeOptions = ProjectTreeOptions.fromArgs(args)
-            runtime.connectionManager.withConnectionResult { connection ->
+            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val project = connection.getModel(GradleProject::class.java)
                 jsonResult(ModelSerializers.gradleProject(project, options, treeOptions))
             }
@@ -85,7 +105,8 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             schema = invocationsQuerySchema(),
         ) { args ->
             val options = ModelQueryOptions.fromArgs(args).copy(includeTasks = true)
-            runtime.connectionManager.withConnectionResult { connection ->
+            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val invocations = connection.getModel(BuildInvocations::class.java)
                 jsonResult(ModelSerializers.buildInvocations(invocations, options))
             }
@@ -93,9 +114,10 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
         tool(
             name = "gradle_get_project_publications",
             description = "Fetch publications declared by the build.",
-            schema = emptyObjectSchema(),
-        ) { _ ->
-            runtime.connectionManager.withConnectionResult { connection ->
+            schema = publicationsSchema(),
+        ) { args ->
+            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val publications = connection.getModel(ProjectPublications::class.java)
                 jsonResult(ModelSerializers.projectPublications(publications))
             }

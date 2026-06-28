@@ -2,6 +2,7 @@ package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.build.support.TestLauncherCall
 import com.example.gradle.mcp.build.support.recordingTestLauncher
+import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -14,6 +15,7 @@ class TestLauncherConfigurationTest {
         configureTestLauncher(
             recording.launcher,
             BuildRunRequest(
+                projectDirectory = testProjectDirectory,
                 kind = BuildKind.TESTS,
                 testClasses = listOf("com.example.FooTest"),
             ),
@@ -31,6 +33,7 @@ class TestLauncherConfigurationTest {
         configureTestLauncher(
             recording.launcher,
             BuildRunRequest(
+                projectDirectory = testProjectDirectory,
                 kind = BuildKind.TESTS,
                 testMethods = mapOf("com.example.FooTest" to listOf("method1", "method2")),
             ),
@@ -48,6 +51,7 @@ class TestLauncherConfigurationTest {
         configureTestLauncher(
             recording.launcher,
             BuildRunRequest(
+                projectDirectory = testProjectDirectory,
                 kind = BuildKind.TESTS,
                 taskPath = ":app:test",
                 testClasses = listOf("com.example.FooTest"),
@@ -66,6 +70,7 @@ class TestLauncherConfigurationTest {
         configureTestLauncher(
             recording.launcher,
             BuildRunRequest(
+                projectDirectory = testProjectDirectory,
                 kind = BuildKind.TESTS,
                 taskPath = ":app:test",
                 testMethods = mapOf("com.example.FooTest" to listOf("method1")),
@@ -84,6 +89,7 @@ class TestLauncherConfigurationTest {
         configureTestLauncher(
             recording.launcher,
             BuildRunRequest(
+                projectDirectory = testProjectDirectory,
                 kind = BuildKind.TESTS,
                 tasks = listOf(":app:test"),
                 testClasses = listOf("com.example.FooTest"),
@@ -103,6 +109,7 @@ class TestLauncherConfigurationTest {
         configureTestLauncher(
             recording.launcher,
             BuildRunRequest(
+                projectDirectory = testProjectDirectory,
                 kind = BuildKind.TESTS,
                 tasks = listOf(":app:test"),
                 includePatterns = listOf("com.example.*"),

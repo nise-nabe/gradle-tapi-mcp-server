@@ -1,16 +1,14 @@
 package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.GradleMcpRuntime
+import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.connection.ProjectDirectoryScope
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.integerProperty
 import com.example.gradle.mcp.protocol.jsonResult
-import com.example.gradle.mcp.protocol.McpErrorCode
-import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.optionalPositiveInt
-import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.objectSchema
 import com.example.gradle.mcp.protocol.testMethodsProperty
 import com.example.gradle.mcp.protocol.optionalBoolean
@@ -19,9 +17,10 @@ import com.example.gradle.mcp.protocol.requiredString
 import com.example.gradle.mcp.protocol.requiredStringList
 import com.example.gradle.mcp.protocol.stringArrayProperty
 import com.example.gradle.mcp.protocol.stringProperty
+import com.example.gradle.mcp.protocol.projectDirectoryProperty
+import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.tool
 import io.modelcontextprotocol.server.McpServerFeatures
-import java.io.File
 
 internal fun progressProperties(): Map<String, Any> =
     mapOf(
@@ -41,28 +40,14 @@ internal fun outputProperties(): Map<String, Any> =
         "tailOutput" to booleanProperty("When truncating output, keep the tail of each stream (default true)"),
     )
 
-internal fun resolveScopedProjectDirectory(
-    args: Map<String, Any>,
-    scope: ProjectDirectoryScope,
-): File? =
-    args.optionalString("projectDirectory")?.let { path ->
-        val directory = File(path)
-        if (!directory.isDirectory) {
-            throw McpException(
-                McpErrorCode.INVALID_ARGUMENT,
-                "projectDirectory is not a directory: $path",
-            )
-        }
-        scope.requireWithinBoundary(directory)
-    }
-
 internal fun listBuildsSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
-            "projectDirectory" to stringProperty(
-                "Gradle project root for scanning .gradle/mcp-builds/. Defaults to the connected project, " +
-                    "then GRADLE_PROJECT_DIR when set. Must stay within that workspace boundary when provided explicitly. " +
-                    "In-memory builds from this server are always included.",
+            "projectDirectory" to projectDirectoryProperty(
+                "Gradle project root to scope in-memory and disk build records. Optional; when omitted, returns " +
+                    "all in-memory builds and also includes disk records when GRADLE_PROJECT_DIR or the default " +
+                    "connected project can be resolved (no Tooling API connection required). When provided, must " +
+                    "stay within an active connection or workspace boundary.",
             ),
             "limit" to integerProperty(
                 "Maximum builds to return, most recent first (default ${BuildExecutionManager.DEFAULT_LIST_BUILDS}, max ${BuildExecutionManager.MAX_LIST_BUILDS})",
@@ -75,10 +60,10 @@ internal fun buildStatusSchema(): Map<String, Any> =
         required = listOf("buildId"),
         properties = progressProperties() + outputProperties() + mapOf(
             "buildId" to stringProperty("Build ID returned by gradle_run_tasks or gradle_run_tests with background=true"),
-            "projectDirectory" to stringProperty(
-                "Gradle project root directory for disk-only status lookup when the in-memory record was evicted " +
-                    "and the MCP connection points at a different project. Defaults to the connected project. " +
-                    "Must stay within the GRADLE_PROJECT_DIR or connected-project workspace boundary.",
+            "projectDirectory" to projectDirectoryProperty(
+                "Gradle project root for disk-only status lookup when the in-memory record was evicted. " +
+                    "Optional; when omitted, uses the in-memory record's project, then the default connected " +
+                    "project, then GRADLE_PROJECT_DIR. Does not require a Tooling API connection.",
             ),
         ),
     )
@@ -89,7 +74,11 @@ internal fun runOutputSchema(
 ): Map<String, Any> =
     objectSchema(
         required = required,
-        properties = extraProperties + progressProperties() + outputProperties() + mapOf(
+        properties = mapOf(
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
+                "Gradle project root to build.",
+            ),
+        ) + extraProperties + progressProperties() + outputProperties() + mapOf(
             "arguments" to stringArrayProperty(
                 "Additional Gradle command-line arguments (init scripts via --init-script or -I, and @argument files, are not allowed)",
             ),
@@ -105,7 +94,11 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
             description = "List recent MCP Gradle builds from in-memory records and .gradle/mcp-builds/ on disk. Does not require an active Tooling API connection. Use when a buildId was lost or to discover builds to poll with gradle_get_build_status. Each build summary always includes buildId, status, tasks, testClasses, and recordSource (memory|disk). Optional fields omitted when absent: kind, projectDirectory, startedAt, finishedAt, outcome (e.g. running builds omit outcome; Gradle-only disk records may omit kind). Sorted by finishedAt or startedAt, most recent first.",
             schema = listBuildsSchema(),
         ) { args ->
-            val projectDirectory = resolveScopedProjectDirectory(args, ProjectDirectoryScope(runtime.connectionManager))
+            val scope = ProjectDirectoryScope(runtime.connectionManager)
+            val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
+                args,
+                boundary = scope::requireWithinBoundary,
+            )
             val limit = args.optionalPositiveInt("limit") ?: BuildExecutionManager.DEFAULT_LIST_BUILDS
             jsonResult(runtime.buildExecutionManager.listBuilds(projectDirectory, limit))
         },
@@ -116,10 +109,23 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
                 required = listOf("buildId"),
                 properties = mapOf(
                     "buildId" to stringProperty("Build ID returned by gradle_run_tasks or gradle_run_tests with background=true"),
+                    "projectDirectory" to projectDirectoryProperty(
+                        "Gradle project root that started the build. Optional disambiguation when buildId alone is insufficient.",
+                    ),
                 ),
             ),
         ) { args ->
-            jsonResult(runtime.buildExecutionManager.cancelBuild(args.requiredString("buildId")))
+            val scope = ProjectDirectoryScope(runtime.connectionManager)
+            val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
+                args,
+                boundary = scope::requireWithinBoundary,
+            )
+            jsonResult(
+                runtime.buildExecutionManager.cancelBuild(
+                    args.requiredString("buildId"),
+                    projectDirectory,
+                ),
+            )
         },
         tool(
             name = "gradle_get_build_status",
@@ -128,7 +134,11 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
         ) { args ->
             val outputLimit = OutputLimitOptions.fromArgs(args)
             val progressOptions = ProgressResponseOptions.fromArgs(args)
-            val projectDirectory = resolveScopedProjectDirectory(args, ProjectDirectoryScope(runtime.connectionManager))
+            val scope = ProjectDirectoryScope(runtime.connectionManager)
+            val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
+                args,
+                boundary = scope::requireWithinBoundary,
+            )
             jsonResult(
                 runtime.buildExecutionManager.status(
                     args.requiredString("buildId"),
@@ -149,8 +159,10 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
                 ),
             ),
         ) { exchange, args, progressToken ->
+            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
             val tasks = args.requiredStringList("tasks")
             val request = BuildRunRequest(
+                projectDirectory = projectDirectory,
                 kind = BuildKind.TASKS,
                 tasks = tasks,
                 arguments = args.optionalStringList("arguments").orEmpty(),
@@ -161,7 +173,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
             if (args.optionalBoolean("background", default = false)) {
                 jsonResult(runtime.buildExecutionManager.startBackground(request, exchange, progressToken))
             } else {
-                runtime.connectionManager.withConnectionResult { connection ->
+                runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                     jsonResult(runtime.buildExecutionManager.runForeground(request, connection, exchange, progressToken))
                 }
             }
@@ -197,8 +209,10 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
                 ),
             ),
         ) { exchange, args, progressToken ->
+            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
             val testOptions = parseTestRunOptions(args).validate()
             val request = testOptions.toBuildRunRequest(
+                projectDirectory = projectDirectory,
                 arguments = args.optionalStringList("arguments").orEmpty(),
                 jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
                 outputLimit = OutputLimitOptions.fromArgs(args),
@@ -207,7 +221,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
             if (args.optionalBoolean("background", default = false)) {
                 jsonResult(runtime.buildExecutionManager.startBackground(request, exchange, progressToken))
             } else {
-                runtime.connectionManager.withConnectionResult { connection ->
+                runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                     jsonResult(runtime.buildExecutionManager.runForeground(request, connection, exchange, progressToken))
                 }
             }

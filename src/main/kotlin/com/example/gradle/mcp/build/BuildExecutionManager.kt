@@ -4,6 +4,7 @@ import com.example.gradle.mcp.build.persistence.BuildRecordStore
 import com.example.gradle.mcp.build.persistence.PersistedBuildViewFactory
 import com.example.gradle.mcp.cache.CompletedBuildSnapshot
 import com.example.gradle.mcp.connection.GradleConnectionManager
+import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
@@ -32,15 +33,14 @@ class BuildExecutionManager(
     private val lifecycleLock = Any()
     private var executor: ExecutorService = newBuildExecutor()
     private val builds = ConcurrentHashMap<String, BuildRecord>()
-    @Volatile
-    private var lastCompletedBuildSnapshot: CompletedBuildSnapshot? = null
+    private val lastCompletedBuildSnapshots = ConcurrentHashMap<String, CompletedBuildSnapshot>()
 
     fun startBackground(
         request: BuildRunRequest,
         exchange: McpSyncServerExchange?,
         progressToken: Any?,
     ): Map<String, Any?> {
-        connectionManager.withConnection { }
+        connectionManager.requireConnection(request.projectDirectory)
 
         val start = newBuildStart(request, exchange, progressToken)
         val buildId = start.record.id
@@ -111,9 +111,20 @@ class BuildExecutionManager(
         }
     }
 
-    fun cancelBuild(buildId: String): Map<String, Any?> {
+    fun cancelBuild(buildId: String, projectDirectoryHint: File? = null): Map<String, Any?> {
         val record = builds[buildId]
-            ?: throw McpException(McpErrorCode.INVALID_ARGUMENT, "Build not found: $buildId")
+        if (record == null) {
+            throw McpException(McpErrorCode.INVALID_ARGUMENT, "Build not found: $buildId")
+        }
+        projectDirectoryHint?.let { hint ->
+            val recordProject = record.projectDirectory
+            if (recordProject != null && !ProjectDirectoryResolver.sameProject(recordProject, hint)) {
+                throw McpException(
+                    McpErrorCode.INVALID_ARGUMENT,
+                    "Build $buildId does not belong to project ${hint.path}",
+                )
+            }
+        }
         val status = record.progressTracker.snapshot().status
         if (status != BuildProgressTracker.STATUS_RUNNING) {
             return mapOf(
@@ -137,9 +148,21 @@ class BuildExecutionManager(
         projectDirectoryHint: File? = null,
     ): Map<String, Any?> {
         val record = builds[buildId]
+        projectDirectoryHint?.let { hint ->
+            val recordProject = record?.projectDirectory
+            if (record != null && recordProject != null &&
+                !ProjectDirectoryResolver.sameProject(recordProject, hint)
+            ) {
+                throw McpException(
+                    McpErrorCode.INVALID_ARGUMENT,
+                    "Build $buildId does not belong to project ${hint.path}",
+                )
+            }
+        }
         val projectDirectory = record?.projectDirectory?.let(::File)
             ?: projectDirectoryHint
-            ?: connectionManager.connectedProjectDirectory()
+            ?: connectionManager.defaultProjectDirectory()
+            ?: ProjectDirectoryResolver.workspaceFromEnvironment()
         val artifacts = if (shouldLoadDiskArtifacts(record)) {
             projectDirectory?.let { buildRecordStore.loadArtifacts(it, buildId) }
         } else {
@@ -162,12 +185,12 @@ class BuildExecutionManager(
 
     fun listBuilds(projectDirectoryHint: File?, limit: Int): Map<String, Any?> {
         val cappedLimit = limit.coerceIn(1, MAX_LIST_BUILDS)
-        val projectDirectory = resolveProjectDirectory(projectDirectoryHint)
-        val projectPath = projectDirectory?.absolutePath
+        val diskProjectDirectory = resolveProjectDirectory(projectDirectoryHint)
 
         val entries = LinkedHashMap<String, BuildListEntry>()
         builds.values
             .asSequence()
+            .filter { record -> record.matchesProject(projectDirectoryHint) }
             .forEach { record ->
                 val snapshot = record.progressTracker.snapshot()
                 entries[record.id] = BuildListEntry(
@@ -187,15 +210,15 @@ class BuildExecutionManager(
                 )
             }
 
-        val totalAvailable = if (projectDirectory != null) {
-            val diskBuildIds = buildRecordStore.listBuildIds(projectDirectory)
+        val totalAvailable = if (diskProjectDirectory != null) {
+            val diskBuildIds = buildRecordStore.listBuildIds(diskProjectDirectory)
             entries.size + diskBuildIds.count { it !in entries }
         } else {
             entries.size
         }
 
-        if (projectDirectory != null) {
-            val diskCandidates = buildRecordStore.listBuildSortEntries(projectDirectory)
+        if (diskProjectDirectory != null) {
+            val diskCandidates = buildRecordStore.listBuildSortEntries(diskProjectDirectory)
                 .filter { it.buildId !in entries }
             val topDiskIds = buildList {
                 entries.forEach { (buildId, entry) ->
@@ -212,7 +235,7 @@ class BuildExecutionManager(
             diskCandidates
                 .filter { it.buildId in topDiskIds }
                 .forEach { candidate ->
-                    buildRecordStore.loadListSummary(projectDirectory, candidate.buildId)?.let { summary ->
+                    buildRecordStore.loadListSummary(diskProjectDirectory, candidate.buildId)?.let { summary ->
                         entries[candidate.buildId] = summary
                     }
                 }
@@ -222,7 +245,7 @@ class BuildExecutionManager(
         val limited = sorted.take(cappedLimit)
         return buildMap {
             put("builds", limited.map { it.toResponseMap() })
-            projectPath?.let { put("projectDirectory", it) }
+            (projectDirectoryHint ?: diskProjectDirectory)?.absolutePath?.let { put("projectDirectory", it) }
             put("totalAvailable", totalAvailable)
             put("truncated", totalAvailable > cappedLimit)
         }
@@ -230,28 +253,38 @@ class BuildExecutionManager(
 
     private fun resolveProjectDirectory(hint: File?): File? =
         hint
-            ?: connectionManager.connectedProjectDirectory()
-            ?: System.getenv("GRADLE_PROJECT_DIR")
-                ?.takeIf { it.isNotBlank() }
-                ?.let(::File)
-                ?.takeIf { it.isDirectory }
+            ?: connectionManager.defaultProjectDirectory()
+            ?: ProjectDirectoryResolver.workspaceFromEnvironment()
 
     private fun shouldLoadDiskArtifacts(record: BuildRecord?): Boolean =
         record == null || record.progressTracker.snapshot().status != BuildProgressTracker.STATUS_RUNNING
 
-    fun hasActiveBuild(): Boolean =
-        builds.values.any { it.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING }
+    fun hasActiveBuild(projectDirectory: File? = null): Boolean =
+        builds.values.any { record ->
+            record.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING &&
+                record.matchesProject(projectDirectory)
+        }
 
-    fun resetBuildState(reason: String) {
+    fun resetBuildState(reason: String, projectDirectory: File? = null) {
         synchronized(lifecycleLock) {
-            markRunningBuildsCancelled(reason)
-            replaceBuildExecutor()
+            markRunningBuildsCancelled(reason, projectDirectory)
+            if (shouldReplaceExecutor(projectDirectory)) {
+                replaceBuildExecutor()
+            }
         }
     }
 
-    fun onDisconnect() {
-        resetBuildState("Gradle connection closed")
+    fun onDisconnect(projectDirectory: File? = null) {
+        resetBuildState("Gradle connection closed", projectDirectory)
+        if (projectDirectory == null) {
+            lastCompletedBuildSnapshots.clear()
+        } else {
+            lastCompletedBuildSnapshots.remove(ProjectDirectoryResolver.canonicalKey(projectDirectory))
+        }
     }
+
+    private fun shouldReplaceExecutor(projectDirectory: File?): Boolean =
+        projectDirectory == null || connectionManager.connectedProjectDirectories().isEmpty()
 
     fun shutdown() {
         val executorToAwait = synchronized(lifecycleLock) {
@@ -267,9 +300,12 @@ class BuildExecutionManager(
         }
     }
 
-    private fun markRunningBuildsCancelled(reason: String) {
+    private fun markRunningBuildsCancelled(reason: String, projectDirectory: File? = null) {
         builds.values
-            .filter { it.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING }
+            .filter { record ->
+                record.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING &&
+                    record.matchesProject(projectDirectory)
+            }
             .forEach { record ->
                 record.cancellationTokenSource.cancel()
                 finalizeBuild(record, BuildTerminalOutcome.Cancelled(reason))
@@ -315,7 +351,8 @@ class BuildExecutionManager(
         return true
     }
 
-    internal fun lastCompletedBuildSnapshot(): CompletedBuildSnapshot? = lastCompletedBuildSnapshot
+    internal fun lastCompletedBuildSnapshot(projectDirectory: File): CompletedBuildSnapshot? =
+        lastCompletedBuildSnapshots[ProjectDirectoryResolver.canonicalKey(projectDirectory)]
 
     private fun rememberCompletedBuild(record: BuildRecord, outcome: BuildTerminalOutcome) {
         val buildOutcome = when (outcome) {
@@ -323,7 +360,9 @@ class BuildExecutionManager(
             is BuildTerminalOutcome.Failed -> "FAILED"
             is BuildTerminalOutcome.Cancelled -> "CANCELLED"
         }
-        lastCompletedBuildSnapshot = CompletedBuildSnapshot(
+        val projectDirectory = record.projectDirectory ?: return
+        lastCompletedBuildSnapshots[ProjectDirectoryResolver.canonicalKey(File(projectDirectory))] =
+            CompletedBuildSnapshot(
             buildId = record.id,
             kind = record.kind,
             tasks = record.tasks,
@@ -355,7 +394,7 @@ class BuildExecutionManager(
             startedAt = Instant.now(),
             progressTracker = tracker,
             streams = streams,
-            projectDirectory = connectionManager.connectedProjectDirectory()?.absolutePath,
+            projectDirectory = request.projectDirectory.absolutePath,
         )
         return BuildStart(record, notifier)
     }
@@ -366,7 +405,7 @@ class BuildExecutionManager(
         notifier: ProgressNotifier,
     ) {
         try {
-            connectionManager.withConnection { connection ->
+            connectionManager.withConnection(request.projectDirectory) { connection ->
                 runBuild(record, request, connection, record.streams, record.progressTracker, notifier)
             }
         } catch (exception: Exception) {
@@ -521,7 +560,8 @@ class BuildExecutionManager(
     }
 
     internal fun seedLastCompletedBuildForTests(snapshot: CompletedBuildSnapshot) {
-        lastCompletedBuildSnapshot = snapshot
+        val projectDirectory = snapshot.projectDirectory ?: return
+        lastCompletedBuildSnapshots[ProjectDirectoryResolver.canonicalKey(File(projectDirectory))] = snapshot
     }
 
     internal fun maxConcurrentBackgroundBuilds(): Int = MAX_CONCURRENT_BUILDS

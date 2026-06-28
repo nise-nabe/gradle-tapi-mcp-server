@@ -13,21 +13,29 @@
 
 ### gradle_connection_status / gradle_disconnect
 
-No arguments.
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `projectDirectory` | no | Inspect or disconnect one project. Omit to list/disconnect all. |
 
-`gradle_connection_status` returns `connected`, `projectDirectory`, and a connect-time runtime stack snapshot (`gradleVersion`, `versionInfo` when Gradle 9.4+, `javaHome`, `javaVersion`, `runtimeStackAvailable`). It does not perform Gradle I/O on each call. Use `gradle_get_build_environment` for a fresh query including `gradleUserHome` and `jvmArguments`.
+`gradle_connection_status` without `projectDirectory` returns `defaultProjectDirectory`, `connections[]`, and legacy flat fields for the default project. With `projectDirectory`, returns status for that project only.
 
-`gradle_disconnect` is non-blocking. If a build was active, the response may include `warning` explaining that running builds were cancelled via the Tooling API CancellationToken.
+`gradle_disconnect` without `projectDirectory` disconnects **all** projects. With `projectDirectory`, disconnects one project and cancels only its running builds.
 
-`gradle_connect` cancels any running builds before connecting. It rejects the call while foreground or background builds are still running.
+`gradle_connect` keeps existing connections open. It rejects the call while a build is running for the same `projectDirectory`.
 
-Multiple `background=true` builds may run concurrently on one connection (bounded by a server-side pool). When the pool is full, new background starts return `BUILD_ALREADY_RUNNING`.
+Multiple `background=true` builds may run concurrently across connected projects (bounded by a server-side pool). When the pool is full, new background starts return `BUILD_ALREADY_RUNNING`.
+
+Most query/build tools accept optional `projectDirectory` (defaults to `GRADLE_PROJECT_DIR`).
 
 ## Query (read-only)
 
 ### gradle_get_build_environment
 
-No arguments. Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `java.javaHome`, `java.javaVersion`, `java.jvmArguments`.
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `projectDirectory` | no | Gradle project root (default: `GRADLE_PROJECT_DIR`) |
+
+Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `java.javaHome`, `java.javaVersion`, `java.jvmArguments`.
 
 ### gradle_get_help
 
