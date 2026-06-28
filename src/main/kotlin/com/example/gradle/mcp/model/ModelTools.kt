@@ -2,6 +2,8 @@ package com.example.gradle.mcp.model
 
 import com.example.gradle.mcp.ConnectionScope
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
+import com.example.gradle.mcp.protocol.McpErrorCode
+import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.integerProperty
 import com.example.gradle.mcp.protocol.jsonResult
@@ -10,7 +12,11 @@ import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.stringProperty
 import com.example.gradle.mcp.protocol.tool
 import io.modelcontextprotocol.server.McpServerFeatures
+import org.gradle.tooling.ProjectConnection
+import org.gradle.tooling.UnknownModelException
+import org.gradle.tooling.UnsupportedVersionException
 import org.gradle.tooling.model.GradleProject
+import org.gradle.tooling.model.build.Help
 import org.gradle.tooling.model.gradle.BuildInvocations
 import org.gradle.tooling.model.gradle.GradleBuild
 import org.gradle.tooling.model.gradle.ProjectPublications
@@ -58,6 +64,38 @@ internal fun publicationsSchema(): Map<String, Any> =
             ),
         ),
     )
+
+internal fun helpSchema(): Map<String, Any> =
+    objectSchema(
+        properties = mapOf(
+            "maxChars" to integerProperty(
+                "Maximum rendered help characters to return (default ${HelpLimitOptions.DEFAULT_MAX_CHARS})",
+            ),
+            "tailOutput" to booleanProperty(
+                "When truncated, keep the tail of the help text (default true)",
+            ),
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
+                "Gradle project root to query.",
+            ),
+        ),
+    )
+
+private fun fetchHelpModel(connection: ProjectConnection): Help =
+    try {
+        connection.getModel(Help::class.java)
+    } catch (exception: Exception) {
+        if (exception is InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+        when (exception) {
+            is UnknownModelException, is UnsupportedVersionException -> throw McpException(
+                McpErrorCode.INVALID_ARGUMENT,
+                "Help model is not available. Gradle 9.4 or later is required.",
+                exception,
+            )
+            else -> throw exception
+        }
+    }
 
 context(runtime: ConnectionScope)
 fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
@@ -120,6 +158,18 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val publications = connection.getModel(ProjectPublications::class.java)
                 jsonResult(ModelSerializers.projectPublications(publications))
+            }
+        },
+        tool(
+            name = "gradle_get_help",
+            description = "Fetch Gradle CLI help text (equivalent to `gradle --help`). Requires Gradle 9.4+; returns a structured error if the Help model is unavailable.",
+            schema = helpSchema(),
+        ) { args ->
+            val limitOptions = HelpLimitOptions.fromArgs(args)
+            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+                val help = fetchHelpModel(connection)
+                jsonResult(ModelSerializers.help(help, limitOptions))
             }
         },
     )
