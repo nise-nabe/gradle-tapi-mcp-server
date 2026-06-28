@@ -326,6 +326,22 @@ class GradleConnectionManagerTest {
     }
 
     @Test
+    fun `status reports effective defaultProjectDirectory when workspace env is set but not connected`(
+        @TempDir workspace: File,
+        @TempDir connected: File,
+    ) {
+        withWorkspaceDirectory(workspace) {
+            manager.seedConnectionForTests(connectionProxy(AtomicInteger(0)), projectDirectory = connected)
+
+            val status = manager.status()
+
+            status.str("defaultProjectDirectory") shouldBe connected.canonicalFile.path
+            status.str("projectDirectory") shouldBe connected.canonicalFile.path
+            status.bool("connected").shouldBeTrue()
+        }
+    }
+
+    @Test
     fun `defaultProjectDirectory returns sole connection when only one project is connected`(@TempDir project: File) {
         manager.seedConnectionForTests(connectionProxy(AtomicInteger(0)), projectDirectory = project)
 

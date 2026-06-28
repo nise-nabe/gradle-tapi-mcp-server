@@ -69,15 +69,16 @@ data class MultiConnectionStatus(
             connections.size == 1 -> connections.first()
             else -> null
         }
+        val effectiveDefaultProjectDirectory = defaultProjectDirectory ?: default?.projectDirectory
         return buildMap {
-            put("defaultProjectDirectory", defaultProjectDirectory)
+            put("defaultProjectDirectory", effectiveDefaultProjectDirectory)
             put("connections", connections.map { it.toResponseMap() })
             put("connectedAny", connections.any { it.connected })
             if (default != null) {
                 putAll(default.toResponseMap())
             } else {
                 put("connected", false)
-                put("projectDirectory", defaultProjectDirectory)
+                put("projectDirectory", effectiveDefaultProjectDirectory)
                 put("runtimeStackAvailable", false)
             }
         }
