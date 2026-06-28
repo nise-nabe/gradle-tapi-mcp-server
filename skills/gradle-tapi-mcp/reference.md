@@ -35,7 +35,7 @@ Most query/build tools accept optional `projectDirectory` (defaults to `GRADLE_P
 |----------|----------|-------------|
 | `projectDirectory` | no | Gradle project root (default: `GRADLE_PROJECT_DIR`) |
 
-Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `java.javaHome`, `java.javaVersion`, `java.jvmArguments`.
+Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `gradle.versionInfo` (Gradle 9.4+; same text as `gradle --version`; omitted on older Gradle), `java.javaHome`, `java.javaVersion`, `java.jvmArguments`.
 
 ### gradle_get_help
 
