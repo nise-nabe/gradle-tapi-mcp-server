@@ -18,7 +18,7 @@ class ModelToolsTest {
 
             prepareTasks["type"] shouldBe "array"
             (prepareTasks["items"] as Map<*, *>)["type"] shouldBe "string"
-            (prepareTasks["description"] as String) shouldContain "runs a build first and is heavier"
+            (prepareTasks["description"] as String) shouldContain ":app:compileJava"
         }
     }
 }
