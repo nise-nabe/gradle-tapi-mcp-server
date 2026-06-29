@@ -2,6 +2,8 @@ package com.example.gradle.mcp.protocol
 
 import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
+import com.example.gradle.mcp.build.FailedTestSnapshot
+import com.example.gradle.mcp.build.TestProgressDetailsSnapshot
 
 internal fun optionalProgressFields(
     progressOptions: ProgressResponseOptions,
@@ -29,14 +31,7 @@ internal fun terminalFailureFields(
             if (progressOptions.includeTestDetails && snapshot.status == BuildProgressTracker.STATUS_FAILED) {
                 val failedTests = snapshot.failedTests
                     .takeLast(ProgressResponseOptions.MAX_RECENT_EVENTS_IN_RESPONSE)
-                    .map { failedTest ->
-                        buildMap<String, Any?> {
-                            put("displayName", failedTest.displayName)
-                            failedTest.className?.let { put("className", it) }
-                            failedTest.methodName?.let { put("methodName", it) }
-                            failedTest.failureMessage?.let { put("failureMessage", it) }
-                        }
-                    }
+                    .map { it.toResponseMap() }
                 if (failedTests.isNotEmpty()) {
                     put("failedTests", failedTests)
                 }
@@ -65,22 +60,28 @@ internal fun BuildProgressSnapshot.toResponseMap(
                     put("displayName", event.displayName)
                     put("outcome", event.outcome)
                     if (progressOptions.includeTestDetails) {
-                        event.testDetails?.let { details ->
-                            put(
-                                "test",
-                                buildMap<String, Any?> {
-                                    details.className?.let { put("className", it) }
-                                    details.methodName?.let { put("methodName", it) }
-                                    details.sourceType?.let { put("sourceType", it) }
-                                    details.sourcePath?.let { put("sourcePath", it) }
-                                    details.sourceLine?.let { put("sourceLine", it) }
-                                    details.sourceColumn?.let { put("sourceColumn", it) }
-                                    details.failureMessage?.let { put("failureMessage", it) }
-                                },
-                            )
-                        }
+                        event.testDetails?.let { details -> put("test", details.toResponseMap()) }
                     }
                 }
             },
         "totalEventCount" to totalEventCount,
     )
+
+private fun TestProgressDetailsSnapshot.toResponseMap(): Map<String, Any?> =
+    buildMap {
+        className?.let { put("className", it) }
+        methodName?.let { put("methodName", it) }
+        sourceType?.let { put("sourceType", it) }
+        sourcePath?.let { put("sourcePath", it) }
+        sourceLine?.let { put("sourceLine", it) }
+        sourceColumn?.let { put("sourceColumn", it) }
+        failureMessage?.let { put("failureMessage", it) }
+    }
+
+private fun FailedTestSnapshot.toResponseMap(): Map<String, Any?> =
+    buildMap {
+        put("displayName", displayName)
+        className?.let { put("className", it) }
+        methodName?.let { put("methodName", it) }
+        failureMessage?.let { put("failureMessage", it) }
+    }

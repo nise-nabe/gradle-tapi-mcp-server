@@ -10,18 +10,8 @@ import org.gradle.tooling.events.configuration.ProjectConfigurationFinishEvent
 import org.gradle.tooling.events.configuration.ProjectConfigurationStartEvent
 import org.gradle.tooling.events.task.TaskFinishEvent
 import org.gradle.tooling.events.task.TaskStartEvent
-import org.gradle.tooling.events.test.JvmTestOperationDescriptor
 import org.gradle.tooling.events.test.TestFinishEvent
-import org.gradle.tooling.events.test.TestProgressEvent
 import org.gradle.tooling.events.test.TestStartEvent
-import org.gradle.tooling.events.test.source.ClassSource
-import org.gradle.tooling.events.test.source.ClasspathResourceSource
-import org.gradle.tooling.events.test.source.DirectorySource
-import org.gradle.tooling.events.test.source.FileSource
-import org.gradle.tooling.events.test.source.FilesystemSource
-import org.gradle.tooling.events.test.source.MethodSource
-import org.gradle.tooling.events.test.source.NoSource
-import org.gradle.tooling.events.test.source.OtherSource
 import java.time.Instant
 
 class BuildProgressTracker(
@@ -161,7 +151,7 @@ class BuildProgressTracker(
                 applyTaskEvent(
                     ProgressEventTypes.TEST_START,
                     displayName,
-                    testDetails = extractTestDetails(event),
+                    testDetails = TestProgressDetailsExtractor.fromGradleEvent(event),
                 )
             }
             is TestFinishEvent -> {
@@ -173,21 +163,21 @@ class BuildProgressTracker(
                             ProgressEventTypes.TEST_FAIL,
                             displayName,
                             message,
-                            extractTestDetails(event, message),
+                            TestProgressDetailsExtractor.fromGradleEvent(event, message),
                         )
                     }
                     is org.gradle.tooling.events.test.TestSkippedResult -> {
                         applyTaskEvent(
                             ProgressEventTypes.TEST_SKIP,
                             displayName,
-                            testDetails = extractTestDetails(event),
+                            testDetails = TestProgressDetailsExtractor.fromGradleEvent(event),
                         )
                     }
                     else -> {
                         applyTaskEvent(
                             ProgressEventTypes.TEST_SUCCESS,
                             displayName,
-                            testDetails = extractTestDetails(event),
+                            testDetails = TestProgressDetailsExtractor.fromGradleEvent(event),
                         )
                     }
                 }
@@ -269,80 +259,14 @@ class BuildProgressTracker(
         outcome: String?,
         testDetails: TestProgressDetailsSnapshot?,
     ) {
-        if (eventType != ProgressEventTypes.TEST_FAIL) {
-            return
-        }
-        val failedTest = FailedTestSnapshot(
-            className = testDetails?.className,
-            methodName = testDetails?.methodName,
+        val failedTest = ProgressEventSnapshot(
+            timestamp = "",
+            eventType = eventType,
             displayName = displayName,
-            failureMessage = testDetails?.failureMessage ?: outcome,
-        )
-        failedTests.remove(failedTest.stableKey())
-        failedTests[failedTest.stableKey()] = failedTest
-        while (failedTests.size > MAX_FAILED_TESTS) {
-            failedTests.remove(failedTests.entries.first().key)
-        }
-    }
-
-    private fun extractTestDetails(
-        event: TestProgressEvent,
-        failureMessage: String? = null,
-    ): TestProgressDetailsSnapshot? {
-        val descriptor = event.descriptor as? JvmTestOperationDescriptor
-        val source = descriptor?.source
-        var className = descriptor?.className
-        var methodName = descriptor?.methodName
-        val sourceType = when (source) {
-            null -> null
-            is MethodSource -> {
-                className = className ?: source.className
-                methodName = methodName ?: source.methodName
-                "method"
-            }
-            is ClassSource -> {
-                className = className ?: source.className
-                "class"
-            }
-            is FileSource -> "file"
-            is DirectorySource -> "directory"
-            is ClasspathResourceSource -> "classpath_resource"
-            is FilesystemSource -> "filesystem"
-            is OtherSource -> "other"
-            is NoSource -> "none"
-            else -> source.javaClass.simpleName.ifBlank { source.javaClass.name }
-        }
-        val sourcePath = when (source) {
-            is FileSource -> source.file.path
-            is DirectorySource -> source.file.path
-            is FilesystemSource -> source.file.path
-            is ClasspathResourceSource -> source.classpathResourceName
-            else -> null
-        }
-        val sourcePosition = when (source) {
-            is FileSource -> source.position
-            is ClasspathResourceSource -> source.position
-            else -> null
-        }
-        if (
-            className == null &&
-            methodName == null &&
-            sourceType == null &&
-            sourcePath == null &&
-            sourcePosition == null &&
-            failureMessage == null
-        ) {
-            return null
-        }
-        return TestProgressDetailsSnapshot(
-            className = className,
-            methodName = methodName,
-            sourceType = sourceType,
-            sourcePath = sourcePath,
-            sourceLine = sourcePosition?.line,
-            sourceColumn = sourcePosition?.column,
-            failureMessage = failureMessage,
-        )
+            outcome = outcome,
+            testDetails = testDetails,
+        ).toFailedTestSnapshot() ?: return
+        FailedTestSnapshots.remember(failedTests, failedTest, MAX_FAILED_TESTS)
     }
 
     companion object {
