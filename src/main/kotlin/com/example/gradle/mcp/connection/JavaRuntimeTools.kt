@@ -11,9 +11,6 @@ import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.tool
 import io.modelcontextprotocol.server.McpServerFeatures
 import org.gradle.tooling.ProjectConnection
-import org.gradle.tooling.UnknownModelException
-import org.gradle.tooling.UnsupportedVersionException
-import org.gradle.tooling.model.build.BuildEnvironment
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
@@ -142,7 +139,8 @@ internal object JavaRuntimesCollector {
         cachedEnvironment: BuildEnvironmentSnapshot?,
         includeToolchains: Boolean = true,
     ): JavaRuntimesSnapshot {
-        val environment = cachedEnvironment ?: loadBuildEnvironment(connection, projectDirectory)
+        val environment = cachedEnvironment
+            ?: requireBuildEnvironmentSnapshot(connection, projectDirectory)
         val detectedJdks = if (includeToolchains) {
             detectInstalledJdks(connection, projectDirectory)
         } else {
@@ -161,26 +159,6 @@ internal object JavaRuntimesCollector {
             },
         )
     }
-
-    private fun loadBuildEnvironment(
-        connection: ProjectConnection,
-        projectDirectory: File,
-    ): BuildEnvironmentSnapshot =
-        try {
-            buildEnvironmentSnapshotFrom(connection.getModel(BuildEnvironment::class.java))
-        } catch (exception: Exception) {
-            if (exception is InterruptedException) {
-                Thread.currentThread().interrupt()
-            }
-            when (exception) {
-                is UnknownModelException, is UnsupportedVersionException -> throw McpException(
-                    McpErrorCode.INVALID_ARGUMENT,
-                    "BuildEnvironment is not available for ${projectDirectory.path}.",
-                    exception,
-                )
-                else -> throw exception
-            }
-        }
 
     private fun detectInstalledJdks(
         connection: ProjectConnection,
