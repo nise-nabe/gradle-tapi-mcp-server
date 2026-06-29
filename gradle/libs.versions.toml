@@ -3,7 +3,7 @@ kotlin = "2.4.0"
 junit = "6.1.1"
 kotest = "6.2.1"
 mcp-bom = "2.0.0"
-slf4j = "2.0.17"
+slf4j = "2.0.18"
 gradle-tooling-api = "9.6.1"
 jackson = "3.0.4"
 
