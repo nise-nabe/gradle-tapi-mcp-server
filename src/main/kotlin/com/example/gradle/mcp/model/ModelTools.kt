@@ -8,8 +8,10 @@ import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.integerProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
+import com.example.gradle.mcp.protocol.optionalStringList
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.stringProperty
+import com.example.gradle.mcp.protocol.stringArrayProperty
 import com.example.gradle.mcp.protocol.tool
 import io.modelcontextprotocol.server.McpServerFeatures
 import org.gradle.tooling.ProjectConnection
@@ -28,6 +30,13 @@ internal fun projectTreeProperties(): Map<String, Any> =
         "projectDirectory" to resolveRequiredProjectDirectoryProperty(
             "Gradle project root to query.",
         ),
+        "prepareTasks" to prepareTasksProperty(),
+    )
+
+internal fun prepareTasksProperty(): Map<String, Any> =
+    stringArrayProperty(
+        "Optional Gradle task paths to run via ModelBuilder.forTasks(...) before fetching the model. " +
+            "Empty or omitted preserves the current lightweight behavior; non-empty runs a build first and is heavier.",
     )
 
 internal fun projectTreeSchema(): Map<String, Any> =
@@ -51,6 +60,7 @@ internal fun invocationsQuerySchema(): Map<String, Any> =
             "projectDirectory" to resolveRequiredProjectDirectoryProperty(
                 "Gradle project root to query.",
             ),
+            "prepareTasks" to prepareTasksProperty(),
         ) + modelQueryProperties() + mapOf(
             "includeTaskSelectors" to booleanProperty("Include task selectors. Default false to save tokens."),
         ),
@@ -62,6 +72,7 @@ internal fun publicationsSchema(): Map<String, Any> =
             "projectDirectory" to resolveRequiredProjectDirectoryProperty(
                 "Gradle project root to query.",
             ),
+            "prepareTasks" to prepareTasksProperty(),
         ),
     )
 
@@ -77,12 +88,16 @@ internal fun helpSchema(): Map<String, Any> =
             "projectDirectory" to resolveRequiredProjectDirectoryProperty(
                 "Gradle project root to query.",
             ),
+            "prepareTasks" to prepareTasksProperty(),
         ),
     )
 
-private fun fetchHelpModel(connection: ProjectConnection): Help =
+private fun prepareTasksFromArgs(args: Map<String, Any>): List<String> =
+    args.optionalStringList("prepareTasks").orEmpty().filter { it.isNotBlank() }.distinct()
+
+private fun fetchHelpModel(connection: ProjectConnection, prepareTasks: List<String>): Help =
     try {
-        connection.getModel(Help::class.java)
+        connection.fetchModel(Help::class.java, prepareTasks)
     } catch (exception: Exception) {
         if (exception is InterruptedException) {
             Thread.currentThread().interrupt()
@@ -102,73 +117,79 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_get_project_overview",
-            description = "Fetch project hierarchy and task counts without task lists. Token-efficient default for project context ingestion.",
+            description = "Fetch project hierarchy and task counts without task lists. Token-efficient default for project context ingestion. Optional prepareTasks runs a build before model fetch and is heavier.",
             schema = projectTreeSchema(),
         ) { args ->
             val treeOptions = ProjectTreeOptions.fromArgs(args)
+            val prepareTasks = prepareTasksFromArgs(args)
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val project = connection.getModel(GradleProject::class.java)
+                val project = connection.fetchModel(GradleProject::class.java, prepareTasks)
                 jsonResult(ModelSerializers.projectOverview(project, treeOptions))
             }
         },
         tool(
             name = "gradle_get_gradle_build",
-            description = "Fetch GradleBuild structure: root project tree, all projects, included builds, and editable builds. Lightweight and read-only; no tasks. Prefer for composite or includeBuild repositories.",
+            description = "Fetch GradleBuild structure: root project tree, all projects, included builds, and editable builds. Lightweight and read-only by default; no tasks unless prepareTasks is set. Optional prepareTasks runs a build before model fetch and is heavier. Prefer for composite or includeBuild repositories.",
             schema = projectTreeSchema(),
         ) { args ->
             val treeOptions = ProjectTreeOptions.fromArgs(args)
+            val prepareTasks = prepareTasksFromArgs(args)
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val build = connection.getModel(GradleBuild::class.java)
+                val build = connection.fetchModel(GradleBuild::class.java, prepareTasks)
                 jsonResult(ModelSerializers.gradleBuild(build, treeOptions))
             }
         },
         tool(
             name = "gradle_get_project_model",
-            description = "Fetch the GradleProject model. Tasks are omitted by default; set includeTasks=true only when needed.",
+            description = "Fetch the GradleProject model. Tasks are omitted by default; set includeTasks=true only when needed. Optional prepareTasks runs a build before model fetch and is heavier.",
             schema = modelQuerySchema(),
         ) { args ->
             val options = ModelQueryOptions.fromArgs(args)
             val treeOptions = ProjectTreeOptions.fromArgs(args)
+            val prepareTasks = prepareTasksFromArgs(args)
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val project = connection.getModel(GradleProject::class.java)
+                val project = connection.fetchModel(GradleProject::class.java, prepareTasks)
                 jsonResult(ModelSerializers.gradleProject(project, options, treeOptions))
             }
         },
         tool(
             name = "gradle_get_build_invocations",
-            description = "Fetch runnable Gradle tasks. Task selectors are omitted by default; tasks return name/path/group unless includeTaskDetails=true.",
+            description = "Fetch runnable Gradle tasks. Task selectors are omitted by default; tasks return name/path/group unless includeTaskDetails=true. Optional prepareTasks runs a build before model fetch and is heavier.",
             schema = invocationsQuerySchema(),
         ) { args ->
             val options = ModelQueryOptions.fromArgs(args).copy(includeTasks = true)
+            val prepareTasks = prepareTasksFromArgs(args)
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val invocations = connection.getModel(BuildInvocations::class.java)
+                val invocations = connection.fetchModel(BuildInvocations::class.java, prepareTasks)
                 jsonResult(ModelSerializers.buildInvocations(invocations, options))
             }
         },
         tool(
             name = "gradle_get_project_publications",
-            description = "Fetch publications declared by the build.",
+            description = "Fetch publications declared by the build. Optional prepareTasks runs a build before model fetch and is heavier.",
             schema = publicationsSchema(),
         ) { args ->
+            val prepareTasks = prepareTasksFromArgs(args)
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val publications = connection.getModel(ProjectPublications::class.java)
+                val publications = connection.fetchModel(ProjectPublications::class.java, prepareTasks)
                 jsonResult(ModelSerializers.projectPublications(publications))
             }
         },
         tool(
             name = "gradle_get_help",
-            description = "Fetch Gradle CLI help text (equivalent to `gradle --help`). Requires Gradle 9.4+; returns a structured error if the Help model is unavailable.",
+            description = "Fetch Gradle CLI help text (equivalent to `gradle --help`). Requires Gradle 9.4+; returns a structured error if the Help model is unavailable. Optional prepareTasks runs a build before model fetch and is heavier.",
             schema = helpSchema(),
         ) { args ->
             val limitOptions = HelpLimitOptions.fromArgs(args)
+            val prepareTasks = prepareTasksFromArgs(args)
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val help = fetchHelpModel(connection)
+                val help = fetchHelpModel(connection, prepareTasks)
                 jsonResult(ModelSerializers.help(help, limitOptions))
             }
         },
