@@ -2,6 +2,7 @@ package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.build.persistence.PersistedBuildArtifacts
 import com.example.gradle.mcp.build.persistence.PersistedBuildViewFactory
+import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -150,6 +151,41 @@ class BuildStatusMergerTest {
     }
 
     @Test
+    fun `merge refreshes failed test order so takeLast keeps the most recent failure`() {
+        val initialFailures = (1..11).map { index ->
+            FailedTestSnapshot(
+                className = "com.example.Test$index",
+                methodName = "fails$index",
+                displayName = "com.example.Test$index.fails$index",
+                failureMessage = "first failure $index",
+            )
+        }
+        val memory = failedView(
+            buildId = "failed-merge",
+            progress = progressSnapshot(
+                failedTaskCount = 1,
+                totalEventCount = 13,
+                failedTests = initialFailures,
+            ),
+        )
+        val disk = failedView(
+            buildId = "failed-merge",
+            progress = progressSnapshot(
+                failedTaskCount = 1,
+                totalEventCount = 12,
+                failedTests = listOf(initialFailures.first().copy(failureMessage = "latest failure")),
+            ),
+        )
+
+        val merged = BuildStatusMerger.merge(memory, disk)
+        val failedTests = merged.progress?.failedTests.orEmpty()
+            .takeLast(ProgressResponseOptions.MAX_RECENT_EVENTS_IN_RESPONSE)
+
+        failedTests.map { it.failureMessage } shouldBe (3..11).map { "first failure $it" } +
+            listOf("latest failure")
+    }
+
+    @Test
     fun `merge unions solutions when disk and memory share the same problem`() {
         val sharedProblem = BuildProblemSnapshot(
             label = "Compilation failed",
@@ -261,6 +297,7 @@ class BuildStatusMergerTest {
         failedTasks: List<String> = emptyList(),
         totalEventCount: Int = 0,
         problems: List<BuildProblemSnapshot> = emptyList(),
+        failedTests: List<FailedTestSnapshot> = emptyList(),
     ): BuildProgressSnapshot =
         BuildProgressSnapshot(
             status = BuildProgressTracker.STATUS_FAILED,
@@ -274,5 +311,6 @@ class BuildStatusMergerTest {
             recentEvents = emptyList(),
             totalEventCount = totalEventCount,
             problems = problems,
+            failedTests = failedTests,
         )
 }

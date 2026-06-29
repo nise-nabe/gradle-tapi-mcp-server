@@ -4,7 +4,7 @@ internal object FailedTestSnapshots {
     fun mergeDistinct(vararg lists: List<FailedTestSnapshot>): List<FailedTestSnapshot> {
         val merged = LinkedHashMap<String, FailedTestSnapshot>()
         for (failedTest in lists.flatMap { it }) {
-            merged[failedTest.stableKey()] = failedTest
+            putLatest(merged, failedTest)
         }
         return merged.values.toList()
     }
@@ -17,11 +17,18 @@ internal object FailedTestSnapshots {
         failedTest: FailedTestSnapshot,
         maxSize: Int,
     ) {
-        val key = failedTest.stableKey()
-        target.remove(key)
-        target[key] = failedTest
+        putLatest(target, failedTest)
         while (target.size > maxSize) {
             target.remove(target.entries.first().key)
         }
+    }
+
+    private fun putLatest(
+        target: LinkedHashMap<String, FailedTestSnapshot>,
+        failedTest: FailedTestSnapshot,
+    ) {
+        val key = failedTest.stableKey()
+        target.remove(key)
+        target[key] = failedTest
     }
 }
