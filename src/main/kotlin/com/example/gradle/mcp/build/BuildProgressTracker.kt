@@ -210,15 +210,9 @@ class BuildProgressTracker(
 
     private fun collectLiveProblemsFromEvent(event: ProblemEvent, displayName: String) {
         val extracted = ProblemsSerializer.fromProblemEvent(event)
-        if (extracted.isEmpty()) {
+        if (!ProblemsSerializer.mergeDistinct(liveProblems, extracted)) {
             return
         }
-        val merged = ProblemsSerializer.mergedDistinct(liveProblems, extracted)
-        if (merged == liveProblems) {
-            return
-        }
-        liveProblems.clear()
-        liveProblems.addAll(merged)
         recordEventLocked(ProgressEventTypes.PROBLEM, displayName)
     }
 

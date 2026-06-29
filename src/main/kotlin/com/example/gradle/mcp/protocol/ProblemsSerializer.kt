@@ -38,7 +38,11 @@ internal object ProblemsSerializer {
     fun mergeDistinct(
         target: MutableList<BuildProblemSnapshot>,
         additions: List<BuildProblemSnapshot>,
-    ) {
+    ): Boolean {
+        if (additions.isEmpty()) {
+            return false
+        }
+        var changed = false
         val indexByKey = target.withIndex()
             .associate { (index, problem) -> problem.dedupeKey() to index }
             .toMutableMap()
@@ -48,14 +52,17 @@ internal object ProblemsSerializer {
             if (existingIndex == null) {
                 indexByKey[key] = target.size
                 target.add(problem)
+                changed = true
             } else {
                 val existing = target[existingIndex]
                 val mergedSolutions = (existing.solutions + problem.solutions).distinct()
                 if (mergedSolutions != existing.solutions) {
                     target[existingIndex] = existing.copy(solutions = mergedSolutions)
+                    changed = true
                 }
             }
         }
+        return changed
     }
 
     fun mergedDistinct(

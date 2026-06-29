@@ -1,5 +1,7 @@
 package com.example.gradle.mcp.build
 
+import com.example.gradle.mcp.support.problemProxy
+import com.example.gradle.mcp.support.singleProblemEventProxy
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldContain
@@ -16,13 +18,8 @@ import org.gradle.tooling.events.FinishEvent
 import org.gradle.tooling.events.configuration.ProjectConfigurationFinishEvent
 import org.gradle.tooling.events.configuration.ProjectConfigurationStartEvent
 import org.gradle.tooling.events.configuration.ProjectConfigurationSuccessResult
-import org.gradle.tooling.events.problems.ContextualLabel
-import org.gradle.tooling.events.problems.Details
 import org.gradle.tooling.events.problems.Problem
-import org.gradle.tooling.events.problems.ProblemDefinition
-import org.gradle.tooling.events.problems.ProblemId
 import org.gradle.tooling.events.problems.Severity
-import org.gradle.tooling.events.problems.SingleProblemEvent
 import org.gradle.tooling.events.test.TestFinishEvent
 import org.gradle.tooling.events.test.TestStartEvent
 import org.gradle.tooling.events.test.TestSuccessResult
@@ -387,20 +384,6 @@ class BuildProgressTrackerTest {
         return captured.toList()
     }
 
-    private fun singleProblemEventProxy(problem: Problem): SingleProblemEvent =
-        Proxy.newProxyInstance(
-            SingleProblemEvent::class.java.classLoader,
-            arrayOf(SingleProblemEvent::class.java),
-            InvocationHandler { _, method, _ ->
-                when (method.name) {
-                    "getProblem" -> problem
-                    "getDisplayName" -> "Problem: ${problem.definition.id.displayName}"
-                    "getEventTime" -> 0L
-                    else -> null
-                }
-            },
-        ) as SingleProblemEvent
-
     private fun failureResultProxy(failures: List<Failure>): FailureResult =
         Proxy.newProxyInstance(
             FailureResult::class.java.classLoader,
@@ -431,72 +414,4 @@ class BuildProgressTrackerTest {
                 }
             },
         ) as Failure
-
-    private fun problemProxy(
-        displayName: String,
-        details: String?,
-        severity: Severity,
-        contextualLabel: String? = null,
-    ): Problem {
-        val problemId = Proxy.newProxyInstance(
-            ProblemId::class.java.classLoader,
-            arrayOf(ProblemId::class.java),
-            InvocationHandler { _, method, _ ->
-                when (method.name) {
-                    "getDisplayName" -> displayName
-                    "getName" -> "compilation-failed"
-                    "getGroup" -> null
-                    else -> null
-                }
-            },
-        ) as ProblemId
-        val definition = Proxy.newProxyInstance(
-            ProblemDefinition::class.java.classLoader,
-            arrayOf(ProblemDefinition::class.java),
-            InvocationHandler { _, method, _ ->
-                when (method.name) {
-                    "getId" -> problemId
-                    "getSeverity" -> severity
-                    "getDocumentationLink" -> null
-                    else -> null
-                }
-            },
-        ) as ProblemDefinition
-        return Proxy.newProxyInstance(
-            Problem::class.java.classLoader,
-            arrayOf(Problem::class.java),
-            InvocationHandler { _, method, _ ->
-                when (method.name) {
-                    "getDefinition" -> definition
-                    "getDetails" -> details?.let { text ->
-                        Proxy.newProxyInstance(
-                            Details::class.java.classLoader,
-                            arrayOf(Details::class.java),
-                            InvocationHandler { _, method, _ ->
-                                when (method.name) {
-                                    "getDetails" -> text
-                                    else -> null
-                                }
-                            },
-                        ) as Details
-                    }
-                    "getContextualLabel" -> contextualLabel?.let { text ->
-                        Proxy.newProxyInstance(
-                            ContextualLabel::class.java.classLoader,
-                            arrayOf(ContextualLabel::class.java),
-                            InvocationHandler { _, method, _ ->
-                                when (method.name) {
-                                    "getContextualLabel" -> text
-                                    else -> null
-                                }
-                            },
-                        ) as ContextualLabel
-                    }
-                    "getSolutions" -> emptyList<Any>()
-                    "getOriginLocations", "getContextualLocations", "getFailure", "getAdditionalData" -> emptyList<Any>()
-                    else -> null
-                }
-            },
-        ) as Problem
-    }
 }

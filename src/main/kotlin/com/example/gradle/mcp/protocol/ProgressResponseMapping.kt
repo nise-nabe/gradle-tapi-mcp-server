@@ -10,7 +10,7 @@ internal fun optionalProgressFields(
 ): Map<String, Any?> =
     buildMap {
         if (progressOptions.includeProgress) {
-            put("progress", snapshot.toResponseMap(progressOptions))
+            put("progress", snapshot.toResponseMap())
         }
         if (progressOptions.includeProblems &&
             snapshot.status != BuildProgressTracker.STATUS_FAILED &&
@@ -44,9 +44,7 @@ internal fun terminalFailureFields(
 private fun cappedProblemResponse(problems: List<BuildProblemSnapshot>): List<Map<String, Any?>> =
     ProblemsSerializer.toResponseMaps(problems.takeLast(ProgressResponseOptions.MAX_PROBLEMS_IN_RESPONSE))
 
-internal fun BuildProgressSnapshot.toResponseMap(
-    progressOptions: ProgressResponseOptions = ProgressResponseOptions(),
-): Map<String, Any?> =
+internal fun BuildProgressSnapshot.toResponseMap(): Map<String, Any?> =
     mapOf(
         "status" to status,
         "currentOperation" to currentOperation,
