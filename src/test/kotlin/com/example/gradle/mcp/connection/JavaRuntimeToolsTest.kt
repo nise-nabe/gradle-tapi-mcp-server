@@ -12,6 +12,7 @@ import org.gradle.tooling.model.build.BuildEnvironment
 import org.gradle.tooling.model.build.GradleEnvironment
 import org.gradle.tooling.model.build.JavaEnvironment
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.io.PrintStream
 import java.lang.reflect.InvocationHandler
@@ -108,12 +109,13 @@ class JavaRuntimeToolsTest {
     }
 
     @Test
-    fun `collect loads BuildEnvironment when the cache is missing`() {
+    fun `collect loads BuildEnvironment when the cache is missing`(@TempDir javaHome: File) {
+        File(javaHome, "release").writeText("JAVA_VERSION=\"21.0.10\"\n")
         val getModelCalls = AtomicInteger(0)
         val launcher = recordingBuildLauncher(
             stdoutText = """
                  + Ubuntu JDK 21 (21.0.10+7-Ubuntu-124.04)
-                     | Location:           /usr/lib/jvm/java-21-openjdk-amd64
+                     | Location:           ${javaHome.path}
                      | Language Version:   21
                      | Is JDK:             true
             """.trimIndent(),
@@ -121,7 +123,7 @@ class JavaRuntimeToolsTest {
         val connection = projectConnectionProxy(
             getModelCalls = getModelCalls,
             buildEnvironment = buildEnvironmentProxy(
-                javaHome = "/usr/lib/jvm/java-21-openjdk-amd64",
+                javaHome = javaHome.path,
             ),
             launcher = launcher.launcher,
         )
@@ -133,12 +135,12 @@ class JavaRuntimeToolsTest {
         )
 
         snapshot.daemon shouldBe DaemonJavaRuntime(
-            javaHome = "/usr/lib/jvm/java-21-openjdk-amd64",
+            javaHome = javaHome.path,
             javaVersion = "21.0.10",
         )
         snapshot.detectedJdks shouldContainExactly listOf(
             DetectedJdk(
-                javaHome = "/usr/lib/jvm/java-21-openjdk-amd64",
+                javaHome = javaHome.path,
                 javaVersion = "21.0.10+7-Ubuntu-124.04",
             ),
         )
