@@ -2,12 +2,16 @@ package com.example.gradle.mcp.build
 
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
+import org.gradle.tooling.ConfigurableLauncher
 import org.gradle.tooling.Failure
 import org.gradle.tooling.events.FailureResult
+import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.FinishEvent
 import org.gradle.tooling.events.configuration.ProjectConfigurationFinishEvent
 import org.gradle.tooling.events.configuration.ProjectConfigurationStartEvent
@@ -325,6 +329,12 @@ class BuildProgressTrackerTest {
 
 
     @Test
+    fun `configureLauncher subscribes file download events only when enabled`() {
+        captureOperationTypes(BuildProgressTracker(), trackDownloads = false) shouldNotContain OperationType.FILE_DOWNLOAD
+        captureOperationTypes(BuildProgressTracker(), trackDownloads = true) shouldContain OperationType.FILE_DOWNLOAD
+    }
+
+    @Test
     fun `tracks file download events when enabled`() {
         val tracker = BuildProgressTracker(trackDownloads = true)
         val listener = tracker.asGradleListener()
@@ -335,6 +345,44 @@ class BuildProgressTrackerTest {
         val snapshot = tracker.snapshot()
         snapshot.activeDownloadCount shouldBe 0
         snapshot.recentDownloads.single().status shouldBe BuildProgressTracker.DOWNLOAD_STATUS_SUCCEEDED
+    }
+
+    private fun captureOperationTypes(
+        tracker: BuildProgressTracker,
+        trackDownloads: Boolean = false,
+    ): List<OperationType> {
+        val captured = mutableListOf<OperationType>()
+        lateinit var launcher: ConfigurableLauncher<*>
+        launcher = Proxy.newProxyInstance(
+            ConfigurableLauncher::class.java.classLoader,
+            arrayOf(ConfigurableLauncher::class.java),
+            InvocationHandler { _, method, args ->
+                when (method.name) {
+                    "addProgressListener" -> {
+                        captured.clear()
+                        args.orEmpty()
+                            .drop(1)
+                            .flatMap { argument ->
+                                when (argument) {
+                                    is Array<*> -> argument.filterIsInstance<OperationType>()
+                                    is OperationType -> listOf(argument)
+                                    else -> emptyList()
+                                }
+                            }
+                            .toCollection(captured)
+                        launcher
+                    }
+                    else -> launcher
+                }
+            },
+        ) as ConfigurableLauncher<*>
+        val configuredTracker = if (trackDownloads) {
+            BuildProgressTracker(trackDownloads = true)
+        } else {
+            tracker
+        }
+        configuredTracker.configureLauncher(launcher)
+        return captured.toList()
     }
 
     private fun fileDownloadDescriptor(uri: URI): FileDownloadOperationDescriptor =
