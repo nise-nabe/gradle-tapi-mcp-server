@@ -1,23 +1,18 @@
 package com.example.gradle.mcp.connection
 
+import com.example.gradle.mcp.connection.support.BuildEnvironmentProxyOptions
+import com.example.gradle.mcp.connection.support.buildEnvironmentProxy
+import com.example.gradle.mcp.connection.support.projectConnectionProxy
+import com.example.gradle.mcp.connection.support.recordingBuildLauncher
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-import org.gradle.tooling.BuildLauncher
-import org.gradle.tooling.ProjectConnection
-import org.gradle.tooling.model.build.BuildEnvironment
-import org.gradle.tooling.model.build.GradleEnvironment
-import org.gradle.tooling.model.build.JavaEnvironment
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
-import java.io.PrintStream
-import java.lang.reflect.InvocationHandler
-import java.lang.reflect.Method
-import java.lang.reflect.Proxy
 import java.util.concurrent.atomic.AtomicInteger
 
 class JavaRuntimeToolsTest {
@@ -150,7 +145,11 @@ class JavaRuntimeToolsTest {
         val connection = projectConnectionProxy(
             getModelCalls = getModelCalls,
             buildEnvironment = buildEnvironmentProxy(
-                javaHome = javaHome.path,
+                BuildEnvironmentProxyOptions(
+                    javaHome = javaHome.path,
+                    gradleVersion = "9.6.0",
+                    jvmArguments = emptyList(),
+                ),
             ),
             launcher = launcher.launcher,
         )
@@ -202,147 +201,4 @@ class JavaRuntimeToolsTest {
         error.message shouldContain "javaToolchains -q"
         error.message shouldContain "Task 'javaToolchains' not found"
     }
-
-    private fun projectConnectionProxy(
-        getModelCalls: AtomicInteger,
-        buildEnvironment: BuildEnvironment?,
-        launcher: BuildLauncher,
-    ): ProjectConnection =
-        Proxy.newProxyInstance(
-            ProjectConnection::class.java.classLoader,
-            arrayOf(ProjectConnection::class.java),
-            InvocationHandler { _, method: Method, args ->
-                when (method.name) {
-                    "getModel" -> {
-                        getModelCalls.incrementAndGet()
-                        val modelType = args?.get(0) as Class<*>
-                        when (modelType) {
-                            BuildEnvironment::class.java -> buildEnvironment
-                            else -> null
-                        }
-                    }
-                    "newBuild" -> launcher
-                    else -> defaultProxyValue(method)
-                }
-            },
-        ) as ProjectConnection
-
-    private data class RecordingBuildLauncher(
-        val launcher: BuildLauncher,
-        val tasks: MutableList<String>,
-        val arguments: MutableList<String>,
-    )
-
-    private fun recordingBuildLauncher(
-        stdoutText: String = "",
-        stderrText: String = "",
-        runException: Exception? = null,
-    ): RecordingBuildLauncher {
-        val tasks = mutableListOf<String>()
-        val arguments = mutableListOf<String>()
-        val stdout = arrayOfNulls<PrintStream>(1)
-        val stderr = arrayOfNulls<PrintStream>(1)
-        val self = arrayOfNulls<Any>(1)
-        self[0] = Proxy.newProxyInstance(
-            BuildLauncher::class.java.classLoader,
-            arrayOf(BuildLauncher::class.java),
-            InvocationHandler { _, method: Method, args ->
-                when (method.name) {
-                    "forTasks" -> {
-                        tasks += normalizeStrings(args)
-                        self[0]
-                    }
-                    "addArguments" -> {
-                        arguments += normalizeStrings(args)
-                        self[0]
-                    }
-                    "setStandardOutput" -> {
-                        stdout[0] = args?.get(0) as PrintStream
-                        self[0]
-                    }
-                    "setStandardError" -> {
-                        stderr[0] = args?.get(0) as PrintStream
-                        self[0]
-                    }
-                    "run" -> {
-                        stdout[0]?.print(stdoutText)
-                        stdout[0]?.flush()
-                        stderr[0]?.print(stderrText)
-                        stderr[0]?.flush()
-                        runException?.let { throw it }
-                        null
-                    }
-                    else -> self[0]
-                }
-            },
-        )
-        return RecordingBuildLauncher(self[0] as BuildLauncher, tasks, arguments)
-    }
-
-    private fun buildEnvironmentProxy(
-        javaHome: String,
-    ): BuildEnvironment {
-        val gradleEnvironment = Proxy.newProxyInstance(
-            GradleEnvironment::class.java.classLoader,
-            arrayOf(GradleEnvironment::class.java),
-            InvocationHandler { _, method: Method, _ ->
-                when (method.name) {
-                    "getGradleVersion" -> "9.6.0"
-                    "getGradleUserHome" -> File("/gradle/home")
-                    else -> defaultProxyValue(method)
-                }
-            },
-        ) as GradleEnvironment
-
-        val javaEnvironment = Proxy.newProxyInstance(
-            JavaEnvironment::class.java.classLoader,
-            arrayOf(JavaEnvironment::class.java),
-            InvocationHandler { _, method: Method, _ ->
-                when (method.name) {
-                    "getJavaHome" -> File(javaHome)
-                    "getJvmArguments" -> emptyList<String>()
-                    else -> defaultProxyValue(method)
-                }
-            },
-        ) as JavaEnvironment
-
-        return Proxy.newProxyInstance(
-            BuildEnvironment::class.java.classLoader,
-            arrayOf(BuildEnvironment::class.java),
-            InvocationHandler { _, method: Method, _ ->
-                when (method.name) {
-                    "getGradle" -> gradleEnvironment
-                    "getJava" -> javaEnvironment
-                    "getVersionInfo" -> "Gradle 9.6.0"
-                    else -> defaultProxyValue(method)
-                }
-            },
-        ) as BuildEnvironment
-    }
-
-    private fun normalizeStrings(args: Array<out Any?>?): List<String> =
-        args?.flatMap { value ->
-            when (value) {
-                is Array<*> -> value.filterIsInstance<String>()
-                is Iterable<*> -> value.filterIsInstance<String>()
-                is String -> listOf(value)
-                else -> emptyList()
-            }
-        }.orEmpty()
-
-    private fun defaultProxyValue(method: Method): Any? =
-        when (method.returnType) {
-            java.lang.Void.TYPE -> null
-            java.lang.Boolean.TYPE -> false
-            java.lang.Integer.TYPE -> 0
-            java.lang.Long.TYPE -> 0L
-            java.lang.Double.TYPE -> 0.0
-            java.lang.Float.TYPE -> 0f
-            java.lang.Short.TYPE -> 0.toShort()
-            java.lang.Byte.TYPE -> 0.toByte()
-            java.lang.Character.TYPE -> '\u0000'
-            List::class.java -> emptyList<Any>()
-            String::class.java -> ""
-            else -> null
-        }
 }
