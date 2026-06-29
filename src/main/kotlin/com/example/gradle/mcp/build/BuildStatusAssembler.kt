@@ -55,12 +55,8 @@ internal object BuildStatusAssembler {
             response.putAll(optionalProgressFields(progressOptions, view.progress))
         }
 
-        if (
-            progressOptions.includeDownloads &&
-            view.statusSource == BuildStatusView.SOURCE_MEMORY &&
-            view.progress != null
-        ) {
-            response.putAll(optionalDownloadFields(progressOptions, view.progress))
+        view.progress?.let { progress ->
+            response.putAll(optionalDownloadFields(progressOptions, progress, view.statusSource))
         }
 
         if (!isRunning) {

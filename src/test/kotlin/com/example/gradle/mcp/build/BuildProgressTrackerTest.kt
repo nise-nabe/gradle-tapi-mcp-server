@@ -330,8 +330,8 @@ class BuildProgressTrackerTest {
 
     @Test
     fun `configureLauncher subscribes file download events only when enabled`() {
-        captureOperationTypes(BuildProgressTracker(), trackDownloads = false) shouldNotContain OperationType.FILE_DOWNLOAD
-        captureOperationTypes(BuildProgressTracker(), trackDownloads = true) shouldContain OperationType.FILE_DOWNLOAD
+        captureOperationTypes(trackDownloads = false) shouldNotContain OperationType.FILE_DOWNLOAD
+        captureOperationTypes(trackDownloads = true) shouldContain OperationType.FILE_DOWNLOAD
     }
 
     @Test
@@ -359,10 +359,8 @@ class BuildProgressTrackerTest {
         tracker.snapshot().currentOperation shouldBe "Gradle tasks: build"
     }
 
-    private fun captureOperationTypes(
-        tracker: BuildProgressTracker,
-        trackDownloads: Boolean = false,
-    ): List<OperationType> {
+    private fun captureOperationTypes(trackDownloads: Boolean): List<OperationType> {
+        val tracker = BuildProgressTracker(trackDownloads = trackDownloads)
         val captured = mutableListOf<OperationType>()
         lateinit var launcher: ConfigurableLauncher<*>
         launcher = Proxy.newProxyInstance(
@@ -388,12 +386,7 @@ class BuildProgressTrackerTest {
                 }
             },
         ) as ConfigurableLauncher<*>
-        val configuredTracker = if (trackDownloads) {
-            BuildProgressTracker(trackDownloads = true)
-        } else {
-            tracker
-        }
-        configuredTracker.configureLauncher(launcher)
+        tracker.configureLauncher(launcher)
         return captured.toList()
     }
 

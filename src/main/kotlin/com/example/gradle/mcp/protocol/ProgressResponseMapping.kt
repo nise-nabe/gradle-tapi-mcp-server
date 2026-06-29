@@ -2,6 +2,7 @@ package com.example.gradle.mcp.protocol
 
 import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
+import com.example.gradle.mcp.build.BuildStatusView
 
 internal fun optionalProgressFields(
     progressOptions: ProgressResponseOptions,
@@ -16,9 +17,14 @@ internal fun optionalProgressFields(
 internal fun optionalDownloadFields(
     progressOptions: ProgressResponseOptions,
     snapshot: BuildProgressSnapshot,
+    statusSource: String,
 ): Map<String, Any?> =
     buildMap {
-        if (progressOptions.includeDownloads && !progressOptions.includeProgress) {
+        if (
+            progressOptions.includeDownloads &&
+            !progressOptions.includeProgress &&
+            statusSource == BuildStatusView.SOURCE_MEMORY
+        ) {
             putAll(snapshot.downloadResponseFields())
         }
     }

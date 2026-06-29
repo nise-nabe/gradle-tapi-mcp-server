@@ -54,7 +54,7 @@ class BuildProgressTracker(
                 status = STATUS_SUCCEEDED
                 currentOperation = null
                 taskProgress.clearRunning()
-                activeDownloads.clear()
+                clearDownloadsLocked()
                 recordEventLocked(ProgressEventTypes.FINISH, "Build succeeded")
                 true
             }
@@ -70,7 +70,7 @@ class BuildProgressTracker(
                 status = STATUS_FAILED
                 currentOperation = null
                 taskProgress.clearRunning()
-                activeDownloads.clear()
+                clearDownloadsLocked()
                 recordEventLocked(ProgressEventTypes.FAIL, message)
                 true
             }
@@ -86,7 +86,7 @@ class BuildProgressTracker(
                 status = STATUS_CANCELLED
                 currentOperation = null
                 taskProgress.clearRunning()
-                activeDownloads.clear()
+                clearDownloadsLocked()
                 recordEventLocked(ProgressEventTypes.CANCEL, message)
                 true
             }
@@ -259,6 +259,10 @@ class BuildProgressTracker(
             recentDownloads.removeFirst()
         }
         totalEventCount += 1
+    }
+
+    private fun clearDownloadsLocked() {
+        activeDownloads.clear()
     }
 
     private fun buildRecentDownloadsLocked(): List<DownloadProgressSnapshot> {
