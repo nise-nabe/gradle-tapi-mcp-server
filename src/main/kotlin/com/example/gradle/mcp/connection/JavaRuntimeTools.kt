@@ -3,8 +3,10 @@ package com.example.gradle.mcp.connection
 import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
+import com.example.gradle.mcp.protocol.optionalBoolean
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.tool
 import io.modelcontextprotocol.server.McpServerFeatures
@@ -17,7 +19,8 @@ import java.io.File
 import java.io.PrintStream
 import java.nio.charset.StandardCharsets
 
-private const val JAVA_RUNTIMES_DETECTION_SOURCE = "javaToolchainsTask"
+private const val JAVA_RUNTIMES_DETECTION_SOURCE_BUILD_ENVIRONMENT = "buildEnvironment"
+private const val JAVA_RUNTIMES_DETECTION_SOURCE_TOOLCHAINS_TASK = "javaToolchainsTask"
 
 private val javaToolchainsSectionRegex = Regex("""^\+\s+(.+?)\s*$""")
 private val javaToolchainsPropertyRegex = Regex("""^\|\s*([^:]+):\s*(.*)$""")
@@ -27,6 +30,9 @@ private fun javaRuntimesSchema(): Map<String, Any> =
         properties = mapOf(
             "projectDirectory" to resolveRequiredProjectDirectoryProperty(
                 "Gradle project root to query.",
+            ),
+            "includeToolchains" to booleanProperty(
+                "Run `javaToolchains -q` to list detected local JDKs. Default true; set false for daemon Java only.",
             ),
         ),
     )
@@ -44,7 +50,7 @@ internal data class DetectedJdk(
 internal data class JavaRuntimesSnapshot(
     val daemon: DaemonJavaRuntime,
     val detectedJdks: List<DetectedJdk>,
-    val detectionSource: String = JAVA_RUNTIMES_DETECTION_SOURCE,
+    val detectionSource: String,
 )
 
 internal fun JavaRuntimesSnapshot.toMap(projectDirectory: String): Map<String, Any?> =
@@ -134,14 +140,25 @@ internal object JavaRuntimesCollector {
         projectDirectory: File,
         connection: ProjectConnection,
         cachedEnvironment: BuildEnvironmentSnapshot?,
+        includeToolchains: Boolean = true,
     ): JavaRuntimesSnapshot {
         val environment = cachedEnvironment ?: loadBuildEnvironment(connection, projectDirectory)
+        val detectedJdks = if (includeToolchains) {
+            detectInstalledJdks(connection, projectDirectory)
+        } else {
+            emptyList()
+        }
         return JavaRuntimesSnapshot(
             daemon = DaemonJavaRuntime(
                 javaHome = environment.javaHome,
                 javaVersion = environment.javaVersion,
             ),
-            detectedJdks = detectInstalledJdks(connection, projectDirectory),
+            detectedJdks = detectedJdks,
+            detectionSource = if (includeToolchains) {
+                JAVA_RUNTIMES_DETECTION_SOURCE_TOOLCHAINS_TASK
+            } else {
+                JAVA_RUNTIMES_DETECTION_SOURCE_BUILD_ENVIRONMENT
+            },
         )
     }
 
@@ -218,15 +235,17 @@ fun javaRuntimeTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_get_java_runtimes",
-            description = "Return the daemon Java from BuildEnvironment plus detected local JDKs from `javaToolchains -q`.",
+            description = "Return the daemon Java from BuildEnvironment plus detected local JDKs from `javaToolchains -q` when includeToolchains=true (default). InstalledJdk/JavaRuntime TAPI models are single-installation types, so toolchain listing uses the javaToolchains task.",
             schema = javaRuntimesSchema(),
         ) { args ->
+            val includeToolchains = args.optionalBoolean("includeToolchains", default = true)
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val runtimes = JavaRuntimesCollector.collect(
                     projectDirectory = projectDirectory,
                     connection = connection,
                     cachedEnvironment = runtime.connectionManager.cachedEnvironment(projectDirectory),
+                    includeToolchains = includeToolchains,
                 )
                 jsonResult(runtimes.toMap(projectDirectory.path))
             }

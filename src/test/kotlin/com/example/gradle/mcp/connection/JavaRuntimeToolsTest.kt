@@ -109,6 +109,33 @@ class JavaRuntimeToolsTest {
     }
 
     @Test
+    fun `collect skips javaToolchains when includeToolchains is false`() {
+        val launcher = recordingBuildLauncher(stdoutText = "should not be read")
+        val connection = projectConnectionProxy(
+            getModelCalls = AtomicInteger(0),
+            buildEnvironment = null,
+            launcher = launcher.launcher,
+        )
+
+        val snapshot = JavaRuntimesCollector.collect(
+            projectDirectory = File("/workspace"),
+            connection = connection,
+            cachedEnvironment = BuildEnvironmentSnapshot(
+                gradleVersion = "9.6.0",
+                gradleUserHome = "/gradle/home",
+                javaHome = "/usr/lib/jvm/java-17-openjdk-amd64",
+                javaVersion = "17.0.19",
+                jvmArguments = emptyList(),
+            ),
+            includeToolchains = false,
+        )
+
+        snapshot.detectionSource shouldBe "buildEnvironment"
+        snapshot.detectedJdks shouldContainExactly emptyList()
+        launcher.tasks shouldContainExactly emptyList()
+    }
+
+    @Test
     fun `collect loads BuildEnvironment when the cache is missing`(@TempDir javaHome: File) {
         File(javaHome, "release").writeText("JAVA_VERSION=\"21.0.10\"\n")
         val getModelCalls = AtomicInteger(0)
