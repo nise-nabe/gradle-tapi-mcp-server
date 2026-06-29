@@ -142,6 +142,17 @@ class BuildProgressTracker(
     }
 
     private fun handleGradleEvent(event: ProgressEvent) {
+        when (event) {
+            is FileDownloadStartEvent -> {
+                recordDownloadStart(event)
+                return
+            }
+            is FileDownloadFinishEvent -> {
+                recordDownloadFinish(event)
+                return
+            }
+        }
+
         val displayName = event.displayName
         currentOperation = displayName
 
@@ -197,8 +208,6 @@ class BuildProgressTracker(
                     }
                 }
             }
-            is FileDownloadStartEvent -> recordDownloadStart(event)
-            is FileDownloadFinishEvent -> recordDownloadFinish(event)
             is FinishEvent -> {
                 when (val result = event.result) {
                     is FailureResult -> collectProblemsFromFailureResult(result)

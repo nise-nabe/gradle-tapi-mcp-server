@@ -347,6 +347,18 @@ class BuildProgressTrackerTest {
         snapshot.recentDownloads.single().status shouldBe BuildProgressTracker.DOWNLOAD_STATUS_SUCCEEDED
     }
 
+    @Test
+    fun `download events do not overwrite currentOperation`() {
+        val tracker = BuildProgressTracker(trackDownloads = true)
+        tracker.markStarting("Gradle tasks: build")
+        val listener = tracker.asGradleListener()
+        val uri = URI.create("https://repo.example.com/libs/foo.jar")
+        listener.statusChanged(fileDownloadStartEvent(uri, "Download foo"))
+        listener.statusChanged(fileDownloadFinishEvent(uri, "Download foo", 1024L))
+
+        tracker.snapshot().currentOperation shouldBe "Gradle tasks: build"
+    }
+
     private fun captureOperationTypes(
         tracker: BuildProgressTracker,
         trackDownloads: Boolean = false,

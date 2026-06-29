@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.build.BuildProblemSnapshot
+import com.example.gradle.mcp.build.DownloadProgressSnapshot
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import io.kotest.matchers.shouldBe
@@ -74,6 +75,52 @@ class BuildStatusAssemblerTest {
         response["statusSource"] shouldBe "disk"
         response["recordDirectory"] shouldBe "/tmp/record"
         response["liveProgress"] shouldBe false
+    }
+
+    @Test
+    fun `assemble omits download fields for disk status source even when includeDownloads is enabled`() {
+        val response = BuildStatusAssembler.assemble(
+            view = BuildStatusView(
+                buildId = "disk-build",
+                kind = "tasks",
+                status = BuildProgressTracker.STATUS_RUNNING,
+                startedAt = "2026-06-14T10:00:00Z",
+                finishedAt = null,
+                tasks = listOf("build"),
+                error = null,
+                outcome = null,
+                buildSummary = null,
+                progress = BuildProgressSnapshot(
+                    status = BuildProgressTracker.STATUS_RUNNING,
+                    currentOperation = "Gradle tasks: build",
+                    completedTaskCount = 0,
+                    runningTaskCount = 0,
+                    failedTaskCount = 0,
+                    completedTasks = emptyList(),
+                    runningTasks = emptyList(),
+                    failedTasks = emptyList(),
+                    recentEvents = emptyList(),
+                    totalEventCount = 0,
+                    recentDownloads = listOf(
+                        DownloadProgressSnapshot(
+                            uri = "https://repo.example.com/foo.jar",
+                            status = BuildProgressTracker.DOWNLOAD_STATUS_SUCCEEDED,
+                        ),
+                    ),
+                    activeDownloadCount = 1,
+                ),
+                progressAvailable = true,
+                stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+                stderr = CapturedStreamSnapshot(text = "", totalChars = 0),
+                statusSource = BuildStatusView.SOURCE_DISK,
+                recordDirectory = "/tmp/record",
+            ),
+            outputLimit = OutputLimitOptions(),
+            progressOptions = ProgressResponseOptions(includeDownloads = true),
+        )
+
+        response.containsKey("activeDownloadCount") shouldBe false
+        response.containsKey("recentDownloads") shouldBe false
     }
 
     @Test
