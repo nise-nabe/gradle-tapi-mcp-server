@@ -5,7 +5,7 @@ kotest = "6.2.1"
 mcp-bom = "2.0.0"
 slf4j = "2.0.17"
 gradle-tooling-api = "9.6.1"
-jackson = "3.0.4"
+jackson = "3.2.0"
 
 [libraries]
 mcp-bom = { module = "io.modelcontextprotocol.sdk:mcp-bom", version.ref = "mcp-bom" }
