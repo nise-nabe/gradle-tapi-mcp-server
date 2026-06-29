@@ -77,6 +77,52 @@ class BuildStatusAssemblerTest {
     }
 
     @Test
+    fun `assemble exposes liveProblems without includeProgress when includeProblems is enabled`() {
+        val response = BuildStatusAssembler.assemble(
+            view = BuildStatusView(
+                buildId = "running-build",
+                kind = "tasks",
+                status = BuildProgressTracker.STATUS_RUNNING,
+                startedAt = "2026-06-14T10:00:00Z",
+                finishedAt = null,
+                tasks = listOf("build"),
+                error = null,
+                outcome = null,
+                buildSummary = null,
+                progress = BuildProgressSnapshot(
+                    status = BuildProgressTracker.STATUS_RUNNING,
+                    currentOperation = "Gradle tasks: build",
+                    completedTaskCount = 0,
+                    runningTaskCount = 1,
+                    failedTaskCount = 0,
+                    completedTasks = emptyList(),
+                    runningTasks = listOf(":app:build"),
+                    failedTasks = emptyList(),
+                    recentEvents = emptyList(),
+                    totalEventCount = 1,
+                    liveProblems = listOf(
+                        BuildProblemSnapshot(
+                            label = "Deprecated API usage",
+                            severity = "warning",
+                        ),
+                    ),
+                ),
+                progressAvailable = true,
+                stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+                stderr = CapturedStreamSnapshot(text = "", totalChars = 0),
+                statusSource = BuildStatusView.SOURCE_MEMORY,
+            ),
+            outputLimit = OutputLimitOptions(),
+            progressOptions = ProgressResponseOptions(includeProblems = true),
+        )
+
+        response.containsKey("progress") shouldBe false
+        (response["liveProblems"] as List<*>).single().let { problem ->
+            (problem as Map<*, *>)["label"] shouldBe "Deprecated API usage"
+        }
+    }
+
+    @Test
     fun `assemble includes problems for failed foreground builds without includeProgress`() {
         val response = BuildStatusAssembler.assemble(
             view = BuildStatusView(
