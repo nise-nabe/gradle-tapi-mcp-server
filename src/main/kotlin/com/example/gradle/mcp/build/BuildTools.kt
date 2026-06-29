@@ -28,6 +28,10 @@ internal fun progressProperties(): Map<String, Any> =
         "includeProgress" to booleanProperty(
             "Include detailed progress (completedTasks, recentEvents). Default false to save tokens.",
         ),
+        "includeDownloads" to booleanProperty(
+            "Include dependency download progress (activeDownloadCount, recentDownloads). "
+                + "Default false to save tokens; useful for first-time builds with many downloads.",
+        ),
     )
 
 internal fun outputProperties(): Map<String, Any> =
@@ -130,7 +134,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_get_build_status",
-            description = "Return status for a running or completed Gradle build started with background=true. buildId is required because multiple background builds may run concurrently. Status values: running, succeeded, failed, cancelled, not_found. Default response is outcome and buildSummary only (no stdout/stderr task log). Set includeOutput=true for captured stdout/stderr; while the build is running, live output is available only when the MCP server still holds the in-memory record—disk-only polls (after restart or memory eviction) return stdout/stderr only after MCP finalizes logs at build end. Disk-backed polls include statusSource (memory|disk), and when statusSource is disk also liveProgress=false, progressAvailable, and recordDirectory. Gradle on-disk records override in-memory status while Gradle is still active; stale Gradle running (MCP terminal, no post-finalize events) falls back to MCP. Optional projectDirectory locates disk artifacts when the in-memory record is gone and the connected project differs. Completed builds include failedTaskCount, failedTasks, and buildSummary.failureSummary without includeProgress when available (in-memory, MCP-terminal disk, or Gradle-terminal failed with events.ndjson). Set includeProgress=true for the full progress object (completedTasks, recentEvents); disk progress uses events.ndjson (task and test events).",
+            description = "Return status for a running or completed Gradle build started with background=true. buildId is required because multiple background builds may run concurrently. Status values: running, succeeded, failed, cancelled, not_found. Default response is outcome and buildSummary only (no stdout/stderr task log). Set includeOutput=true for captured stdout/stderr; while the build is running, live output is available only when the MCP server still holds the in-memory record—disk-only polls (after restart or memory eviction) return stdout/stderr only after MCP finalizes logs at build end. Disk-backed polls include statusSource (memory|disk), and when statusSource is disk also liveProgress=false, progressAvailable, and recordDirectory. Gradle on-disk records override in-memory status while Gradle is still active; stale Gradle running (MCP terminal, no post-finalize events) falls back to MCP. Optional projectDirectory locates disk artifacts when the in-memory record is gone and the connected project differs. Completed builds include failedTaskCount, failedTasks, and buildSummary.failureSummary without includeProgress when available (in-memory, MCP-terminal disk, or Gradle-terminal failed with events.ndjson). Set includeProgress=true for the full progress object (completedTasks, recentEvents); disk progress uses events.ndjson (task and test events). Set includeDownloads=true for dependency download progress (activeDownloadCount, recentDownloads); requires an in-memory record with live Tooling API events.",
             schema = buildStatusSchema(),
         ) { args ->
             val outputLimit = OutputLimitOptions.fromArgs(args)
@@ -151,7 +155,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_run_tasks",
-            description = "Execute Gradle task paths and return build outcome and summary. stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. Use background=true to start a long build and poll gradle_get_build_status with the returned buildId; call gradle_cancel_build to stop an unneeded background build. Multiple background builds may run concurrently. Set includeProgress=true for detailed progress on foreground runs.",
+            description = "Execute Gradle task paths and return build outcome and summary. stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. Use background=true to start a long build and poll gradle_get_build_status with the returned buildId; call gradle_cancel_build to stop an unneeded background build. Multiple background builds may run concurrently. Set includeProgress=true for detailed progress on foreground runs. Set includeDownloads=true to track dependency download progress during long or first-time builds.",
             schema = runOutputSchema(
                 required = listOf("tasks"),
                 extraProperties = mapOf(
@@ -187,7 +191,8 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
                 "stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. " +
                 "Use background=true to start a long test run and poll gradle_get_build_status with the returned buildId; " +
                 "call gradle_cancel_build to stop an unneeded background test run. Multiple background test runs may run concurrently. " +
-                "Set includeProgress=true for detailed progress on foreground runs.",
+                "Set includeProgress=true for detailed progress on foreground runs. " +
+                "Set includeDownloads=true to track dependency download progress during long or first-time test runs.",
             schema = runOutputSchema(
                 required = emptyList(),
                 extraProperties = mapOf(

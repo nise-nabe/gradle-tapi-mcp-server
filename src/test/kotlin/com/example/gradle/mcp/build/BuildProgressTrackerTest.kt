@@ -21,7 +21,12 @@ import org.gradle.tooling.events.problems.Severity
 import org.gradle.tooling.events.test.TestFinishEvent
 import org.gradle.tooling.events.test.TestStartEvent
 import org.gradle.tooling.events.test.TestSuccessResult
+import org.gradle.tooling.events.download.FileDownloadFinishEvent
+import org.gradle.tooling.events.download.FileDownloadOperationDescriptor
+import org.gradle.tooling.events.download.FileDownloadResult
+import org.gradle.tooling.events.download.FileDownloadStartEvent
 import org.junit.jupiter.api.Test
+import java.net.URI
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
 
@@ -317,6 +322,73 @@ class BuildProgressTrackerTest {
         snapshot.recentEvents.size shouldBeLessThanOrEqual 30
         snapshot.totalEventCount shouldBe 40
     }
+
+
+    @Test
+    fun `tracks file download events when enabled`() {
+        val tracker = BuildProgressTracker(trackDownloads = true)
+        val listener = tracker.asGradleListener()
+        val uri = URI.create("https://repo.example.com/libs/foo.jar")
+        listener.statusChanged(fileDownloadStartEvent(uri, "Download foo"))
+        tracker.snapshot().activeDownloadCount shouldBe 1
+        listener.statusChanged(fileDownloadFinishEvent(uri, "Download foo", 1024L))
+        val snapshot = tracker.snapshot()
+        snapshot.activeDownloadCount shouldBe 0
+        snapshot.recentDownloads.single().status shouldBe BuildProgressTracker.DOWNLOAD_STATUS_SUCCEEDED
+    }
+
+    private fun fileDownloadDescriptor(uri: URI): FileDownloadOperationDescriptor =
+        Proxy.newProxyInstance(
+            FileDownloadOperationDescriptor::class.java.classLoader,
+            arrayOf(FileDownloadOperationDescriptor::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getUri" -> uri
+                    "getName", "getDisplayName" -> uri.toString()
+                    "getParent" -> null
+                    else -> null
+                }
+            },
+        ) as FileDownloadOperationDescriptor
+
+    private fun fileDownloadStartEvent(uri: URI, displayName: String): FileDownloadStartEvent =
+        Proxy.newProxyInstance(
+            FileDownloadStartEvent::class.java.classLoader,
+            arrayOf(FileDownloadStartEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> displayName
+                    "getEventTime" -> 0L
+                    "getDescriptor" -> fileDownloadDescriptor(uri)
+                    else -> null
+                }
+            },
+        ) as FileDownloadStartEvent
+
+    private fun fileDownloadFinishEvent(uri: URI, displayName: String, bytes: Long): FileDownloadFinishEvent =
+        Proxy.newProxyInstance(
+            FileDownloadFinishEvent::class.java.classLoader,
+            arrayOf(FileDownloadFinishEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> displayName
+                    "getEventTime" -> 1L
+                    "getDescriptor" -> fileDownloadDescriptor(uri)
+                    "getResult" -> Proxy.newProxyInstance(
+                        FileDownloadResult::class.java.classLoader,
+                        arrayOf(FileDownloadResult::class.java),
+                        InvocationHandler { _, m, _ ->
+                            when (m.name) {
+                                "getBytesDownloaded" -> bytes
+                                "getStartTime", "getEndTime" -> 0L
+                                else -> null
+                            }
+                        },
+                    )
+                    else -> null
+                }
+            },
+        ) as FileDownloadFinishEvent
 
     private fun failureResultProxy(failures: List<Failure>): FailureResult =
         Proxy.newProxyInstance(
