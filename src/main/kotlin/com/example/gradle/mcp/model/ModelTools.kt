@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.model
 
-import com.example.gradle.mcp.ConnectionScope
+import com.example.gradle.mcp.GradleMcpRuntime
+import com.example.gradle.mcp.build.BuildExecutionManager
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
@@ -22,6 +23,7 @@ import org.gradle.tooling.model.build.Help
 import org.gradle.tooling.model.gradle.BuildInvocations
 import org.gradle.tooling.model.gradle.GradleBuild
 import org.gradle.tooling.model.gradle.ProjectPublications
+import java.io.File
 
 internal fun projectTreeProperties(): Map<String, Any> =
     mapOf(
@@ -98,6 +100,23 @@ internal fun helpSchema(): Map<String, Any> =
 private fun prepareTasksFromArgs(args: Map<String, Any>): List<String> =
     args.optionalStringList("prepareTasks").orEmpty().filter { it.isNotBlank() }.distinct()
 
+internal fun requireNoActiveBuildForPrepareTasks(
+    prepareTasks: List<String>,
+    projectDirectory: File,
+    buildExecutionManager: BuildExecutionManager,
+) {
+    if (prepareTasks.isEmpty()) {
+        return
+    }
+    if (buildExecutionManager.hasActiveBuild(projectDirectory)) {
+        throw McpException(
+            McpErrorCode.BUILD_ALREADY_RUNNING,
+            "Cannot run prepareTasks while a Gradle build is running for ${projectDirectory.path}. " +
+                "Wait for the build to finish or call gradle_get_build_status.",
+        )
+    }
+}
+
 private fun fetchHelpModel(connection: ProjectConnection, prepareTasks: List<String>): Help =
     try {
         connection.fetchModel(Help::class.java, prepareTasks)
@@ -115,7 +134,7 @@ private fun fetchHelpModel(connection: ProjectConnection, prepareTasks: List<Str
         }
     }
 
-context(runtime: ConnectionScope)
+context(runtime: GradleMcpRuntime)
 fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
@@ -126,6 +145,7 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             val treeOptions = ProjectTreeOptions.fromArgs(args)
             val prepareTasks = prepareTasksFromArgs(args)
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+            requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val project = connection.fetchModel(GradleProject::class.java, prepareTasks)
                 jsonResult(ModelSerializers.projectOverview(project, treeOptions))
@@ -139,6 +159,7 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             val treeOptions = ProjectTreeOptions.fromArgs(args)
             val prepareTasks = prepareTasksFromArgs(args)
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+            requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val build = connection.fetchModel(GradleBuild::class.java, prepareTasks)
                 jsonResult(ModelSerializers.gradleBuild(build, treeOptions))
@@ -153,6 +174,7 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             val treeOptions = ProjectTreeOptions.fromArgs(args)
             val prepareTasks = prepareTasksFromArgs(args)
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+            requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val project = connection.fetchModel(GradleProject::class.java, prepareTasks)
                 jsonResult(ModelSerializers.gradleProject(project, options, treeOptions))
@@ -166,6 +188,7 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             val options = ModelQueryOptions.fromArgs(args).copy(includeTasks = true)
             val prepareTasks = prepareTasksFromArgs(args)
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+            requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val invocations = connection.fetchModel(BuildInvocations::class.java, prepareTasks)
                 jsonResult(ModelSerializers.buildInvocations(invocations, options))
@@ -178,6 +201,7 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
         ) { args ->
             val prepareTasks = prepareTasksFromArgs(args)
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+            requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val publications = connection.fetchModel(ProjectPublications::class.java, prepareTasks)
                 jsonResult(ModelSerializers.projectPublications(publications))
@@ -191,6 +215,7 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             val limitOptions = HelpLimitOptions.fromArgs(args)
             val prepareTasks = prepareTasksFromArgs(args)
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+            requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val help = fetchHelpModel(connection, prepareTasks)
                 jsonResult(ModelSerializers.help(help, limitOptions))
