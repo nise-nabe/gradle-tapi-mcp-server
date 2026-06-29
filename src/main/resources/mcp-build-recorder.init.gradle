@@ -200,6 +200,8 @@ if (!configurationCacheRequested) {
                         ts          : java.time.Instant.now().toString(),
                         type        : "TEST_START",
                         displayName : "${descriptor.className}.${descriptor.name}",
+                        className   : descriptor.className,
+                        methodName  : descriptor.name,
                     ])
                 }
 
@@ -216,6 +218,9 @@ if (!configurationCacheRequested) {
                         type        : type,
                         displayName : "${descriptor.className}.${descriptor.name}",
                         outcome     : result.exception?.message,
+                        className   : descriptor.className,
+                        methodName  : descriptor.name,
+                        failureMessage: result.exception?.message,
                     ])
                 }
             })

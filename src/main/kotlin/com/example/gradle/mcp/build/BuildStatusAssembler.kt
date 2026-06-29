@@ -56,7 +56,7 @@ internal object BuildStatusAssembler {
 
         if (!isRunning) {
             view.buildSummary?.let { response["buildSummary"] = it }
-            view.progress?.let { response.putAll(terminalFailureFields(it)) }
+            view.progress?.let { response.putAll(terminalFailureFields(it, progressOptions)) }
         }
         response.putAll(streamResponseFields(view.stdout, outputLimit, "stdout"))
         response.putAll(streamResponseFields(view.stderr, outputLimit, "stderr"))

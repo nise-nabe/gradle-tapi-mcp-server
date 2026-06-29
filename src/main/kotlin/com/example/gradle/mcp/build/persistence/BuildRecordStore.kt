@@ -7,6 +7,7 @@ import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildRecord
 import com.example.gradle.mcp.build.ProgressEventTypes
 import com.example.gradle.mcp.build.CapturedStreamSnapshot
+import com.example.gradle.mcp.build.TestProgressDetailsSnapshot
 import com.example.gradle.mcp.protocol.mcpObjectMapper
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.readValue
@@ -223,7 +224,40 @@ class BuildRecordStore(
             eventType = eventType,
             displayName = displayName,
             outcome = map["outcome"] as? String,
+            testDetails = parseTestDetails(eventType, map),
         )
+    }
+
+    private fun parseTestDetails(
+        eventType: String,
+        map: Map<String, Any?>,
+    ): TestProgressDetailsSnapshot? {
+        if (!eventType.startsWith("TEST_")) {
+            return null
+        }
+        val failureMessage = (map["failureMessage"] as? String) ?: (map["outcome"] as? String)
+        val details = TestProgressDetailsSnapshot(
+            className = map["className"] as? String,
+            methodName = map["methodName"] as? String,
+            sourceType = map["sourceType"] as? String,
+            sourcePath = map["sourcePath"] as? String,
+            sourceLine = (map["sourceLine"] as? Number)?.toInt(),
+            sourceColumn = (map["sourceColumn"] as? Number)?.toInt(),
+            failureMessage = failureMessage,
+        )
+        return if (
+            details.className == null &&
+            details.methodName == null &&
+            details.sourceType == null &&
+            details.sourcePath == null &&
+            details.sourceLine == null &&
+            details.sourceColumn == null &&
+            details.failureMessage == null
+        ) {
+            null
+        } else {
+            details
+        }
     }
 
     private inline fun <reified T> readJsonFile(file: File): T? =

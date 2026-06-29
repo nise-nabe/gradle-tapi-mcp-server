@@ -286,8 +286,8 @@ class BuildRecordStoreTest {
         File(recordDir, McpBuildRecordPaths.EVENTS_FILE).writeText(
             """
             {"ts":"2026-06-14T10:00:01Z","type":"START","displayName":"Gradle tasks: test"}
-            {"ts":"2026-06-14T10:00:02Z","type":"TEST_START","displayName":"com.example.FooTest.bar"}
-            {"ts":"2026-06-14T10:00:03Z","type":"TEST_SUCCESS","displayName":"com.example.FooTest.bar"}
+            {"ts":"2026-06-14T10:00:02Z","type":"TEST_START","displayName":"com.example.FooTest.bar","className":"com.example.FooTest","methodName":"bar","sourceType":"file","sourcePath":"src/test/kotlin/com/example/FooTest.kt","sourceLine":12}
+            {"ts":"2026-06-14T10:00:03Z","type":"TEST_SUCCESS","displayName":"com.example.FooTest.bar","className":"com.example.FooTest","methodName":"bar","sourceType":"file","sourcePath":"src/test/kotlin/com/example/FooTest.kt","sourceLine":12}
             """.trimIndent() + "\n",
             StandardCharsets.UTF_8,
         )
@@ -296,13 +296,15 @@ class BuildRecordStoreTest {
             projectDir,
             buildId,
             OutputLimitOptions(),
-            ProgressResponseOptions(includeProgress = true),
+            ProgressResponseOptions(includeProgress = true, includeTestDetails = true),
         ).shouldNotBeNull()
 
         status["progressAvailable"] shouldBe true
         val progress = status["progress"] as Map<*, *>
         progress["completedTaskCount"] shouldBe 1
         progress["runningTaskCount"] shouldBe 0
+        ((((progress["recentEvents"] as List<*>).last() as Map<*, *>)["test"] as Map<*, *>)["sourcePath"]) shouldBe
+            "src/test/kotlin/com/example/FooTest.kt"
     }
 
     @Test
@@ -558,6 +560,44 @@ class BuildRecordStoreTest {
         status["status"] shouldBe "failed"
         status["failedTaskCount"] shouldBe 1
         status["failedTasks"] shouldBe listOf(":app:broken")
+    }
+
+    @Test
+    fun `loadStatus includes failedTests summary from events on gradle terminal failed`(@TempDir projectDir: File) {
+        val buildId = "gradle-failed-with-test-details"
+        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        recordDir.mkdirs()
+        File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
+            mcpObjectMapper().writeValueAsString(
+                GradleBuildResult(
+                    buildId = buildId,
+                    status = "failed",
+                    startedAt = "2026-06-14T10:00:00Z",
+                    finishedAt = "2026-06-14T10:02:00Z",
+                    failure = "Test failed",
+                    taskNames = listOf("test"),
+                ),
+            ),
+            StandardCharsets.UTF_8,
+        )
+        File(recordDir, McpBuildRecordPaths.EVENTS_FILE).writeText(
+            """
+            {"ts":"2026-06-14T10:01:00Z","type":"TEST_FAIL","displayName":"com.example.FooTest.bar","outcome":"boom","className":"com.example.FooTest","methodName":"bar","failureMessage":"boom"}
+            {"ts":"2026-06-14T10:02:00Z","type":"BUILD_FINISHED","status":"failed"}
+            """.trimIndent() + "\n",
+            StandardCharsets.UTF_8,
+        )
+
+        val status = loadStatus(
+            projectDir,
+            buildId,
+            OutputLimitOptions(),
+            ProgressResponseOptions(includeTestDetails = true),
+        ).shouldNotBeNull()
+
+        status["status"] shouldBe "failed"
+        ((((status["failedTests"] as List<*>).single() as Map<*, *>)["className"])) shouldBe "com.example.FooTest"
+        ((((status["failedTests"] as List<*>).single() as Map<*, *>)["failureMessage"])) shouldBe "boom"
     }
 
     @Test
