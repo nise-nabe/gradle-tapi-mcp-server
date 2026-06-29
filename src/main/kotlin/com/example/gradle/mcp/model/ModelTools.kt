@@ -15,6 +15,7 @@ import com.example.gradle.mcp.protocol.stringProperty
 import com.example.gradle.mcp.protocol.stringArrayProperty
 import com.example.gradle.mcp.protocol.tool
 import io.modelcontextprotocol.server.McpServerFeatures
+import io.modelcontextprotocol.spec.McpSchema
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.UnknownModelException
 import org.gradle.tooling.UnsupportedVersionException
@@ -25,15 +26,19 @@ import org.gradle.tooling.model.gradle.GradleBuild
 import org.gradle.tooling.model.gradle.ProjectPublications
 import java.io.File
 
-internal fun projectTreeProperties(): Map<String, Any> =
+private fun modelDirectoryProperties(): Map<String, Any> =
     mapOf(
-        "maxDepth" to integerProperty("Maximum project tree depth (root=0); deeper child projects are omitted"),
-        "maxChildren" to integerProperty("Maximum child projects per node (omit for unlimited)"),
         "projectDirectory" to resolveRequiredProjectDirectoryProperty(
             "Gradle project root to query.",
         ),
         "prepareTasks" to prepareTasksProperty(),
     )
+
+internal fun projectTreeProperties(): Map<String, Any> =
+    mapOf(
+        "maxDepth" to integerProperty("Maximum project tree depth (root=0); deeper child projects are omitted"),
+        "maxChildren" to integerProperty("Maximum child projects per node (omit for unlimited)"),
+    ) + modelDirectoryProperties()
 
 internal fun prepareTasksProperty(): Map<String, Any> =
     stringArrayProperty(
@@ -61,25 +66,13 @@ internal fun modelQuerySchema(): Map<String, Any> =
 
 internal fun invocationsQuerySchema(): Map<String, Any> =
     objectSchema(
-        properties = mapOf(
-            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
-                "Gradle project root to query.",
-            ),
-            "prepareTasks" to prepareTasksProperty(),
-        ) + modelQueryProperties() + mapOf(
+        properties = modelDirectoryProperties() + modelQueryProperties() + mapOf(
             "includeTaskSelectors" to booleanProperty("Include task selectors. Default false to save tokens."),
         ),
     )
 
 internal fun publicationsSchema(): Map<String, Any> =
-    objectSchema(
-        properties = mapOf(
-            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
-                "Gradle project root to query.",
-            ),
-            "prepareTasks" to prepareTasksProperty(),
-        ),
-    )
+    objectSchema(properties = modelDirectoryProperties())
 
 internal fun helpSchema(): Map<String, Any> =
     objectSchema(
@@ -90,11 +83,7 @@ internal fun helpSchema(): Map<String, Any> =
             "tailOutput" to booleanProperty(
                 "When truncated, keep the tail of the help text (default true)",
             ),
-            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
-                "Gradle project root to query.",
-            ),
-            "prepareTasks" to prepareTasksProperty(),
-        ),
+        ) + modelDirectoryProperties(),
     )
 
 private fun prepareTasksFromArgs(args: Map<String, Any>): List<String> =
@@ -135,6 +124,20 @@ private fun fetchHelpModel(connection: ProjectConnection, prepareTasks: List<Str
     }
 
 context(runtime: GradleMcpRuntime)
+private inline fun <T> fetchModelJson(
+    args: Map<String, Any>,
+    crossinline fetch: (ProjectConnection, List<String>) -> T,
+    crossinline serialize: (T) -> Any,
+): McpSchema.CallToolResult {
+    val prepareTasks = prepareTasksFromArgs(args)
+    val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+    requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
+    return runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+        jsonResult(serialize(fetch(connection, prepareTasks)))
+    }
+}
+
+context(runtime: GradleMcpRuntime)
 fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
@@ -143,13 +146,13 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             schema = projectTreeSchema(),
         ) { args ->
             val treeOptions = ProjectTreeOptions.fromArgs(args)
-            val prepareTasks = prepareTasksFromArgs(args)
-            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-            requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
-            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val project = connection.fetchModel(GradleProject::class.java, prepareTasks)
-                jsonResult(ModelSerializers.projectOverview(project, treeOptions))
-            }
+            fetchModelJson(
+                args,
+                fetch = { connection, prepareTasks ->
+                    connection.fetchModel(GradleProject::class.java, prepareTasks)
+                },
+                serialize = { project -> ModelSerializers.projectOverview(project, treeOptions) },
+            )
         },
         tool(
             name = "gradle_get_gradle_build",
@@ -157,13 +160,13 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             schema = projectTreeSchema(),
         ) { args ->
             val treeOptions = ProjectTreeOptions.fromArgs(args)
-            val prepareTasks = prepareTasksFromArgs(args)
-            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-            requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
-            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val build = connection.fetchModel(GradleBuild::class.java, prepareTasks)
-                jsonResult(ModelSerializers.gradleBuild(build, treeOptions))
-            }
+            fetchModelJson(
+                args,
+                fetch = { connection, prepareTasks ->
+                    connection.fetchModel(GradleBuild::class.java, prepareTasks)
+                },
+                serialize = { build -> ModelSerializers.gradleBuild(build, treeOptions) },
+            )
         },
         tool(
             name = "gradle_get_project_model",
@@ -172,13 +175,13 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
         ) { args ->
             val options = ModelQueryOptions.fromArgs(args)
             val treeOptions = ProjectTreeOptions.fromArgs(args)
-            val prepareTasks = prepareTasksFromArgs(args)
-            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-            requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
-            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val project = connection.fetchModel(GradleProject::class.java, prepareTasks)
-                jsonResult(ModelSerializers.gradleProject(project, options, treeOptions))
-            }
+            fetchModelJson(
+                args,
+                fetch = { connection, prepareTasks ->
+                    connection.fetchModel(GradleProject::class.java, prepareTasks)
+                },
+                serialize = { project -> ModelSerializers.gradleProject(project, options, treeOptions) },
+            )
         },
         tool(
             name = "gradle_get_build_invocations",
@@ -186,26 +189,26 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             schema = invocationsQuerySchema(),
         ) { args ->
             val options = ModelQueryOptions.fromArgs(args).copy(includeTasks = true)
-            val prepareTasks = prepareTasksFromArgs(args)
-            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-            requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
-            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val invocations = connection.fetchModel(BuildInvocations::class.java, prepareTasks)
-                jsonResult(ModelSerializers.buildInvocations(invocations, options))
-            }
+            fetchModelJson(
+                args,
+                fetch = { connection, prepareTasks ->
+                    connection.fetchModel(BuildInvocations::class.java, prepareTasks)
+                },
+                serialize = { invocations -> ModelSerializers.buildInvocations(invocations, options) },
+            )
         },
         tool(
             name = "gradle_get_project_publications",
             description = "Fetch publications declared by the build. $PREPARE_TASKS_TOOL_NOTE",
             schema = publicationsSchema(),
         ) { args ->
-            val prepareTasks = prepareTasksFromArgs(args)
-            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-            requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
-            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val publications = connection.fetchModel(ProjectPublications::class.java, prepareTasks)
-                jsonResult(ModelSerializers.projectPublications(publications))
-            }
+            fetchModelJson(
+                args,
+                fetch = { connection, prepareTasks ->
+                    connection.fetchModel(ProjectPublications::class.java, prepareTasks)
+                },
+                serialize = ModelSerializers::projectPublications,
+            )
         },
         tool(
             name = "gradle_get_help",
@@ -213,12 +216,10 @@ fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
             schema = helpSchema(),
         ) { args ->
             val limitOptions = HelpLimitOptions.fromArgs(args)
-            val prepareTasks = prepareTasksFromArgs(args)
-            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-            requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
-            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val help = fetchHelpModel(connection, prepareTasks)
-                jsonResult(ModelSerializers.help(help, limitOptions))
-            }
+            fetchModelJson(
+                args,
+                fetch = ::fetchHelpModel,
+                serialize = { help -> ModelSerializers.help(help, limitOptions) },
+            )
         },
     )
