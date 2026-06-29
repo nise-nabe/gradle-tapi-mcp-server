@@ -467,7 +467,7 @@ class BuildExecutionManager(
         launcher.addJvmArguments(*request.jvmArguments.toTypedArray())
         launcher.withCancellationToken(record.cancellationTokenSource.token())
         launcher.withDetailedFailure()
-        tracker.configureLauncher(launcher)
+        tracker.configureLauncher(launcher, request.progressOptions.includeProblems)
         streams.applyTo(launcher)
     }
 

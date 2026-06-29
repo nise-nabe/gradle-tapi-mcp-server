@@ -2,12 +2,16 @@ package com.example.gradle.mcp.build
 
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
+import org.gradle.tooling.ConfigurableLauncher
 import org.gradle.tooling.Failure
 import org.gradle.tooling.events.FailureResult
+import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.FinishEvent
 import org.gradle.tooling.events.configuration.ProjectConfigurationFinishEvent
 import org.gradle.tooling.events.configuration.ProjectConfigurationStartEvent
@@ -18,6 +22,7 @@ import org.gradle.tooling.events.problems.Problem
 import org.gradle.tooling.events.problems.ProblemDefinition
 import org.gradle.tooling.events.problems.ProblemId
 import org.gradle.tooling.events.problems.Severity
+import org.gradle.tooling.events.problems.SingleProblemEvent
 import org.gradle.tooling.events.test.TestFinishEvent
 import org.gradle.tooling.events.test.TestStartEvent
 import org.gradle.tooling.events.test.TestSuccessResult
@@ -197,6 +202,37 @@ class BuildProgressTrackerTest {
     }
 
     @Test
+    fun `configureLauncher subscribes problem events only when enabled`() {
+        val problemOperationType = OperationType.values()
+            .firstOrNull { it.name == "PROBLEM" || it.name == "PROBLEMS" }
+            ?: return
+
+        captureOperationTypes(BuildProgressTracker(), includeProblems = false) shouldNotContain problemOperationType
+        captureOperationTypes(BuildProgressTracker(), includeProblems = true) shouldContain problemOperationType
+    }
+
+    @Test
+    fun `collects live problems from problem events`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+        val problem = problemProxy(
+            displayName = "Deprecated API usage",
+            details = "Task uses a deprecated input property",
+            severity = Severity.WARNING,
+            contextualLabel = "Task :compileJava",
+        )
+
+        listener.statusChanged(singleProblemEventProxy(problem))
+
+        val snapshot = tracker.snapshot()
+        snapshot.problems shouldHaveSize 0
+        snapshot.liveProblems shouldHaveSize 1
+        snapshot.liveProblems.single().label shouldBe "Deprecated API usage"
+        snapshot.liveProblems.single().severity shouldBe "warning"
+        snapshot.recentEvents.last().eventType shouldBe ProgressEventTypes.PROBLEM
+    }
+
+    @Test
     fun `tracks project configuration start and finish events`() {
         val tracker = BuildProgressTracker()
         val listener = tracker.asGradleListener()
@@ -317,6 +353,53 @@ class BuildProgressTrackerTest {
         snapshot.recentEvents.size shouldBeLessThanOrEqual 30
         snapshot.totalEventCount shouldBe 40
     }
+
+    private fun captureOperationTypes(
+        tracker: BuildProgressTracker,
+        includeProblems: Boolean = false,
+    ): List<OperationType> {
+        val captured = mutableListOf<OperationType>()
+        lateinit var launcher: ConfigurableLauncher<*>
+        launcher = Proxy.newProxyInstance(
+            ConfigurableLauncher::class.java.classLoader,
+            arrayOf(ConfigurableLauncher::class.java),
+            InvocationHandler { _, method, args ->
+                when (method.name) {
+                    "addProgressListener" -> {
+                        captured.clear()
+                        args.orEmpty()
+                            .drop(1)
+                            .flatMap { argument ->
+                                when (argument) {
+                                    is Array<*> -> argument.filterIsInstance<OperationType>()
+                                    is OperationType -> listOf(argument)
+                                    else -> emptyList()
+                                }
+                            }
+                            .toCollection(captured)
+                        launcher
+                    }
+                    else -> launcher
+                }
+            },
+        ) as ConfigurableLauncher<*>
+        tracker.configureLauncher(launcher, includeProblems)
+        return captured.toList()
+    }
+
+    private fun singleProblemEventProxy(problem: Problem): SingleProblemEvent =
+        Proxy.newProxyInstance(
+            SingleProblemEvent::class.java.classLoader,
+            arrayOf(SingleProblemEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getProblem" -> problem
+                    "getDisplayName" -> "Problem: ${problem.definition.id.displayName}"
+                    "getEventTime" -> 0L
+                    else -> null
+                }
+            },
+        ) as SingleProblemEvent
 
     private fun failureResultProxy(failures: List<Failure>): FailureResult =
         Proxy.newProxyInstance(

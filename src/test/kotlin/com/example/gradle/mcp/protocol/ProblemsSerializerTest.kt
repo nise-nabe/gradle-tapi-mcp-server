@@ -8,9 +8,15 @@ import org.gradle.tooling.events.FailureResult
 import org.gradle.tooling.events.problems.ContextualLabel
 import org.gradle.tooling.events.problems.Details
 import org.gradle.tooling.events.problems.Problem
+import org.gradle.tooling.events.problems.ProblemAggregation
+import org.gradle.tooling.events.problems.ProblemAggregationEvent
+import org.gradle.tooling.events.problems.ProblemContext
 import org.gradle.tooling.events.problems.ProblemDefinition
 import org.gradle.tooling.events.problems.ProblemId
+import org.gradle.tooling.events.problems.ProblemSummariesEvent
+import org.gradle.tooling.events.problems.ProblemSummary
 import org.gradle.tooling.events.problems.Severity
+import org.gradle.tooling.events.problems.SingleProblemEvent
 import org.gradle.tooling.events.problems.Solution
 import org.junit.jupiter.api.Test
 import java.lang.reflect.InvocationHandler
@@ -60,6 +66,70 @@ class ProblemsSerializerTest {
         extracted shouldHaveSize 1
         extracted.single().label shouldBe "Missing dependency"
         extracted.single().severity shouldBe "error"
+    }
+
+    @Test
+    fun `fromProblemEvent extracts single problems`() {
+        val problem = problemProxy(
+            displayName = "Deprecated API usage",
+            details = "Task uses a deprecated input property",
+            severity = Severity.WARNING,
+            solutions = listOf("Use the new property"),
+            contextualLabel = "Task :compileJava",
+        )
+
+        val extracted = ProblemsSerializer.fromProblemEvent(singleProblemEventProxy(problem))
+
+        extracted shouldHaveSize 1
+        extracted.single().label shouldBe "Deprecated API usage"
+        extracted.single().severity shouldBe "warning"
+        extracted.single().contextualLabel shouldBe "Task :compileJava"
+    }
+
+    @Test
+    fun `fromProblemEvent expands problem aggregations into snapshots`() {
+        val problem = problemProxy(
+            displayName = "Compilation failed",
+            details = null,
+            severity = Severity.ERROR,
+            solutions = emptyList(),
+            contextualLabel = null,
+        )
+        val aggregation = problemAggregationProxy(
+            problem = problem,
+            contexts = listOf(
+                problemContextProxy(
+                    details = "cannot find symbol",
+                    solutions = listOf("Add the missing dependency"),
+                ),
+            ),
+        )
+
+        val extracted = ProblemsSerializer.fromProblemEvent(problemAggregationEventProxy(aggregation))
+
+        extracted shouldHaveSize 1
+        extracted.single().label shouldBe "Compilation failed"
+        extracted.single().details shouldBe "cannot find symbol"
+        extracted.single().solutions shouldBe listOf("Add the missing dependency")
+    }
+
+    @Test
+    fun `fromProblemEvent converts summaries into compact snapshots`() {
+        val problem = problemProxy(
+            displayName = "Deprecated API usage",
+            details = null,
+            severity = Severity.WARNING,
+            solutions = emptyList(),
+            contextualLabel = null,
+        )
+
+        val extracted = ProblemsSerializer.fromProblemEvent(
+            problemSummariesEventProxy(listOf(problemSummaryProxy(problem, 3))),
+        )
+
+        extracted shouldHaveSize 1
+        extracted.single().label shouldBe "Deprecated API usage"
+        extracted.single().details shouldBe "Occurred 3 times"
     }
 
     @Test
@@ -169,6 +239,96 @@ class ProblemsSerializerTest {
             },
         ) as Failure
 
+    private fun singleProblemEventProxy(problem: Problem): SingleProblemEvent =
+        Proxy.newProxyInstance(
+            SingleProblemEvent::class.java.classLoader,
+            arrayOf(SingleProblemEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getProblem" -> problem
+                    "getDisplayName" -> "Problem: ${problem.definition.id.displayName}"
+                    "getEventTime" -> 0L
+                    else -> null
+                }
+            },
+        ) as SingleProblemEvent
+
+    private fun problemAggregationEventProxy(aggregation: ProblemAggregation): ProblemAggregationEvent =
+        Proxy.newProxyInstance(
+            ProblemAggregationEvent::class.java.classLoader,
+            arrayOf(ProblemAggregationEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getProblemAggregation" -> aggregation
+                    "getDisplayName" -> "Problem aggregation"
+                    "getEventTime" -> 0L
+                    else -> null
+                }
+            },
+        ) as ProblemAggregationEvent
+
+    private fun problemSummariesEventProxy(summaries: List<ProblemSummary>): ProblemSummariesEvent =
+        Proxy.newProxyInstance(
+            ProblemSummariesEvent::class.java.classLoader,
+            arrayOf(ProblemSummariesEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getProblemSummaries" -> summaries
+                    "getDisplayName" -> "Problem summaries"
+                    "getEventTime" -> 0L
+                    else -> null
+                }
+            },
+        ) as ProblemSummariesEvent
+
+    private fun problemAggregationProxy(
+        problem: Problem,
+        contexts: List<ProblemContext>,
+    ): ProblemAggregation =
+        Proxy.newProxyInstance(
+            ProblemAggregation::class.java.classLoader,
+            arrayOf(ProblemAggregation::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDefinition" -> problem.definition
+                    "getProblemContext" -> contexts
+                    else -> null
+                }
+            },
+        ) as ProblemAggregation
+
+    private fun problemContextProxy(
+        details: String?,
+        solutions: List<String>,
+        failureMessage: String? = null,
+    ): ProblemContext =
+        Proxy.newProxyInstance(
+            ProblemContext::class.java.classLoader,
+            arrayOf(ProblemContext::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDetails" -> details?.let(::detailsProxy)
+                    "getSolutions" -> solutions.map(::solutionProxy)
+                    "getFailure" -> failureMessage?.let { failureProxy(it, emptyList()) }
+                    "getOriginLocations", "getContextualLocations" -> emptyList<Any>()
+                    else -> null
+                }
+            },
+        ) as ProblemContext
+
+    private fun problemSummaryProxy(problem: Problem, count: Int?): ProblemSummary =
+        Proxy.newProxyInstance(
+            ProblemSummary::class.java.classLoader,
+            arrayOf(ProblemSummary::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getProblemId" -> problem.definition.id
+                    "getCount" -> count
+                    else -> null
+                }
+            },
+        ) as ProblemSummary
+
     private fun problemProxy(
         displayName: String,
         details: String?,
@@ -176,7 +336,25 @@ class ProblemsSerializerTest {
         solutions: List<String>,
         contextualLabel: String?,
     ): Problem {
-        val problemId = Proxy.newProxyInstance(
+        val definition = problemDefinitionProxy(problemIdProxy(displayName), severity)
+        return Proxy.newProxyInstance(
+            Problem::class.java.classLoader,
+            arrayOf(Problem::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDefinition" -> definition
+                    "getDetails" -> details?.let(::detailsProxy)
+                    "getContextualLabel" -> contextualLabel?.let(::contextualLabelProxy)
+                    "getSolutions" -> solutions.map(::solutionProxy)
+                    "getOriginLocations", "getContextualLocations", "getFailure", "getAdditionalData" -> emptyList<Any>()
+                    else -> null
+                }
+            },
+        ) as Problem
+    }
+
+    private fun problemIdProxy(displayName: String): ProblemId =
+        Proxy.newProxyInstance(
             ProblemId::class.java.classLoader,
             arrayOf(ProblemId::class.java),
             InvocationHandler { _, method, _ ->
@@ -188,7 +366,12 @@ class ProblemsSerializerTest {
                 }
             },
         ) as ProblemId
-        val definition = Proxy.newProxyInstance(
+
+    private fun problemDefinitionProxy(
+        problemId: ProblemId,
+        severity: Severity,
+    ): ProblemDefinition =
+        Proxy.newProxyInstance(
             ProblemDefinition::class.java.classLoader,
             arrayOf(ProblemDefinition::class.java),
             InvocationHandler { _, method, _ ->
@@ -200,52 +383,40 @@ class ProblemsSerializerTest {
                 }
             },
         ) as ProblemDefinition
-        return Proxy.newProxyInstance(
-            Problem::class.java.classLoader,
-            arrayOf(Problem::class.java),
+
+    private fun detailsProxy(text: String): Details =
+        Proxy.newProxyInstance(
+            Details::class.java.classLoader,
+            arrayOf(Details::class.java),
             InvocationHandler { _, method, _ ->
                 when (method.name) {
-                    "getDefinition" -> definition
-                    "getDetails" -> details?.let { text ->
-                        Proxy.newProxyInstance(
-                            Details::class.java.classLoader,
-                            arrayOf(Details::class.java),
-                            InvocationHandler { _, method, _ ->
-                                when (method.name) {
-                                    "getDetails" -> text
-                                    else -> null
-                                }
-                            },
-                        ) as Details
-                    }
-                    "getContextualLabel" -> contextualLabel?.let { text ->
-                        Proxy.newProxyInstance(
-                            ContextualLabel::class.java.classLoader,
-                            arrayOf(ContextualLabel::class.java),
-                            InvocationHandler { _, method, _ ->
-                                when (method.name) {
-                                    "getContextualLabel" -> text
-                                    else -> null
-                                }
-                            },
-                        ) as ContextualLabel
-                    }
-                    "getSolutions" -> solutions.map { solutionText ->
-                        Proxy.newProxyInstance(
-                            Solution::class.java.classLoader,
-                            arrayOf(Solution::class.java),
-                            InvocationHandler { _, method, _ ->
-                                when (method.name) {
-                                    "getSolution" -> solutionText
-                                    else -> null
-                                }
-                            },
-                        ) as Solution
-                    }
-                    "getOriginLocations", "getContextualLocations", "getFailure", "getAdditionalData" -> emptyList<Any>()
+                    "getDetails" -> text
                     else -> null
                 }
             },
-        ) as Problem
-    }
+        ) as Details
+
+    private fun contextualLabelProxy(text: String): ContextualLabel =
+        Proxy.newProxyInstance(
+            ContextualLabel::class.java.classLoader,
+            arrayOf(ContextualLabel::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getContextualLabel" -> text
+                    else -> null
+                }
+            },
+        ) as ContextualLabel
+
+    private fun solutionProxy(solutionText: String): Solution =
+        Proxy.newProxyInstance(
+            Solution::class.java.classLoader,
+            arrayOf(Solution::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getSolution" -> solutionText
+                    else -> null
+                }
+            },
+        ) as Solution
 }

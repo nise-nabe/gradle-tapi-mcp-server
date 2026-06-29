@@ -8,6 +8,7 @@ import org.gradle.tooling.events.ProgressEvent
 import org.gradle.tooling.events.ProgressListener
 import org.gradle.tooling.events.configuration.ProjectConfigurationFinishEvent
 import org.gradle.tooling.events.configuration.ProjectConfigurationStartEvent
+import org.gradle.tooling.events.problems.ProblemEvent
 import org.gradle.tooling.events.task.TaskFinishEvent
 import org.gradle.tooling.events.task.TaskStartEvent
 import org.gradle.tooling.events.test.TestFinishEvent
@@ -24,6 +25,7 @@ class BuildProgressTracker(
     private var currentOperation: String? = null
     private val recentEvents = ArrayDeque<ProgressEventSnapshot>()
     private val problems = mutableListOf<BuildProblemSnapshot>()
+    private val liveProblems = mutableListOf<BuildProblemSnapshot>()
     private var totalEventCount = 0
     private var lastNotifiedEventCount = 0
 
@@ -90,6 +92,7 @@ class BuildProgressTracker(
                 recentEvents = recentEvents.toList(),
                 totalEventCount = totalEventCount,
                 problems = problems.toList(),
+                liveProblems = liveProblems.toList(),
             )
         }
 
@@ -112,14 +115,20 @@ class BuildProgressTracker(
             }
         }
 
-    fun configureLauncher(launcher: org.gradle.tooling.ConfigurableLauncher<*>) {
-        launcher.addProgressListener(
-            asGradleListener(),
+    fun configureLauncher(
+        launcher: org.gradle.tooling.ConfigurableLauncher<*>,
+        includeProblems: Boolean = false,
+    ) {
+        val operationTypes = mutableListOf(
             OperationType.TASK,
             OperationType.TEST,
             OperationType.ROOT,
             OperationType.PROJECT_CONFIGURATION,
         )
+        if (includeProblems) {
+            problemOperationType?.let(operationTypes::add)
+        }
+        launcher.addProgressListener(asGradleListener(), *operationTypes.toTypedArray())
     }
 
     private fun handleGradleEvent(event: ProgressEvent) {
@@ -127,6 +136,9 @@ class BuildProgressTracker(
         currentOperation = displayName
 
         when (event) {
+            is ProblemEvent -> {
+                collectLiveProblemsFromEvent(event, displayName)
+            }
             is TaskStartEvent -> {
                 applyTaskEvent(ProgressEventTypes.TASK_START, displayName)
             }
@@ -196,6 +208,20 @@ class BuildProgressTracker(
         ProblemsSerializer.mergeDistinct(problems, extracted)
     }
 
+    private fun collectLiveProblemsFromEvent(event: ProblemEvent, displayName: String) {
+        val extracted = ProblemsSerializer.fromProblemEvent(event)
+        if (extracted.isEmpty()) {
+            return
+        }
+        val merged = ProblemsSerializer.mergedDistinct(liveProblems, extracted)
+        if (merged == liveProblems) {
+            return
+        }
+        liveProblems.clear()
+        liveProblems.addAll(merged)
+        recordEventLocked(ProgressEventTypes.PROBLEM, displayName)
+    }
+
     private fun applyTaskEvent(eventType: String, displayName: String, outcome: String? = null) {
         taskProgress.apply(eventType, displayName)
         recordEventLocked(eventType, displayName, outcome)
@@ -229,5 +255,8 @@ class BuildProgressTracker(
         const val STATUS_CANCELLED = "cancelled"
 
         private const val MAX_RECENT_EVENTS = 30
+        private val problemOperationType: OperationType? =
+            runCatching { OperationType.valueOf("PROBLEM") }.getOrNull()
+                ?: runCatching { OperationType.valueOf("PROBLEMS") }.getOrNull()
     }
 }
