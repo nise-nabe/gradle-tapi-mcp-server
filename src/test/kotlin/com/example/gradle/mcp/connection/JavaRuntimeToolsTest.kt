@@ -1,11 +1,17 @@
 package com.example.gradle.mcp.connection
 
+import com.example.gradle.mcp.build.BuildExecutionManager
+import com.example.gradle.mcp.build.BuildKind
+import com.example.gradle.mcp.build.BuildProgressTracker
+import com.example.gradle.mcp.build.BuildRecord
+import com.example.gradle.mcp.build.CapturingStreams
 import com.example.gradle.mcp.connection.support.BuildEnvironmentProxyOptions
 import com.example.gradle.mcp.connection.support.buildEnvironmentProxy
 import com.example.gradle.mcp.connection.support.projectConnectionProxy
 import com.example.gradle.mcp.connection.support.recordingBuildLauncher
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
@@ -13,6 +19,7 @@ import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 
 class JavaRuntimeToolsTest {
@@ -201,4 +208,49 @@ class JavaRuntimeToolsTest {
         error.message shouldContain "javaToolchains -q"
         error.message shouldContain "Task 'javaToolchains' not found"
     }
+
+    @Test
+    fun `requireNoActiveBuildForToolchainDetection allows daemon-only query while build is running`() {
+        val manager = BuildExecutionManager(GradleConnectionManager())
+        seedRunningBuild(manager)
+
+        requireNoActiveBuildForToolchainDetection(
+            includeToolchains = false,
+            projectDirectory = testProjectDirectory,
+            buildExecutionManager = manager,
+        )
+    }
+
+    @Test
+    fun `requireNoActiveBuildForToolchainDetection rejects toolchain listing while build is running`() {
+        val manager = BuildExecutionManager(GradleConnectionManager())
+        seedRunningBuild(manager)
+
+        val error = shouldThrow<McpException> {
+            requireNoActiveBuildForToolchainDetection(
+                includeToolchains = true,
+                projectDirectory = testProjectDirectory,
+                buildExecutionManager = manager,
+            )
+        }
+
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.message shouldContain "includeToolchains=false"
+    }
+}
+
+private fun seedRunningBuild(manager: BuildExecutionManager) {
+    val tracker = BuildProgressTracker()
+    tracker.markStarting("Gradle tasks: build")
+    manager.seedRunningBuildForTests(
+        BuildRecord(
+            id = "running-build",
+            kind = BuildKind.TASKS,
+            tasks = listOf("build"),
+            startedAt = Instant.now(),
+            progressTracker = tracker,
+            streams = CapturingStreams(),
+            projectDirectory = testProjectDirectory.absolutePath,
+        ),
+    )
 }

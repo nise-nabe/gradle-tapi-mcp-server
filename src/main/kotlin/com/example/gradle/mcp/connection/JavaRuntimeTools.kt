@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.connection
 
 import com.example.gradle.mcp.GradleMcpRuntime
+import com.example.gradle.mcp.build.BuildExecutionManager
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.booleanProperty
@@ -208,23 +209,38 @@ internal object JavaRuntimesCollector {
     }
 }
 
+internal fun requireNoActiveBuildForToolchainDetection(
+    includeToolchains: Boolean,
+    projectDirectory: File,
+    buildExecutionManager: BuildExecutionManager,
+) {
+    if (!includeToolchains) {
+        return
+    }
+    if (buildExecutionManager.hasActiveBuild(projectDirectory)) {
+        throw McpException(
+            McpErrorCode.BUILD_ALREADY_RUNNING,
+            "Cannot detect installed JDKs while a Gradle build is running for ${projectDirectory.path}. " +
+                "Wait for the build to finish, call gradle_get_build_status, or set includeToolchains=false.",
+        )
+    }
+}
+
 context(runtime: GradleMcpRuntime)
 fun javaRuntimeTools(): List<McpServerFeatures.SyncToolSpecification> =
     listOf(
         tool(
             name = "gradle_get_java_runtimes",
-            description = "Return the daemon Java from BuildEnvironment plus detected local JDKs from `javaToolchains -q` when includeToolchains=true (default). InstalledJdk/JavaRuntime TAPI models are single-installation types, so toolchain listing uses the javaToolchains task.",
+            description = "Return the daemon Java from BuildEnvironment plus detected local JDKs from `javaToolchains -q` when includeToolchains=true (default). InstalledJdk/JavaRuntime TAPI models are single-installation types, so toolchain listing uses the javaToolchains task. Daemon Java uses the BuildEnvironment snapshot captured at gradle_connect; reconnect to refresh after daemon JVM changes.",
             schema = javaRuntimesSchema(),
         ) { args ->
             val includeToolchains = args.optionalBoolean("includeToolchains", default = true)
             val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-            if (includeToolchains && runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
-                throw McpException(
-                    McpErrorCode.BUILD_ALREADY_RUNNING,
-                    "Cannot detect installed JDKs while a Gradle build is running for ${projectDirectory.path}. " +
-                        "Wait for the build to finish, call gradle_get_build_status, or set includeToolchains=false.",
-                )
-            }
+            requireNoActiveBuildForToolchainDetection(
+                includeToolchains = includeToolchains,
+                projectDirectory = projectDirectory,
+                buildExecutionManager = runtime.buildExecutionManager,
+            )
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val runtimes = JavaRuntimesCollector.collect(
                     projectDirectory = projectDirectory,
