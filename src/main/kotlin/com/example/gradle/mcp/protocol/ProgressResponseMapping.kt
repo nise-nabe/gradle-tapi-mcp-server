@@ -16,7 +16,7 @@ internal fun optionalProgressFields(
             snapshot.status != BuildProgressTracker.STATUS_FAILED &&
             snapshot.liveProblems.isNotEmpty()
         ) {
-            put("liveProblems", cappedProblemResponse(snapshot.liveProblems))
+            put("liveProblems", cappedLiveProblemResponse(snapshot.liveProblems))
         }
     }
 
@@ -36,13 +36,32 @@ internal fun terminalFailureFields(
                 snapshot.problems
             }
             if (snapshot.status == BuildProgressTracker.STATUS_FAILED && problems.isNotEmpty()) {
-                put("problems", cappedProblemResponse(problems))
+                put("problems", cappedTerminalProblemResponse(problems))
             }
         }
     }
 
-private fun cappedProblemResponse(problems: List<BuildProblemSnapshot>): List<Map<String, Any?>> =
-    ProblemsSerializer.toResponseMaps(problems.takeLast(ProgressResponseOptions.MAX_PROBLEMS_IN_RESPONSE))
+private fun cappedLiveProblemResponse(problems: List<BuildProblemSnapshot>): List<Map<String, Any?>> =
+    ProblemsSerializer.toResponseMaps(
+        problems.takeLast(ProgressResponseOptions.MAX_PROBLEMS_IN_RESPONSE),
+    )
+
+private fun cappedTerminalProblemResponse(problems: List<BuildProblemSnapshot>): List<Map<String, Any?>> =
+    ProblemsSerializer.toResponseMaps(capTerminalProblems(problems))
+
+internal fun capTerminalProblems(problems: List<BuildProblemSnapshot>): List<BuildProblemSnapshot> {
+    val max = ProgressResponseOptions.MAX_PROBLEMS_IN_RESPONSE
+    if (problems.size <= max) {
+        return problems
+    }
+    val errors = problems.filter { it.severity == "error" }
+    val nonErrors = problems.filter { it.severity != "error" }
+    return if (errors.size >= max) {
+        errors.take(max)
+    } else {
+        errors + nonErrors.takeLast(max - errors.size)
+    }
+}
 
 internal fun BuildProgressSnapshot.toResponseMap(): Map<String, Any?> =
     mapOf(

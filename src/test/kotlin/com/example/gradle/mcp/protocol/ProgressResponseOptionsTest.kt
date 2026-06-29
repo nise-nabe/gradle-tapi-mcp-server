@@ -5,6 +5,8 @@ import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildProblemSnapshot
 import com.example.gradle.mcp.build.ProgressEventSnapshot
 import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
@@ -64,6 +66,38 @@ class ProgressResponseOptionsTest {
             .let { problem ->
                 (problem as Map<*, *>)["label"] shouldBe "Deprecated API usage"
             }
+    }
+
+    @Test
+    fun `optionalProgressFields caps liveProblems with most recent entries`() {
+        val snapshot = BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_RUNNING,
+            currentOperation = "build",
+            completedTaskCount = 0,
+            runningTaskCount = 1,
+            failedTaskCount = 0,
+            completedTasks = emptyList(),
+            runningTasks = listOf(":compileJava"),
+            failedTasks = emptyList(),
+            recentEvents = emptyList(),
+            totalEventCount = 1,
+            liveProblems = (1..ProgressResponseOptions.MAX_PROBLEMS_IN_RESPONSE + 1).map { index ->
+                BuildProblemSnapshot(
+                    label = "warning-$index",
+                    severity = "warning",
+                )
+            },
+        )
+
+        val liveProblems = optionalProgressFields(
+            ProgressResponseOptions(includeProblems = true),
+            snapshot,
+        )["liveProblems"] as List<*>
+
+        liveProblems shouldHaveSize ProgressResponseOptions.MAX_PROBLEMS_IN_RESPONSE
+        (liveProblems.first() as Map<*, *>)["label"] shouldBe "warning-2"
+        (liveProblems.last() as Map<*, *>)["label"] shouldBe
+            "warning-${ProgressResponseOptions.MAX_PROBLEMS_IN_RESPONSE + 1}"
     }
 
     @Test
@@ -159,6 +193,39 @@ class ProgressResponseOptionsTest {
 
         (fields["problems"] as List<*>).map { (it as Map<*, *>)["label"] } shouldBe
             listOf("Compilation failed", "Deprecated API usage")
+    }
+
+    @Test
+    fun `terminalFailureFields prioritizes errors when capping problems`() {
+        val warnings = (1..ProgressResponseOptions.MAX_PROBLEMS_IN_RESPONSE).map { index ->
+            BuildProblemSnapshot(label = "warning-$index", severity = "warning")
+        }
+        val snapshot = BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_FAILED,
+            currentOperation = null,
+            completedTaskCount = 1,
+            runningTaskCount = 0,
+            failedTaskCount = 1,
+            completedTasks = emptyList(),
+            runningTasks = emptyList(),
+            failedTasks = listOf(":app:compileJava"),
+            recentEvents = emptyList(),
+            totalEventCount = 2,
+            problems = listOf(
+                BuildProblemSnapshot(
+                    label = "Compilation failed",
+                    details = "cannot find symbol",
+                    severity = "error",
+                ),
+            ) + warnings,
+        )
+
+        val fields = terminalFailureFields(snapshot, ProgressResponseOptions())
+
+        val labels = (fields["problems"] as List<*>).map { (it as Map<*, *>)["label"] }
+        labels shouldHaveSize ProgressResponseOptions.MAX_PROBLEMS_IN_RESPONSE
+        labels shouldContain "Compilation failed"
+        labels.last() shouldBe "warning-${ProgressResponseOptions.MAX_PROBLEMS_IN_RESPONSE}"
     }
 
     @Test
