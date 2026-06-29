@@ -109,6 +109,9 @@ class GradleConnectionManager {
     fun isConnected(projectDirectory: File): Boolean =
         pool.containsKey(ProjectDirectoryResolver.canonicalKey(projectDirectory))
 
+    fun cachedEnvironment(projectDirectory: File): BuildEnvironmentSnapshot? =
+        pool[ProjectDirectoryResolver.canonicalKey(projectDirectory)]?.cachedEnvironment
+
     fun status(projectDirectory: File? = null): Map<String, Any?> {
         if (projectDirectory != null) {
             return connectionStatus(projectDirectory).toResponseMap()
