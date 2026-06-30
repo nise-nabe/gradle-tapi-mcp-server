@@ -2,6 +2,7 @@ package com.example.gradle.mcp.connection
 
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.support.seedNoopConnections
 import com.example.gradle.mcp.support.withWorkspaceDirectory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.booleans.shouldBeFalse

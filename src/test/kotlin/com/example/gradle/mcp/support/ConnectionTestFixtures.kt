@@ -1,6 +1,6 @@
-package com.example.gradle.mcp.connection
+package com.example.gradle.mcp.support
 
-import com.example.gradle.mcp.build.noopProjectConnection
+import com.example.gradle.mcp.connection.GradleConnectionManager
 import org.gradle.tooling.ProjectConnection
 import java.io.File
 import java.lang.reflect.InvocationHandler

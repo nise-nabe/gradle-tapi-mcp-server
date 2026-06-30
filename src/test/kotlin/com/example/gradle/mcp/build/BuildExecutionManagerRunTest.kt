@@ -5,6 +5,14 @@ import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import com.example.gradle.mcp.support.noopProjectConnection
+import com.example.gradle.mcp.support.seedNoopConnection
+import com.example.gradle.mcp.support.blockingProjectConnection
+import com.example.gradle.mcp.support.failedTracker
+import com.example.gradle.mcp.support.runningTracker
+import com.example.gradle.mcp.support.succeededTracker
+import com.example.gradle.mcp.support.testBuildRecord
+import com.example.gradle.mcp.support.testExecutor
 import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.booleans.shouldBeFalse
@@ -31,7 +39,7 @@ class BuildExecutionManagerRunTest {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnection()
         val concurrentManager = BuildExecutionManager(connectionManager)
-        concurrentManager.seedTestBuild(
+        concurrentManager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "running-build",
                 tracker = runningTracker(),
@@ -107,7 +115,7 @@ class BuildExecutionManagerRunTest {
 
     @Test
     fun `runForeground does not reject when another build is running`() {
-        manager.seedTestBuild(testBuildRecord(id = "running-build", tracker = runningTracker()))
+        manager.seedRunningBuildForTests(testBuildRecord(id = "running-build", tracker = runningTracker()))
 
         val connection = Proxy.newProxyInstance(
             ProjectConnection::class.java.classLoader,
@@ -134,7 +142,7 @@ class BuildExecutionManagerRunTest {
     @Test
     fun `status omits partial output by default for running builds`() {
         val streams = CapturingStreams().also { it.appendStdoutForTests("> Task :app:compileJava UP-TO-DATE\n") }
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(id = "running-build", streams = streams, tracker = runningTracker()),
         )
 
@@ -152,7 +160,7 @@ class BuildExecutionManagerRunTest {
     @Test
     fun `status returns running build progress and partial output when includeOutput is true`() {
         val streams = CapturingStreams().also { it.appendStdoutForTests("> Task :app:compileJava UP-TO-DATE\n") }
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(id = "running-build", streams = streams, tracker = runningTracker()),
         )
 
@@ -177,7 +185,7 @@ class BuildExecutionManagerRunTest {
 
     @Test
     fun `status rejects projectDirectory hint that does not match in-memory build`(@TempDir projectA: File, @TempDir projectB: File) {
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "scoped-build",
                 projectDirectory = projectA.absolutePath,
@@ -200,7 +208,7 @@ class BuildExecutionManagerRunTest {
 
     @Test
     fun `hasActiveBuild reports seeded running build`() {
-        manager.seedTestBuild(testBuildRecord(id = "running-build", tracker = runningTracker()))
+        manager.seedRunningBuildForTests(testBuildRecord(id = "running-build", tracker = runningTracker()))
         manager.hasActiveBuild().shouldBeTrue()
     }
 
@@ -209,7 +217,7 @@ class BuildExecutionManagerRunTest {
         val streams = CapturingStreams().also {
             it.appendStdoutForTests("BUILD SUCCESSFUL in 1s\n2 actionable tasks: 2 executed\n")
         }
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "completed-build",
                 streams = streams,
@@ -236,7 +244,7 @@ class BuildExecutionManagerRunTest {
         val streams = CapturingStreams().also {
             it.appendStdoutForTests("BUILD SUCCESSFUL in 1s\n> Task :app:compileJava UP-TO-DATE\n")
         }
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "completed-build-with-output",
                 streams = streams,
@@ -267,7 +275,7 @@ class BuildExecutionManagerRunTest {
                 """.trimIndent() + "\n",
             )
         }
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "failed-build",
                 streams = streams,

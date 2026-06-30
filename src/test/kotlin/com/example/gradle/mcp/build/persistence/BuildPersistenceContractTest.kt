@@ -1,8 +1,11 @@
 package com.example.gradle.mcp.build.persistence
 
-import com.example.gradle.mcp.build.persistence.BuildPersistenceContract
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.ProgressEventTypes
+import com.example.gradle.mcp.support.contractMcpResult
+import com.example.gradle.mcp.support.diskBuildEvent
+import com.example.gradle.mcp.support.gradleBuildResult
+import com.example.gradle.mcp.support.mcpBuildResult
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import java.time.Instant
@@ -20,7 +23,7 @@ class BuildPersistenceContractTest {
     fun `isStaleGradleRunning is false when build finished event exists`() {
         BuildPersistenceContract.isStaleGradleRunning(
             contractMcpResult("failed", Instant.now()),
-            listOf(event("2026-06-14T10:02:00Z", ProgressEventTypes.BUILD_FINISHED, "Build finished")),
+            listOf(diskBuildEvent("2026-06-14T10:02:00Z", ProgressEventTypes.BUILD_FINISHED, "Build finished")),
         ) shouldBe false
     }
 
@@ -30,8 +33,8 @@ class BuildPersistenceContractTest {
         BuildPersistenceContract.isStaleGradleRunning(
             contractMcpResult("failed", finishedAt),
             listOf(
-                event("2026-06-14T10:00:01Z", ProgressEventTypes.START, "Gradle tasks: build"),
-                event("2026-06-14T10:00:02Z", ProgressEventTypes.TASK_START, ":app:compileJava"),
+                diskBuildEvent("2026-06-14T10:00:01Z", ProgressEventTypes.START, "Gradle tasks: build"),
+                diskBuildEvent("2026-06-14T10:00:02Z", ProgressEventTypes.TASK_START, ":app:compileJava"),
             ),
         ) shouldBe false
     }
@@ -42,8 +45,8 @@ class BuildPersistenceContractTest {
         BuildPersistenceContract.isStaleGradleRunning(
             contractMcpResult("failed", finishedAt),
             listOf(
-                event("2026-06-14T10:00:30Z", ProgressEventTypes.TASK_START, ":app:build"),
-                event("2026-06-14T10:01:05Z", ProgressEventTypes.TASK_SUCCESS, ":app:build"),
+                diskBuildEvent("2026-06-14T10:00:30Z", ProgressEventTypes.TASK_START, ":app:build"),
+                diskBuildEvent("2026-06-14T10:01:05Z", ProgressEventTypes.TASK_SUCCESS, ":app:build"),
             ),
         ) shouldBe false
     }
@@ -54,8 +57,8 @@ class BuildPersistenceContractTest {
         BuildPersistenceContract.isStaleGradleRunning(
             contractMcpResult("failed", finishedAt),
             listOf(
-                event("2026-06-14T10:00:30Z", ProgressEventTypes.TASK_START, ":app:build"),
-                event("2026-06-14T10:01:00.200Z", ProgressEventTypes.TASK_SUCCESS, ":app:build"),
+                diskBuildEvent("2026-06-14T10:00:30Z", ProgressEventTypes.TASK_START, ":app:build"),
+                diskBuildEvent("2026-06-14T10:01:00.200Z", ProgressEventTypes.TASK_SUCCESS, ":app:build"),
             ),
         ) shouldBe false
     }
@@ -66,8 +69,8 @@ class BuildPersistenceContractTest {
         BuildPersistenceContract.isStaleGradleRunning(
             contractMcpResult("failed", finishedAt),
             listOf(
-                event("2026-06-14T10:00:30Z", ProgressEventTypes.TASK_START, ":app:longTask"),
-                event(finishedAt.plusSeconds(30).toString(), ProgressEventTypes.HEARTBEAT, "Gradle build active"),
+                diskBuildEvent("2026-06-14T10:00:30Z", ProgressEventTypes.TASK_START, ":app:longTask"),
+                diskBuildEvent(finishedAt.plusSeconds(30).toString(), ProgressEventTypes.HEARTBEAT, "Gradle build active"),
             ),
         ) shouldBe false
     }
@@ -77,7 +80,7 @@ class BuildPersistenceContractTest {
         val finishedAt = Instant.now().minusSeconds(120)
         BuildPersistenceContract.isStaleGradleRunning(
             contractMcpResult("failed", finishedAt),
-            listOf(event(finishedAt.minusSeconds(30).toString(), ProgressEventTypes.TASK_START, ":app:build")),
+            listOf(diskBuildEvent(finishedAt.minusSeconds(30).toString(), ProgressEventTypes.TASK_START, ":app:build")),
         ) shouldBe true
     }
 
@@ -99,7 +102,7 @@ class BuildPersistenceContractTest {
                 error = "Gradle connection closed",
             ),
             events = listOf(
-                event("2026-06-14T10:00:01Z", ProgressEventTypes.TASK_START, ":app:compileJava"),
+                diskBuildEvent("2026-06-14T10:00:01Z", ProgressEventTypes.TASK_START, ":app:compileJava"),
             ),
         )
 
@@ -162,7 +165,4 @@ class BuildPersistenceContractTest {
         resolved.status shouldBe BuildProgressTracker.STATUS_CANCELLED
         resolved.terminalSource shouldBe BuildPersistenceContract.TerminalStatusSource.MCP
     }
-
-    private fun event(timestamp: String, type: String, displayName: String): DiskBuildEvent =
-        diskBuildEvent(timestamp, type, displayName)
 }

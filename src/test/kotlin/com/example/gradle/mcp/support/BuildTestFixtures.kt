@@ -1,14 +1,17 @@
-package com.example.gradle.mcp.build
+package com.example.gradle.mcp.support
 
+import com.example.gradle.mcp.build.BuildExecutionManager
+import com.example.gradle.mcp.build.BuildKind
+import com.example.gradle.mcp.build.BuildProgressTracker
+import com.example.gradle.mcp.build.BuildRecord
+import com.example.gradle.mcp.build.CapturingStreams
 import com.example.gradle.mcp.cache.CompletedBuildSnapshot
 import com.example.gradle.mcp.connection.GradleConnectionManager
-import com.example.gradle.mcp.support.defaultProxyReturn
 import org.gradle.tooling.CancellationTokenSource
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
 import java.io.File
 import java.lang.reflect.InvocationHandler
-import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
@@ -37,7 +40,7 @@ internal fun testBuildRecord(
     id: String,
     kind: BuildKind = BuildKind.TASKS,
     tasks: List<String> = listOf("build"),
-    startedAt: Instant = Instant.now(),
+    startedAt: Instant = TEST_INSTANT_START,
     tracker: BuildProgressTracker = runningTracker(),
     streams: CapturingStreams = CapturingStreams(),
     projectDirectory: String? = null,
@@ -55,9 +58,19 @@ internal fun testBuildRecord(
         cancellationTokenSource = cancellationTokenSource,
     ).also(configure)
 
-internal fun BuildExecutionManager.seedTestBuild(record: BuildRecord) {
-    seedRunningBuildForTests(record)
-}
+internal fun succeededBuildRecord(
+    projectDir: File,
+    buildId: String,
+    stdout: String = "BUILD SUCCESSFUL in 1s\n",
+): BuildRecord =
+    testBuildRecord(
+        id = buildId,
+        tracker = succeededTracker(),
+        streams = CapturingStreams().also { it.appendStdoutForTests(stdout) },
+        projectDirectory = projectDir.absolutePath,
+    ) {
+        finishedAt = TEST_INSTANT_FINISH
+    }
 
 internal fun testCompletedSnapshot(
     buildId: String,
@@ -67,7 +80,7 @@ internal fun testCompletedSnapshot(
     testClasses: List<String> = emptyList(),
     outcome: String = "SUCCESS",
     stdout: String = "BUILD SUCCESSFUL in 1s\n",
-    finishedAt: Instant = Instant.now(),
+    finishedAt: Instant = TEST_INSTANT_FINISH,
 ): CompletedBuildSnapshot =
     CompletedBuildSnapshot(
         buildId = buildId,

@@ -1,10 +1,15 @@
 package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.build.persistence.McpBuildRecordPaths
-import com.example.gradle.mcp.build.persistence.mcpBuildResult
-import com.example.gradle.mcp.build.persistence.persistedBuildManager
-import com.example.gradle.mcp.build.persistence.writeMcpResultToDisk
 import com.example.gradle.mcp.connection.GradleConnectionManager
+import com.example.gradle.mcp.support.failedTracker
+import com.example.gradle.mcp.support.mcpBuildResult
+import com.example.gradle.mcp.support.persistedBuildManager
+import com.example.gradle.mcp.support.runningTracker
+import com.example.gradle.mcp.support.seedNoopConnection
+import com.example.gradle.mcp.support.succeededTracker
+import com.example.gradle.mcp.support.testBuildRecord
+import com.example.gradle.mcp.support.writeMcpResultToDisk
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import io.kotest.matchers.shouldBe
@@ -29,7 +34,7 @@ class BuildExecutionManagerListBuildsTest {
             ),
         )
 
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "memory-build",
                 startedAt = Instant.parse("2026-06-14T10:00:00Z"),
@@ -55,7 +60,7 @@ class BuildExecutionManagerListBuildsTest {
     fun `listBuilds prefers memory record over disk for same buildId`(@TempDir projectDir: File) {
         val buildId = "shared-build"
         val (manager, store) = persistedBuildManager(projectDir)
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = buildId,
                 startedAt = Instant.parse("2026-06-14T10:00:00Z"),
@@ -102,7 +107,7 @@ class BuildExecutionManagerListBuildsTest {
     fun `listBuilds ranks disk builds by persisted timestamps not file mtime`(@TempDir projectDir: File) {
         val (manager, store) = persistedBuildManager(projectDir)
 
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "memory-build",
                 startedAt = Instant.parse("2026-06-14T08:00:00Z"),
@@ -155,7 +160,7 @@ class BuildExecutionManagerListBuildsTest {
         connectionManager.seedNoopConnection(projectA)
         val manager = BuildExecutionManager(connectionManager)
 
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "build-a",
                 startedAt = Instant.parse("2026-06-14T10:00:00Z"),
@@ -163,7 +168,7 @@ class BuildExecutionManagerListBuildsTest {
                 projectDirectory = projectA.absolutePath,
             ),
         )
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "build-b",
                 kind = BuildKind.TASKS,

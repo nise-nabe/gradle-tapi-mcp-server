@@ -1,9 +1,15 @@
 package com.example.gradle.mcp.build
 
-import com.example.gradle.mcp.protocol.assertInvalidArgument
+import com.example.gradle.mcp.model.OutputLimitOptions
+import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import com.example.gradle.mcp.support.assertInvalidArgument
 import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
+import java.util.stream.Stream
 
 class TestRunOptionsTest {
     @Test
@@ -109,34 +115,10 @@ class TestRunOptionsTest {
         options.testClasses shouldBe listOf("com.example.FooTest")
     }
 
-    @Test
-    fun `parseTestRunOptions rejects blank testMethods map keys`() {
-        assertInvalidArgument(
-            {
-                parseTestRunOptions(
-                    mapOf(
-                        "testMethods" to mapOf("" to listOf("method1")),
-                    ),
-                )
-            },
-            "testMethods map keys must be non-blank",
-        )
-    }
-
-    @Test
-    fun `parseTestRunOptions rejects blank testMethods array class names`() {
-        assertInvalidArgument(
-            {
-                parseTestRunOptions(
-                    mapOf(
-                        "testMethods" to listOf(
-                            mapOf("class" to "", "methods" to listOf("method1")),
-                        ),
-                    ),
-                )
-            },
-            "testMethods array entries require a non-blank class name",
-        )
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("invalidArgumentCases")
+    fun `rejects invalid test run options`(label: String, action: () -> Unit, message: String) {
+        assertInvalidArgument(action, message)
     }
 
     @Test
@@ -166,26 +148,6 @@ class TestRunOptionsTest {
     }
 
     @Test
-    fun `parseTestRunOptions rejects testMethods array entries with multiple class keys`() {
-        assertInvalidArgument(
-            {
-                parseTestRunOptions(
-                    mapOf(
-                        "testMethods" to listOf(
-                            mapOf(
-                                "class" to "com.example.FooTest",
-                                "className" to "com.example.BarTest",
-                                "methods" to listOf("method1"),
-                            ),
-                        ),
-                    ),
-                )
-            },
-            "testMethods array entries must specify exactly one of class, className, or testClass",
-        )
-    }
-
-    @Test
     fun `parseTestRunOptions deduplicates includePatterns after merge`() {
         val options = parseTestRunOptions(
             mapOf(
@@ -199,37 +161,6 @@ class TestRunOptionsTest {
     }
 
     @Test
-    fun `parseTestRunOptions rejects testMethods when all method names are blank`() {
-        assertInvalidArgument(
-            {
-                parseTestRunOptions(
-                    mapOf(
-                        "testMethods" to mapOf(
-                            "com.example.FooTest" to listOf("", "  "),
-                        ),
-                    ),
-                )
-            },
-            "testMethods entries must contain at least one method name",
-        )
-    }
-
-    @Test
-    fun `validate rejects includePatterns when tasks are blank after filtering`() {
-        assertInvalidArgument(
-            {
-                parseTestRunOptions(
-                    mapOf(
-                        "includePatterns" to listOf("com.example.*"),
-                        "tasks" to listOf("", "  "),
-                    ),
-                ).validate()
-            },
-            "includePattern/includePatterns requires tasks for test task scoping",
-        )
-    }
-
-    @Test
     fun `toBuildRunRequest populates testClasses from testMethods keys for reporting`() {
         val request = TestRunOptions(
             selection = TestRunSelection.Methods(mapOf("com.example.FooTest" to listOf("method1"))),
@@ -237,49 +168,12 @@ class TestRunOptionsTest {
             projectDirectory = testProjectDirectory,
             arguments = emptyList(),
             jvmArguments = emptyList(),
-            outputLimit = com.example.gradle.mcp.model.OutputLimitOptions(),
-            progressOptions = com.example.gradle.mcp.protocol.ProgressResponseOptions(),
+            outputLimit = OutputLimitOptions(),
+            progressOptions = ProgressResponseOptions(),
         )
 
         request.testClasses shouldBe listOf("com.example.FooTest")
         request.testMethods shouldBe mapOf("com.example.FooTest" to listOf("method1"))
-    }
-
-    @Test
-    fun `parseTestRunOptions reports methods field in array form validation errors`() {
-        assertInvalidArgument(
-            {
-                parseTestRunOptions(
-                    mapOf(
-                        "testMethods" to listOf(
-                            mapOf("class" to "com.example.FooTest", "methods" to listOf(1)),
-                        ),
-                    ),
-                )
-            },
-            "methods values must contain only strings",
-        )
-    }
-
-    @Test
-    fun `validate rejects missing selection mechanism`() {
-        assertInvalidArgument(
-            { TestRunOptions().validate() },
-            "At least one of testClasses, testMethods, or includePattern/includePatterns must be provided",
-        )
-    }
-
-    @Test
-    fun `validate rejects taskPath without classes or methods`() {
-        assertInvalidArgument(
-            {
-                TestRunOptions(
-                    selection = TestRunSelection.Patterns(listOf("com.example.*")),
-                    tasks = listOf(":app:test"),
-                ).validate(inputTaskPath = ":app:test")
-            },
-            "taskPath requires non-empty testClasses or testMethods",
-        )
     }
 
     @Test
@@ -314,53 +208,6 @@ class TestRunOptionsTest {
     }
 
     @Test
-    fun `validate rejects multiple selection mechanisms`() {
-        assertInvalidArgument(
-            {
-                parseTestRunOptions(
-                    mapOf(
-                        "testClasses" to listOf("com.example.FooTest"),
-                        "testMethods" to mapOf("com.example.FooTest" to listOf("method1")),
-                    ),
-                )
-            },
-            "Specify only one of testClasses, testMethods, or includePattern/includePatterns",
-        )
-    }
-
-    @Test
-    fun `validate rejects testClasses combined with includePatterns`() {
-        assertInvalidArgument(
-            {
-                parseTestRunOptions(
-                    mapOf(
-                        "testClasses" to listOf("com.example.FooTest"),
-                        "includePatterns" to listOf("com.example.*"),
-                        "tasks" to listOf(":app:test"),
-                    ),
-                ).validate()
-            },
-            "Specify only one of testClasses, testMethods, or includePattern/includePatterns",
-        )
-    }
-
-    @Test
-    fun `validate rejects tasks that omit taskPath when both are specified`() {
-        assertInvalidArgument(
-            {
-                TestRunOptions(
-                    selection = TestRunSelection.Classes(
-                        classes = listOf("com.example.FooTest"),
-                        taskPath = ":app:test",
-                    ),
-                    tasks = listOf(":other:test"),
-                ).validate()
-            },
-            "tasks must include taskPath when both are specified",
-        )
-    }
-
-    @Test
     fun `describeTestOperation separates multiple testMethods classes with semicolons`() {
         val description = describeTestOperation(
             BuildRunRequest(
@@ -391,11 +238,147 @@ class TestRunOptionsTest {
         )
     }
 
-    @Test
-    fun `validate rejects includePatterns without tasks`() {
-        assertInvalidArgument(
-            { TestRunOptions(selection = TestRunSelection.Patterns(listOf("com.example.*"))).validate() },
-            "includePattern/includePatterns requires tasks for test task scoping",
-        )
+    companion object {
+        @JvmStatic
+        fun invalidArgumentCases(): Stream<Arguments> =
+            Stream.of(
+                Arguments.of(
+                    "blank testMethods map keys",
+                    {
+                        parseTestRunOptions(
+                            mapOf(
+                                "testMethods" to mapOf("" to listOf("method1")),
+                            ),
+                        )
+                    },
+                    "testMethods map keys must be non-blank",
+                ),
+                Arguments.of(
+                    "blank testMethods array class names",
+                    {
+                        parseTestRunOptions(
+                            mapOf(
+                                "testMethods" to listOf(
+                                    mapOf("class" to "", "methods" to listOf("method1")),
+                                ),
+                            ),
+                        )
+                    },
+                    "testMethods array entries require a non-blank class name",
+                ),
+                Arguments.of(
+                    "testMethods array entries with multiple class keys",
+                    {
+                        parseTestRunOptions(
+                            mapOf(
+                                "testMethods" to listOf(
+                                    mapOf(
+                                        "class" to "com.example.FooTest",
+                                        "className" to "com.example.BarTest",
+                                        "methods" to listOf("method1"),
+                                    ),
+                                ),
+                            ),
+                        )
+                    },
+                    "testMethods array entries must specify exactly one of class, className, or testClass",
+                ),
+                Arguments.of(
+                    "testMethods when all method names are blank",
+                    {
+                        parseTestRunOptions(
+                            mapOf(
+                                "testMethods" to mapOf(
+                                    "com.example.FooTest" to listOf("", "  "),
+                                ),
+                            ),
+                        )
+                    },
+                    "testMethods entries must contain at least one method name",
+                ),
+                Arguments.of(
+                    "includePatterns when tasks are blank after filtering",
+                    {
+                        parseTestRunOptions(
+                            mapOf(
+                                "includePatterns" to listOf("com.example.*"),
+                                "tasks" to listOf("", "  "),
+                            ),
+                        ).validate()
+                    },
+                    "includePattern/includePatterns requires tasks for test task scoping",
+                ),
+                Arguments.of(
+                    "methods field in array form validation errors",
+                    {
+                        parseTestRunOptions(
+                            mapOf(
+                                "testMethods" to listOf(
+                                    mapOf("class" to "com.example.FooTest", "methods" to listOf(1)),
+                                ),
+                            ),
+                        )
+                    },
+                    "methods values must contain only strings",
+                ),
+                Arguments.of(
+                    "missing selection mechanism",
+                    { TestRunOptions().validate() },
+                    "At least one of testClasses, testMethods, or includePattern/includePatterns must be provided",
+                ),
+                Arguments.of(
+                    "taskPath without classes or methods",
+                    {
+                        TestRunOptions(
+                            selection = TestRunSelection.Patterns(listOf("com.example.*")),
+                            tasks = listOf(":app:test"),
+                        ).validate(inputTaskPath = ":app:test")
+                    },
+                    "taskPath requires non-empty testClasses or testMethods",
+                ),
+                Arguments.of(
+                    "multiple selection mechanisms",
+                    {
+                        parseTestRunOptions(
+                            mapOf(
+                                "testClasses" to listOf("com.example.FooTest"),
+                                "testMethods" to mapOf("com.example.FooTest" to listOf("method1")),
+                            ),
+                        )
+                    },
+                    "Specify only one of testClasses, testMethods, or includePattern/includePatterns",
+                ),
+                Arguments.of(
+                    "testClasses combined with includePatterns",
+                    {
+                        parseTestRunOptions(
+                            mapOf(
+                                "testClasses" to listOf("com.example.FooTest"),
+                                "includePatterns" to listOf("com.example.*"),
+                                "tasks" to listOf(":app:test"),
+                            ),
+                        ).validate()
+                    },
+                    "Specify only one of testClasses, testMethods, or includePattern/includePatterns",
+                ),
+                Arguments.of(
+                    "tasks that omit taskPath when both are specified",
+                    {
+                        TestRunOptions(
+                            selection = TestRunSelection.Classes(
+                                classes = listOf("com.example.FooTest"),
+                                taskPath = ":app:test",
+                            ),
+                            tasks = listOf(":other:test"),
+                        ).validate()
+                    },
+                    "tasks must include taskPath when both are specified",
+                ),
+                Arguments.of(
+                    "includePatterns without tasks",
+                    { TestRunOptions(selection = TestRunSelection.Patterns(listOf("com.example.*"))).validate() },
+                    "includePattern/includePatterns requires tasks for test task scoping",
+                ),
+            )
     }
 }

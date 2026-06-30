@@ -1,17 +1,21 @@
 package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.build.persistence.McpBuildRecordPaths
-import com.example.gradle.mcp.build.persistence.gradleBuildResult
-import com.example.gradle.mcp.build.persistence.mcpBuildResult
-import com.example.gradle.mcp.build.persistence.persistedBuildManager
-import com.example.gradle.mcp.build.persistence.writeDiskFile
-import com.example.gradle.mcp.build.persistence.writeGradleResultToDisk
-import com.example.gradle.mcp.build.persistence.writeMcpResultToDisk
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.protocol.mcpObjectMapper
+import com.example.gradle.mcp.support.failedTracker
+import com.example.gradle.mcp.support.gradleBuildResult
+import com.example.gradle.mcp.support.mcpBuildResult
+import com.example.gradle.mcp.support.persistedBuildManager
+import com.example.gradle.mcp.support.runningTracker
+import com.example.gradle.mcp.support.seedNoopConnection
+import com.example.gradle.mcp.support.testBuildRecord
 import com.example.gradle.mcp.support.withWorkspaceDirectory
+import com.example.gradle.mcp.support.writeDiskFile
+import com.example.gradle.mcp.support.writeGradleResultToDisk
+import com.example.gradle.mcp.support.writeMcpResultToDisk
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -93,7 +97,7 @@ class BuildExecutionManagerPersistenceTest {
         val streams = CapturingStreams().also {
             it.appendStdoutForTests("partial\nBUILD SUCCESSFUL in 2s\n2 actionable tasks: 2 executed\n")
         }
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = buildId,
                 startedAt = Instant.parse("2026-06-14T10:00:00Z"),
@@ -150,7 +154,7 @@ class BuildExecutionManagerPersistenceTest {
     fun `status prefers disk gradle running over memory failed after disconnect`(@TempDir projectDir: File) {
         val buildId = "disconnect-still-running"
         val (manager, store) = persistedBuildManager(projectDir)
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = buildId,
                 startedAt = Instant.parse("2026-06-14T10:00:00Z"),
@@ -245,7 +249,7 @@ class BuildExecutionManagerPersistenceTest {
     fun `status skips disk merge while in-memory build is still running`(@TempDir projectDir: File) {
         val buildId = "active-running-build"
         val (manager, store) = persistedBuildManager(projectDir)
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = buildId,
                 startedAt = Instant.parse("2026-06-14T10:00:00Z"),

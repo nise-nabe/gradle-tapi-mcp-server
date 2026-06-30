@@ -6,6 +6,15 @@ import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import com.example.gradle.mcp.support.blockingProjectConnection
+import com.example.gradle.mcp.support.cancelledTracker
+import com.example.gradle.mcp.support.failedTracker
+import com.example.gradle.mcp.support.noopProjectConnection
+import com.example.gradle.mcp.support.seedNoopConnection
+import com.example.gradle.mcp.support.runningTracker
+import com.example.gradle.mcp.support.testBuildRecord
+import com.example.gradle.mcp.support.testCompletedSnapshot
+import com.example.gradle.mcp.support.testExecutor
 import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.booleans.shouldBeFalse
@@ -29,7 +38,7 @@ class BuildExecutionManagerCancelTest {
     @Test
     fun `cancelBuild requests cancellation for running build`() {
         val tokenSource = GradleConnector.newCancellationTokenSource()
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "cancellable-build",
                 tracker = runningTracker(),
@@ -46,7 +55,7 @@ class BuildExecutionManagerCancelTest {
 
     @Test
     fun `cancelBuild returns current status for terminal build`() {
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "done-build",
                 tracker = cancelledTracker(),
@@ -71,7 +80,7 @@ class BuildExecutionManagerCancelTest {
 
     @Test
     fun `resetBuildState cancels running builds and clears active state`() {
-        manager.seedTestBuild(testBuildRecord(id = "running-build", tracker = runningTracker()))
+        manager.seedRunningBuildForTests(testBuildRecord(id = "running-build", tracker = runningTracker()))
 
         manager.resetBuildState("Preparing new Gradle connection")
 
@@ -89,7 +98,7 @@ class BuildExecutionManagerCancelTest {
         connectionManager.seedConnectionForTests(connection, projectDirectory = projectB)
         val scopedManager = BuildExecutionManager(connectionManager)
         val tokenSource = GradleConnector.newCancellationTokenSource()
-        scopedManager.seedTestBuild(
+        scopedManager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "multi-project-build",
                 tracker = runningTracker(),
@@ -106,7 +115,7 @@ class BuildExecutionManagerCancelTest {
 
     @Test
     fun `onDisconnect cancels running builds`() {
-        manager.seedTestBuild(testBuildRecord(id = "running-build", tracker = runningTracker()))
+        manager.seedRunningBuildForTests(testBuildRecord(id = "running-build", tracker = runningTracker()))
 
         manager.onDisconnect()
 
@@ -142,7 +151,7 @@ class BuildExecutionManagerCancelTest {
     @Test
     fun `shutdown releases lifecycle lock before awaiting executor termination`() {
         val manager = BuildExecutionManager(GradleConnectionManager())
-        manager.seedTestBuild(testBuildRecord(id = "running-build", tracker = runningTracker()))
+        manager.seedRunningBuildForTests(testBuildRecord(id = "running-build", tracker = runningTracker()))
 
         val executor = manager.testExecutor()
         val taskEntered = CountDownLatch(1)
@@ -167,7 +176,7 @@ class BuildExecutionManagerCancelTest {
 
     @Test
     fun `resetBuildState snapshot keeps project directory from build start`(@TempDir projectDir: File) {
-        manager.seedTestBuild(
+        manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "running-build",
                 tracker = runningTracker(),

@@ -1,12 +1,17 @@
-package com.example.gradle.mcp.build.persistence
+package com.example.gradle.mcp.support
 
 import com.example.gradle.mcp.build.BuildExecutionManager
 import com.example.gradle.mcp.build.BuildKind
+import com.example.gradle.mcp.build.BuildProblemSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildRecord
 import com.example.gradle.mcp.build.BuildStatusAssembler
-import com.example.gradle.mcp.build.CapturingStreams
-import com.example.gradle.mcp.build.seedNoopConnection
+import com.example.gradle.mcp.build.persistence.BuildRecordStore
+import com.example.gradle.mcp.build.persistence.DiskBuildEvent
+import com.example.gradle.mcp.build.persistence.GradleBuildResult
+import com.example.gradle.mcp.build.persistence.McpBuildRecordPaths
+import com.example.gradle.mcp.build.persistence.McpBuildResult
+import com.example.gradle.mcp.build.persistence.PersistedBuildViewFactory
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
@@ -22,12 +27,17 @@ internal fun mcpBuildResult(
     kind: String = "tasks",
     tasks: List<String> = listOf("build"),
     testClasses: List<String> = emptyList(),
-    startedAt: String = "2026-06-14T10:00:00Z",
-    finishedAt: String = "2026-06-14T10:01:00Z",
+    startedAt: String = TEST_ISO_START,
+    finishedAt: String = TEST_ISO_FINISH,
     status: String = "succeeded",
-    outcome: String = "SUCCESS",
+    outcome: String? = "SUCCESS",
     error: String? = null,
     buildSummary: Map<String, Any?>? = null,
+    failedTaskCount: Int = 0,
+    failedTasks: List<String> = emptyList(),
+    problems: List<BuildProblemSnapshot> = emptyList(),
+    stdoutTotalChars: Int = 0,
+    stderrTotalChars: Int = 0,
 ): McpBuildResult =
     McpBuildResult(
         buildId = buildId,
@@ -41,14 +51,20 @@ internal fun mcpBuildResult(
         outcome = outcome,
         error = error,
         buildSummary = buildSummary,
+        failedTaskCount = failedTaskCount,
+        failedTasks = failedTasks,
+        problems = problems,
+        stdoutTotalChars = stdoutTotalChars,
+        stderrTotalChars = stderrTotalChars,
     )
 
 internal fun gradleBuildResult(
     buildId: String,
     status: String,
-    startedAt: String = "2026-06-14T10:00:00Z",
+    startedAt: String = TEST_ISO_START,
     finishedAt: String? = null,
     taskNames: List<String> = emptyList(),
+    failure: String? = null,
 ): GradleBuildResult =
     GradleBuildResult(
         buildId = buildId,
@@ -56,6 +72,7 @@ internal fun gradleBuildResult(
         startedAt = startedAt,
         finishedAt = finishedAt,
         taskNames = taskNames,
+        failure = failure,
     )
 
 internal fun diskBuildEvent(timestamp: String, type: String, displayName: String): DiskBuildEvent =
@@ -75,26 +92,36 @@ internal fun contractMcpResult(status: String, finishedAt: Instant): McpBuildRes
         error = "Gradle connection closed",
     )
 
-internal fun BuildRecordStore.writeMcpResultToDisk(projectDir: File, result: McpBuildResult): File {
-    val recordDir = recordDirectory(projectDir, result.buildId).shouldNotBeNull()
+internal fun BuildRecordStore.writeRecordFile(
+    projectDir: File,
+    buildId: String,
+    fileName: String,
+    content: String,
+): File {
+    val recordDir = recordDirectory(projectDir, buildId).shouldNotBeNull()
     recordDir.mkdirs()
-    File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-        mcpObjectMapper().writeValueAsString(result),
-        StandardCharsets.UTF_8,
-    )
+    File(recordDir, fileName).writeText(content, StandardCharsets.UTF_8)
     return recordDir
 }
+
+internal fun BuildRecordStore.writeMcpResultToDisk(projectDir: File, result: McpBuildResult): File =
+    writeRecordFile(
+        projectDir,
+        result.buildId,
+        McpBuildRecordPaths.MCP_RESULT_FILE,
+        mcpObjectMapper().writeValueAsString(result),
+    )
 
 internal fun BuildRecordStore.writeGradleResultToDisk(
     projectDir: File,
     buildId: String,
     result: GradleBuildResult,
 ) {
-    val recordDir = recordDirectory(projectDir, buildId).shouldNotBeNull()
-    recordDir.mkdirs()
-    File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
+    writeRecordFile(
+        projectDir,
+        buildId,
+        McpBuildRecordPaths.GRADLE_RESULT_FILE,
         mcpObjectMapper().writeValueAsString(result),
-        StandardCharsets.UTF_8,
     )
 }
 
@@ -104,9 +131,7 @@ internal fun BuildRecordStore.writeDiskFile(
     fileName: String,
     content: String,
 ) {
-    val recordDir = recordDirectory(projectDir, buildId).shouldNotBeNull()
-    recordDir.mkdirs()
-    File(recordDir, fileName).writeText(content, StandardCharsets.UTF_8)
+    writeRecordFile(projectDir, buildId, fileName, content)
 }
 
 internal fun persistedBuildManager(
@@ -130,25 +155,4 @@ internal fun BuildRecordStore.loadAssembledStatus(
         outputLimit,
         progressOptions,
     )
-}
-
-internal fun completedBuildRecord(
-    projectDir: File,
-    buildId: String,
-    stdout: String = "BUILD SUCCESSFUL in 1s\n",
-): BuildRecord {
-    val streams = CapturingStreams().also { it.appendStdoutForTests(stdout) }
-    val tracker = BuildProgressTracker().also {
-        it.markStarting("Gradle tasks: build")
-        it.markSucceeded()
-    }
-    return BuildRecord(
-        id = buildId,
-        kind = BuildKind.TASKS,
-        tasks = listOf("build"),
-        startedAt = Instant.parse("2026-06-14T10:00:00Z"),
-        progressTracker = tracker,
-        streams = streams,
-        projectDirectory = projectDir.absolutePath,
-    ).also { it.finishedAt = Instant.parse("2026-06-14T10:01:00Z") }
 }
