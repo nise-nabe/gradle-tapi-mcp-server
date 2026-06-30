@@ -5,7 +5,13 @@ import com.example.gradle.mcp.build.BuildProblemSnapshot
 import com.example.gradle.mcp.build.TestRunSelection
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildRecord
-import com.example.gradle.mcp.build.BuildStatusAssembler
+import com.example.gradle.mcp.support.TEST_ISO_FINISH
+import com.example.gradle.mcp.support.gradleBuildResult
+import com.example.gradle.mcp.support.loadAssembledStatus
+import com.example.gradle.mcp.support.mcpBuildResult
+import com.example.gradle.mcp.support.succeededBuildRecord
+import com.example.gradle.mcp.support.writeGradleResultToDisk
+import com.example.gradle.mcp.support.writeMcpResultToDisk
 import com.example.gradle.mcp.build.CapturingStreams
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
@@ -39,7 +45,7 @@ class BuildRecordStoreTest {
 
     @Test
     fun `readMcpResult reconstructs method selection from persisted flat fields`(@TempDir projectDir: File) {
-        val record = completedRecord(projectDir, "method-selection-build").copy(
+        val record = succeededBuildRecord(projectDir, "method-selection-build").copy(
             kind = BuildKind.TESTS,
             tasks = listOf(":app:test"),
             selection = TestRunSelection.Methods(
@@ -70,7 +76,7 @@ class BuildRecordStoreTest {
 
     @Test
     fun `writeMcpResult persists result and logs`(@TempDir projectDir: File) {
-        val record = completedRecord(projectDir, "persisted-build")
+        val record = succeededBuildRecord(projectDir, "persisted-build")
         store.writeMcpResult(record, record.progressTracker.snapshot())
 
         val recordDir = store.recordDirectory(projectDir, "persisted-build").shouldNotBeNull()
@@ -118,7 +124,7 @@ class BuildRecordStoreTest {
             stderr = com.example.gradle.mcp.build.CapturedStreamSnapshot("", 0),
         )
 
-        val status = loadStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
             .shouldNotBeNull()
 
         status["status"] shouldBe "succeeded"
@@ -145,7 +151,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
             .shouldNotBeNull()
 
         status["status"] shouldBe "running"
@@ -159,7 +165,7 @@ class BuildRecordStoreTest {
 
     @Test
     fun `loadStatus returns null for missing record directory`(@TempDir projectDir: File) {
-        loadStatus(projectDir, "missing", OutputLimitOptions(), ProgressResponseOptions()).shouldBeNull()
+        store.loadAssembledStatus(projectDir, "missing", OutputLimitOptions(), ProgressResponseOptions()).shouldBeNull()
     }
 
     @Test
@@ -194,7 +200,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
             .shouldNotBeNull()
 
         status["status"] shouldBe "failed"
@@ -226,7 +232,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(
+        val status = store.loadAssembledStatus(
             projectDir,
             buildId,
             OutputLimitOptions(),
@@ -260,7 +266,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
             .shouldNotBeNull()
 
         status["status"] shouldBe "succeeded"
@@ -292,7 +298,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(
+        val status = store.loadAssembledStatus(
             projectDir,
             buildId,
             OutputLimitOptions(),
@@ -351,7 +357,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
             .shouldNotBeNull()
 
         status["status"] shouldBe "succeeded"
@@ -378,7 +384,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
             .shouldNotBeNull()
 
         status["startedAt"] shouldBe "2026-06-14T10:00:00Z"
@@ -419,7 +425,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
             .shouldNotBeNull()
 
         status["status"] shouldBe "running"
@@ -471,7 +477,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
             .shouldNotBeNull()
 
         status["status"] shouldBe "failed"
@@ -521,7 +527,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
             .shouldNotBeNull()
 
         status["status"] shouldBe "running"
@@ -556,7 +562,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
             .shouldNotBeNull()
 
         status["status"] shouldBe "failed"
@@ -702,7 +708,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
             .shouldNotBeNull()
 
         status["status"] shouldBe "failed"
@@ -763,7 +769,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
             .shouldNotBeNull()
 
         status["status"] shouldBe "failed"
@@ -827,9 +833,9 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
 
-        loadStatus(projectDir, "../leaked-build", OutputLimitOptions(), ProgressResponseOptions()).shouldBeNull()
-        loadStatus(projectDir, "..\\leaked-build", OutputLimitOptions(), ProgressResponseOptions()).shouldBeNull()
-        loadStatus(projectDir, "foo/../leaked-build", OutputLimitOptions(), ProgressResponseOptions()).shouldBeNull()
+        store.loadAssembledStatus(projectDir, "../leaked-build", OutputLimitOptions(), ProgressResponseOptions()).shouldBeNull()
+        store.loadAssembledStatus(projectDir, "..\\leaked-build", OutputLimitOptions(), ProgressResponseOptions()).shouldBeNull()
+        store.loadAssembledStatus(projectDir, "foo/../leaked-build", OutputLimitOptions(), ProgressResponseOptions()).shouldBeNull()
     }
 
     @Test
@@ -910,26 +916,28 @@ class BuildRecordStoreTest {
         }
     }
 
-    private fun loadStatus(
-        projectDir: File,
-        buildId: String,
-        outputLimit: OutputLimitOptions,
-        progressOptions: ProgressResponseOptions,
-    ): Map<String, Any?>? {
-        val artifacts = store.loadArtifacts(projectDir, buildId) ?: return null
-        return BuildStatusAssembler.assemble(
-            PersistedBuildViewFactory.fromArtifacts(buildId, artifacts),
-            outputLimit,
-            progressOptions,
-        )
-    }
-
     @Test
     fun `listBuildIds returns persisted build directories`(@TempDir projectDir: File) {
         val olderId = "older-build"
         val newerId = "newer-build"
-        writeMcpResult(projectDir, olderId, "2026-06-14T09:00:00Z", "2026-06-14T09:01:00Z")
-        writeMcpResult(projectDir, newerId, "2026-06-14T10:00:00Z", "2026-06-14T10:01:00Z")
+        store.writeMcpResultToDisk(
+            projectDir,
+            mcpBuildResult(
+                buildId = olderId,
+                projectDirectory = projectDir.absolutePath,
+                startedAt = "2026-06-14T09:00:00Z",
+                finishedAt = "2026-06-14T09:01:00Z",
+            ),
+        )
+        store.writeMcpResultToDisk(
+            projectDir,
+            mcpBuildResult(
+                buildId = newerId,
+                projectDirectory = projectDir.absolutePath,
+                startedAt = "2026-06-14T10:00:00Z",
+                finishedAt = "2026-06-14T10:01:00Z",
+            ),
+        )
         val emptyRecordDir = store.recordDirectory(projectDir, "empty-build").shouldNotBeNull()
         emptyRecordDir.mkdirs()
 
@@ -939,23 +947,9 @@ class BuildRecordStoreTest {
     @Test
     fun `loadListSummary resolves disk status from persistence contract`(@TempDir projectDir: File) {
         val buildId = "listed-build"
-        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
-        recordDir.mkdirs()
-        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                McpBuildResult(
-                    buildId = buildId,
-                    kind = "tasks",
-                    tasks = listOf("build"),
-                    testClasses = emptyList(),
-                    projectDirectory = projectDir.absolutePath,
-                    startedAt = "2026-06-14T10:00:00Z",
-                    finishedAt = "2026-06-14T10:01:00Z",
-                    status = "succeeded",
-                    outcome = "SUCCESS",
-                ),
-            ),
-            StandardCharsets.UTF_8,
+        store.writeMcpResultToDisk(
+            projectDir,
+            mcpBuildResult(buildId = buildId, projectDirectory = projectDir.absolutePath),
         )
 
         val summary = store.loadListSummary(projectDir, buildId).shouldNotBeNull()
@@ -970,83 +964,29 @@ class BuildRecordStoreTest {
     @Test
     fun `loadListSummary outcome follows Gradle terminal authority over stale MCP outcome`(@TempDir projectDir: File) {
         val buildId = "gradle-failed-build"
-        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
-        recordDir.mkdirs()
-        File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                GradleBuildResult(
-                    buildId = buildId,
-                    status = "failed",
-                    startedAt = "2026-06-14T10:00:00Z",
-                    finishedAt = "2026-06-14T10:01:00Z",
-                    taskNames = listOf("build"),
-                ),
+        store.writeGradleResultToDisk(
+            projectDir,
+            buildId,
+            gradleBuildResult(
+                buildId = buildId,
+                status = "failed",
+                finishedAt = TEST_ISO_FINISH,
+                taskNames = listOf("build"),
             ),
-            StandardCharsets.UTF_8,
         )
-        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                McpBuildResult(
-                    buildId = buildId,
-                    kind = "tasks",
-                    tasks = listOf("build"),
-                    testClasses = emptyList(),
-                    projectDirectory = projectDir.absolutePath,
-                    startedAt = "2026-06-14T10:00:00Z",
-                    finishedAt = "2026-06-14T10:01:00Z",
-                    status = "failed",
-                    outcome = "SUCCESS",
-                ),
+        store.writeMcpResultToDisk(
+            projectDir,
+            mcpBuildResult(
+                buildId = buildId,
+                projectDirectory = projectDir.absolutePath,
+                status = "failed",
+                outcome = "SUCCESS",
             ),
-            StandardCharsets.UTF_8,
         )
 
         val summary = store.loadListSummary(projectDir, buildId).shouldNotBeNull()
 
         summary.status shouldBe "failed"
         summary.outcome shouldBe "FAILED"
-    }
-
-    private fun writeMcpResult(
-        projectDir: File,
-        buildId: String,
-        startedAt: String,
-        finishedAt: String,
-    ) {
-        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
-        recordDir.mkdirs()
-        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                McpBuildResult(
-                    buildId = buildId,
-                    kind = "tasks",
-                    tasks = listOf("build"),
-                    testClasses = emptyList(),
-                    projectDirectory = projectDir.absolutePath,
-                    startedAt = startedAt,
-                    finishedAt = finishedAt,
-                    status = "succeeded",
-                    outcome = "SUCCESS",
-                ),
-            ),
-            StandardCharsets.UTF_8,
-        )
-    }
-
-    private fun completedRecord(projectDir: File, buildId: String): BuildRecord {
-        val streams = CapturingStreams()
-        streams.appendStdoutForTests("BUILD SUCCESSFUL in 1s\n")
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        tracker.markSucceeded()
-        return BuildRecord(
-            id = buildId,
-            kind = BuildKind.TASKS,
-            tasks = listOf("build"),
-            startedAt = Instant.parse("2026-06-14T10:00:00Z"),
-            progressTracker = tracker,
-            streams = streams,
-            projectDirectory = projectDir.absolutePath,
-        ).also { it.finishedAt = Instant.parse("2026-06-14T10:01:00Z") }
     }
 }
