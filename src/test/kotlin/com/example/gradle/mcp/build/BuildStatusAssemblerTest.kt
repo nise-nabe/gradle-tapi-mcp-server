@@ -1,9 +1,11 @@
 package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.build.BuildProblemSnapshot
-import com.example.gradle.mcp.build.FailedTestSnapshot
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import com.example.gradle.mcp.support.TEST_ISO_FINISH
+import com.example.gradle.mcp.support.TEST_ISO_START
+import com.example.gradle.mcp.support.failedTestSnapshot
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
@@ -132,8 +134,8 @@ class BuildStatusAssemblerTest {
                 buildId = "failed-tests-build",
                 kind = "tests",
                 status = BuildProgressTracker.STATUS_FAILED,
-                startedAt = "2026-06-14T10:00:00Z",
-                finishedAt = "2026-06-14T10:01:00Z",
+                startedAt = TEST_ISO_START,
+                finishedAt = TEST_ISO_FINISH,
                 tasks = listOf("test"),
                 selection = null,
                 error = "Test failed",
@@ -151,10 +153,9 @@ class BuildStatusAssemblerTest {
                     recentEvents = emptyList(),
                     totalEventCount = 1,
                     failedTests = listOf(
-                        FailedTestSnapshot(
+                        failedTestSnapshot(
                             className = "com.example.FooTest",
                             methodName = "bar",
-                            displayName = "com.example.FooTest.bar",
                             failureMessage = "boom",
                         ),
                     ),

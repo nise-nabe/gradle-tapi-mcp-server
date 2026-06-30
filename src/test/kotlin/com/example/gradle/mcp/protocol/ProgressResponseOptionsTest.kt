@@ -3,10 +3,10 @@ package com.example.gradle.mcp.protocol
 import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildProblemSnapshot
-import com.example.gradle.mcp.build.FailedTestSnapshot
 import com.example.gradle.mcp.build.ProgressEventSnapshot
 import com.example.gradle.mcp.build.ProgressEventTypes
 import com.example.gradle.mcp.build.TestProgressDetailsSnapshot
+import com.example.gradle.mcp.support.failedTestSnapshot
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -165,10 +165,9 @@ class ProgressResponseOptionsTest {
             recentEvents = emptyList(),
             totalEventCount = 2,
             failedTests = listOf(
-                FailedTestSnapshot(
+                failedTestSnapshot(
                     className = "com.example.FooTest",
                     methodName = "bar",
-                    displayName = "com.example.FooTest.bar",
                     failureMessage = "boom",
                 ),
             ),
@@ -193,10 +192,9 @@ class ProgressResponseOptionsTest {
             recentEvents = emptyList(),
             totalEventCount = 2,
             failedTests = listOf(
-                FailedTestSnapshot(
+                failedTestSnapshot(
                     className = "com.example.FooTest",
                     methodName = "bar",
-                    displayName = "com.example.FooTest.bar",
                     failureMessage = "boom",
                 ),
             ),

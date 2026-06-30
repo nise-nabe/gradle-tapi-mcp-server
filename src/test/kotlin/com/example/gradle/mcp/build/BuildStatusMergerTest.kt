@@ -3,6 +3,9 @@ package com.example.gradle.mcp.build
 import com.example.gradle.mcp.build.persistence.PersistedBuildArtifacts
 import com.example.gradle.mcp.build.persistence.PersistedBuildViewFactory
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import com.example.gradle.mcp.support.TEST_ISO_FINISH
+import com.example.gradle.mcp.support.TEST_ISO_START
+import com.example.gradle.mcp.support.failedTestSnapshot
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -153,10 +156,9 @@ class BuildStatusMergerTest {
     @Test
     fun `merge refreshes failed test order so takeLast keeps the most recent failure`() {
         val initialFailures = (1..11).map { index ->
-            FailedTestSnapshot(
+            failedTestSnapshot(
                 className = "com.example.Test$index",
                 methodName = "fails$index",
-                displayName = "com.example.Test$index.fails$index",
                 failureMessage = "first failure $index",
             )
         }
@@ -278,8 +280,8 @@ class BuildStatusMergerTest {
             buildId = buildId,
             kind = "tasks",
             status = BuildProgressTracker.STATUS_FAILED,
-            startedAt = "2026-06-14T10:00:00Z",
-            finishedAt = "2026-06-14T10:01:00Z",
+            startedAt = TEST_ISO_START,
+            finishedAt = TEST_ISO_FINISH,
             tasks = listOf("build"),
             error = "Build failed",
             outcome = "FAILED",

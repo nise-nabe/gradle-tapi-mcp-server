@@ -10,6 +10,7 @@ import com.example.gradle.mcp.support.gradleBuildResult
 import com.example.gradle.mcp.support.loadAssembledStatus
 import com.example.gradle.mcp.support.mcpBuildResult
 import com.example.gradle.mcp.support.succeededBuildRecord
+import com.example.gradle.mcp.support.writeDiskFile
 import com.example.gradle.mcp.support.writeGradleResultToDisk
 import com.example.gradle.mcp.support.writeMcpResultToDisk
 import com.example.gradle.mcp.build.CapturingStreams
@@ -276,26 +277,20 @@ class BuildRecordStoreTest {
     @Test
     fun `loadStatus derives running test progress from test events ndjson`(@TempDir projectDir: File) {
         val buildId = "test-events-build"
-        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
-        recordDir.mkdirs()
-        File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                GradleBuildResult(
-                    buildId = buildId,
-                    status = "running",
-                    startedAt = "2026-06-14T10:00:00Z",
-                    taskNames = listOf("test"),
-                ),
-            ),
-            StandardCharsets.UTF_8,
+        store.writeGradleResultToDisk(
+            projectDir,
+            buildId,
+            gradleBuildResult(buildId = buildId, status = "running", taskNames = listOf("test")),
         )
-        File(recordDir, McpBuildRecordPaths.EVENTS_FILE).writeText(
+        store.writeDiskFile(
+            projectDir,
+            buildId,
+            McpBuildRecordPaths.EVENTS_FILE,
             """
             {"ts":"2026-06-14T10:00:01Z","type":"START","displayName":"Gradle tasks: test"}
             {"ts":"2026-06-14T10:00:02Z","type":"TEST_START","displayName":"com.example.FooTest.bar","className":"com.example.FooTest","methodName":"bar"}
             {"ts":"2026-06-14T10:00:03Z","type":"TEST_SUCCESS","displayName":"com.example.FooTest.bar","className":"com.example.FooTest","methodName":"bar"}
             """.trimIndent() + "\n",
-            StandardCharsets.UTF_8,
         )
 
         val status = store.loadAssembledStatus(
@@ -573,30 +568,28 @@ class BuildRecordStoreTest {
     @Test
     fun `loadStatus includes failedTests summary from events on gradle terminal failed`(@TempDir projectDir: File) {
         val buildId = "gradle-failed-with-test-details"
-        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
-        recordDir.mkdirs()
-        File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                GradleBuildResult(
-                    buildId = buildId,
-                    status = "failed",
-                    startedAt = "2026-06-14T10:00:00Z",
-                    finishedAt = "2026-06-14T10:02:00Z",
-                    failure = "Test failed",
-                    taskNames = listOf("test"),
-                ),
+        store.writeGradleResultToDisk(
+            projectDir,
+            buildId,
+            gradleBuildResult(
+                buildId = buildId,
+                status = "failed",
+                finishedAt = "2026-06-14T10:02:00Z",
+                failure = "Test failed",
+                taskNames = listOf("test"),
             ),
-            StandardCharsets.UTF_8,
         )
-        File(recordDir, McpBuildRecordPaths.EVENTS_FILE).writeText(
+        store.writeDiskFile(
+            projectDir,
+            buildId,
+            McpBuildRecordPaths.EVENTS_FILE,
             """
             {"ts":"2026-06-14T10:01:00Z","type":"TEST_FAIL","displayName":"com.example.FooTest.bar","outcome":"boom","className":"com.example.FooTest","methodName":"bar","failureMessage":"boom"}
             {"ts":"2026-06-14T10:02:00Z","type":"BUILD_FINISHED","status":"failed"}
             """.trimIndent() + "\n",
-            StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(
+        val status = store.loadAssembledStatus(
             projectDir,
             buildId,
             OutputLimitOptions(),
@@ -611,35 +604,32 @@ class BuildRecordStoreTest {
     @Test
     fun `loadStatus includes failedTests from events on mcp terminal failed`(@TempDir projectDir: File) {
         val buildId = "mcp-failed-with-test-details"
-        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
-        recordDir.mkdirs()
-        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                McpBuildResult(
-                    buildId = buildId,
-                    kind = "tests",
-                    tasks = emptyList(),
-                    testClasses = listOf("com.example.FooTest"),
-                    projectDirectory = projectDir.absolutePath,
-                    startedAt = "2026-06-14T10:00:00Z",
-                    finishedAt = "2026-06-14T10:02:00Z",
-                    status = "failed",
-                    outcome = "FAILED",
-                    error = "Gradle connection closed",
-                    failedTaskCount = 1,
-                    failedTasks = listOf(":test"),
-                ),
+        store.writeMcpResultToDisk(
+            projectDir,
+            mcpBuildResult(
+                buildId = buildId,
+                projectDirectory = projectDir.absolutePath,
+                kind = "tests",
+                tasks = emptyList(),
+                testClasses = listOf("com.example.FooTest"),
+                finishedAt = "2026-06-14T10:02:00Z",
+                status = "failed",
+                outcome = "FAILED",
+                error = "Gradle connection closed",
+                failedTaskCount = 1,
+                failedTasks = listOf(":test"),
             ),
-            StandardCharsets.UTF_8,
         )
-        File(recordDir, McpBuildRecordPaths.EVENTS_FILE).writeText(
+        store.writeDiskFile(
+            projectDir,
+            buildId,
+            McpBuildRecordPaths.EVENTS_FILE,
             """
             {"ts":"2026-06-14T10:01:00Z","type":"TEST_FAIL","displayName":"com.example.FooTest.bar","outcome":"boom","className":"com.example.FooTest","methodName":"bar","failureMessage":"boom"}
             """.trimIndent() + "\n",
-            StandardCharsets.UTF_8,
         )
 
-        val status = loadStatus(
+        val status = store.loadAssembledStatus(
             projectDir,
             buildId,
             OutputLimitOptions(),
