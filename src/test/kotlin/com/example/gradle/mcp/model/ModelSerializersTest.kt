@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.model
 
+import com.example.gradle.mcp.support.defaultProxyReturn
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -15,7 +16,6 @@ import org.gradle.tooling.model.gradle.GradleBuild
 import org.gradle.tooling.model.build.Help
 import org.junit.jupiter.api.Test
 import java.io.File
-import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.util.AbstractSet
 
@@ -392,12 +392,5 @@ class ModelSerializersTest {
             override fun getAll(): List<T> = items
 
             override fun getAt(index: Int): T = items[index]
-        }
-
-    private fun defaultProxyReturn(method: Method): Any? =
-        when (method.returnType) {
-            Boolean::class.javaPrimitiveType, Boolean::class.javaObjectType -> false
-            Int::class.javaPrimitiveType, Int::class.javaObjectType -> 0
-            else -> null
         }
 }

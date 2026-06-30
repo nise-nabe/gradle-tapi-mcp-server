@@ -36,6 +36,9 @@ internal class ProgressEventAccumulator {
         totalEventCount: Int,
         problems: List<BuildProblemSnapshot> = emptyList(),
         liveProblems: List<BuildProblemSnapshot> = emptyList(),
+        recentDownloads: List<DownloadProgressSnapshot> = emptyList(),
+        activeDownloadCount: Int = 0,
+        failedTests: List<FailedTestSnapshot> = emptyList(),
     ): BuildProgressSnapshot =
         BuildProgressSnapshot(
             status = status,
@@ -50,5 +53,8 @@ internal class ProgressEventAccumulator {
             totalEventCount = totalEventCount,
             problems = problems,
             liveProblems = liveProblems,
+            recentDownloads = recentDownloads,
+            activeDownloadCount = activeDownloadCount,
+            failedTests = failedTests,
         )
 }

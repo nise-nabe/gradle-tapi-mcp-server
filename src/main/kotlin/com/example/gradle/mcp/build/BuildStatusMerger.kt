@@ -90,10 +90,14 @@ internal object BuildStatusMerger {
                 }
                 val mergedProblems = base.problems.toMutableList()
                 ProblemsSerializer.mergeDistinct(mergedProblems, other.problems)
-                if (mergedProblems == base.problems) {
+                val mergedFailedTests = FailedTestSnapshots.mergeDistinct(base.failedTests, other.failedTests)
+                if (mergedProblems == base.problems && mergedFailedTests == base.failedTests) {
                     base
                 } else {
-                    base.copy(problems = mergedProblems)
+                    base.copy(
+                        problems = mergedProblems,
+                        failedTests = mergedFailedTests,
+                    )
                 }
             }
         }

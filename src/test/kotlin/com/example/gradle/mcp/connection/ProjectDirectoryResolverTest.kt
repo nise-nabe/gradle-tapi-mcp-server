@@ -2,18 +2,15 @@ package com.example.gradle.mcp.connection
 
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.support.seedNoopConnections
 import com.example.gradle.mcp.support.withWorkspaceDirectory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
-import org.gradle.tooling.ProjectConnection
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
-import java.lang.reflect.InvocationHandler
-import java.lang.reflect.Proxy
-import java.util.concurrent.atomic.AtomicInteger
 
 class ProjectDirectoryResolverTest {
     @Test
@@ -61,14 +58,7 @@ class ProjectDirectoryResolverTest {
         @TempDir projectA: File,
         @TempDir projectB: File,
     ) {
-        val manager = GradleConnectionManager()
-        val connection = Proxy.newProxyInstance(
-            ProjectConnection::class.java.classLoader,
-            arrayOf(ProjectConnection::class.java),
-            InvocationHandler { _, _, _ -> null },
-        ) as ProjectConnection
-        manager.seedConnectionForTests(connection, projectDirectory = projectA)
-        manager.seedConnectionForTests(connection, projectDirectory = projectB)
+        val manager = GradleConnectionManager().also { it.seedNoopConnections(projectA, projectB) }
 
         val error = shouldThrow<McpException> {
             ProjectDirectoryResolver.resolveRequired(emptyMap(), manager)
@@ -82,13 +72,7 @@ class ProjectDirectoryResolverTest {
 
     @Test
     fun `resolveRequired uses sole connected project when no projectDirectory is specified`(@TempDir project: File) {
-        val manager = GradleConnectionManager()
-        val connection = Proxy.newProxyInstance(
-            ProjectConnection::class.java.classLoader,
-            arrayOf(ProjectConnection::class.java),
-            InvocationHandler { _, _, _ -> null },
-        ) as ProjectConnection
-        manager.seedConnectionForTests(connection, projectDirectory = project)
+        val manager = GradleConnectionManager().also { it.seedNoopConnections(project) }
 
         ProjectDirectoryResolver.resolveRequired(emptyMap(), manager) shouldBe project.canonicalFile
     }
@@ -98,13 +82,7 @@ class ProjectDirectoryResolverTest {
         @TempDir workspace: File,
         @TempDir connected: File,
     ) {
-        val manager = GradleConnectionManager()
-        val connection = Proxy.newProxyInstance(
-            ProjectConnection::class.java.classLoader,
-            arrayOf(ProjectConnection::class.java),
-            InvocationHandler { _, _, _ -> null },
-        ) as ProjectConnection
-        manager.seedConnectionForTests(connection, projectDirectory = connected)
+        val manager = GradleConnectionManager().also { it.seedNoopConnections(connected) }
 
         withWorkspaceDirectory(workspace) {
             ProjectDirectoryResolver.resolveRequired(emptyMap(), manager) shouldBe connected.canonicalFile
@@ -117,14 +95,7 @@ class ProjectDirectoryResolverTest {
         @TempDir projectA: File,
         @TempDir projectB: File,
     ) {
-        val manager = GradleConnectionManager()
-        val connection = Proxy.newProxyInstance(
-            ProjectConnection::class.java.classLoader,
-            arrayOf(ProjectConnection::class.java),
-            InvocationHandler { _, _, _ -> null },
-        ) as ProjectConnection
-        manager.seedConnectionForTests(connection, projectDirectory = projectA)
-        manager.seedConnectionForTests(connection, projectDirectory = projectB)
+        val manager = GradleConnectionManager().also { it.seedNoopConnections(projectA, projectB) }
 
         withWorkspaceDirectory(workspace) {
             val error = shouldThrow<McpException> {
@@ -143,14 +114,7 @@ class ProjectDirectoryResolverTest {
         @TempDir projectA: File,
         @TempDir projectB: File,
     ) {
-        val manager = GradleConnectionManager()
-        val connection = Proxy.newProxyInstance(
-            ProjectConnection::class.java.classLoader,
-            arrayOf(ProjectConnection::class.java),
-            InvocationHandler { _, _, _ -> null },
-        ) as ProjectConnection
-        manager.seedConnectionForTests(connection, projectDirectory = projectA)
-        manager.seedConnectionForTests(connection, projectDirectory = projectB)
+        val manager = GradleConnectionManager().also { it.seedNoopConnections(projectA, projectB) }
         val scope = ProjectDirectoryScope(manager)
 
         val error = shouldThrow<McpException> {

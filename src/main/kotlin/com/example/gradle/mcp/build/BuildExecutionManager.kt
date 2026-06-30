@@ -375,7 +375,10 @@ class BuildExecutionManager(
         val streams = CapturingStreams()
         val notifier = ProgressNotifier(exchange, progressToken)
         lateinit var tracker: BuildProgressTracker
-        tracker = BuildProgressTracker(onUpdate = { notifier.notifyIfNeeded(tracker) })
+        tracker = BuildProgressTracker(
+            trackDownloads = request.progressOptions.includeDownloads,
+            onUpdate = { notifier.notifyIfNeeded(tracker) },
+        )
         val record = BuildRecord(
             id = UUID.randomUUID().toString(),
             kind = request.kind,

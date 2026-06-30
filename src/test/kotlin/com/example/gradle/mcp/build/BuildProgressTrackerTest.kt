@@ -1,29 +1,45 @@
 package com.example.gradle.mcp.build
 
-import com.example.gradle.mcp.support.problemProxy
 import com.example.gradle.mcp.support.singleProblemEventProxy
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldContain
-import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import org.gradle.tooling.ConfigurableLauncher
 import org.gradle.tooling.Failure
 import org.gradle.tooling.events.FailureResult
 import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.FinishEvent
+import org.gradle.tooling.events.SuccessResult
 import org.gradle.tooling.events.configuration.ProjectConfigurationFinishEvent
 import org.gradle.tooling.events.configuration.ProjectConfigurationStartEvent
 import org.gradle.tooling.events.configuration.ProjectConfigurationSuccessResult
+import org.gradle.tooling.events.problems.ContextualLabel
+import org.gradle.tooling.events.problems.Details
 import org.gradle.tooling.events.problems.Problem
+import org.gradle.tooling.events.problems.ProblemDefinition
+import org.gradle.tooling.events.problems.ProblemId
 import org.gradle.tooling.events.problems.Severity
+import org.gradle.tooling.events.test.JvmTestOperationDescriptor
+import org.gradle.tooling.events.test.TestFailureResult
 import org.gradle.tooling.events.test.TestFinishEvent
 import org.gradle.tooling.events.test.TestStartEvent
 import org.gradle.tooling.events.test.TestSuccessResult
+import org.gradle.tooling.events.download.FileDownloadFinishEvent
+import org.gradle.tooling.events.download.FileDownloadNotFoundResult
+import org.gradle.tooling.events.download.FileDownloadOperationDescriptor
+import org.gradle.tooling.events.download.FileDownloadResult
+import org.gradle.tooling.events.download.FileDownloadStartEvent
+import org.gradle.tooling.events.test.source.FilePosition
+import org.gradle.tooling.events.test.source.FileSource
 import org.junit.jupiter.api.Test
+import java.io.File
+import java.net.URI
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
 
@@ -163,6 +179,77 @@ class BuildProgressTrackerTest {
     }
 
     @Test
+    fun `captures structured test metadata and failed test summaries`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+        val displayName = "com.example.DemoTest.fails"
+        val descriptor = jvmTestDescriptorProxy(
+            displayName = displayName,
+            className = "com.example.DemoTest",
+            methodName = "fails",
+            source = fileSourceProxy(
+                file = File("src/test/kotlin/com/example/DemoTest.kt"),
+                line = 42,
+                column = 7,
+            ),
+        )
+
+        listener.statusChanged(testStartEventProxy(displayName, descriptor))
+        listener.statusChanged(
+            testFinishEventProxy(
+                displayName = displayName,
+                descriptor = descriptor,
+                result = testFailureResultProxy("expected:<1> but was:<2>"),
+            ),
+        )
+
+        val snapshot = tracker.snapshot()
+        val startDetails = snapshot.recentEvents.first { it.eventType == ProgressEventTypes.TEST_START }.testDetails.shouldNotBeNull()
+        startDetails.className shouldBe "com.example.DemoTest"
+        startDetails.methodName shouldBe "fails"
+        startDetails.sourceType shouldBe "file"
+        startDetails.sourcePath shouldBe "src/test/kotlin/com/example/DemoTest.kt"
+        startDetails.sourceLine shouldBe 42
+        startDetails.sourceColumn shouldBe 7
+
+        val failureDetails = snapshot.recentEvents.last().testDetails.shouldNotBeNull()
+        failureDetails.failureMessage shouldBe "expected:<1> but was:<2>"
+        snapshot.failedTests.single().className shouldBe "com.example.DemoTest"
+        snapshot.failedTests.single().methodName shouldBe "fails"
+        snapshot.failedTests.single().failureMessage shouldBe "expected:<1> but was:<2>"
+    }
+
+    @Test
+    fun `caps tracked failed tests after repeated failures`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+
+        repeat(11) { index ->
+            val displayName = "com.example.DemoTest.fails$index"
+            val descriptor = jvmTestDescriptorProxy(
+                displayName = displayName,
+                className = "com.example.DemoTest",
+                methodName = "fails$index",
+                source = fileSourceProxy(
+                    file = File("src/test/kotlin/com/example/DemoTest.kt"),
+                    line = index,
+                    column = null,
+                ),
+            )
+            listener.statusChanged(testStartEventProxy(displayName, descriptor))
+            listener.statusChanged(
+                testFinishEventProxy(
+                    displayName = displayName,
+                    descriptor = descriptor,
+                    result = testFailureResultProxy("failure $index"),
+                ),
+            )
+        }
+
+        tracker.snapshot().failedTests.size shouldBe FailedTestSnapshots.MAX_TRACKED_FAILED_TESTS
+    }
+
+    @Test
     fun `collects structured problems from root failure result`() {
         val tracker = BuildProgressTracker()
         val listener = tracker.asGradleListener()
@@ -204,8 +291,8 @@ class BuildProgressTrackerTest {
             .firstOrNull { it.name == "PROBLEM" || it.name == "PROBLEMS" }
             ?: return
 
-        captureOperationTypes(BuildProgressTracker(), includeProblems = false) shouldNotContain problemOperationType
-        captureOperationTypes(BuildProgressTracker(), includeProblems = true) shouldContain problemOperationType
+        captureOperationTypes(includeProblems = false) shouldNotContain problemOperationType
+        captureOperationTypes(includeProblems = true) shouldContain problemOperationType
     }
 
     @Test
@@ -351,10 +438,73 @@ class BuildProgressTrackerTest {
         snapshot.totalEventCount shouldBe 40
     }
 
+    @Test
+    fun `configureLauncher subscribes file download events only when enabled`() {
+        captureOperationTypes(trackDownloads = false) shouldNotContain OperationType.FILE_DOWNLOAD
+        captureOperationTypes(trackDownloads = true) shouldContain OperationType.FILE_DOWNLOAD
+    }
+
+    @Test
+    fun `tracks file download events when enabled`() {
+        val tracker = BuildProgressTracker(trackDownloads = true)
+        val listener = tracker.asGradleListener()
+        val uri = URI.create("https://repo.example.com/libs/foo.jar")
+        listener.statusChanged(fileDownloadStartEvent(uri, "Download foo"))
+        tracker.snapshot().activeDownloadCount shouldBe 1
+        listener.statusChanged(
+            fileDownloadFinishEvent(uri, "Download foo", successfulDownloadResult(1024L)),
+        )
+        val snapshot = tracker.snapshot()
+        snapshot.activeDownloadCount shouldBe 0
+        snapshot.recentDownloads.single().status shouldBe BuildProgressTracker.DOWNLOAD_STATUS_SUCCEEDED
+        snapshot.recentDownloads.single().bytesDownloaded shouldBe 1024L
+    }
+
+    @Test
+    fun `maps failed file download finish to failed status`() {
+        val tracker = BuildProgressTracker(trackDownloads = true)
+        val listener = tracker.asGradleListener()
+        val uri = URI.create("https://repo.example.com/libs/missing.jar")
+        listener.statusChanged(fileDownloadStartEvent(uri, "Download missing"))
+        listener.statusChanged(
+            fileDownloadFinishEvent(uri, "Download missing", failedDownloadResult()),
+        )
+
+        tracker.snapshot().recentDownloads.single().status shouldBe BuildProgressTracker.DOWNLOAD_STATUS_FAILED
+    }
+
+    @Test
+    fun `maps not found file download finish to not_found status`() {
+        val tracker = BuildProgressTracker(trackDownloads = true)
+        val listener = tracker.asGradleListener()
+        val uri = URI.create("https://repo.example.com/libs/unknown.jar")
+        listener.statusChanged(fileDownloadStartEvent(uri, "Download unknown"))
+        listener.statusChanged(
+            fileDownloadFinishEvent(uri, "Download unknown", notFoundDownloadResult()),
+        )
+
+        tracker.snapshot().recentDownloads.single().status shouldBe BuildProgressTracker.DOWNLOAD_STATUS_NOT_FOUND
+    }
+
+    @Test
+    fun `download events do not overwrite currentOperation`() {
+        val tracker = BuildProgressTracker(trackDownloads = true)
+        tracker.markStarting("Gradle tasks: build")
+        val listener = tracker.asGradleListener()
+        val uri = URI.create("https://repo.example.com/libs/foo.jar")
+        listener.statusChanged(fileDownloadStartEvent(uri, "Download foo"))
+        listener.statusChanged(
+            fileDownloadFinishEvent(uri, "Download foo", successfulDownloadResult(1024L)),
+        )
+
+        tracker.snapshot().currentOperation shouldBe "Gradle tasks: build"
+    }
+
     private fun captureOperationTypes(
-        tracker: BuildProgressTracker,
+        trackDownloads: Boolean = false,
         includeProblems: Boolean = false,
     ): List<OperationType> {
+        val tracker = BuildProgressTracker(trackDownloads = trackDownloads)
         val captured = mutableListOf<OperationType>()
         lateinit var launcher: ConfigurableLauncher<*>
         launcher = Proxy.newProxyInstance(
@@ -383,6 +533,202 @@ class BuildProgressTrackerTest {
         tracker.configureLauncher(launcher, includeProblems)
         return captured.toList()
     }
+
+    private fun fileDownloadDescriptor(uri: URI): FileDownloadOperationDescriptor =
+        Proxy.newProxyInstance(
+            FileDownloadOperationDescriptor::class.java.classLoader,
+            arrayOf(FileDownloadOperationDescriptor::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getUri" -> uri
+                    "getName", "getDisplayName" -> uri.toString()
+                    "getParent" -> null
+                    else -> null
+                }
+            },
+        ) as FileDownloadOperationDescriptor
+
+    private fun fileDownloadStartEvent(uri: URI, displayName: String): FileDownloadStartEvent =
+        Proxy.newProxyInstance(
+            FileDownloadStartEvent::class.java.classLoader,
+            arrayOf(FileDownloadStartEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> displayName
+                    "getEventTime" -> 0L
+                    "getDescriptor" -> fileDownloadDescriptor(uri)
+                    else -> null
+                }
+            },
+        ) as FileDownloadStartEvent
+
+    private fun fileDownloadFinishEvent(uri: URI, displayName: String, result: Any): FileDownloadFinishEvent =
+        Proxy.newProxyInstance(
+            FileDownloadFinishEvent::class.java.classLoader,
+            arrayOf(FileDownloadFinishEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> displayName
+                    "getEventTime" -> 1L
+                    "getDescriptor" -> fileDownloadDescriptor(uri)
+                    "getResult" -> result
+                    else -> null
+                }
+            },
+        ) as FileDownloadFinishEvent
+
+    private fun successfulDownloadResult(bytes: Long): Any =
+        Proxy.newProxyInstance(
+            FileDownloadResult::class.java.classLoader,
+            arrayOf(FileDownloadResult::class.java, SuccessResult::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getBytesDownloaded" -> bytes
+                    "getStartTime", "getEndTime" -> 0L
+                    else -> null
+                }
+            },
+        )
+
+    private fun failedDownloadResult(bytes: Long = 0L): Any =
+        Proxy.newProxyInstance(
+            FileDownloadResult::class.java.classLoader,
+            arrayOf(FileDownloadResult::class.java, FailureResult::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getBytesDownloaded" -> bytes
+                    "getFailures" -> emptyList<Failure>()
+                    "getStartTime", "getEndTime" -> 0L
+                    else -> null
+                }
+            },
+        )
+
+    private fun notFoundDownloadResult(): Any =
+        Proxy.newProxyInstance(
+            FileDownloadNotFoundResult::class.java.classLoader,
+            arrayOf(FileDownloadNotFoundResult::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getBytesDownloaded" -> 0L
+                    "getStartTime", "getEndTime" -> 0L
+                    else -> null
+                }
+            },
+        )
+
+    private fun testStartEventProxy(
+        displayName: String,
+        descriptor: JvmTestOperationDescriptor,
+    ): TestStartEvent =
+        Proxy.newProxyInstance(
+            TestStartEvent::class.java.classLoader,
+            arrayOf(TestStartEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> displayName
+                    "getEventTime" -> 0L
+                    "getDescriptor" -> descriptor
+                    else -> null
+                }
+            },
+        ) as TestStartEvent
+
+    private fun testFinishEventProxy(
+        displayName: String,
+        descriptor: JvmTestOperationDescriptor,
+        result: Any,
+    ): TestFinishEvent =
+        Proxy.newProxyInstance(
+            TestFinishEvent::class.java.classLoader,
+            arrayOf(TestFinishEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> displayName
+                    "getEventTime" -> 1L
+                    "getDescriptor" -> descriptor
+                    "getResult" -> result
+                    else -> null
+                }
+            },
+        ) as TestFinishEvent
+
+    private fun jvmTestDescriptorProxy(
+        displayName: String,
+        className: String,
+        methodName: String,
+        source: FileSource,
+    ): JvmTestOperationDescriptor =
+        Proxy.newProxyInstance(
+            JvmTestOperationDescriptor::class.java.classLoader,
+            arrayOf(JvmTestOperationDescriptor::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName", "getName", "getTestDisplayName" -> displayName
+                    "getParent" -> null
+                    "getClassName" -> className
+                    "getMethodName" -> methodName
+                    "getSource" -> source
+                    else -> null
+                }
+            },
+        ) as JvmTestOperationDescriptor
+
+    private fun fileSourceProxy(
+        file: File,
+        line: Int,
+        column: Int?,
+    ): FileSource =
+        Proxy.newProxyInstance(
+            FileSource::class.java.classLoader,
+            arrayOf(FileSource::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getFile" -> file
+                    "getPosition" -> filePositionProxy(line, column)
+                    else -> null
+                }
+            },
+        ) as FileSource
+
+    private fun filePositionProxy(line: Int, column: Int?): FilePosition =
+        Proxy.newProxyInstance(
+            FilePosition::class.java.classLoader,
+            arrayOf(FilePosition::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getLine" -> line
+                    "getColumn" -> column
+                    else -> null
+                }
+            },
+        ) as FilePosition
+
+    private fun testFailureResultProxy(message: String): TestFailureResult =
+        Proxy.newProxyInstance(
+            TestFailureResult::class.java.classLoader,
+            arrayOf(TestFailureResult::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getFailures" -> listOf(
+                        Proxy.newProxyInstance(
+                            Failure::class.java.classLoader,
+                            arrayOf(Failure::class.java),
+                            InvocationHandler { _, method, _ ->
+                                when (method.name) {
+                                    "getMessage" -> message
+                                    "getDescription" -> null
+                                    "getProblems", "getCauses" -> emptyList<Any>()
+                                    else -> null
+                                }
+                            },
+                        ) as Failure,
+                    )
+                    "getStartTime", "getEndTime" -> 0L
+                    else -> null
+                }
+            },
+        ) as TestFailureResult
 
     private fun failureResultProxy(failures: List<Failure>): FailureResult =
         Proxy.newProxyInstance(
@@ -414,4 +760,72 @@ class BuildProgressTrackerTest {
                 }
             },
         ) as Failure
+
+    private fun problemProxy(
+        displayName: String,
+        details: String?,
+        severity: Severity,
+        contextualLabel: String? = null,
+    ): Problem {
+        val problemId = Proxy.newProxyInstance(
+            ProblemId::class.java.classLoader,
+            arrayOf(ProblemId::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> displayName
+                    "getName" -> "compilation-failed"
+                    "getGroup" -> null
+                    else -> null
+                }
+            },
+        ) as ProblemId
+        val definition = Proxy.newProxyInstance(
+            ProblemDefinition::class.java.classLoader,
+            arrayOf(ProblemDefinition::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getId" -> problemId
+                    "getSeverity" -> severity
+                    "getDocumentationLink" -> null
+                    else -> null
+                }
+            },
+        ) as ProblemDefinition
+        return Proxy.newProxyInstance(
+            Problem::class.java.classLoader,
+            arrayOf(Problem::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDefinition" -> definition
+                    "getDetails" -> details?.let { text ->
+                        Proxy.newProxyInstance(
+                            Details::class.java.classLoader,
+                            arrayOf(Details::class.java),
+                            InvocationHandler { _, method, _ ->
+                                when (method.name) {
+                                    "getDetails" -> text
+                                    else -> null
+                                }
+                            },
+                        ) as Details
+                    }
+                    "getContextualLabel" -> contextualLabel?.let { text ->
+                        Proxy.newProxyInstance(
+                            ContextualLabel::class.java.classLoader,
+                            arrayOf(ContextualLabel::class.java),
+                            InvocationHandler { _, method, _ ->
+                                when (method.name) {
+                                    "getContextualLabel" -> text
+                                    else -> null
+                                }
+                            },
+                        ) as ContextualLabel
+                    }
+                    "getSolutions" -> emptyList<Any>()
+                    "getOriginLocations", "getContextualLocations", "getFailure", "getAdditionalData" -> emptyList<Any>()
+                    else -> null
+                }
+            },
+        ) as Problem
+    }
 }
