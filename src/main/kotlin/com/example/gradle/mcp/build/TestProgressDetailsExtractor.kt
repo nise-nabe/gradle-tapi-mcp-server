@@ -40,9 +40,9 @@ internal object TestProgressDetailsExtractor {
             else -> source.javaClass.simpleName.ifBlank { source.javaClass.name }
         }
         val sourcePath = when (source) {
-            is FileSource -> source.file.path
-            is DirectorySource -> source.file.path
-            is FilesystemSource -> source.file.path
+            is FileSource -> normalizeSourcePath(source.file.path)
+            is DirectorySource -> normalizeSourcePath(source.file.path)
+            is FilesystemSource -> normalizeSourcePath(source.file.path)
             is ClasspathResourceSource -> source.classpathResourceName
             else -> null
         }
@@ -69,18 +69,24 @@ internal object TestProgressDetailsExtractor {
         if (!eventType.startsWith("TEST_")) {
             return null
         }
-        val failureMessage = (map["failureMessage"] as? String) ?: (map["outcome"] as? String)
+        val failureMessage = if (eventType == ProgressEventTypes.TEST_FAIL) {
+            (map["failureMessage"] as? String) ?: (map["outcome"] as? String)
+        } else {
+            null
+        }
         return TestProgressDetailsSnapshot(
             className = map["className"] as? String,
             methodName = map["methodName"] as? String,
             sourceType = map["sourceType"] as? String,
-            sourcePath = map["sourcePath"] as? String,
+            sourcePath = (map["sourcePath"] as? String)?.let(::normalizeSourcePath),
             sourceLine = (map["sourceLine"] as? Number)?.toInt(),
             sourceColumn = (map["sourceColumn"] as? Number)?.toInt(),
             failureMessage = failureMessage,
         ).takeUnlessBlank()
     }
 }
+
+private fun normalizeSourcePath(path: String): String = path.replace('\\', '/')
 
 internal fun TestProgressDetailsSnapshot.takeUnlessBlank(): TestProgressDetailsSnapshot? =
     if (

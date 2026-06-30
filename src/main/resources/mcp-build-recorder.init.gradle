@@ -213,15 +213,18 @@ if (!configurationCacheRequested) {
                     } else if (result.resultType == TestResult.ResultType.SKIPPED) {
                         type = "TEST_SKIP"
                     }
-                    gradle.ext.mcpAppendEvent([
+                    def event = [
                         ts          : java.time.Instant.now().toString(),
                         type        : type,
                         displayName : "${descriptor.className}.${descriptor.name}",
                         outcome     : result.exception?.message,
                         className   : descriptor.className,
                         methodName  : descriptor.name,
-                        failureMessage: result.exception?.message,
-                    ])
+                    ]
+                    if (type == "TEST_FAIL") {
+                        event.failureMessage = result.exception?.message
+                    }
+                    gradle.ext.mcpAppendEvent(event)
                 }
             })
         }
