@@ -3,14 +3,28 @@ package com.example.gradle.mcp.build
 internal object FailedTestSnapshots {
     fun mergeDistinct(vararg lists: List<FailedTestSnapshot>): List<FailedTestSnapshot> {
         val merged = LinkedHashMap<String, FailedTestSnapshot>()
-        for (failedTest in lists.flatMap { it }) {
-            putLatest(merged, failedTest)
+        for (list in lists) {
+            for (failedTest in list) {
+                putLatest(merged, failedTest)
+            }
         }
         return merged.values.toList()
     }
 
     fun fromEvents(events: Iterable<ProgressEventSnapshot>): List<FailedTestSnapshot> =
         mergeDistinct(events.mapNotNull { it.toFailedTestSnapshot() })
+
+    fun fromTestFailure(
+        displayName: String,
+        outcome: String?,
+        testDetails: TestProgressDetailsSnapshot?,
+    ): FailedTestSnapshot =
+        FailedTestSnapshot(
+            className = testDetails?.className,
+            methodName = testDetails?.methodName,
+            displayName = displayName,
+            failureMessage = testDetails?.failureMessage ?: outcome,
+        )
 
     fun remember(
         target: LinkedHashMap<String, FailedTestSnapshot>,

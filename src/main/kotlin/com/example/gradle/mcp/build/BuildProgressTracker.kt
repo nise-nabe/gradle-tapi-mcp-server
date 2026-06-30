@@ -259,14 +259,14 @@ class BuildProgressTracker(
         outcome: String?,
         testDetails: TestProgressDetailsSnapshot?,
     ) {
-        val failedTest = ProgressEventSnapshot(
-            timestamp = "",
-            eventType = eventType,
-            displayName = displayName,
-            outcome = outcome,
-            testDetails = testDetails,
-        ).toFailedTestSnapshot() ?: return
-        FailedTestSnapshots.remember(failedTests, failedTest, MAX_FAILED_TESTS)
+        if (eventType != ProgressEventTypes.TEST_FAIL) {
+            return
+        }
+        FailedTestSnapshots.remember(
+            failedTests,
+            FailedTestSnapshots.fromTestFailure(displayName, outcome, testDetails),
+            MAX_FAILED_TESTS,
+        )
     }
 
     companion object {

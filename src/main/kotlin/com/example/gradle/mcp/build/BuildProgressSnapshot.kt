@@ -30,12 +30,7 @@ data class ProgressEventSnapshot(
         if (eventType != ProgressEventTypes.TEST_FAIL) {
             null
         } else {
-            FailedTestSnapshot(
-                className = testDetails?.className,
-                methodName = testDetails?.methodName,
-                displayName = displayName,
-                failureMessage = testDetails?.failureMessage ?: outcome,
-            )
+            FailedTestSnapshots.fromTestFailure(displayName, outcome, testDetails)
         }
 }
 
