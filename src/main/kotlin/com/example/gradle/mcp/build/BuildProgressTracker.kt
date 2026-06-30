@@ -11,7 +11,6 @@ import org.gradle.tooling.events.SuccessResult
 import org.gradle.tooling.events.configuration.ProjectConfigurationStartEvent
 import org.gradle.tooling.events.download.FileDownloadFinishEvent
 import org.gradle.tooling.events.download.FileDownloadNotFoundResult
-import org.gradle.tooling.events.download.FileDownloadResult
 import org.gradle.tooling.events.download.FileDownloadStartEvent
 import org.gradle.tooling.events.task.TaskFinishEvent
 import org.gradle.tooling.events.task.TaskStartEvent
