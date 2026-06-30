@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.build
 
+import com.example.gradle.mcp.support.singleProblemEventProxy
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldContain
@@ -285,6 +286,37 @@ class BuildProgressTrackerTest {
     }
 
     @Test
+    fun `configureLauncher subscribes problem events only when enabled`() {
+        val problemOperationType = OperationType.values()
+            .firstOrNull { it.name == "PROBLEM" || it.name == "PROBLEMS" }
+            ?: return
+
+        captureOperationTypes(includeProblems = false) shouldNotContain problemOperationType
+        captureOperationTypes(includeProblems = true) shouldContain problemOperationType
+    }
+
+    @Test
+    fun `collects live problems from problem events`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+        val problem = problemProxy(
+            displayName = "Deprecated API usage",
+            details = "Task uses a deprecated input property",
+            severity = Severity.WARNING,
+            contextualLabel = "Task :compileJava",
+        )
+
+        listener.statusChanged(singleProblemEventProxy(problem))
+
+        val snapshot = tracker.snapshot()
+        snapshot.problems shouldHaveSize 0
+        snapshot.liveProblems shouldHaveSize 1
+        snapshot.liveProblems.single().label shouldBe "Deprecated API usage"
+        snapshot.liveProblems.single().severity shouldBe "warning"
+        snapshot.recentEvents.last().eventType shouldBe ProgressEventTypes.PROBLEM
+    }
+
+    @Test
     fun `tracks project configuration start and finish events`() {
         val tracker = BuildProgressTracker()
         val listener = tracker.asGradleListener()
@@ -468,7 +500,10 @@ class BuildProgressTrackerTest {
         tracker.snapshot().currentOperation shouldBe "Gradle tasks: build"
     }
 
-    private fun captureOperationTypes(trackDownloads: Boolean): List<OperationType> {
+    private fun captureOperationTypes(
+        trackDownloads: Boolean = false,
+        includeProblems: Boolean = false,
+    ): List<OperationType> {
         val tracker = BuildProgressTracker(trackDownloads = trackDownloads)
         val captured = mutableListOf<OperationType>()
         lateinit var launcher: ConfigurableLauncher<*>
@@ -495,7 +530,7 @@ class BuildProgressTrackerTest {
                 }
             },
         ) as ConfigurableLauncher<*>
-        tracker.configureLauncher(launcher)
+        tracker.configureLauncher(launcher, includeProblems)
         return captured.toList()
     }
 

@@ -51,7 +51,11 @@ internal object BuildStatusAssembler {
         view.error?.let { response["error"] = it }
         view.outcome?.let { response["outcome"] = it }
 
-        if (progressOptions.includeProgress && view.progressAvailable && view.progress != null) {
+        if (
+            view.progressAvailable &&
+            view.progress != null &&
+            (progressOptions.includeProgress || progressOptions.includeProblems)
+        ) {
             response.putAll(optionalProgressFields(progressOptions, view.progress, view.statusSource))
         }
 

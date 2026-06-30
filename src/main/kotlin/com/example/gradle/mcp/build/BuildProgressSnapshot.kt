@@ -53,6 +53,7 @@ data class BuildProgressSnapshot(
     val recentEvents: List<ProgressEventSnapshot>,
     val totalEventCount: Int,
     val problems: List<BuildProblemSnapshot> = emptyList(),
+    val liveProblems: List<BuildProblemSnapshot> = emptyList(),
     val recentDownloads: List<DownloadProgressSnapshot> = emptyList(),
     val activeDownloadCount: Int = 0,
     val failedTests: List<FailedTestSnapshot> = emptyList(),

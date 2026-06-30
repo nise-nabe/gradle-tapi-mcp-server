@@ -27,6 +27,7 @@ internal object ProgressEventTypes {
     const val CONFIG_START = "CONFIG_START"
     const val CONFIG_FINISH = "CONFIG_FINISH"
     const val CONFIG_FAIL = "CONFIG_FAIL"
+    const val PROBLEM = "PROBLEM"
 
     val NON_ACTIONABLE: Set<String> = setOf(START, HEARTBEAT, BUILD_FINISHED)
 }
