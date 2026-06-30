@@ -1,10 +1,7 @@
 package com.example.gradle.mcp.support
 
 import com.example.gradle.mcp.build.BuildExecutionManager
-import com.example.gradle.mcp.build.BuildKind
 import com.example.gradle.mcp.build.BuildProblemSnapshot
-import com.example.gradle.mcp.build.BuildProgressTracker
-import com.example.gradle.mcp.build.BuildRecord
 import com.example.gradle.mcp.build.BuildStatusAssembler
 import com.example.gradle.mcp.build.persistence.BuildRecordStore
 import com.example.gradle.mcp.build.persistence.DiskBuildEvent
