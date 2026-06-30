@@ -16,7 +16,7 @@ data class FailedTestSnapshot(
     val displayName: String,
     val failureMessage: String? = null,
 ) {
-    fun stableKey(): String = listOf(className.orEmpty(), methodName.orEmpty(), displayName).joinToString("|")
+    fun stableKey(): String = "${className.orEmpty()}|${methodName.orEmpty()}|$displayName"
 }
 
 data class ProgressEventSnapshot(

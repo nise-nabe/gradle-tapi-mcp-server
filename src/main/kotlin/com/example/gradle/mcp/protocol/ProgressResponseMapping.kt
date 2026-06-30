@@ -41,10 +41,8 @@ internal fun terminalFailureFields(
 
 private fun shouldIncludeFailedTests(snapshot: BuildProgressSnapshot): Boolean =
     snapshot.failedTests.isNotEmpty() &&
-        snapshot.status in setOf(
-            BuildProgressTracker.STATUS_FAILED,
-            BuildProgressTracker.STATUS_CANCELLED,
-        )
+        (snapshot.status == BuildProgressTracker.STATUS_FAILED ||
+            snapshot.status == BuildProgressTracker.STATUS_CANCELLED)
 
 internal fun BuildProgressSnapshot.toResponseMap(
     progressOptions: ProgressResponseOptions,
