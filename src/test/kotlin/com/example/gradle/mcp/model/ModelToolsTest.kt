@@ -1,19 +1,16 @@
 package com.example.gradle.mcp.model
 
 import com.example.gradle.mcp.build.BuildExecutionManager
-import com.example.gradle.mcp.build.BuildKind
-import com.example.gradle.mcp.build.BuildProgressTracker
-import com.example.gradle.mcp.build.BuildRecord
-import com.example.gradle.mcp.build.CapturingStreams
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.support.runningTracker
+import com.example.gradle.mcp.support.testBuildRecord
 import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
-import java.time.Instant
 
 class ModelToolsTest {
     @Test
@@ -36,7 +33,7 @@ class ModelToolsTest {
     @Test
     fun `requireNoActiveBuildForPrepareTasks allows empty prepareTasks while build is running`() {
         val manager = BuildExecutionManager(GradleConnectionManager())
-        seedRunningBuild(manager)
+        manager.seedRunningBuildForTests(runningBuildRecord())
 
         requireNoActiveBuildForPrepareTasks(
             prepareTasks = emptyList(),
@@ -48,7 +45,7 @@ class ModelToolsTest {
     @Test
     fun `requireNoActiveBuildForPrepareTasks rejects prepareTasks while build is running`() {
         val manager = BuildExecutionManager(GradleConnectionManager())
-        seedRunningBuild(manager)
+        manager.seedRunningBuildForTests(runningBuildRecord())
 
         val error = shouldThrow<McpException> {
             requireNoActiveBuildForPrepareTasks(
@@ -63,21 +60,12 @@ class ModelToolsTest {
     }
 }
 
-private fun seedRunningBuild(manager: BuildExecutionManager) {
-    val tracker = BuildProgressTracker()
-    tracker.markStarting("Gradle tasks: build")
-    manager.seedRunningBuildForTests(
-        BuildRecord(
-            id = "running-build",
-            kind = BuildKind.TASKS,
-            tasks = listOf("build"),
-            startedAt = Instant.now(),
-            progressTracker = tracker,
-            streams = CapturingStreams(),
-            projectDirectory = testProjectDirectory.absolutePath,
-        ),
+private fun runningBuildRecord() =
+    testBuildRecord(
+        id = "running-build",
+        tracker = runningTracker(),
+        projectDirectory = testProjectDirectory.absolutePath,
     )
-}
 
 @Suppress("UNCHECKED_CAST")
 private fun prepareTasksProperty(schema: Map<String, Any>): Map<String, Any?> =

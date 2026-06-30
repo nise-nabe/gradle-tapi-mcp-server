@@ -2,6 +2,7 @@ package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import com.example.gradle.mcp.protocol.optionalDownloadFields
 import com.example.gradle.mcp.protocol.optionalProgressFields
 import com.example.gradle.mcp.protocol.terminalFailureFields
 
@@ -51,12 +52,16 @@ internal object BuildStatusAssembler {
         view.outcome?.let { response["outcome"] = it }
 
         if (progressOptions.includeProgress && view.progressAvailable && view.progress != null) {
-            response.putAll(optionalProgressFields(progressOptions, view.progress))
+            response.putAll(optionalProgressFields(progressOptions, view.progress, view.statusSource))
+        }
+
+        view.progress?.let { progress ->
+            response.putAll(optionalDownloadFields(progressOptions, progress, view.statusSource))
         }
 
         if (!isRunning) {
             view.buildSummary?.let { response["buildSummary"] = it }
-            view.progress?.let { response.putAll(terminalFailureFields(it)) }
+            view.progress?.let { response.putAll(terminalFailureFields(it, progressOptions)) }
         }
         response.putAll(streamResponseFields(view.stdout, outputLimit, "stdout"))
         response.putAll(streamResponseFields(view.stderr, outputLimit, "stderr"))

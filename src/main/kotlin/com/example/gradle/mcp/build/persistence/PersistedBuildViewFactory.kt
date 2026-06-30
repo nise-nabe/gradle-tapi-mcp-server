@@ -54,7 +54,8 @@ internal object PersistedBuildViewFactory {
             null
         }
         val progress = attachPersistedProblems(
-            progress = progressFromEvents ?: progressFromMcp,
+            progress = progressFromEvents
+                ?: mergeEventDerivedProgress(progressFromMcp, artifacts, events, status),
             mcpResult = artifacts.mcpResult,
             status = status,
             isRunning = isRunning,
@@ -145,4 +146,30 @@ internal object PersistedBuildViewFactory {
                 if (names.isEmpty()) null else "Gradle tasks: ${names.joinToString()}"
             },
         )
+
+    private fun mergeEventDerivedProgress(
+        base: BuildProgressSnapshot?,
+        artifacts: PersistedBuildArtifacts,
+        events: List<DiskBuildEvent>,
+        status: String,
+    ): BuildProgressSnapshot? {
+        if (!DiskBuildProgress.hasActionableProgress(events)) {
+            return base
+        }
+        val fromEvents = diskProgressFromEvents(artifacts, events, status)
+        if (base == null) {
+            return fromEvents
+        }
+        return base.copy(
+            completedTaskCount = maxOf(base.completedTaskCount, fromEvents.completedTaskCount),
+            runningTaskCount = fromEvents.runningTaskCount,
+            failedTaskCount = maxOf(base.failedTaskCount, fromEvents.failedTaskCount),
+            completedTasks = fromEvents.completedTasks.ifEmpty { base.completedTasks },
+            runningTasks = fromEvents.runningTasks,
+            failedTasks = if (base.failedTasks.isNotEmpty()) base.failedTasks else fromEvents.failedTasks,
+            recentEvents = fromEvents.recentEvents,
+            totalEventCount = maxOf(base.totalEventCount, fromEvents.totalEventCount),
+            failedTests = fromEvents.failedTests,
+        )
+    }
 }
