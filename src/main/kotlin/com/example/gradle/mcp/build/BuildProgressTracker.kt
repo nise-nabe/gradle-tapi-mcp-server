@@ -311,7 +311,7 @@ class BuildProgressTracker(
     private fun recordDownloadFinish(event: FileDownloadFinishEvent) {
         val uri = event.descriptor.uri.toString()
         val result = event.result
-        val bytesDownloaded = if (result is FileDownloadResult) result.bytesDownloaded else null
+        val bytesDownloaded = result.bytesDownloaded
         val downloadStatus = when (result) {
             is FailureResult -> DOWNLOAD_STATUS_FAILED
             is FileDownloadNotFoundResult -> DOWNLOAD_STATUS_NOT_FOUND
