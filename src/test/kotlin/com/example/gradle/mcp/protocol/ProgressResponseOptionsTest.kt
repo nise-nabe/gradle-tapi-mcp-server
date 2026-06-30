@@ -3,6 +3,8 @@ package com.example.gradle.mcp.protocol
 import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildProblemSnapshot
+import com.example.gradle.mcp.build.BuildStatusView
+import com.example.gradle.mcp.build.DownloadProgressSnapshot
 import com.example.gradle.mcp.build.ProgressEventSnapshot
 import com.example.gradle.mcp.build.ProgressEventTypes
 import com.example.gradle.mcp.build.TestProgressDetailsSnapshot
@@ -18,6 +20,12 @@ class ProgressResponseOptionsTest {
 
         options.includeProgress.shouldBeFalse()
         options.includeTestDetails.shouldBeFalse()
+    }
+
+    @Test
+    fun `fromArgs defaults includeDownloads to false`() {
+        val options = ProgressResponseOptions.fromArgs(emptyMap())
+        options.includeDownloads.shouldBeFalse()
     }
 
     @Test
@@ -38,6 +46,69 @@ class ProgressResponseOptionsTest {
         optionalProgressFields(ProgressResponseOptions(), snapshot) shouldBe emptyMap<String, Any?>()
         optionalProgressFields(ProgressResponseOptions(includeProgress = true), snapshot)["progress"]
             .let { it as Map<*, *> }["status"] shouldBe "succeeded"
+    }
+
+    @Test
+    fun `optionalDownloadFields exposes downloads without includeProgress`() {
+        val snapshot = BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_RUNNING,
+            currentOperation = "download",
+            completedTaskCount = 0,
+            runningTaskCount = 0,
+            failedTaskCount = 0,
+            completedTasks = emptyList(),
+            runningTasks = emptyList(),
+            failedTasks = emptyList(),
+            recentEvents = emptyList(),
+            totalEventCount = 0,
+            recentDownloads = listOf(
+                DownloadProgressSnapshot(
+                    uri = "https://repo.example.com/foo.jar",
+                    status = BuildProgressTracker.DOWNLOAD_STATUS_SUCCEEDED,
+                    bytesDownloaded = 1024L,
+                ),
+            ),
+            activeDownloadCount = 0,
+        )
+        val fields = optionalDownloadFields(
+            ProgressResponseOptions(includeDownloads = true),
+            snapshot,
+            BuildStatusView.SOURCE_MEMORY,
+        )
+        fields["activeDownloadCount"] shouldBe 0
+        (fields["recentDownloads"] as List<*>).single().let { d ->
+            (d as Map<*, *>)["uri"] shouldBe "https://repo.example.com/foo.jar"
+        }
+    }
+
+
+    @Test
+    fun `optionalDownloadFields omits downloads for disk status source`() {
+        val snapshot = BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_RUNNING,
+            currentOperation = "download",
+            completedTaskCount = 0,
+            runningTaskCount = 0,
+            failedTaskCount = 0,
+            completedTasks = emptyList(),
+            runningTasks = emptyList(),
+            failedTasks = emptyList(),
+            recentEvents = emptyList(),
+            totalEventCount = 0,
+            recentDownloads = listOf(
+                DownloadProgressSnapshot(
+                    uri = "https://repo.example.com/foo.jar",
+                    status = BuildProgressTracker.DOWNLOAD_STATUS_SUCCEEDED,
+                ),
+            ),
+            activeDownloadCount = 1,
+        )
+
+        optionalDownloadFields(
+            ProgressResponseOptions(includeDownloads = true),
+            snapshot,
+            BuildStatusView.SOURCE_DISK,
+        ) shouldBe emptyMap()
     }
 
     @Test
@@ -63,6 +134,37 @@ class ProgressResponseOptionsTest {
         (response["recentEvents"] as List<*>).size shouldBe 10
         (response["completedTasks"] as List<*>).last() shouldBe "task-25"
         ((response["recentEvents"] as List<*>).last() as Map<*, *>)["displayName"] shouldBe "task-15"
+    }
+
+    @Test
+    fun `toResponseMap includes downloads when requested`() {
+        val snapshot = BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_RUNNING,
+            currentOperation = "download",
+            completedTaskCount = 0,
+            runningTaskCount = 0,
+            failedTaskCount = 0,
+            completedTasks = emptyList(),
+            runningTasks = emptyList(),
+            failedTasks = emptyList(),
+            recentEvents = emptyList(),
+            totalEventCount = 0,
+            recentDownloads = listOf(
+                DownloadProgressSnapshot(
+                    uri = "https://repo.example.com/foo.jar",
+                    status = BuildProgressTracker.DOWNLOAD_STATUS_SUCCEEDED,
+                    bytesDownloaded = 1024L,
+                ),
+            ),
+            activeDownloadCount = 1,
+        )
+
+        val response = snapshot.toResponseMap(ProgressResponseOptions(), includeDownloads = true)
+
+        response["activeDownloadCount"] shouldBe 1
+        (response["recentDownloads"] as List<*>).single().let { d ->
+            (d as Map<*, *>)["uri"] shouldBe "https://repo.example.com/foo.jar"
+        }
     }
 
     @Test

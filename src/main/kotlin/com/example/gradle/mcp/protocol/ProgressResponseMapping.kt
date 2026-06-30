@@ -2,16 +2,35 @@ package com.example.gradle.mcp.protocol
 
 import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
+import com.example.gradle.mcp.build.BuildStatusView
 import com.example.gradle.mcp.build.FailedTestSnapshot
 import com.example.gradle.mcp.build.TestProgressDetailsSnapshot
 
 internal fun optionalProgressFields(
     progressOptions: ProgressResponseOptions,
     snapshot: BuildProgressSnapshot,
+    statusSource: String = BuildStatusView.SOURCE_MEMORY,
 ): Map<String, Any?> =
     buildMap {
         if (progressOptions.includeProgress) {
-            put("progress", snapshot.toResponseMap(progressOptions))
+            val includeDownloads =
+                progressOptions.includeDownloads && statusSource == BuildStatusView.SOURCE_MEMORY
+            put("progress", snapshot.toResponseMap(progressOptions, includeDownloads))
+        }
+    }
+
+internal fun optionalDownloadFields(
+    progressOptions: ProgressResponseOptions,
+    snapshot: BuildProgressSnapshot,
+    statusSource: String,
+): Map<String, Any?> =
+    buildMap {
+        if (
+            progressOptions.includeDownloads &&
+            !progressOptions.includeProgress &&
+            statusSource == BuildStatusView.SOURCE_MEMORY
+        ) {
+            putAll(snapshot.downloadResponseFields())
         }
     }
 
@@ -46,30 +65,52 @@ private fun shouldIncludeFailedTests(snapshot: BuildProgressSnapshot): Boolean =
 
 internal fun BuildProgressSnapshot.toResponseMap(
     progressOptions: ProgressResponseOptions,
+    includeDownloads: Boolean = false,
 ): Map<String, Any?> =
-    mapOf(
-        "status" to status,
-        "currentOperation" to currentOperation,
-        "completedTaskCount" to completedTaskCount,
-        "runningTaskCount" to runningTaskCount,
-        "failedTaskCount" to failedTaskCount,
-        "completedTasks" to completedTasks.takeLast(ProgressResponseOptions.MAX_COMPLETED_TASKS_IN_RESPONSE),
-        "runningTasks" to runningTasks,
-        "failedTasks" to failedTasks,
-        "recentEvents" to recentEvents
-            .takeLast(ProgressResponseOptions.MAX_RECENT_EVENTS_IN_RESPONSE)
-            .map { event ->
-                buildMap<String, Any?> {
-                    put("timestamp", event.timestamp)
-                    put("eventType", event.eventType)
-                    put("displayName", event.displayName)
-                    put("outcome", event.outcome)
-                    if (progressOptions.includeTestDetails) {
-                        event.testDetails?.let { details -> put("test", details.toResponseMap()) }
+    buildMap {
+        put("status", status)
+        put("currentOperation", currentOperation)
+        put("completedTaskCount", completedTaskCount)
+        put("runningTaskCount", runningTaskCount)
+        put("failedTaskCount", failedTaskCount)
+        put("completedTasks", completedTasks.takeLast(ProgressResponseOptions.MAX_COMPLETED_TASKS_IN_RESPONSE))
+        put("runningTasks", runningTasks)
+        put("failedTasks", failedTasks)
+        put(
+            "recentEvents",
+            recentEvents
+                .takeLast(ProgressResponseOptions.MAX_RECENT_EVENTS_IN_RESPONSE)
+                .map { event ->
+                    buildMap<String, Any?> {
+                        put("timestamp", event.timestamp)
+                        put("eventType", event.eventType)
+                        put("displayName", event.displayName)
+                        put("outcome", event.outcome)
+                        if (progressOptions.includeTestDetails) {
+                            event.testDetails?.let { details -> put("test", details.toResponseMap()) }
+                        }
                     }
+                },
+        )
+        put("totalEventCount", totalEventCount)
+        if (includeDownloads) {
+            putAll(downloadResponseFields())
+        }
+    }
+
+internal fun BuildProgressSnapshot.downloadResponseFields(): Map<String, Any?> =
+    mapOf(
+        "activeDownloadCount" to activeDownloadCount,
+        "recentDownloads" to recentDownloads
+            .takeLast(ProgressResponseOptions.MAX_RECENT_DOWNLOADS_IN_RESPONSE)
+            .map { download ->
+                buildMap<String, Any?> {
+                    put("uri", download.uri)
+                    put("status", download.status)
+                    download.displayName?.let { put("displayName", it) }
+                    download.bytesDownloaded?.let { put("bytesDownloaded", it) }
                 }
             },
-        "totalEventCount" to totalEventCount,
     )
 
 private fun TestProgressDetailsSnapshot.toResponseMap(): Map<String, Any?> =

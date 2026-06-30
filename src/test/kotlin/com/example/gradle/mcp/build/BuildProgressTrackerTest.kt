@@ -2,14 +2,19 @@ package com.example.gradle.mcp.build
 
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import org.gradle.tooling.ConfigurableLauncher
 import org.gradle.tooling.Failure
 import org.gradle.tooling.events.FailureResult
+import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.FinishEvent
+import org.gradle.tooling.events.SuccessResult
 import org.gradle.tooling.events.configuration.ProjectConfigurationFinishEvent
 import org.gradle.tooling.events.configuration.ProjectConfigurationStartEvent
 import org.gradle.tooling.events.configuration.ProjectConfigurationSuccessResult
@@ -24,10 +29,16 @@ import org.gradle.tooling.events.test.TestFailureResult
 import org.gradle.tooling.events.test.TestFinishEvent
 import org.gradle.tooling.events.test.TestStartEvent
 import org.gradle.tooling.events.test.TestSuccessResult
+import org.gradle.tooling.events.download.FileDownloadFinishEvent
+import org.gradle.tooling.events.download.FileDownloadNotFoundResult
+import org.gradle.tooling.events.download.FileDownloadOperationDescriptor
+import org.gradle.tooling.events.download.FileDownloadResult
+import org.gradle.tooling.events.download.FileDownloadStartEvent
 import org.gradle.tooling.events.test.source.FilePosition
 import org.gradle.tooling.events.test.source.FileSource
 import org.junit.jupiter.api.Test
 import java.io.File
+import java.net.URI
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
 
@@ -394,6 +405,182 @@ class BuildProgressTrackerTest {
         snapshot.recentEvents.size shouldBeLessThanOrEqual 30
         snapshot.totalEventCount shouldBe 40
     }
+
+    @Test
+    fun `configureLauncher subscribes file download events only when enabled`() {
+        captureOperationTypes(trackDownloads = false) shouldNotContain OperationType.FILE_DOWNLOAD
+        captureOperationTypes(trackDownloads = true) shouldContain OperationType.FILE_DOWNLOAD
+    }
+
+    @Test
+    fun `tracks file download events when enabled`() {
+        val tracker = BuildProgressTracker(trackDownloads = true)
+        val listener = tracker.asGradleListener()
+        val uri = URI.create("https://repo.example.com/libs/foo.jar")
+        listener.statusChanged(fileDownloadStartEvent(uri, "Download foo"))
+        tracker.snapshot().activeDownloadCount shouldBe 1
+        listener.statusChanged(
+            fileDownloadFinishEvent(uri, "Download foo", successfulDownloadResult(1024L)),
+        )
+        val snapshot = tracker.snapshot()
+        snapshot.activeDownloadCount shouldBe 0
+        snapshot.recentDownloads.single().status shouldBe BuildProgressTracker.DOWNLOAD_STATUS_SUCCEEDED
+        snapshot.recentDownloads.single().bytesDownloaded shouldBe 1024L
+    }
+
+    @Test
+    fun `maps failed file download finish to failed status`() {
+        val tracker = BuildProgressTracker(trackDownloads = true)
+        val listener = tracker.asGradleListener()
+        val uri = URI.create("https://repo.example.com/libs/missing.jar")
+        listener.statusChanged(fileDownloadStartEvent(uri, "Download missing"))
+        listener.statusChanged(
+            fileDownloadFinishEvent(uri, "Download missing", failedDownloadResult()),
+        )
+
+        tracker.snapshot().recentDownloads.single().status shouldBe BuildProgressTracker.DOWNLOAD_STATUS_FAILED
+    }
+
+    @Test
+    fun `maps not found file download finish to not_found status`() {
+        val tracker = BuildProgressTracker(trackDownloads = true)
+        val listener = tracker.asGradleListener()
+        val uri = URI.create("https://repo.example.com/libs/unknown.jar")
+        listener.statusChanged(fileDownloadStartEvent(uri, "Download unknown"))
+        listener.statusChanged(
+            fileDownloadFinishEvent(uri, "Download unknown", notFoundDownloadResult()),
+        )
+
+        tracker.snapshot().recentDownloads.single().status shouldBe BuildProgressTracker.DOWNLOAD_STATUS_NOT_FOUND
+    }
+
+    @Test
+    fun `download events do not overwrite currentOperation`() {
+        val tracker = BuildProgressTracker(trackDownloads = true)
+        tracker.markStarting("Gradle tasks: build")
+        val listener = tracker.asGradleListener()
+        val uri = URI.create("https://repo.example.com/libs/foo.jar")
+        listener.statusChanged(fileDownloadStartEvent(uri, "Download foo"))
+        listener.statusChanged(
+            fileDownloadFinishEvent(uri, "Download foo", successfulDownloadResult(1024L)),
+        )
+
+        tracker.snapshot().currentOperation shouldBe "Gradle tasks: build"
+    }
+
+    private fun captureOperationTypes(trackDownloads: Boolean): List<OperationType> {
+        val tracker = BuildProgressTracker(trackDownloads = trackDownloads)
+        val captured = mutableListOf<OperationType>()
+        lateinit var launcher: ConfigurableLauncher<*>
+        launcher = Proxy.newProxyInstance(
+            ConfigurableLauncher::class.java.classLoader,
+            arrayOf(ConfigurableLauncher::class.java),
+            InvocationHandler { _, method, args ->
+                when (method.name) {
+                    "addProgressListener" -> {
+                        captured.clear()
+                        args.orEmpty()
+                            .drop(1)
+                            .flatMap { argument ->
+                                when (argument) {
+                                    is Array<*> -> argument.filterIsInstance<OperationType>()
+                                    is OperationType -> listOf(argument)
+                                    else -> emptyList()
+                                }
+                            }
+                            .toCollection(captured)
+                        launcher
+                    }
+                    else -> launcher
+                }
+            },
+        ) as ConfigurableLauncher<*>
+        tracker.configureLauncher(launcher)
+        return captured.toList()
+    }
+
+    private fun fileDownloadDescriptor(uri: URI): FileDownloadOperationDescriptor =
+        Proxy.newProxyInstance(
+            FileDownloadOperationDescriptor::class.java.classLoader,
+            arrayOf(FileDownloadOperationDescriptor::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getUri" -> uri
+                    "getName", "getDisplayName" -> uri.toString()
+                    "getParent" -> null
+                    else -> null
+                }
+            },
+        ) as FileDownloadOperationDescriptor
+
+    private fun fileDownloadStartEvent(uri: URI, displayName: String): FileDownloadStartEvent =
+        Proxy.newProxyInstance(
+            FileDownloadStartEvent::class.java.classLoader,
+            arrayOf(FileDownloadStartEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> displayName
+                    "getEventTime" -> 0L
+                    "getDescriptor" -> fileDownloadDescriptor(uri)
+                    else -> null
+                }
+            },
+        ) as FileDownloadStartEvent
+
+    private fun fileDownloadFinishEvent(uri: URI, displayName: String, result: Any): FileDownloadFinishEvent =
+        Proxy.newProxyInstance(
+            FileDownloadFinishEvent::class.java.classLoader,
+            arrayOf(FileDownloadFinishEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> displayName
+                    "getEventTime" -> 1L
+                    "getDescriptor" -> fileDownloadDescriptor(uri)
+                    "getResult" -> result
+                    else -> null
+                }
+            },
+        ) as FileDownloadFinishEvent
+
+    private fun successfulDownloadResult(bytes: Long): Any =
+        Proxy.newProxyInstance(
+            FileDownloadResult::class.java.classLoader,
+            arrayOf(FileDownloadResult::class.java, SuccessResult::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getBytesDownloaded" -> bytes
+                    "getStartTime", "getEndTime" -> 0L
+                    else -> null
+                }
+            },
+        )
+
+    private fun failedDownloadResult(bytes: Long = 0L): Any =
+        Proxy.newProxyInstance(
+            FileDownloadResult::class.java.classLoader,
+            arrayOf(FileDownloadResult::class.java, FailureResult::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getBytesDownloaded" -> bytes
+                    "getFailures" -> emptyList<Failure>()
+                    "getStartTime", "getEndTime" -> 0L
+                    else -> null
+                }
+            },
+        )
+
+    private fun notFoundDownloadResult(): Any =
+        Proxy.newProxyInstance(
+            FileDownloadNotFoundResult::class.java.classLoader,
+            arrayOf(FileDownloadNotFoundResult::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getBytesDownloaded" -> 0L
+                    "getStartTime", "getEndTime" -> 0L
+                    else -> null
+                }
+            },
+        )
 
     private fun testStartEventProxy(
         displayName: String,

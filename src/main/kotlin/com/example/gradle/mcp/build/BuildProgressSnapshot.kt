@@ -34,6 +34,13 @@ data class ProgressEventSnapshot(
         }
 }
 
+data class DownloadProgressSnapshot(
+    val uri: String,
+    val status: String,
+    val displayName: String? = null,
+    val bytesDownloaded: Long? = null,
+)
+
 data class BuildProgressSnapshot(
     val status: String,
     val currentOperation: String?,
@@ -46,5 +53,7 @@ data class BuildProgressSnapshot(
     val recentEvents: List<ProgressEventSnapshot>,
     val totalEventCount: Int,
     val problems: List<BuildProblemSnapshot> = emptyList(),
+    val recentDownloads: List<DownloadProgressSnapshot> = emptyList(),
+    val activeDownloadCount: Int = 0,
     val failedTests: List<FailedTestSnapshot> = emptyList(),
 )
