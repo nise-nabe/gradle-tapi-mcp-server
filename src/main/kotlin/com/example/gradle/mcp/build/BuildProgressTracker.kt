@@ -265,7 +265,6 @@ class BuildProgressTracker(
         FailedTestSnapshots.remember(
             failedTests,
             FailedTestSnapshots.fromTestFailure(displayName, outcome, testDetails),
-            MAX_FAILED_TESTS,
         )
     }
 
@@ -276,6 +275,5 @@ class BuildProgressTracker(
         const val STATUS_CANCELLED = "cancelled"
 
         private const val MAX_RECENT_EVENTS = 30
-        private const val MAX_FAILED_TESTS = 10
     }
 }
