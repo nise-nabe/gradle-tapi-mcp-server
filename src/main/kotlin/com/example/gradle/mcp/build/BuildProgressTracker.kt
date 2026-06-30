@@ -32,6 +32,7 @@ class BuildProgressTracker(
     private val problems = mutableListOf<BuildProblemSnapshot>()
     private val activeDownloads = LinkedHashMap<String, DownloadProgressSnapshot>()
     private val recentDownloads = ArrayDeque<DownloadProgressSnapshot>()
+    private val failedTests = LinkedHashMap<String, FailedTestSnapshot>()
     private var totalEventCount = 0
     private var lastNotifiedEventCount = 0
 
@@ -103,6 +104,7 @@ class BuildProgressTracker(
                 problems = problems.toList(),
                 recentDownloads = buildRecentDownloadsLocked(),
                 activeDownloadCount = activeDownloads.size,
+                failedTests = failedTests.values.toList(),
             )
         }
 
@@ -176,20 +178,37 @@ class BuildProgressTracker(
                 }
             }
             is TestStartEvent -> {
-                applyTaskEvent(ProgressEventTypes.TEST_START, displayName)
+                applyTaskEvent(
+                    ProgressEventTypes.TEST_START,
+                    displayName,
+                    testDetails = TestProgressDetailsExtractor.fromGradleEvent(event),
+                )
             }
             is TestFinishEvent -> {
                 when (val result = event.result) {
                     is org.gradle.tooling.events.test.TestFailureResult -> {
                         collectProblemsFromFailureResult(result)
                         val message = result.failures.firstOrNull()?.message ?: "failed"
-                        applyTaskEvent(ProgressEventTypes.TEST_FAIL, displayName, message)
+                        applyTaskEvent(
+                            ProgressEventTypes.TEST_FAIL,
+                            displayName,
+                            message,
+                            TestProgressDetailsExtractor.fromGradleEvent(event, message),
+                        )
                     }
                     is org.gradle.tooling.events.test.TestSkippedResult -> {
-                        applyTaskEvent(ProgressEventTypes.TEST_SKIP, displayName)
+                        applyTaskEvent(
+                            ProgressEventTypes.TEST_SKIP,
+                            displayName,
+                            testDetails = TestProgressDetailsExtractor.fromGradleEvent(event),
+                        )
                     }
                     else -> {
-                        applyTaskEvent(ProgressEventTypes.TEST_SUCCESS, displayName)
+                        applyTaskEvent(
+                            ProgressEventTypes.TEST_SUCCESS,
+                            displayName,
+                            testDetails = TestProgressDetailsExtractor.fromGradleEvent(event),
+                        )
                     }
                 }
             }
@@ -224,6 +243,59 @@ class BuildProgressTracker(
             return
         }
         ProblemsSerializer.mergeDistinct(problems, extracted)
+    }
+
+    private fun applyTaskEvent(
+        eventType: String,
+        displayName: String,
+        outcome: String? = null,
+        testDetails: TestProgressDetailsSnapshot? = null,
+    ) {
+        taskProgress.apply(eventType, displayName)
+        rememberFailedTest(eventType, displayName, outcome, testDetails)
+        recordEventLocked(eventType, displayName, outcome, testDetails)
+    }
+
+    private fun notifyAfter(block: () -> Boolean) {
+        if (block()) {
+            onUpdate?.invoke()
+        }
+    }
+
+    private fun recordEventLocked(
+        eventType: String,
+        displayName: String,
+        outcome: String? = null,
+        testDetails: TestProgressDetailsSnapshot? = null,
+    ) {
+        totalEventCount += 1
+        recentEvents.addLast(
+            ProgressEventSnapshot(
+                timestamp = Instant.now().toString(),
+                eventType = eventType,
+                displayName = displayName,
+                outcome = outcome,
+                testDetails = testDetails,
+            ),
+        )
+        while (recentEvents.size > MAX_RECENT_EVENTS) {
+            recentEvents.removeFirst()
+        }
+    }
+
+    private fun rememberFailedTest(
+        eventType: String,
+        displayName: String,
+        outcome: String?,
+        testDetails: TestProgressDetailsSnapshot?,
+    ) {
+        if (eventType != ProgressEventTypes.TEST_FAIL) {
+            return
+        }
+        FailedTestSnapshots.remember(
+            failedTests,
+            FailedTestSnapshots.fromTestFailure(displayName, outcome, testDetails),
+        )
     }
 
     private fun recordDownloadStart(event: FileDownloadStartEvent) {
@@ -270,32 +342,6 @@ class BuildProgressTracker(
         combined.addAll(recentDownloads)
         combined.addAll(activeDownloads.values)
         return combined.toList()
-    }
-
-    private fun applyTaskEvent(eventType: String, displayName: String, outcome: String? = null) {
-        taskProgress.apply(eventType, displayName)
-        recordEventLocked(eventType, displayName, outcome)
-    }
-
-    private fun notifyAfter(block: () -> Boolean) {
-        if (block()) {
-            onUpdate?.invoke()
-        }
-    }
-
-    private fun recordEventLocked(eventType: String, displayName: String, outcome: String? = null) {
-        totalEventCount += 1
-        recentEvents.addLast(
-            ProgressEventSnapshot(
-                timestamp = Instant.now().toString(),
-                eventType = eventType,
-                displayName = displayName,
-                outcome = outcome,
-            ),
-        )
-        while (recentEvents.size > MAX_RECENT_EVENTS) {
-            recentEvents.removeFirst()
-        }
     }
 
     companion object {

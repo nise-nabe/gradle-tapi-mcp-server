@@ -7,6 +7,7 @@ import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildRecord
 import com.example.gradle.mcp.build.ProgressEventTypes
 import com.example.gradle.mcp.build.CapturedStreamSnapshot
+import com.example.gradle.mcp.build.TestProgressDetailsExtractor
 import com.example.gradle.mcp.protocol.mcpObjectMapper
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.readValue
@@ -223,6 +224,7 @@ class BuildRecordStore(
             eventType = eventType,
             displayName = displayName,
             outcome = map["outcome"] as? String,
+            testDetails = TestProgressDetailsExtractor.fromDiskMap(eventType, map),
         )
     }
 

@@ -1,11 +1,38 @@
 package com.example.gradle.mcp.build
 
+data class TestProgressDetailsSnapshot(
+    val className: String? = null,
+    val methodName: String? = null,
+    val sourceType: String? = null,
+    val sourcePath: String? = null,
+    val sourceLine: Int? = null,
+    val sourceColumn: Int? = null,
+    val failureMessage: String? = null,
+)
+
+data class FailedTestSnapshot(
+    val className: String? = null,
+    val methodName: String? = null,
+    val displayName: String,
+    val failureMessage: String? = null,
+) {
+    fun stableKey(): String = "${className.orEmpty()}|${methodName.orEmpty()}|$displayName"
+}
+
 data class ProgressEventSnapshot(
     val timestamp: String,
     val eventType: String,
     val displayName: String,
     val outcome: String? = null,
-)
+    val testDetails: TestProgressDetailsSnapshot? = null,
+) {
+    fun toFailedTestSnapshot(): FailedTestSnapshot? =
+        if (eventType != ProgressEventTypes.TEST_FAIL) {
+            null
+        } else {
+            FailedTestSnapshots.fromTestFailure(displayName, outcome, testDetails)
+        }
+}
 
 data class DownloadProgressSnapshot(
     val uri: String,
@@ -28,4 +55,5 @@ data class BuildProgressSnapshot(
     val problems: List<BuildProblemSnapshot> = emptyList(),
     val recentDownloads: List<DownloadProgressSnapshot> = emptyList(),
     val activeDownloadCount: Int = 0,
+    val failedTests: List<FailedTestSnapshot> = emptyList(),
 )

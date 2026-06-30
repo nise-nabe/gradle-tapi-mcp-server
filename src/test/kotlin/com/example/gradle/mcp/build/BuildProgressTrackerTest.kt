@@ -7,6 +7,7 @@ import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import org.gradle.tooling.ConfigurableLauncher
 import org.gradle.tooling.Failure
@@ -22,6 +23,8 @@ import org.gradle.tooling.events.problems.Problem
 import org.gradle.tooling.events.problems.ProblemDefinition
 import org.gradle.tooling.events.problems.ProblemId
 import org.gradle.tooling.events.problems.Severity
+import org.gradle.tooling.events.test.JvmTestOperationDescriptor
+import org.gradle.tooling.events.test.TestFailureResult
 import org.gradle.tooling.events.test.TestFinishEvent
 import org.gradle.tooling.events.test.TestStartEvent
 import org.gradle.tooling.events.test.TestSuccessResult
@@ -29,7 +32,10 @@ import org.gradle.tooling.events.download.FileDownloadFinishEvent
 import org.gradle.tooling.events.download.FileDownloadOperationDescriptor
 import org.gradle.tooling.events.download.FileDownloadResult
 import org.gradle.tooling.events.download.FileDownloadStartEvent
+import org.gradle.tooling.events.test.source.FilePosition
+import org.gradle.tooling.events.test.source.FileSource
 import org.junit.jupiter.api.Test
+import java.io.File
 import java.net.URI
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
@@ -167,6 +173,77 @@ class BuildProgressTrackerTest {
         snapshot.runningTaskCount shouldBe 0
         snapshot.completedTaskCount shouldBe 1
         snapshot.recentEvents.last().eventType shouldBe "TEST_SUCCESS"
+    }
+
+    @Test
+    fun `captures structured test metadata and failed test summaries`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+        val displayName = "com.example.DemoTest.fails"
+        val descriptor = jvmTestDescriptorProxy(
+            displayName = displayName,
+            className = "com.example.DemoTest",
+            methodName = "fails",
+            source = fileSourceProxy(
+                file = File("src/test/kotlin/com/example/DemoTest.kt"),
+                line = 42,
+                column = 7,
+            ),
+        )
+
+        listener.statusChanged(testStartEventProxy(displayName, descriptor))
+        listener.statusChanged(
+            testFinishEventProxy(
+                displayName = displayName,
+                descriptor = descriptor,
+                result = testFailureResultProxy("expected:<1> but was:<2>"),
+            ),
+        )
+
+        val snapshot = tracker.snapshot()
+        val startDetails = snapshot.recentEvents.first { it.eventType == ProgressEventTypes.TEST_START }.testDetails.shouldNotBeNull()
+        startDetails.className shouldBe "com.example.DemoTest"
+        startDetails.methodName shouldBe "fails"
+        startDetails.sourceType shouldBe "file"
+        startDetails.sourcePath shouldBe "src/test/kotlin/com/example/DemoTest.kt"
+        startDetails.sourceLine shouldBe 42
+        startDetails.sourceColumn shouldBe 7
+
+        val failureDetails = snapshot.recentEvents.last().testDetails.shouldNotBeNull()
+        failureDetails.failureMessage shouldBe "expected:<1> but was:<2>"
+        snapshot.failedTests.single().className shouldBe "com.example.DemoTest"
+        snapshot.failedTests.single().methodName shouldBe "fails"
+        snapshot.failedTests.single().failureMessage shouldBe "expected:<1> but was:<2>"
+    }
+
+    @Test
+    fun `caps tracked failed tests after repeated failures`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+
+        repeat(11) { index ->
+            val displayName = "com.example.DemoTest.fails$index"
+            val descriptor = jvmTestDescriptorProxy(
+                displayName = displayName,
+                className = "com.example.DemoTest",
+                methodName = "fails$index",
+                source = fileSourceProxy(
+                    file = File("src/test/kotlin/com/example/DemoTest.kt"),
+                    line = index,
+                    column = null,
+                ),
+            )
+            listener.statusChanged(testStartEventProxy(displayName, descriptor))
+            listener.statusChanged(
+                testFinishEventProxy(
+                    displayName = displayName,
+                    descriptor = descriptor,
+                    result = testFailureResultProxy("failure $index"),
+                ),
+            )
+        }
+
+        tracker.snapshot().failedTests.size shouldBe FailedTestSnapshots.MAX_TRACKED_FAILED_TESTS
     }
 
     @Test
@@ -327,7 +404,6 @@ class BuildProgressTrackerTest {
         snapshot.totalEventCount shouldBe 40
     }
 
-
     @Test
     fun `configureLauncher subscribes file download events only when enabled`() {
         captureOperationTypes(trackDownloads = false) shouldNotContain OperationType.FILE_DOWNLOAD
@@ -442,6 +518,119 @@ class BuildProgressTrackerTest {
                 }
             },
         ) as FileDownloadFinishEvent
+
+    private fun testStartEventProxy(
+        displayName: String,
+        descriptor: JvmTestOperationDescriptor,
+    ): TestStartEvent =
+        Proxy.newProxyInstance(
+            TestStartEvent::class.java.classLoader,
+            arrayOf(TestStartEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> displayName
+                    "getEventTime" -> 0L
+                    "getDescriptor" -> descriptor
+                    else -> null
+                }
+            },
+        ) as TestStartEvent
+
+    private fun testFinishEventProxy(
+        displayName: String,
+        descriptor: JvmTestOperationDescriptor,
+        result: Any,
+    ): TestFinishEvent =
+        Proxy.newProxyInstance(
+            TestFinishEvent::class.java.classLoader,
+            arrayOf(TestFinishEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> displayName
+                    "getEventTime" -> 1L
+                    "getDescriptor" -> descriptor
+                    "getResult" -> result
+                    else -> null
+                }
+            },
+        ) as TestFinishEvent
+
+    private fun jvmTestDescriptorProxy(
+        displayName: String,
+        className: String,
+        methodName: String,
+        source: FileSource,
+    ): JvmTestOperationDescriptor =
+        Proxy.newProxyInstance(
+            JvmTestOperationDescriptor::class.java.classLoader,
+            arrayOf(JvmTestOperationDescriptor::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName", "getName", "getTestDisplayName" -> displayName
+                    "getParent" -> null
+                    "getClassName" -> className
+                    "getMethodName" -> methodName
+                    "getSource" -> source
+                    else -> null
+                }
+            },
+        ) as JvmTestOperationDescriptor
+
+    private fun fileSourceProxy(
+        file: File,
+        line: Int,
+        column: Int?,
+    ): FileSource =
+        Proxy.newProxyInstance(
+            FileSource::class.java.classLoader,
+            arrayOf(FileSource::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getFile" -> file
+                    "getPosition" -> filePositionProxy(line, column)
+                    else -> null
+                }
+            },
+        ) as FileSource
+
+    private fun filePositionProxy(line: Int, column: Int?): FilePosition =
+        Proxy.newProxyInstance(
+            FilePosition::class.java.classLoader,
+            arrayOf(FilePosition::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getLine" -> line
+                    "getColumn" -> column
+                    else -> null
+                }
+            },
+        ) as FilePosition
+
+    private fun testFailureResultProxy(message: String): TestFailureResult =
+        Proxy.newProxyInstance(
+            TestFailureResult::class.java.classLoader,
+            arrayOf(TestFailureResult::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getFailures" -> listOf(
+                        Proxy.newProxyInstance(
+                            Failure::class.java.classLoader,
+                            arrayOf(Failure::class.java),
+                            InvocationHandler { _, method, _ ->
+                                when (method.name) {
+                                    "getMessage" -> message
+                                    "getDescription" -> null
+                                    "getProblems", "getCauses" -> emptyList<Any>()
+                                    else -> null
+                                }
+                            },
+                        ) as Failure,
+                    )
+                    "getStartTime", "getEndTime" -> 0L
+                    else -> null
+                }
+            },
+        ) as TestFailureResult
 
     private fun failureResultProxy(failures: List<Failure>): FailureResult =
         Proxy.newProxyInstance(
