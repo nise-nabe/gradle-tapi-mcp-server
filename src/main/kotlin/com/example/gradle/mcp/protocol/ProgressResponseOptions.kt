@@ -2,6 +2,7 @@ package com.example.gradle.mcp.protocol
 
 data class ProgressResponseOptions(
     val includeProgress: Boolean = false,
+    val includeTestDetails: Boolean = false,
 ) {
     companion object {
         const val MAX_COMPLETED_TASKS_IN_RESPONSE = 20
@@ -10,6 +11,7 @@ data class ProgressResponseOptions(
         fun fromArgs(args: Map<String, Any>): ProgressResponseOptions =
             ProgressResponseOptions(
                 includeProgress = args.optionalBoolean("includeProgress", default = false),
+                includeTestDetails = args.optionalBoolean("includeTestDetails", default = false),
             )
     }
 }

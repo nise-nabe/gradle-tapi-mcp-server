@@ -3,6 +3,9 @@ package com.example.gradle.mcp.build
 import com.example.gradle.mcp.build.BuildProblemSnapshot
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import com.example.gradle.mcp.support.TEST_ISO_FINISH
+import com.example.gradle.mcp.support.TEST_ISO_START
+import com.example.gradle.mcp.support.failedTestSnapshot
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
@@ -122,5 +125,50 @@ class BuildStatusAssemblerTest {
             (problem as Map<*, *>)["label"] shouldBe "Compilation failed"
         }
         response.containsKey("progress") shouldBe false
+    }
+
+    @Test
+    fun `assemble includes failedTests summary when requested`() {
+        val response = BuildStatusAssembler.assemble(
+            view = BuildStatusView(
+                buildId = "failed-tests-build",
+                kind = "tests",
+                status = BuildProgressTracker.STATUS_FAILED,
+                startedAt = TEST_ISO_START,
+                finishedAt = TEST_ISO_FINISH,
+                tasks = listOf("test"),
+                selection = null,
+                error = "Test failed",
+                outcome = "FAILED",
+                buildSummary = mapOf("failureSummary" to listOf("1 test failed")),
+                progress = BuildProgressSnapshot(
+                    status = BuildProgressTracker.STATUS_FAILED,
+                    currentOperation = null,
+                    completedTaskCount = 0,
+                    runningTaskCount = 0,
+                    failedTaskCount = 1,
+                    completedTasks = emptyList(),
+                    runningTasks = emptyList(),
+                    failedTasks = listOf(":test"),
+                    recentEvents = emptyList(),
+                    totalEventCount = 1,
+                    failedTests = listOf(
+                        failedTestSnapshot(
+                            className = "com.example.FooTest",
+                            methodName = "bar",
+                            failureMessage = "boom",
+                        ),
+                    ),
+                ),
+                progressAvailable = true,
+                stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+                stderr = CapturedStreamSnapshot(text = "", totalChars = 0),
+                statusSource = BuildStatusView.SOURCE_MEMORY,
+            ),
+            outputLimit = OutputLimitOptions(),
+            progressOptions = ProgressResponseOptions(includeTestDetails = true),
+        )
+
+        ((((response["failedTests"] as List<*>).single() as Map<*, *>)["methodName"])) shouldBe "bar"
     }
 }
