@@ -1,16 +1,14 @@
 package com.example.gradle.mcp.connection
 
 import com.example.gradle.mcp.build.BuildExecutionManager
-import com.example.gradle.mcp.build.BuildKind
-import com.example.gradle.mcp.build.BuildProgressTracker
-import com.example.gradle.mcp.build.BuildRecord
-import com.example.gradle.mcp.build.CapturingStreams
 import com.example.gradle.mcp.connection.support.BuildEnvironmentProxyOptions
 import com.example.gradle.mcp.connection.support.buildEnvironmentProxy
 import com.example.gradle.mcp.connection.support.projectConnectionProxy
 import com.example.gradle.mcp.connection.support.recordingBuildLauncher
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.support.runningTracker
+import com.example.gradle.mcp.support.testBuildRecord
 import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
@@ -19,7 +17,6 @@ import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
-import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 
 class JavaRuntimeToolsTest {
@@ -240,16 +237,10 @@ class JavaRuntimeToolsTest {
 }
 
 private fun seedRunningBuild(manager: BuildExecutionManager) {
-    val tracker = BuildProgressTracker()
-    tracker.markStarting("Gradle tasks: build")
     manager.seedRunningBuildForTests(
-        BuildRecord(
+        testBuildRecord(
             id = "running-build",
-            kind = BuildKind.TASKS,
-            tasks = listOf("build"),
-            startedAt = Instant.now(),
-            progressTracker = tracker,
-            streams = CapturingStreams(),
+            tracker = runningTracker(),
             projectDirectory = testProjectDirectory.absolutePath,
         ),
     )
