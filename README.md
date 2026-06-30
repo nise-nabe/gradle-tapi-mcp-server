@@ -48,6 +48,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_connection_status` | Connection state for one project or all active connections (`connections[]`, `defaultProjectDirectory`) |
 | `gradle_disconnect` | Close one project (`projectDirectory`) or all connections (omit) |
 | `gradle_get_build_environment` | Gradle/Java environment including `javaVersion` and `versionInfo` (`gradle --version` text on Gradle 9.4+; lightweight) |
+| `gradle_get_java_runtimes` | Daemon Java from BuildEnvironment plus detected local JDKs via `javaToolchains -q` (set `includeToolchains: false` for daemon only) |
 | `gradle_get_help` | Gradle CLI help text (`gradle --help` equivalent); optional `maxChars` / `tailOutput`; requires Gradle 9.4+ |
 | `gradle_get_build_cache_status` | Build cache / configuration cache settings and local cache summaries |
 | `gradle_get_project_overview` | Project hierarchy and task counts only; optional `maxDepth` / `maxChildren` |

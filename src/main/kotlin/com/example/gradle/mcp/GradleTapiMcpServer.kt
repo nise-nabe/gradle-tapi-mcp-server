@@ -5,6 +5,7 @@ import com.example.gradle.mcp.build.buildTools
 import com.example.gradle.mcp.cache.cacheTools
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.connection.connectionTools
+import com.example.gradle.mcp.connection.javaRuntimeTools
 import com.example.gradle.mcp.model.modelTools
 import com.example.gradle.mcp.protocol.mcpJsonMapper
 import com.example.gradle.mcp.server.EofSignalingInputStream
@@ -39,6 +40,7 @@ fun main() {
             )
             .tools(
                 connectionTools() +
+                    javaRuntimeTools() +
                     cacheTools() +
                     modelTools() +
                     buildTools()
