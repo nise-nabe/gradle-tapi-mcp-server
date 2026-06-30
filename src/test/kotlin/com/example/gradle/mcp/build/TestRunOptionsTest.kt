@@ -1,9 +1,7 @@
 package com.example.gradle.mcp.build
 
-import com.example.gradle.mcp.protocol.McpErrorCode
-import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.protocol.assertInvalidArgument
 import com.example.gradle.mcp.support.testProjectDirectory
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
@@ -113,32 +111,32 @@ class TestRunOptionsTest {
 
     @Test
     fun `parseTestRunOptions rejects blank testMethods map keys`() {
-        val error = shouldThrow<McpException> {
-            parseTestRunOptions(
-                mapOf(
-                    "testMethods" to mapOf("" to listOf("method1")),
-                ),
-            )
-        }
-
-        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.message shouldBe "testMethods map keys must be non-blank"
+        assertInvalidArgument(
+            {
+                parseTestRunOptions(
+                    mapOf(
+                        "testMethods" to mapOf("" to listOf("method1")),
+                    ),
+                )
+            },
+            "testMethods map keys must be non-blank",
+        )
     }
 
     @Test
     fun `parseTestRunOptions rejects blank testMethods array class names`() {
-        val error = shouldThrow<McpException> {
-            parseTestRunOptions(
-                mapOf(
-                    "testMethods" to listOf(
-                        mapOf("class" to "", "methods" to listOf("method1")),
+        assertInvalidArgument(
+            {
+                parseTestRunOptions(
+                    mapOf(
+                        "testMethods" to listOf(
+                            mapOf("class" to "", "methods" to listOf("method1")),
+                        ),
                     ),
-                ),
-            )
-        }
-
-        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.message shouldBe "testMethods array entries require a non-blank class name"
+                )
+            },
+            "testMethods array entries require a non-blank class name",
+        )
     }
 
     @Test
@@ -169,23 +167,22 @@ class TestRunOptionsTest {
 
     @Test
     fun `parseTestRunOptions rejects testMethods array entries with multiple class keys`() {
-        val error = shouldThrow<McpException> {
-            parseTestRunOptions(
-                mapOf(
-                    "testMethods" to listOf(
-                        mapOf(
-                            "class" to "com.example.FooTest",
-                            "className" to "com.example.BarTest",
-                            "methods" to listOf("method1"),
+        assertInvalidArgument(
+            {
+                parseTestRunOptions(
+                    mapOf(
+                        "testMethods" to listOf(
+                            mapOf(
+                                "class" to "com.example.FooTest",
+                                "className" to "com.example.BarTest",
+                                "methods" to listOf("method1"),
+                            ),
                         ),
                     ),
-                ),
-            )
-        }
-
-        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.message shouldBe
-            "testMethods array entries must specify exactly one of class, className, or testClass"
+                )
+            },
+            "testMethods array entries must specify exactly one of class, className, or testClass",
+        )
     }
 
     @Test
@@ -203,33 +200,33 @@ class TestRunOptionsTest {
 
     @Test
     fun `parseTestRunOptions rejects testMethods when all method names are blank`() {
-        val error = shouldThrow<McpException> {
-            parseTestRunOptions(
-                mapOf(
-                    "testMethods" to mapOf(
-                        "com.example.FooTest" to listOf("", "  "),
+        assertInvalidArgument(
+            {
+                parseTestRunOptions(
+                    mapOf(
+                        "testMethods" to mapOf(
+                            "com.example.FooTest" to listOf("", "  "),
+                        ),
                     ),
-                ),
-            )
-        }
-
-        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.message shouldBe "testMethods entries must contain at least one method name"
+                )
+            },
+            "testMethods entries must contain at least one method name",
+        )
     }
 
     @Test
     fun `validate rejects includePatterns when tasks are blank after filtering`() {
-        val error = shouldThrow<McpException> {
-            parseTestRunOptions(
-                mapOf(
-                    "includePatterns" to listOf("com.example.*"),
-                    "tasks" to listOf("", "  "),
-                ),
-            ).validate()
-        }
-
-        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.message shouldBe "includePattern/includePatterns requires tasks for test task scoping"
+        assertInvalidArgument(
+            {
+                parseTestRunOptions(
+                    mapOf(
+                        "includePatterns" to listOf("com.example.*"),
+                        "tasks" to listOf("", "  "),
+                    ),
+                ).validate()
+            },
+            "includePattern/includePatterns requires tasks for test task scoping",
+        )
     }
 
     @Test
@@ -250,42 +247,39 @@ class TestRunOptionsTest {
 
     @Test
     fun `parseTestRunOptions reports methods field in array form validation errors`() {
-        val error = shouldThrow<McpException> {
-            parseTestRunOptions(
-                mapOf(
-                    "testMethods" to listOf(
-                        mapOf("class" to "com.example.FooTest", "methods" to listOf(1)),
+        assertInvalidArgument(
+            {
+                parseTestRunOptions(
+                    mapOf(
+                        "testMethods" to listOf(
+                            mapOf("class" to "com.example.FooTest", "methods" to listOf(1)),
+                        ),
                     ),
-                ),
-            )
-        }
-
-        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.message shouldBe "methods values must contain only strings"
+                )
+            },
+            "methods values must contain only strings",
+        )
     }
 
     @Test
     fun `validate rejects missing selection mechanism`() {
-        val error = shouldThrow<McpException> {
-            TestRunOptions().validate()
-        }
-
-        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.message shouldBe
-            "At least one of testClasses, testMethods, or includePattern/includePatterns must be provided"
+        assertInvalidArgument(
+            { TestRunOptions().validate() },
+            "At least one of testClasses, testMethods, or includePattern/includePatterns must be provided",
+        )
     }
 
     @Test
     fun `validate rejects taskPath without classes or methods`() {
-        val error = shouldThrow<McpException> {
-            TestRunOptions(
-                selection = TestRunSelection.Patterns(listOf("com.example.*")),
-                tasks = listOf(":app:test"),
-            ).validate(inputTaskPath = ":app:test")
-        }
-
-        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.message shouldBe "taskPath requires non-empty testClasses or testMethods"
+        assertInvalidArgument(
+            {
+                TestRunOptions(
+                    selection = TestRunSelection.Patterns(listOf("com.example.*")),
+                    tasks = listOf(":app:test"),
+                ).validate(inputTaskPath = ":app:test")
+            },
+            "taskPath requires non-empty testClasses or testMethods",
+        )
     }
 
     @Test
@@ -321,51 +315,49 @@ class TestRunOptionsTest {
 
     @Test
     fun `validate rejects multiple selection mechanisms`() {
-        val error = shouldThrow<McpException> {
-            parseTestRunOptions(
-                mapOf(
-                    "testClasses" to listOf("com.example.FooTest"),
-                    "testMethods" to mapOf("com.example.FooTest" to listOf("method1")),
-                ),
-            )
-        }
-
-        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.message shouldBe
-            "Specify only one of testClasses, testMethods, or includePattern/includePatterns"
+        assertInvalidArgument(
+            {
+                parseTestRunOptions(
+                    mapOf(
+                        "testClasses" to listOf("com.example.FooTest"),
+                        "testMethods" to mapOf("com.example.FooTest" to listOf("method1")),
+                    ),
+                )
+            },
+            "Specify only one of testClasses, testMethods, or includePattern/includePatterns",
+        )
     }
 
     @Test
     fun `validate rejects testClasses combined with includePatterns`() {
-        val error = shouldThrow<McpException> {
-            parseTestRunOptions(
-                mapOf(
-                    "testClasses" to listOf("com.example.FooTest"),
-                    "includePatterns" to listOf("com.example.*"),
-                    "tasks" to listOf(":app:test"),
-                ),
-            ).validate()
-        }
-
-        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.message shouldBe
-            "Specify only one of testClasses, testMethods, or includePattern/includePatterns"
+        assertInvalidArgument(
+            {
+                parseTestRunOptions(
+                    mapOf(
+                        "testClasses" to listOf("com.example.FooTest"),
+                        "includePatterns" to listOf("com.example.*"),
+                        "tasks" to listOf(":app:test"),
+                    ),
+                ).validate()
+            },
+            "Specify only one of testClasses, testMethods, or includePattern/includePatterns",
+        )
     }
 
     @Test
     fun `validate rejects tasks that omit taskPath when both are specified`() {
-        val error = shouldThrow<McpException> {
-            TestRunOptions(
-                selection = TestRunSelection.Classes(
-                    classes = listOf("com.example.FooTest"),
-                    taskPath = ":app:test",
-                ),
-                tasks = listOf(":other:test"),
-            ).validate()
-        }
-
-        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.message shouldBe "tasks must include taskPath when both are specified"
+        assertInvalidArgument(
+            {
+                TestRunOptions(
+                    selection = TestRunSelection.Classes(
+                        classes = listOf("com.example.FooTest"),
+                        taskPath = ":app:test",
+                    ),
+                    tasks = listOf(":other:test"),
+                ).validate()
+            },
+            "tasks must include taskPath when both are specified",
+        )
     }
 
     @Test
@@ -401,11 +393,9 @@ class TestRunOptionsTest {
 
     @Test
     fun `validate rejects includePatterns without tasks`() {
-        val error = shouldThrow<McpException> {
-            TestRunOptions(selection = TestRunSelection.Patterns(listOf("com.example.*"))).validate()
-        }
-
-        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.message shouldBe "includePattern/includePatterns requires tasks for test task scoping"
+        assertInvalidArgument(
+            { TestRunOptions(selection = TestRunSelection.Patterns(listOf("com.example.*"))).validate() },
+            "includePattern/includePatterns requires tasks for test task scoping",
+        )
     }
 }

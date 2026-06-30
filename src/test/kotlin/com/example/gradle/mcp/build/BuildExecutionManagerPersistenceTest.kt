@@ -1,14 +1,17 @@
 package com.example.gradle.mcp.build
 
-import com.example.gradle.mcp.build.persistence.BuildRecordStore
-import com.example.gradle.mcp.build.persistence.GradleBuildResult
 import com.example.gradle.mcp.build.persistence.McpBuildRecordPaths
-import com.example.gradle.mcp.build.persistence.McpBuildResult
-import com.example.gradle.mcp.protocol.mcpObjectMapper
+import com.example.gradle.mcp.build.persistence.gradleBuildResult
+import com.example.gradle.mcp.build.persistence.mcpBuildResult
+import com.example.gradle.mcp.build.persistence.persistedBuildManager
+import com.example.gradle.mcp.build.persistence.writeDiskFile
+import com.example.gradle.mcp.build.persistence.writeGradleResultToDisk
+import com.example.gradle.mcp.build.persistence.writeMcpResultToDisk
 import com.example.gradle.mcp.connection.GradleConnectionManager
-import com.example.gradle.mcp.support.withWorkspaceDirectory
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import com.example.gradle.mcp.protocol.mcpObjectMapper
+import com.example.gradle.mcp.support.withWorkspaceDirectory
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -30,29 +33,15 @@ class BuildExecutionManagerPersistenceTest {
 
     @Test
     fun `status loads persisted build from project gradle directory`(@TempDir projectDir: File) {
-        val connectionManager = GradleConnectionManager()
-        connectionManager.seedNoopConnection(projectDir)
-        val store = BuildRecordStore()
-        val persistedManager = BuildExecutionManager(connectionManager, store)
+        val (persistedManager, store) = persistedBuildManager(projectDir)
         val buildId = "disk-only-build"
-        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
-        recordDir.mkdirs()
-        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                McpBuildResult(
-                    buildId = buildId,
-                    kind = "tasks",
-                    tasks = listOf("build"),
-                    testClasses = emptyList(),
-                    projectDirectory = projectDir.absolutePath,
-                    startedAt = "2026-06-14T10:00:00Z",
-                    finishedAt = "2026-06-14T10:01:00Z",
-                    status = "succeeded",
-                    outcome = "SUCCESS",
-                    buildSummary = mapOf("resultLine" to "BUILD SUCCESSFUL in 1s"),
-                ),
+        store.writeMcpResultToDisk(
+            projectDir,
+            mcpBuildResult(
+                buildId = buildId,
+                projectDirectory = projectDir.absolutePath,
+                buildSummary = mapOf("resultLine" to "BUILD SUCCESSFUL in 1s"),
             ),
-            StandardCharsets.UTF_8,
         )
 
         val result = persistedManager.status(buildId, OutputLimitOptions(), ProgressResponseOptions())
@@ -64,26 +53,12 @@ class BuildExecutionManagerPersistenceTest {
 
     @Test
     fun `status loads persisted build from workspace env when disconnected`(@TempDir projectDir: File) {
-        val store = BuildRecordStore()
+        val store = com.example.gradle.mcp.build.persistence.BuildRecordStore()
         val manager = BuildExecutionManager(GradleConnectionManager(), store)
         val buildId = "workspace-disk-build"
-        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
-        recordDir.mkdirs()
-        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                McpBuildResult(
-                    buildId = buildId,
-                    kind = "tasks",
-                    tasks = listOf("build"),
-                    testClasses = emptyList(),
-                    projectDirectory = projectDir.absolutePath,
-                    startedAt = "2026-06-14T10:00:00Z",
-                    finishedAt = "2026-06-14T10:01:00Z",
-                    status = "succeeded",
-                    outcome = "SUCCESS",
-                ),
-            ),
-            StandardCharsets.UTF_8,
+        store.writeMcpResultToDisk(
+            projectDir,
+            mcpBuildResult(buildId = buildId, projectDirectory = projectDir.absolutePath),
         )
 
         withWorkspaceDirectory(projectDir) {
@@ -96,27 +71,15 @@ class BuildExecutionManagerPersistenceTest {
 
     @Test
     fun `status rejects path traversal buildId`(@TempDir projectDir: File) {
-        val connectionManager = GradleConnectionManager()
-        connectionManager.seedNoopConnection(projectDir)
+        val (manager, _) = persistedBuildManager(projectDir)
         val leakedDir = File(projectDir, ".gradle/leaked-build")
         leakedDir.mkdirs()
         File(leakedDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
             mcpObjectMapper().writeValueAsString(
-                McpBuildResult(
-                    buildId = "leaked",
-                    kind = "tasks",
-                    tasks = listOf("build"),
-                    testClasses = emptyList(),
-                    projectDirectory = projectDir.absolutePath,
-                    startedAt = "2026-06-14T10:00:00Z",
-                    finishedAt = "2026-06-14T10:01:00Z",
-                    status = "succeeded",
-                    outcome = "SUCCESS",
-                ),
+                mcpBuildResult(buildId = "leaked", projectDirectory = projectDir.absolutePath),
             ),
             StandardCharsets.UTF_8,
         )
-        val manager = BuildExecutionManager(connectionManager, BuildRecordStore())
 
         val result = manager.status("../leaked-build", OutputLimitOptions(), ProgressResponseOptions())
 
@@ -126,64 +89,41 @@ class BuildExecutionManagerPersistenceTest {
     @Test
     fun `status prefers disk gradle succeeded over memory failed after disconnect`(@TempDir projectDir: File) {
         val buildId = "disconnect-merge-build"
-        val connectionManager = GradleConnectionManager()
-        connectionManager.seedNoopConnection(projectDir)
-        val store = BuildRecordStore()
-        val manager = BuildExecutionManager(connectionManager, store)
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        tracker.markFailed("Gradle connection closed")
-        val streams = CapturingStreams()
-        streams.appendStdoutForTests(
-            "partial\nBUILD SUCCESSFUL in 2s\n2 actionable tasks: 2 executed\n",
-        )
-        manager.seedRunningBuildForTests(
-            BuildRecord(
+        val (manager, store) = persistedBuildManager(projectDir)
+        val streams = CapturingStreams().also {
+            it.appendStdoutForTests("partial\nBUILD SUCCESSFUL in 2s\n2 actionable tasks: 2 executed\n")
+        }
+        manager.seedTestBuild(
+            testBuildRecord(
                 id = buildId,
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
                 startedAt = Instant.parse("2026-06-14T10:00:00Z"),
-                progressTracker = tracker,
+                tracker = failedTracker(message = "Gradle connection closed"),
                 streams = streams,
                 projectDirectory = projectDir.absolutePath,
-            ).also {
-                it.finishedAt = Instant.parse("2026-06-14T10:01:00Z")
-                it.errorMessage = "Gradle connection closed"
+            ) {
+                finishedAt = Instant.parse("2026-06-14T10:01:00Z")
+                errorMessage = "Gradle connection closed"
             },
         )
-        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
-        recordDir.mkdirs()
-        File(recordDir, McpBuildRecordPaths.STDOUT_LOG).writeText(
-            "partial\n",
-            StandardCharsets.UTF_8,
-        )
-        File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                GradleBuildResult(
-                    buildId = buildId,
-                    status = "succeeded",
-                    startedAt = "2026-06-14T10:00:00Z",
-                    finishedAt = "2026-06-14T10:02:00Z",
-                ),
+        store.writeDiskFile(projectDir, buildId, McpBuildRecordPaths.STDOUT_LOG, "partial\n")
+        store.writeGradleResultToDisk(
+            projectDir,
+            buildId,
+            gradleBuildResult(
+                buildId = buildId,
+                status = "succeeded",
+                finishedAt = "2026-06-14T10:02:00Z",
             ),
-            StandardCharsets.UTF_8,
         )
-        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                McpBuildResult(
-                    buildId = buildId,
-                    kind = "tasks",
-                    tasks = listOf("build"),
-                    testClasses = emptyList(),
-                    projectDirectory = projectDir.absolutePath,
-                    startedAt = "2026-06-14T10:00:00Z",
-                    finishedAt = "2026-06-14T10:01:00Z",
-                    status = "failed",
-                    outcome = "FAILED",
-                    error = "Gradle connection closed",
-                ),
+        store.writeMcpResultToDisk(
+            projectDir,
+            mcpBuildResult(
+                buildId = buildId,
+                projectDirectory = projectDir.absolutePath,
+                status = "failed",
+                outcome = "FAILED",
+                error = "Gradle connection closed",
             ),
-            StandardCharsets.UTF_8,
         )
 
         val result = manager.status(buildId, OutputLimitOptions(), ProgressResponseOptions())
@@ -209,56 +149,36 @@ class BuildExecutionManagerPersistenceTest {
     @Test
     fun `status prefers disk gradle running over memory failed after disconnect`(@TempDir projectDir: File) {
         val buildId = "disconnect-still-running"
-        val connectionManager = GradleConnectionManager()
-        connectionManager.seedNoopConnection(projectDir)
-        val store = BuildRecordStore()
-        val manager = BuildExecutionManager(connectionManager, store)
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        tracker.markFailed("Gradle connection closed")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
+        val (manager, store) = persistedBuildManager(projectDir)
+        manager.seedTestBuild(
+            testBuildRecord(
                 id = buildId,
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
                 startedAt = Instant.parse("2026-06-14T10:00:00Z"),
-                progressTracker = tracker,
-                streams = CapturingStreams(),
+                tracker = failedTracker(message = "Gradle connection closed"),
                 projectDirectory = projectDir.absolutePath,
-            ).also {
-                it.finishedAt = Instant.parse("2026-06-14T10:01:00Z")
-                it.errorMessage = "Gradle connection closed"
+            ) {
+                finishedAt = Instant.parse("2026-06-14T10:01:00Z")
+                errorMessage = "Gradle connection closed"
             },
         )
-        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
-        recordDir.mkdirs()
-        File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                GradleBuildResult(
-                    buildId = buildId,
-                    status = "running",
-                    startedAt = "2026-06-14T10:00:00Z",
-                    taskNames = listOf("build"),
-                ),
+        store.writeGradleResultToDisk(
+            projectDir,
+            buildId,
+            gradleBuildResult(
+                buildId = buildId,
+                status = "running",
+                taskNames = listOf("build"),
             ),
-            StandardCharsets.UTF_8,
         )
-        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                McpBuildResult(
-                    buildId = buildId,
-                    kind = "tasks",
-                    tasks = listOf("build"),
-                    testClasses = emptyList(),
-                    projectDirectory = projectDir.absolutePath,
-                    startedAt = "2026-06-14T10:00:00Z",
-                    finishedAt = "2026-06-14T10:01:00Z",
-                    status = "failed",
-                    outcome = "FAILED",
-                    error = "Gradle connection closed",
-                ),
+        store.writeMcpResultToDisk(
+            projectDir,
+            mcpBuildResult(
+                buildId = buildId,
+                projectDirectory = projectDir.absolutePath,
+                status = "failed",
+                outcome = "FAILED",
+                error = "Gradle connection closed",
             ),
-            StandardCharsets.UTF_8,
         )
 
         val result = manager.status(buildId, OutputLimitOptions(), ProgressResponseOptions())
@@ -275,30 +195,15 @@ class BuildExecutionManagerPersistenceTest {
         val projectB = projectDirs.resolve("project-b").also { it.mkdirs() }
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnection(projectB)
-        val store = BuildRecordStore()
+        val store = com.example.gradle.mcp.build.persistence.BuildRecordStore()
         val manager = BuildExecutionManager(connectionManager, store)
         val buildId = "cross-project-build"
-        val recordDir = store.recordDirectory(projectA, buildId).shouldNotBeNull()
-        recordDir.mkdirs()
-        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                McpBuildResult(
-                    buildId = buildId,
-                    kind = "tasks",
-                    tasks = listOf("build"),
-                    testClasses = emptyList(),
-                    projectDirectory = projectA.absolutePath,
-                    startedAt = "2026-06-14T10:00:00Z",
-                    finishedAt = "2026-06-14T10:01:00Z",
-                    status = "succeeded",
-                    outcome = "SUCCESS",
-                ),
-            ),
-            StandardCharsets.UTF_8,
+        store.writeMcpResultToDisk(
+            projectA,
+            mcpBuildResult(buildId = buildId, projectDirectory = projectA.absolutePath),
         )
 
-        val withoutHint = manager.status(buildId, OutputLimitOptions(), ProgressResponseOptions())
-        withoutHint["status"] shouldBe "not_found"
+        manager.status(buildId, OutputLimitOptions(), ProgressResponseOptions())["status"] shouldBe "not_found"
 
         val withHint = manager.status(
             buildId,
@@ -313,22 +218,15 @@ class BuildExecutionManagerPersistenceTest {
     @Test
     fun `status omits stdout on disk running poll even when includeOutput is true`(@TempDir projectDir: File) {
         val buildId = "disk-running-no-stdout"
-        val connectionManager = GradleConnectionManager()
-        connectionManager.seedNoopConnection(projectDir)
-        val store = BuildRecordStore()
-        val manager = BuildExecutionManager(connectionManager, store)
-        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
-        recordDir.mkdirs()
-        File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                GradleBuildResult(
-                    buildId = buildId,
-                    status = "running",
-                    startedAt = "2026-06-14T10:00:00Z",
-                    taskNames = listOf("build"),
-                ),
+        val (manager, store) = persistedBuildManager(projectDir)
+        store.writeGradleResultToDisk(
+            projectDir,
+            buildId,
+            gradleBuildResult(
+                buildId = buildId,
+                status = "running",
+                taskNames = listOf("build"),
             ),
-            StandardCharsets.UTF_8,
         )
 
         val result = manager.status(
@@ -346,57 +244,40 @@ class BuildExecutionManagerPersistenceTest {
     @Test
     fun `status skips disk merge while in-memory build is still running`(@TempDir projectDir: File) {
         val buildId = "active-running-build"
-        val connectionManager = GradleConnectionManager()
-        connectionManager.seedNoopConnection(projectDir)
-        val store = BuildRecordStore()
-        val manager = BuildExecutionManager(connectionManager, store)
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
+        val (manager, store) = persistedBuildManager(projectDir)
+        manager.seedTestBuild(
+            testBuildRecord(
                 id = buildId,
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
                 startedAt = Instant.parse("2026-06-14T10:00:00Z"),
-                progressTracker = tracker,
-                streams = CapturingStreams(),
+                tracker = runningTracker(),
                 projectDirectory = projectDir.absolutePath,
             ),
         )
-        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
-        recordDir.mkdirs()
-        val staleFinishedAt = Instant.now().minusSeconds(120).toString()
-        File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                GradleBuildResult(
-                    buildId = buildId,
-                    status = "running",
-                    startedAt = "2026-06-14T10:00:00Z",
-                    taskNames = listOf("build"),
-                ),
+        store.writeGradleResultToDisk(
+            projectDir,
+            buildId,
+            gradleBuildResult(
+                buildId = buildId,
+                status = "running",
+                taskNames = listOf("build"),
             ),
-            StandardCharsets.UTF_8,
         )
-        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
-                McpBuildResult(
-                    buildId = buildId,
-                    kind = "tasks",
-                    tasks = listOf("build"),
-                    testClasses = emptyList(),
-                    projectDirectory = projectDir.absolutePath,
-                    startedAt = "2026-06-14T10:00:00Z",
-                    finishedAt = staleFinishedAt,
-                    status = "failed",
-                    outcome = "FAILED",
-                    error = "Gradle connection closed",
-                ),
+        store.writeMcpResultToDisk(
+            projectDir,
+            mcpBuildResult(
+                buildId = buildId,
+                projectDirectory = projectDir.absolutePath,
+                finishedAt = Instant.now().minusSeconds(120).toString(),
+                status = "failed",
+                outcome = "FAILED",
+                error = "Gradle connection closed",
             ),
-            StandardCharsets.UTF_8,
         )
-        File(recordDir, McpBuildRecordPaths.EVENTS_FILE).writeText(
+        store.writeDiskFile(
+            projectDir,
+            buildId,
+            McpBuildRecordPaths.EVENTS_FILE,
             """{"ts":"2026-06-14T10:00:30Z","type":"TASK_START","displayName":":app:build"}""" + "\n",
-            StandardCharsets.UTF_8,
         )
 
         val result = manager.status(buildId, OutputLimitOptions(), ProgressResponseOptions())

@@ -1,13 +1,12 @@
 package com.example.gradle.mcp.build
 
-import com.example.gradle.mcp.cache.CompletedBuildSnapshot
 import com.example.gradle.mcp.cache.lastMcpBuildInsight
 import com.example.gradle.mcp.connection.GradleConnectionManager
-import com.example.gradle.mcp.support.testProjectDirectory
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
@@ -16,12 +15,12 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import org.gradle.tooling.GradleConnector
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
 class BuildExecutionManagerCancelTest {
@@ -29,17 +28,11 @@ class BuildExecutionManagerCancelTest {
 
     @Test
     fun `cancelBuild requests cancellation for running build`() {
-        val tokenSource = org.gradle.tooling.GradleConnector.newCancellationTokenSource()
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
+        val tokenSource = GradleConnector.newCancellationTokenSource()
+        manager.seedTestBuild(
+            testBuildRecord(
                 id = "cancellable-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                startedAt = Instant.now(),
-                progressTracker = tracker,
-                streams = CapturingStreams(),
+                tracker = runningTracker(),
                 cancellationTokenSource = tokenSource,
             ),
         )
@@ -53,17 +46,10 @@ class BuildExecutionManagerCancelTest {
 
     @Test
     fun `cancelBuild returns current status for terminal build`() {
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        tracker.markCancelled("already done")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
+        manager.seedTestBuild(
+            testBuildRecord(
                 id = "done-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                startedAt = Instant.now(),
-                progressTracker = tracker,
-                streams = CapturingStreams(),
+                tracker = cancelledTracker(),
             ),
         )
 
@@ -85,18 +71,7 @@ class BuildExecutionManagerCancelTest {
 
     @Test
     fun `resetBuildState cancels running builds and clears active state`() {
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
-                id = "running-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                startedAt = Instant.now(),
-                progressTracker = tracker,
-                streams = CapturingStreams(),
-            ),
-        )
+        manager.seedTestBuild(testBuildRecord(id = "running-build", tracker = runningTracker()))
 
         manager.resetBuildState("Preparing new Gradle connection")
 
@@ -113,17 +88,11 @@ class BuildExecutionManagerCancelTest {
         connectionManager.seedConnectionForTests(connection, projectDirectory = projectA)
         connectionManager.seedConnectionForTests(connection, projectDirectory = projectB)
         val scopedManager = BuildExecutionManager(connectionManager)
-        val tokenSource = org.gradle.tooling.GradleConnector.newCancellationTokenSource()
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        scopedManager.seedRunningBuildForTests(
-            BuildRecord(
+        val tokenSource = GradleConnector.newCancellationTokenSource()
+        scopedManager.seedTestBuild(
+            testBuildRecord(
                 id = "multi-project-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                startedAt = Instant.now(),
-                progressTracker = tracker,
-                streams = CapturingStreams(),
+                tracker = runningTracker(),
                 cancellationTokenSource = tokenSource,
                 projectDirectory = projectA.absolutePath,
             ),
@@ -137,18 +106,7 @@ class BuildExecutionManagerCancelTest {
 
     @Test
     fun `onDisconnect cancels running builds`() {
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
-                id = "running-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                startedAt = Instant.now(),
-                progressTracker = tracker,
-                streams = CapturingStreams(),
-            ),
-        )
+        manager.seedTestBuild(testBuildRecord(id = "running-build", tracker = runningTracker()))
 
         manager.onDisconnect()
 
@@ -164,7 +122,7 @@ class BuildExecutionManagerCancelTest {
             )
         }
         notConnected.code shouldBe McpErrorCode.NOT_CONNECTED
-        notConnected.message.shouldNotBeNull() shouldContain testProjectDirectory.path
+        notConnected.message.shouldContain(testProjectDirectory.path)
     }
 
     @Test
@@ -173,42 +131,20 @@ class BuildExecutionManagerCancelTest {
         connectionManager.seedNoopConnection(project)
         val scopedManager = BuildExecutionManager(connectionManager)
 
-        val executorBefore = BuildExecutionManager::class.java
-            .getDeclaredField("executor")
-            .apply { isAccessible = true }
-            .get(scopedManager) as ExecutorService
+        val executorBefore = scopedManager.testExecutor()
 
         connectionManager.disconnect(project)
         scopedManager.onDisconnect(project)
 
-        val executorAfter = BuildExecutionManager::class.java
-            .getDeclaredField("executor")
-            .apply { isAccessible = true }
-            .get(scopedManager) as ExecutorService
-
-        executorBefore shouldNotBe executorAfter
+        scopedManager.testExecutor() shouldNotBe executorBefore
     }
 
     @Test
     fun `shutdown releases lifecycle lock before awaiting executor termination`() {
         val manager = BuildExecutionManager(GradleConnectionManager())
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        val record = BuildRecord(
-            id = "running-build",
-            kind = BuildKind.TASKS,
-            tasks = listOf("build"),
-            startedAt = Instant.now(),
-            progressTracker = tracker,
-            streams = CapturingStreams(),
-        )
-        manager.seedRunningBuildForTests(record)
+        manager.seedTestBuild(testBuildRecord(id = "running-build", tracker = runningTracker()))
 
-        val executor = BuildExecutionManager::class.java
-            .getDeclaredField("executor")
-            .apply { isAccessible = true }
-            .get(manager) as ExecutorService
-
+        val executor = manager.testExecutor()
         val taskEntered = CountDownLatch(1)
         val releaseBlock = CountDownLatch(1)
         val taskFinished = CountDownLatch(1)
@@ -231,16 +167,10 @@ class BuildExecutionManagerCancelTest {
 
     @Test
     fun `resetBuildState snapshot keeps project directory from build start`(@TempDir projectDir: File) {
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
+        manager.seedTestBuild(
+            testBuildRecord(
                 id = "running-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                startedAt = Instant.now(),
-                progressTracker = tracker,
-                streams = CapturingStreams(),
+                tracker = runningTracker(),
                 projectDirectory = projectDir.absolutePath,
             ),
         )
@@ -258,15 +188,10 @@ class BuildExecutionManagerCancelTest {
         @TempDir projectB: File,
     ) {
         manager.seedLastCompletedBuildForTests(
-            CompletedBuildSnapshot(
+            testCompletedSnapshot(
                 buildId = "b1",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                testClasses = emptyList(),
-                finishedAt = Instant.now(),
-                outcome = "SUCCESS",
-                stdout = "BUILD SUCCESSFUL in 1s\n3 actionable tasks: 2 executed, 1 from cache\n",
                 projectDirectory = projectA.absolutePath,
+                stdout = "BUILD SUCCESSFUL in 1s\n3 actionable tasks: 2 executed, 1 from cache\n",
             ),
         )
 
@@ -281,15 +206,12 @@ class BuildExecutionManagerCancelTest {
     @Test
     fun `lastMcpBuildInsight exposes test classes separately from tasks`(@TempDir projectDir: File) {
         manager.seedLastCompletedBuildForTests(
-            CompletedBuildSnapshot(
+            testCompletedSnapshot(
                 buildId = "test-run",
+                projectDirectory = projectDir.absolutePath,
                 kind = BuildKind.TESTS,
                 tasks = emptyList(),
                 testClasses = listOf("com.example.FooTest"),
-                finishedAt = Instant.now(),
-                outcome = "SUCCESS",
-                stdout = "BUILD SUCCESSFUL in 1s\n",
-                projectDirectory = projectDir.absolutePath,
             ),
         )
 
@@ -308,27 +230,13 @@ class BuildExecutionManagerCancelTest {
         connectionManager.seedNoopConnection(projectA)
         val scopedManager = BuildExecutionManager(connectionManager)
         scopedManager.seedLastCompletedBuildForTests(
-            CompletedBuildSnapshot(
-                buildId = "a1",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                testClasses = emptyList(),
-                finishedAt = Instant.now(),
-                outcome = "SUCCESS",
-                stdout = "",
-                projectDirectory = projectA.absolutePath,
-            ),
+            testCompletedSnapshot(buildId = "a1", projectDirectory = projectA.absolutePath),
         )
         scopedManager.seedLastCompletedBuildForTests(
-            CompletedBuildSnapshot(
+            testCompletedSnapshot(
                 buildId = "b1",
-                kind = BuildKind.TASKS,
-                tasks = listOf("check"),
-                testClasses = emptyList(),
-                finishedAt = Instant.now(),
-                outcome = "SUCCESS",
-                stdout = "",
                 projectDirectory = projectB.absolutePath,
+                tasks = listOf("check"),
             ),
         )
 
@@ -346,27 +254,13 @@ class BuildExecutionManagerCancelTest {
     ) {
         val manager = BuildExecutionManager(GradleConnectionManager())
         manager.seedLastCompletedBuildForTests(
-            CompletedBuildSnapshot(
-                buildId = "a1",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                testClasses = emptyList(),
-                finishedAt = Instant.now(),
-                outcome = "SUCCESS",
-                stdout = "",
-                projectDirectory = projectA.absolutePath,
-            ),
+            testCompletedSnapshot(buildId = "a1", projectDirectory = projectA.absolutePath),
         )
         manager.seedLastCompletedBuildForTests(
-            CompletedBuildSnapshot(
+            testCompletedSnapshot(
                 buildId = "b1",
-                kind = BuildKind.TASKS,
-                tasks = listOf("check"),
-                testClasses = emptyList(),
-                finishedAt = Instant.now(),
-                outcome = "SUCCESS",
-                stdout = "",
                 projectDirectory = projectB.absolutePath,
+                tasks = listOf("check"),
             ),
         )
 

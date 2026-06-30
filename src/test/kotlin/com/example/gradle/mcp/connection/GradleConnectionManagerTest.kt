@@ -9,13 +9,9 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
-import org.gradle.tooling.ProjectConnection
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
-import java.lang.reflect.InvocationHandler
-import java.lang.reflect.Method
-import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -28,19 +24,18 @@ class GradleConnectionManagerTest {
     fun `status reports disconnected initially`() {
         val status = manager.status()
 
-        status.bool("connected").shouldBeFalse()
-        status.str("projectDirectory").shouldBeNull()
-        status.str("gradleVersion").shouldBeNull()
-        status.str("versionInfo").shouldBeNull()
-        status.str("javaHome").shouldBeNull()
-        status.str("javaVersion").shouldBeNull()
-        status.bool("runtimeStackAvailable").shouldBeFalse()
+        status.statusBool("connected").shouldBeFalse()
+        status.statusStr("projectDirectory").shouldBeNull()
+        status.statusStr("gradleVersion").shouldBeNull()
+        status.statusStr("versionInfo").shouldBeNull()
+        status.statusStr("javaHome").shouldBeNull()
+        status.statusStr("javaVersion").shouldBeNull()
+        status.statusBool("runtimeStackAvailable").shouldBeFalse()
     }
 
     @Test
     fun `status returns seeded runtime stack without calling getModel`() {
         val getModelCalls = AtomicInteger(0)
-        val connection = connectionProxy(getModelCalls)
         val snapshot = BuildEnvironmentSnapshot(
             gradleVersion = "9.6",
             gradleUserHome = "/gradle/home",
@@ -49,24 +44,23 @@ class GradleConnectionManagerTest {
             jvmArguments = listOf("-Xmx2g"),
             versionInfo = "Gradle 9.6\nBuild time: 2026-01-01",
         )
-        manager.seedConnectionForTests(connection, environment = snapshot)
+        manager.seedConnectionForTests(getModelCountingConnection(getModelCalls), environment = snapshot)
 
         val status = manager.status()
 
-        status.bool("connected").shouldBeTrue()
-        status.str("gradleVersion") shouldBe "9.6"
-        status.str("versionInfo") shouldBe "Gradle 9.6\nBuild time: 2026-01-01"
-        status.str("javaHome") shouldBe "/jdk/home"
-        status.str("javaVersion") shouldBe "21.0.2"
-        status.bool("runtimeStackAvailable").shouldBeTrue()
+        status.statusBool("connected").shouldBeTrue()
+        status.statusStr("gradleVersion") shouldBe "9.6"
+        status.statusStr("versionInfo") shouldBe "Gradle 9.6\nBuild time: 2026-01-01"
+        status.statusStr("javaHome") shouldBe "/jdk/home"
+        status.statusStr("javaVersion") shouldBe "21.0.2"
+        status.statusBool("runtimeStackAvailable").shouldBeTrue()
         getModelCalls.get() shouldBe 0
     }
 
     @Test
     fun `status omits versionInfo when snapshot has none`() {
-        val connection = connectionProxy(AtomicInteger(0))
         manager.seedConnectionForTests(
-            connection,
+            getModelCountingConnection(),
             environment = BuildEnvironmentSnapshot(
                 gradleVersion = "8.14",
                 gradleUserHome = "/gradle/home",
@@ -76,29 +70,27 @@ class GradleConnectionManagerTest {
             ),
         )
 
-        manager.status().str("versionInfo").shouldBeNull()
+        manager.status().statusStr("versionInfo").shouldBeNull()
     }
 
     @Test
     fun `status reports connected without runtime stack when cache is missing`() {
-        val connection = connectionProxy(AtomicInteger(0))
-        manager.seedConnectionForTests(connection)
+        manager.seedConnectionForTests(getModelCountingConnection())
 
         val status = manager.status()
 
-        status.bool("connected").shouldBeTrue()
-        status.str("gradleVersion").shouldBeNull()
-        status.str("versionInfo").shouldBeNull()
-        status.str("javaHome").shouldBeNull()
-        status.str("javaVersion").shouldBeNull()
-        status.bool("runtimeStackAvailable").shouldBeFalse()
+        status.statusBool("connected").shouldBeTrue()
+        status.statusStr("gradleVersion").shouldBeNull()
+        status.statusStr("versionInfo").shouldBeNull()
+        status.statusStr("javaHome").shouldBeNull()
+        status.statusStr("javaVersion").shouldBeNull()
+        status.statusBool("runtimeStackAvailable").shouldBeFalse()
     }
 
     @Test
     fun `disconnect clears runtime stack from status`() {
-        val connection = connectionProxy(AtomicInteger(0))
         manager.seedConnectionForTests(
-            connection,
+            getModelCountingConnection(),
             environment = BuildEnvironmentSnapshot(
                 gradleVersion = "8.14",
                 gradleUserHome = null,
@@ -111,10 +103,10 @@ class GradleConnectionManagerTest {
         manager.disconnect()
 
         val status = manager.status()
-        status.bool("connected").shouldBeFalse()
-        status.bool("runtimeStackAvailable").shouldBeFalse()
-        status.str("gradleVersion").shouldBeNull()
-        status.str("versionInfo").shouldBeNull()
+        status.statusBool("connected").shouldBeFalse()
+        status.statusBool("runtimeStackAvailable").shouldBeFalse()
+        status.statusStr("gradleVersion").shouldBeNull()
+        status.statusStr("versionInfo").shouldBeNull()
     }
 
     @Test
@@ -147,10 +139,7 @@ class GradleConnectionManagerTest {
 
     @Test
     fun `ensureConnected keeps other project connections`(@TempDir projectA: File, @TempDir projectB: File) {
-        val connectionA = connectionProxy(AtomicInteger(0))
-        val connectionB = connectionProxy(AtomicInteger(0))
-        manager.seedConnectionForTests(connectionA, projectDirectory = projectA)
-        manager.seedConnectionForTests(connectionB, projectDirectory = projectB)
+        manager.seedCountingConnections(projectA, projectB)
 
         manager.connectedProjectDirectories().shouldHaveSize(2)
         manager.isConnected(projectA).shouldBeTrue()
@@ -163,9 +152,8 @@ class GradleConnectionManagerTest {
 
     @Test
     fun `ensureConnected rejects mismatched Gradle settings for an existing connection`(@TempDir project: File) {
-        val connection = connectionProxy(AtomicInteger(0))
         manager.seedConnectionForTests(
-            connection,
+            getModelCountingConnection(),
             projectDirectory = project,
             config = ConnectionConfig(
                 projectDirectory = project.path,
@@ -191,9 +179,8 @@ class GradleConnectionManagerTest {
 
     @Test
     fun `ensureConnected accepts matching Gradle settings for an existing connection`(@TempDir project: File) {
-        val connection = connectionProxy(AtomicInteger(0))
         manager.seedConnectionForTests(
-            connection,
+            getModelCountingConnection(),
             projectDirectory = project,
             config = ConnectionConfig(
                 projectDirectory = project.path,
@@ -214,9 +201,8 @@ class GradleConnectionManagerTest {
 
     @Test
     fun `ensureConnected accepts equivalent gradleUserHome paths`(@TempDir project: File, @TempDir gradleHome: File) {
-        val connection = connectionProxy(AtomicInteger(0))
         manager.seedConnectionForTests(
-            connection,
+            getModelCountingConnection(),
             projectDirectory = project,
             config = ConnectionConfig(
                 projectDirectory = project.path,
@@ -239,9 +225,8 @@ class GradleConnectionManagerTest {
         @TempDir project: File,
         @TempDir gradleInstallation: File,
     ) {
-        val connection = connectionProxy(AtomicInteger(0))
         manager.seedConnectionForTests(
-            connection,
+            getModelCountingConnection(),
             projectDirectory = project,
             config = ConnectionConfig(
                 projectDirectory = project.path,
@@ -261,8 +246,7 @@ class GradleConnectionManagerTest {
 
     @Test
     fun `disconnect finds connection after project directory is removed`(@TempDir project: File) {
-        val connection = connectionProxy(AtomicInteger(0))
-        manager.seedConnectionForTests(connection, projectDirectory = project)
+        manager.seedCountingConnections(project)
         manager.isConnected(project).shouldBeTrue()
 
         project.deleteRecursively()
@@ -277,13 +261,10 @@ class GradleConnectionManagerTest {
     @Test
     fun `status finds connection after project directory is removed`(@TempDir project: File) {
         val canonicalPath = project.canonicalFile.path
-        val connection = connectionProxy(AtomicInteger(0))
-        manager.seedConnectionForTests(connection, projectDirectory = project)
+        manager.seedCountingConnections(project)
         project.deleteRecursively()
 
-        val status = manager.status(ProjectDirectoryResolver.bestEffortDirectory(canonicalPath))
-
-        status.bool("connected").shouldBeTrue()
+        manager.status(ProjectDirectoryResolver.bestEffortDirectory(canonicalPath)).statusBool("connected").shouldBeTrue()
     }
 
     @Test
@@ -291,15 +272,14 @@ class GradleConnectionManagerTest {
         @TempDir projectA: File,
         @TempDir projectB: File,
     ) {
-        manager.seedConnectionForTests(connectionProxy(AtomicInteger(0)), projectDirectory = projectA)
-        manager.seedConnectionForTests(connectionProxy(AtomicInteger(0)), projectDirectory = projectB)
+        manager.seedCountingConnections(projectA, projectB)
 
         val status = manager.status()
 
-        status.bool("connected").shouldBeFalse()
-        status.bool("connectedAny").shouldBeTrue()
-        status.str("defaultProjectDirectory").shouldBeNull()
-        status.str("gradleVersion").shouldBeNull()
+        status.statusBool("connected").shouldBeFalse()
+        status.statusBool("connectedAny").shouldBeTrue()
+        status.statusStr("defaultProjectDirectory").shouldBeNull()
+        status.statusStr("gradleVersion").shouldBeNull()
         (status["connections"] as List<*>).shouldHaveSize(2)
     }
 
@@ -308,9 +288,7 @@ class GradleConnectionManagerTest {
         @TempDir projectA: File,
         @TempDir projectB: File,
     ) {
-        manager.seedConnectionForTests(connectionProxy(AtomicInteger(0)), projectDirectory = projectA)
-        manager.seedConnectionForTests(connectionProxy(AtomicInteger(0)), projectDirectory = projectB)
-
+        manager.seedCountingConnections(projectA, projectB)
         manager.defaultProjectDirectory().shouldBeNull()
     }
 
@@ -320,7 +298,7 @@ class GradleConnectionManagerTest {
         @TempDir connected: File,
     ) {
         withWorkspaceDirectory(workspace) {
-            manager.seedConnectionForTests(connectionProxy(AtomicInteger(0)), projectDirectory = connected)
+            manager.seedCountingConnections(connected)
             manager.defaultProjectDirectory().shouldBeNull()
         }
     }
@@ -331,41 +309,31 @@ class GradleConnectionManagerTest {
         @TempDir connected: File,
     ) {
         withWorkspaceDirectory(workspace) {
-            manager.seedConnectionForTests(connectionProxy(AtomicInteger(0)), projectDirectory = connected)
+            manager.seedCountingConnections(connected)
 
             val status = manager.status()
 
-            status.str("defaultProjectDirectory") shouldBe connected.canonicalFile.path
-            status.str("projectDirectory") shouldBe connected.canonicalFile.path
-            status.bool("connected").shouldBeTrue()
+            status.statusStr("defaultProjectDirectory") shouldBe connected.canonicalFile.path
+            status.statusStr("projectDirectory") shouldBe connected.canonicalFile.path
+            status.statusBool("connected").shouldBeTrue()
         }
     }
 
     @Test
     fun `defaultProjectDirectory returns sole connection when only one project is connected`(@TempDir project: File) {
-        manager.seedConnectionForTests(connectionProxy(AtomicInteger(0)), projectDirectory = project)
-
+        manager.seedCountingConnections(project)
         manager.defaultProjectDirectory() shouldBe project.canonicalFile
     }
 
     @Test
     fun `status lists all connections when projectDirectory is omitted`(@TempDir projectA: File, @TempDir projectB: File) {
-        manager.seedConnectionForTests(connectionProxy(AtomicInteger(0)), projectDirectory = projectA)
-        manager.seedConnectionForTests(connectionProxy(AtomicInteger(0)), projectDirectory = projectB)
-
-        val status = manager.status()
-        val connections = status["connections"] as List<*>
-        connections.shouldHaveSize(2)
+        manager.seedCountingConnections(projectA, projectB)
+        (manager.status()["connections"] as List<*>).shouldHaveSize(2)
     }
 
     @Test
     fun `disconnect does not wait for long withConnection block`() {
-        val connection = Proxy.newProxyInstance(
-            ProjectConnection::class.java.classLoader,
-            arrayOf(ProjectConnection::class.java),
-            InvocationHandler { _, _, _ -> null },
-        ) as ProjectConnection
-        manager.seedConnectionForTests(connection)
+        manager.seedNoopConnections(File("."))
 
         val blockEntered = CountDownLatch(1)
         val releaseBlock = CountDownLatch(1)
@@ -395,12 +363,7 @@ class GradleConnectionManagerTest {
 
     @Test
     fun `withConnection allows overlapping operations`() {
-        val connection = Proxy.newProxyInstance(
-            ProjectConnection::class.java.classLoader,
-            arrayOf(ProjectConnection::class.java),
-            InvocationHandler { _, _, _ -> null },
-        ) as ProjectConnection
-        manager.seedConnectionForTests(connection)
+        manager.seedNoopConnections(File("."))
 
         val firstEntered = CountDownLatch(1)
         val releaseFirst = CountDownLatch(1)
@@ -421,11 +384,7 @@ class GradleConnectionManagerTest {
 
     @Test
     fun `disconnect allows reconnect after hung withConnection block`() {
-        val connection = Proxy.newProxyInstance(
-            ProjectConnection::class.java.classLoader,
-            arrayOf(ProjectConnection::class.java),
-            InvocationHandler { _, _, _ -> null },
-        ) as ProjectConnection
+        val connection = getModelCountingConnection()
         manager.seedConnectionForTests(connection)
 
         val blockEntered = CountDownLatch(1)
@@ -455,8 +414,7 @@ class GradleConnectionManagerTest {
         @TempDir projectA: File,
         @TempDir projectB: File,
     ) {
-        manager.seedConnectionForTests(connectionProxy(AtomicInteger(0)), projectDirectory = projectA)
-        manager.seedConnectionForTests(connectionProxy(AtomicInteger(0)), projectDirectory = projectB)
+        manager.seedCountingConnections(projectA, projectB)
 
         val blockEntered = CountDownLatch(1)
         val releaseBlock = CountDownLatch(1)
@@ -474,20 +432,4 @@ class GradleConnectionManagerTest {
         releaseBlock.countDown()
         buildThread.join(2_000)
     }
-
-    private fun connectionProxy(getModelCalls: AtomicInteger): ProjectConnection =
-        Proxy.newProxyInstance(
-            ProjectConnection::class.java.classLoader,
-            arrayOf(ProjectConnection::class.java),
-            InvocationHandler { _, method: Method, _ ->
-                if (method.name == "getModel") {
-                    getModelCalls.incrementAndGet()
-                }
-                null
-            },
-        ) as ProjectConnection
-
-    private fun Map<String, Any?>.bool(key: String): Boolean = this[key] as Boolean
-
-    private fun Map<String, Any?>.str(key: String): String? = this[key] as String?
 }

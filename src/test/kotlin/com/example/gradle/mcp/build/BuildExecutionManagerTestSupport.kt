@@ -1,13 +1,90 @@
 package com.example.gradle.mcp.build
 
+import com.example.gradle.mcp.cache.CompletedBuildSnapshot
 import com.example.gradle.mcp.connection.GradleConnectionManager
+import com.example.gradle.mcp.support.defaultProxyReturn
+import org.gradle.tooling.CancellationTokenSource
+import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
 import java.io.File
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
+import java.time.Instant
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
+
+internal fun runningTracker(label: String = "Gradle tasks: build"): BuildProgressTracker =
+    BuildProgressTracker().also { it.markStarting(label) }
+
+internal fun succeededTracker(label: String = "Gradle tasks: build"): BuildProgressTracker =
+    runningTracker(label).also { it.markSucceeded() }
+
+internal fun failedTracker(
+    label: String = "Gradle tasks: build",
+    message: String = "Build failed",
+): BuildProgressTracker =
+    runningTracker(label).also { it.markFailed(message) }
+
+internal fun cancelledTracker(
+    label: String = "Gradle tasks: build",
+    message: String = "already done",
+): BuildProgressTracker =
+    runningTracker(label).also { it.markCancelled(message) }
+
+internal fun testBuildRecord(
+    id: String,
+    kind: BuildKind = BuildKind.TASKS,
+    tasks: List<String> = listOf("build"),
+    startedAt: Instant = Instant.now(),
+    tracker: BuildProgressTracker = runningTracker(),
+    streams: CapturingStreams = CapturingStreams(),
+    projectDirectory: String? = null,
+    cancellationTokenSource: CancellationTokenSource = GradleConnector.newCancellationTokenSource(),
+    configure: BuildRecord.() -> Unit = {},
+): BuildRecord =
+    BuildRecord(
+        id = id,
+        kind = kind,
+        tasks = tasks,
+        startedAt = startedAt,
+        progressTracker = tracker,
+        streams = streams,
+        projectDirectory = projectDirectory,
+        cancellationTokenSource = cancellationTokenSource,
+    ).also(configure)
+
+internal fun BuildExecutionManager.seedTestBuild(record: BuildRecord) {
+    seedRunningBuildForTests(record)
+}
+
+internal fun testCompletedSnapshot(
+    buildId: String,
+    projectDirectory: String,
+    kind: BuildKind = BuildKind.TASKS,
+    tasks: List<String> = listOf("build"),
+    testClasses: List<String> = emptyList(),
+    outcome: String = "SUCCESS",
+    stdout: String = "BUILD SUCCESSFUL in 1s\n",
+    finishedAt: Instant = Instant.now(),
+): CompletedBuildSnapshot =
+    CompletedBuildSnapshot(
+        buildId = buildId,
+        kind = kind,
+        tasks = tasks,
+        testClasses = testClasses,
+        finishedAt = finishedAt,
+        outcome = outcome,
+        stdout = stdout,
+        projectDirectory = projectDirectory,
+    )
+
+internal fun BuildExecutionManager.testExecutor(): ExecutorService =
+    BuildExecutionManager::class.java
+        .getDeclaredField("executor")
+        .apply { isAccessible = true }
+        .get(this) as ExecutorService
 
 internal fun noopProjectConnection(): ProjectConnection =
     Proxy.newProxyInstance(
@@ -64,17 +141,3 @@ private fun chainingProxy(
     )
     return self[0]!!
 }
-
-private fun defaultProxyReturn(method: Method): Any? =
-    when (method.returnType) {
-        java.lang.Void.TYPE -> null
-        java.lang.Boolean.TYPE -> false
-        java.lang.Integer.TYPE -> 0
-        java.lang.Long.TYPE -> 0L
-        java.lang.Short.TYPE -> 0.toShort()
-        java.lang.Byte.TYPE -> 0.toByte()
-        java.lang.Character.TYPE -> '\u0000'
-        java.lang.Float.TYPE -> 0f
-        java.lang.Double.TYPE -> 0.0
-        else -> null
-    }

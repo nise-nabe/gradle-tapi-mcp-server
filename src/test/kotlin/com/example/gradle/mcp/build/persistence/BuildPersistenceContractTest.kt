@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.build.persistence
 
+import com.example.gradle.mcp.build.persistence.BuildPersistenceContract
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.ProgressEventTypes
 import io.kotest.matchers.shouldBe
@@ -10,7 +11,7 @@ class BuildPersistenceContractTest {
     @Test
     fun `isStaleGradleRunning is false when events are empty`() {
         BuildPersistenceContract.isStaleGradleRunning(
-            mcpResult("failed", Instant.now()),
+            contractMcpResult("failed", Instant.now()),
             emptyList(),
         ) shouldBe false
     }
@@ -18,7 +19,7 @@ class BuildPersistenceContractTest {
     @Test
     fun `isStaleGradleRunning is false when build finished event exists`() {
         BuildPersistenceContract.isStaleGradleRunning(
-            mcpResult("failed", Instant.now()),
+            contractMcpResult("failed", Instant.now()),
             listOf(event("2026-06-14T10:02:00Z", ProgressEventTypes.BUILD_FINISHED, "Build finished")),
         ) shouldBe false
     }
@@ -27,7 +28,7 @@ class BuildPersistenceContractTest {
     fun `isStaleGradleRunning is false immediately after disconnect with only pre-finalize events`() {
         val finishedAt = Instant.now().minusSeconds(5)
         BuildPersistenceContract.isStaleGradleRunning(
-            mcpResult("failed", finishedAt),
+            contractMcpResult("failed", finishedAt),
             listOf(
                 event("2026-06-14T10:00:01Z", ProgressEventTypes.START, "Gradle tasks: build"),
                 event("2026-06-14T10:00:02Z", ProgressEventTypes.TASK_START, ":app:compileJava"),
@@ -39,7 +40,7 @@ class BuildPersistenceContractTest {
     fun `isStaleGradleRunning is false when post-finalize events exist`() {
         val finishedAt = Instant.parse("2026-06-14T10:01:00Z")
         BuildPersistenceContract.isStaleGradleRunning(
-            mcpResult("failed", finishedAt),
+            contractMcpResult("failed", finishedAt),
             listOf(
                 event("2026-06-14T10:00:30Z", ProgressEventTypes.TASK_START, ":app:build"),
                 event("2026-06-14T10:01:05Z", ProgressEventTypes.TASK_SUCCESS, ":app:build"),
@@ -51,7 +52,7 @@ class BuildPersistenceContractTest {
     fun `isStaleGradleRunning compares instants with mixed fractional precision`() {
         val finishedAt = Instant.parse("2026-06-14T10:01:00.100Z")
         BuildPersistenceContract.isStaleGradleRunning(
-            mcpResult("failed", finishedAt),
+            contractMcpResult("failed", finishedAt),
             listOf(
                 event("2026-06-14T10:00:30Z", ProgressEventTypes.TASK_START, ":app:build"),
                 event("2026-06-14T10:01:00.200Z", ProgressEventTypes.TASK_SUCCESS, ":app:build"),
@@ -63,7 +64,7 @@ class BuildPersistenceContractTest {
     fun `isStaleGradleRunning is false when heartbeat continues after mcp finalize`() {
         val finishedAt = Instant.now().minusSeconds(120)
         BuildPersistenceContract.isStaleGradleRunning(
-            mcpResult("failed", finishedAt),
+            contractMcpResult("failed", finishedAt),
             listOf(
                 event("2026-06-14T10:00:30Z", ProgressEventTypes.TASK_START, ":app:longTask"),
                 event(finishedAt.plusSeconds(30).toString(), ProgressEventTypes.HEARTBEAT, "Gradle build active"),
@@ -75,7 +76,7 @@ class BuildPersistenceContractTest {
     fun `isStaleGradleRunning is true after grace with only pre-finalize events`() {
         val finishedAt = Instant.now().minusSeconds(120)
         BuildPersistenceContract.isStaleGradleRunning(
-            mcpResult("failed", finishedAt),
+            contractMcpResult("failed", finishedAt),
             listOf(event(finishedAt.minusSeconds(30).toString(), ProgressEventTypes.TASK_START, ":app:build")),
         ) shouldBe true
     }
@@ -84,19 +85,14 @@ class BuildPersistenceContractTest {
     fun `resolve prefers gradle running over recent mcp failed after disconnect`() {
         val finishedAt = Instant.now().minusSeconds(5).toString()
         val resolved = BuildPersistenceContract.resolve(
-            gradleResult = GradleBuildResult(
+            gradleResult = gradleBuildResult(
                 buildId = "disconnect",
                 status = BuildProgressTracker.STATUS_RUNNING,
-                startedAt = "2026-06-14T10:00:00Z",
                 taskNames = listOf("build"),
             ),
-            mcpResult = McpBuildResult(
+            mcpResult = mcpBuildResult(
                 buildId = "disconnect",
-                kind = "tasks",
-                tasks = listOf("build"),
-                testClasses = emptyList(),
                 projectDirectory = "/tmp/project",
-                startedAt = "2026-06-14T10:00:00Z",
                 finishedAt = finishedAt,
                 status = BuildProgressTracker.STATUS_FAILED,
                 outcome = "FAILED",
@@ -114,19 +110,14 @@ class BuildPersistenceContractTest {
     @Test
     fun `resolve prefers gradle terminal over stale mcp failed`() {
         val resolved = BuildPersistenceContract.resolve(
-            gradleResult = GradleBuildResult(
+            gradleResult = gradleBuildResult(
                 buildId = "gradle-wins",
                 status = BuildProgressTracker.STATUS_SUCCEEDED,
                 finishedAt = "2026-06-14T10:02:00Z",
             ),
-            mcpResult = McpBuildResult(
+            mcpResult = mcpBuildResult(
                 buildId = "gradle-wins",
-                kind = "tasks",
-                tasks = listOf("build"),
-                testClasses = emptyList(),
                 projectDirectory = "/tmp/project",
-                startedAt = "2026-06-14T10:00:00Z",
-                finishedAt = "2026-06-14T10:01:00Z",
                 status = BuildProgressTracker.STATUS_FAILED,
                 outcome = "FAILED",
             ),
@@ -139,19 +130,14 @@ class BuildPersistenceContractTest {
     @Test
     fun `resolve treats gradle cancelled as terminal`() {
         val resolved = BuildPersistenceContract.resolve(
-            gradleResult = GradleBuildResult(
+            gradleResult = gradleBuildResult(
                 buildId = "cancelled-build",
                 status = BuildProgressTracker.STATUS_CANCELLED,
                 finishedAt = "2026-06-14T10:02:00Z",
             ),
-            mcpResult = McpBuildResult(
+            mcpResult = mcpBuildResult(
                 buildId = "cancelled-build",
-                kind = "tasks",
-                tasks = listOf("build"),
-                testClasses = emptyList(),
                 projectDirectory = "/tmp/project",
-                startedAt = "2026-06-14T10:00:00Z",
-                finishedAt = "2026-06-14T10:01:00Z",
                 status = BuildProgressTracker.STATUS_CANCELLED,
                 outcome = "CANCELLED",
             ),
@@ -165,14 +151,9 @@ class BuildPersistenceContractTest {
     fun `resolve uses mcp cancelled when gradle result is absent`() {
         val resolved = BuildPersistenceContract.resolve(
             gradleResult = null,
-            mcpResult = McpBuildResult(
+            mcpResult = mcpBuildResult(
                 buildId = "mcp-cancelled",
-                kind = "tasks",
-                tasks = listOf("build"),
-                testClasses = emptyList(),
                 projectDirectory = "/tmp/project",
-                startedAt = "2026-06-14T10:00:00Z",
-                finishedAt = "2026-06-14T10:01:00Z",
                 status = BuildProgressTracker.STATUS_CANCELLED,
                 outcome = "CANCELLED",
             ),
@@ -182,24 +163,6 @@ class BuildPersistenceContractTest {
         resolved.terminalSource shouldBe BuildPersistenceContract.TerminalStatusSource.MCP
     }
 
-    private fun mcpResult(status: String, finishedAt: Instant): McpBuildResult =
-        McpBuildResult(
-            buildId = "build-1",
-            kind = "tasks",
-            tasks = listOf("build"),
-            testClasses = emptyList(),
-            projectDirectory = "/tmp/project",
-            startedAt = "2026-06-14T10:00:00Z",
-            finishedAt = finishedAt.toString(),
-            status = status,
-            outcome = "FAILED",
-            error = "Gradle connection closed",
-        )
-
     private fun event(timestamp: String, type: String, displayName: String): DiskBuildEvent =
-        DiskBuildEvent(
-            timestamp = timestamp,
-            eventType = type,
-            displayName = displayName,
-        )
+        diskBuildEvent(timestamp, type, displayName)
 }

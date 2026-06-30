@@ -1,16 +1,15 @@
 package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.connection.GradleConnectionManager
-import com.example.gradle.mcp.support.testProjectDirectory
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.nulls.shouldBeNull
-import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
@@ -22,7 +21,6 @@ import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
 class BuildExecutionManagerRunTest {
@@ -33,16 +31,10 @@ class BuildExecutionManagerRunTest {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnection()
         val concurrentManager = BuildExecutionManager(connectionManager)
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        concurrentManager.seedRunningBuildForTests(
-            BuildRecord(
+        concurrentManager.seedTestBuild(
+            testBuildRecord(
                 id = "running-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                startedAt = Instant.now(),
-                progressTracker = tracker,
-                streams = CapturingStreams(),
+                tracker = runningTracker(),
             ),
         )
 
@@ -88,10 +80,7 @@ class BuildExecutionManagerRunTest {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnection()
         val manager = BuildExecutionManager(connectionManager)
-        val executor = BuildExecutionManager::class.java
-            .getDeclaredField("executor")
-            .apply { isAccessible = true }
-            .get(manager) as ExecutorService
+        val executor = manager.testExecutor()
         val maxBuilds = manager.maxConcurrentBackgroundBuilds()
         val tasksStarted = CountDownLatch(maxBuilds)
         val releaseTasks = CountDownLatch(1)
@@ -111,25 +100,14 @@ class BuildExecutionManagerRunTest {
             )
         }
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
-        error.message.shouldNotBeNull() shouldContain "Maximum concurrent background builds"
+        error.message.shouldContain("Maximum concurrent background builds")
 
         releaseTasks.countDown()
     }
 
     @Test
     fun `runForeground does not reject when another build is running`() {
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
-                id = "running-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                startedAt = Instant.now(),
-                progressTracker = tracker,
-                streams = CapturingStreams(),
-            ),
-        )
+        manager.seedTestBuild(testBuildRecord(id = "running-build", tracker = runningTracker()))
 
         val connection = Proxy.newProxyInstance(
             ProjectConnection::class.java.classLoader,
@@ -155,19 +133,9 @@ class BuildExecutionManagerRunTest {
 
     @Test
     fun `status omits partial output by default for running builds`() {
-        val streams = CapturingStreams()
-        streams.appendStdoutForTests("> Task :app:compileJava UP-TO-DATE\n")
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
-                id = "running-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                startedAt = Instant.now(),
-                progressTracker = tracker,
-                streams = streams,
-            ),
+        val streams = CapturingStreams().also { it.appendStdoutForTests("> Task :app:compileJava UP-TO-DATE\n") }
+        manager.seedTestBuild(
+            testBuildRecord(id = "running-build", streams = streams, tracker = runningTracker()),
         )
 
         val result = manager.status(
@@ -183,19 +151,9 @@ class BuildExecutionManagerRunTest {
 
     @Test
     fun `status returns running build progress and partial output when includeOutput is true`() {
-        val streams = CapturingStreams()
-        streams.appendStdoutForTests("> Task :app:compileJava UP-TO-DATE\n")
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
-                id = "running-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                startedAt = Instant.now(),
-                progressTracker = tracker,
-                streams = streams,
-            ),
+        val streams = CapturingStreams().also { it.appendStdoutForTests("> Task :app:compileJava UP-TO-DATE\n") }
+        manager.seedTestBuild(
+            testBuildRecord(id = "running-build", streams = streams, tracker = runningTracker()),
         )
 
         val resultWithoutProgress = manager.status(
@@ -219,17 +177,11 @@ class BuildExecutionManagerRunTest {
 
     @Test
     fun `status rejects projectDirectory hint that does not match in-memory build`(@TempDir projectA: File, @TempDir projectB: File) {
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
+        manager.seedTestBuild(
+            testBuildRecord(
                 id = "scoped-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                startedAt = Instant.now(),
-                progressTracker = tracker,
-                streams = CapturingStreams(),
                 projectDirectory = projectA.absolutePath,
+                tracker = runningTracker(),
             ),
         )
 
@@ -248,39 +200,24 @@ class BuildExecutionManagerRunTest {
 
     @Test
     fun `hasActiveBuild reports seeded running build`() {
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        manager.seedRunningBuildForTests(
-            BuildRecord(
-                id = "running-build",
-                kind = BuildKind.TASKS,
-                tasks = listOf("build"),
-                startedAt = Instant.now(),
-                progressTracker = tracker,
-                streams = CapturingStreams(),
-            ),
-        )
-
+        manager.seedTestBuild(testBuildRecord(id = "running-build", tracker = runningTracker()))
         manager.hasActiveBuild().shouldBeTrue()
     }
 
     @Test
     fun `completed build status includes outcome and build summary`() {
-        val streams = CapturingStreams()
-        streams.appendStdoutForTests("BUILD SUCCESSFUL in 1s\n2 actionable tasks: 2 executed\n")
-
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        tracker.markSucceeded()
-        val record = BuildRecord(
-            id = "completed-build",
-            kind = BuildKind.TASKS,
-            tasks = listOf("build"),
-            startedAt = Instant.now(),
-            progressTracker = tracker,
-            streams = streams,
-        ).also { it.finishedAt = Instant.now() }
-        manager.seedRunningBuildForTests(record)
+        val streams = CapturingStreams().also {
+            it.appendStdoutForTests("BUILD SUCCESSFUL in 1s\n2 actionable tasks: 2 executed\n")
+        }
+        manager.seedTestBuild(
+            testBuildRecord(
+                id = "completed-build",
+                streams = streams,
+                tracker = succeededTracker(),
+            ) {
+                finishedAt = Instant.now()
+            },
+        )
 
         val result = manager.status("completed-build", OutputLimitOptions(), ProgressResponseOptions())
 
@@ -296,21 +233,18 @@ class BuildExecutionManagerRunTest {
 
     @Test
     fun `completed build status includes stdout when includeOutput is true`() {
-        val streams = CapturingStreams()
-        streams.appendStdoutForTests("BUILD SUCCESSFUL in 1s\n> Task :app:compileJava UP-TO-DATE\n")
-
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        tracker.markSucceeded()
-        val record = BuildRecord(
-            id = "completed-build-with-output",
-            kind = BuildKind.TASKS,
-            tasks = listOf("build"),
-            startedAt = Instant.now(),
-            progressTracker = tracker,
-            streams = streams,
-        ).also { it.finishedAt = Instant.now() }
-        manager.seedRunningBuildForTests(record)
+        val streams = CapturingStreams().also {
+            it.appendStdoutForTests("BUILD SUCCESSFUL in 1s\n> Task :app:compileJava UP-TO-DATE\n")
+        }
+        manager.seedTestBuild(
+            testBuildRecord(
+                id = "completed-build-with-output",
+                streams = streams,
+                tracker = succeededTracker(),
+            ) {
+                finishedAt = Instant.now()
+            },
+        )
 
         val result = manager.status(
             "completed-build-with-output",
@@ -323,31 +257,26 @@ class BuildExecutionManagerRunTest {
 
     @Test
     fun `completed failed build status includes failure fields without includeProgress`() {
-        val streams = CapturingStreams()
-        streams.appendStdoutForTests(
-            """
-            > Task :examples:resilience4j-spring:test FAILED
-            > com.linecorp.armeria.example.FooTest > testBar() FAILED
-            BUILD FAILED in 2s
-            1 actionable task: 1 executed
-            """.trimIndent() + "\n",
-        )
-
-        val tracker = BuildProgressTracker()
-        tracker.markStarting("Gradle tasks: build")
-        tracker.markFailed("Build failed")
-        val record = BuildRecord(
-            id = "failed-build",
-            kind = BuildKind.TASKS,
-            tasks = listOf("build"),
-            startedAt = Instant.now(),
-            progressTracker = tracker,
-            streams = streams,
-        ).also {
-            it.finishedAt = Instant.now()
-            it.errorMessage = "Build failed"
+        val streams = CapturingStreams().also {
+            it.appendStdoutForTests(
+                """
+                > Task :examples:resilience4j-spring:test FAILED
+                > com.linecorp.armeria.example.FooTest > testBar() FAILED
+                BUILD FAILED in 2s
+                1 actionable task: 1 executed
+                """.trimIndent() + "\n",
+            )
         }
-        manager.seedRunningBuildForTests(record)
+        manager.seedTestBuild(
+            testBuildRecord(
+                id = "failed-build",
+                streams = streams,
+                tracker = failedTracker(),
+            ) {
+                finishedAt = Instant.now()
+                errorMessage = "Build failed"
+            },
+        )
 
         val result = manager.status("failed-build", OutputLimitOptions(), ProgressResponseOptions(includeProgress = false))
 
