@@ -1,17 +1,19 @@
 package com.example.gradle.mcp.protocol
 
 import com.example.gradle.mcp.build.BuildProblemSnapshot
+import com.example.gradle.mcp.support.problemAggregationEventProxy
+import com.example.gradle.mcp.support.problemAggregationProxy
+import com.example.gradle.mcp.support.problemContextProxy
+import com.example.gradle.mcp.support.problemProxy
+import com.example.gradle.mcp.support.problemSummariesEventProxy
+import com.example.gradle.mcp.support.problemSummaryProxy
+import com.example.gradle.mcp.support.singleProblemEventProxy
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import org.gradle.tooling.Failure
 import org.gradle.tooling.events.FailureResult
-import org.gradle.tooling.events.problems.ContextualLabel
-import org.gradle.tooling.events.problems.Details
 import org.gradle.tooling.events.problems.Problem
-import org.gradle.tooling.events.problems.ProblemDefinition
-import org.gradle.tooling.events.problems.ProblemId
 import org.gradle.tooling.events.problems.Severity
-import org.gradle.tooling.events.problems.Solution
 import org.junit.jupiter.api.Test
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
@@ -60,6 +62,70 @@ class ProblemsSerializerTest {
         extracted shouldHaveSize 1
         extracted.single().label shouldBe "Missing dependency"
         extracted.single().severity shouldBe "error"
+    }
+
+    @Test
+    fun `fromProblemEvent extracts single problems`() {
+        val problem = problemProxy(
+            displayName = "Deprecated API usage",
+            details = "Task uses a deprecated input property",
+            severity = Severity.WARNING,
+            solutions = listOf("Use the new property"),
+            contextualLabel = "Task :compileJava",
+        )
+
+        val extracted = ProblemsSerializer.fromProblemEvent(singleProblemEventProxy(problem))
+
+        extracted shouldHaveSize 1
+        extracted.single().label shouldBe "Deprecated API usage"
+        extracted.single().severity shouldBe "warning"
+        extracted.single().contextualLabel shouldBe "Task :compileJava"
+    }
+
+    @Test
+    fun `fromProblemEvent expands problem aggregations into snapshots`() {
+        val problem = problemProxy(
+            displayName = "Compilation failed",
+            details = null,
+            severity = Severity.ERROR,
+            solutions = emptyList(),
+            contextualLabel = null,
+        )
+        val aggregation = problemAggregationProxy(
+            problem = problem,
+            contexts = listOf(
+                problemContextProxy(
+                    details = "cannot find symbol",
+                    solutions = listOf("Add the missing dependency"),
+                ),
+            ),
+        )
+
+        val extracted = ProblemsSerializer.fromProblemEvent(problemAggregationEventProxy(aggregation))
+
+        extracted shouldHaveSize 1
+        extracted.single().label shouldBe "Compilation failed"
+        extracted.single().details shouldBe "cannot find symbol"
+        extracted.single().solutions shouldBe listOf("Add the missing dependency")
+    }
+
+    @Test
+    fun `fromProblemEvent converts summaries into compact snapshots`() {
+        val problem = problemProxy(
+            displayName = "Deprecated API usage",
+            details = null,
+            severity = Severity.WARNING,
+            solutions = emptyList(),
+            contextualLabel = null,
+        )
+
+        val extracted = ProblemsSerializer.fromProblemEvent(
+            problemSummariesEventProxy(listOf(problemSummaryProxy(problem, 3))),
+        )
+
+        extracted shouldHaveSize 1
+        extracted.single().label shouldBe "Deprecated API usage"
+        extracted.single().details shouldBe "Occurred 3 times"
     }
 
     @Test
@@ -168,84 +234,4 @@ class ProblemsSerializerTest {
                 }
             },
         ) as Failure
-
-    private fun problemProxy(
-        displayName: String,
-        details: String?,
-        severity: Severity,
-        solutions: List<String>,
-        contextualLabel: String?,
-    ): Problem {
-        val problemId = Proxy.newProxyInstance(
-            ProblemId::class.java.classLoader,
-            arrayOf(ProblemId::class.java),
-            InvocationHandler { _, method, _ ->
-                when (method.name) {
-                    "getDisplayName" -> displayName
-                    "getName" -> displayName.lowercase().replace(' ', '-')
-                    "getGroup" -> null
-                    else -> null
-                }
-            },
-        ) as ProblemId
-        val definition = Proxy.newProxyInstance(
-            ProblemDefinition::class.java.classLoader,
-            arrayOf(ProblemDefinition::class.java),
-            InvocationHandler { _, method, _ ->
-                when (method.name) {
-                    "getId" -> problemId
-                    "getSeverity" -> severity
-                    "getDocumentationLink" -> null
-                    else -> null
-                }
-            },
-        ) as ProblemDefinition
-        return Proxy.newProxyInstance(
-            Problem::class.java.classLoader,
-            arrayOf(Problem::class.java),
-            InvocationHandler { _, method, _ ->
-                when (method.name) {
-                    "getDefinition" -> definition
-                    "getDetails" -> details?.let { text ->
-                        Proxy.newProxyInstance(
-                            Details::class.java.classLoader,
-                            arrayOf(Details::class.java),
-                            InvocationHandler { _, method, _ ->
-                                when (method.name) {
-                                    "getDetails" -> text
-                                    else -> null
-                                }
-                            },
-                        ) as Details
-                    }
-                    "getContextualLabel" -> contextualLabel?.let { text ->
-                        Proxy.newProxyInstance(
-                            ContextualLabel::class.java.classLoader,
-                            arrayOf(ContextualLabel::class.java),
-                            InvocationHandler { _, method, _ ->
-                                when (method.name) {
-                                    "getContextualLabel" -> text
-                                    else -> null
-                                }
-                            },
-                        ) as ContextualLabel
-                    }
-                    "getSolutions" -> solutions.map { solutionText ->
-                        Proxy.newProxyInstance(
-                            Solution::class.java.classLoader,
-                            arrayOf(Solution::class.java),
-                            InvocationHandler { _, method, _ ->
-                                when (method.name) {
-                                    "getSolution" -> solutionText
-                                    else -> null
-                                }
-                            },
-                        ) as Solution
-                    }
-                    "getOriginLocations", "getContextualLocations", "getFailure", "getAdditionalData" -> emptyList<Any>()
-                    else -> null
-                }
-            },
-        ) as Problem
-    }
 }

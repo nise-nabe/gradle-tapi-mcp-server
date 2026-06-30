@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.protocol
 
+import com.example.gradle.mcp.build.BuildProblemSnapshot
 import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildStatusView
@@ -16,6 +17,12 @@ internal fun optionalProgressFields(
             val includeDownloads =
                 progressOptions.includeDownloads && statusSource == BuildStatusView.SOURCE_MEMORY
             put("progress", snapshot.toResponseMap(progressOptions, includeDownloads))
+        }
+        if (progressOptions.includeProblems &&
+            snapshot.status != BuildProgressTracker.STATUS_FAILED &&
+            snapshot.liveProblems.isNotEmpty()
+        ) {
+            put("liveProblems", cappedLiveProblemResponse(snapshot.liveProblems))
         }
     }
 
@@ -44,8 +51,13 @@ internal fun terminalFailureFields(
         buildMap {
             put("failedTaskCount", snapshot.failedTaskCount)
             put("failedTasks", snapshot.failedTasks)
-            if (snapshot.status == BuildProgressTracker.STATUS_FAILED && snapshot.problems.isNotEmpty()) {
-                put("problems", ProblemsSerializer.toResponseMaps(snapshot.problems))
+            val problems = if (progressOptions.includeProblems) {
+                ProblemsSerializer.mergedDistinct(snapshot.problems, snapshot.liveProblems)
+            } else {
+                snapshot.problems
+            }
+            if (snapshot.status == BuildProgressTracker.STATUS_FAILED && problems.isNotEmpty()) {
+                put("problems", cappedTerminalProblemResponse(problems))
             }
             if (progressOptions.includeTestDetails && shouldIncludeFailedTests(snapshot)) {
                 val failedTests = snapshot.failedTests
@@ -57,6 +69,28 @@ internal fun terminalFailureFields(
             }
         }
     }
+
+private fun cappedLiveProblemResponse(problems: List<BuildProblemSnapshot>): List<Map<String, Any?>> =
+    ProblemsSerializer.toResponseMaps(
+        problems.takeLast(ProgressResponseOptions.MAX_PROBLEMS_IN_RESPONSE),
+    )
+
+private fun cappedTerminalProblemResponse(problems: List<BuildProblemSnapshot>): List<Map<String, Any?>> =
+    ProblemsSerializer.toResponseMaps(capTerminalProblems(problems))
+
+internal fun capTerminalProblems(problems: List<BuildProblemSnapshot>): List<BuildProblemSnapshot> {
+    val max = ProgressResponseOptions.MAX_PROBLEMS_IN_RESPONSE
+    if (problems.size <= max) {
+        return problems
+    }
+    val errors = problems.filter { it.severity == "error" }
+    val nonErrors = problems.filter { it.severity != "error" }
+    return if (errors.size >= max) {
+        errors.take(max)
+    } else {
+        errors + nonErrors.takeLast(max - errors.size)
+    }
+}
 
 private fun shouldIncludeFailedTests(snapshot: BuildProgressSnapshot): Boolean =
     snapshot.failedTests.isNotEmpty() &&

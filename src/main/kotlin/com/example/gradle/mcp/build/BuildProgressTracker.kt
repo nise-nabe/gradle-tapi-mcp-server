@@ -6,12 +6,13 @@ import org.gradle.tooling.events.FinishEvent
 import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.ProgressEvent
 import org.gradle.tooling.events.ProgressListener
-import org.gradle.tooling.events.configuration.ProjectConfigurationFinishEvent
 import org.gradle.tooling.events.SuccessResult
+import org.gradle.tooling.events.configuration.ProjectConfigurationFinishEvent
 import org.gradle.tooling.events.configuration.ProjectConfigurationStartEvent
 import org.gradle.tooling.events.download.FileDownloadFinishEvent
 import org.gradle.tooling.events.download.FileDownloadNotFoundResult
 import org.gradle.tooling.events.download.FileDownloadStartEvent
+import org.gradle.tooling.events.problems.ProblemEvent
 import org.gradle.tooling.events.task.TaskFinishEvent
 import org.gradle.tooling.events.task.TaskStartEvent
 import org.gradle.tooling.events.test.TestFinishEvent
@@ -29,6 +30,7 @@ class BuildProgressTracker(
     private var currentOperation: String? = null
     private val recentEvents = ArrayDeque<ProgressEventSnapshot>()
     private val problems = mutableListOf<BuildProblemSnapshot>()
+    private val liveProblems = mutableListOf<BuildProblemSnapshot>()
     private val activeDownloads = LinkedHashMap<String, DownloadProgressSnapshot>()
     private val recentDownloads = ArrayDeque<DownloadProgressSnapshot>()
     private val failedTests = LinkedHashMap<String, FailedTestSnapshot>()
@@ -101,6 +103,7 @@ class BuildProgressTracker(
                 recentEvents = recentEvents.toList(),
                 totalEventCount = totalEventCount,
                 problems = problems.toList(),
+                liveProblems = liveProblems.toList(),
                 recentDownloads = buildRecentDownloadsLocked(),
                 activeDownloadCount = activeDownloads.size,
                 failedTests = failedTests.values.toList(),
@@ -126,7 +129,10 @@ class BuildProgressTracker(
             }
         }
 
-    fun configureLauncher(launcher: org.gradle.tooling.ConfigurableLauncher<*>) {
+    fun configureLauncher(
+        launcher: org.gradle.tooling.ConfigurableLauncher<*>,
+        includeProblems: Boolean = false,
+    ) {
         val operationTypes = buildList {
             add(OperationType.TASK)
             add(OperationType.TEST)
@@ -135,11 +141,11 @@ class BuildProgressTracker(
             if (trackDownloads) {
                 add(OperationType.FILE_DOWNLOAD)
             }
+            if (includeProblems) {
+                problemOperationType?.let(::add)
+            }
         }
-        launcher.addProgressListener(
-            asGradleListener(),
-            *operationTypes.toTypedArray(),
-        )
+        launcher.addProgressListener(asGradleListener(), *operationTypes.toTypedArray())
     }
 
     private fun handleGradleEvent(event: ProgressEvent) {
@@ -158,6 +164,9 @@ class BuildProgressTracker(
         currentOperation = displayName
 
         when (event) {
+            is ProblemEvent -> {
+                collectLiveProblemsFromEvent(event, displayName)
+            }
             is TaskStartEvent -> {
                 applyTaskEvent(ProgressEventTypes.TASK_START, displayName)
             }
@@ -242,6 +251,14 @@ class BuildProgressTracker(
             return
         }
         ProblemsSerializer.mergeDistinct(problems, extracted)
+    }
+
+    private fun collectLiveProblemsFromEvent(event: ProblemEvent, displayName: String) {
+        val extracted = ProblemsSerializer.fromProblemEvent(event)
+        if (!ProblemsSerializer.mergeDistinct(liveProblems, extracted)) {
+            return
+        }
+        recordEventLocked(ProgressEventTypes.PROBLEM, displayName)
     }
 
     private fun applyTaskEvent(
@@ -356,5 +373,8 @@ class BuildProgressTracker(
 
         private const val MAX_RECENT_EVENTS = 30
         private const val MAX_RECENT_DOWNLOADS = 30
+        private val problemOperationType: OperationType? =
+            runCatching { OperationType.valueOf("PROBLEM") }.getOrNull()
+                ?: runCatching { OperationType.valueOf("PROBLEMS") }.getOrNull()
     }
 }
