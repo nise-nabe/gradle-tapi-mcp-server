@@ -40,6 +40,15 @@ class FailedTestSnapshotsTest {
             listOf("latest failure")
     }
 
+    @Test
+    fun `fromEvents caps tracked failed tests`() {
+        val events = (1..11).map { index ->
+            testFailEvent("com.example.Test$index", "fails$index", "failure $index")
+        }
+
+        FailedTestSnapshots.fromEvents(events).size shouldBe FailedTestSnapshots.MAX_TRACKED_FAILED_TESTS
+    }
+
     private fun failedTest(
         className: String,
         methodName: String,

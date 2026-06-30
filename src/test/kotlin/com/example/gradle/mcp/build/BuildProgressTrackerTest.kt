@@ -208,6 +208,36 @@ class BuildProgressTrackerTest {
     }
 
     @Test
+    fun `caps tracked failed tests after repeated failures`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+
+        repeat(11) { index ->
+            val displayName = "com.example.DemoTest.fails$index"
+            val descriptor = jvmTestDescriptorProxy(
+                displayName = displayName,
+                className = "com.example.DemoTest",
+                methodName = "fails$index",
+                source = fileSourceProxy(
+                    file = File("src/test/kotlin/com/example/DemoTest.kt"),
+                    line = index,
+                    column = null,
+                ),
+            )
+            listener.statusChanged(testStartEventProxy(displayName, descriptor))
+            listener.statusChanged(
+                testFinishEventProxy(
+                    displayName = displayName,
+                    descriptor = descriptor,
+                    result = testFailureResultProxy("failure $index"),
+                ),
+            )
+        }
+
+        tracker.snapshot().failedTests.size shouldBe FailedTestSnapshots.MAX_TRACKED_FAILED_TESTS
+    }
+
+    @Test
     fun `collects structured problems from root failure result`() {
         val tracker = BuildProgressTracker()
         val listener = tracker.asGradleListener()

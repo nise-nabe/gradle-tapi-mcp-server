@@ -178,4 +178,31 @@ class ProgressResponseOptionsTest {
         (((terminalFailureFields(snapshot, ProgressResponseOptions(includeTestDetails = true))["failedTests"] as List<*>)
             .single() as Map<*, *>)["failureMessage"]) shouldBe "boom"
     }
+
+    @Test
+    fun `terminalFailureFields includes failedTests for cancelled builds when requested`() {
+        val snapshot = BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_CANCELLED,
+            currentOperation = null,
+            completedTaskCount = 1,
+            runningTaskCount = 0,
+            failedTaskCount = 0,
+            completedTasks = emptyList(),
+            runningTasks = emptyList(),
+            failedTasks = emptyList(),
+            recentEvents = emptyList(),
+            totalEventCount = 2,
+            failedTests = listOf(
+                FailedTestSnapshot(
+                    className = "com.example.FooTest",
+                    methodName = "bar",
+                    displayName = "com.example.FooTest.bar",
+                    failureMessage = "boom",
+                ),
+            ),
+        )
+
+        terminalFailureFields(snapshot, ProgressResponseOptions(includeTestDetails = true))
+            .containsKey("failedTests") shouldBe true
+    }
 }
