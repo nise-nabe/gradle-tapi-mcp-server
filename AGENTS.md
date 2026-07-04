@@ -18,7 +18,7 @@
 - Build uses `gradle/libs.versions.toml`, `dependencyResolutionManagement` with `FAIL_ON_PROJECT_REPOS`, JVM Test Suites (JUnit 5), and Configuration Cache enabled.
 - Single-module project with feature subpackages (`build`, `cache`, `connection`, `model`, `protocol`, `server`) under `com.example.gradle.mcp`; MCP tool definitions live in each feature package with shared helpers in `protocol`; `build-logic` deferred until multi-module need arises.
 - `gradle-wrapper.jar` is explicitly un-ignored so clones can run `./gradlew`.
-- Cursor Cloud bootstraps via `.cursor/environment.json` → `.cursor/install.sh` (JDK 17, `./gradlew jar`, gh symlink, full `./gradlew build`).
+- Cursor Cloud bootstraps via `.cursor/environment.json` → `.cursor/install.sh` (release JAR download, gh symlink, JDK 17, `./gradlew build`).
 - Agent skill at `skills/gradle-tapi-mcp/` (install to `~/.cursor/skills/` globally) documents token-efficient MCP workflows: prefer `gradle_get_project_overview`; use `gradle_get_build_cache_status` for cache settings; task lists omitted unless `includeTasks=true`; run output omitted by default (`includeOutput=false`; outcome/buildSummary only).
 - MCP server holds a **connection pool** keyed by canonical project path; `gradle_connect` ensures a project without disconnecting others. Optional `projectDirectory` on tools defaults to `GRADLE_PROJECT_DIR`.
 - MCP tool errors use structured `McpException` with `McpErrorCode` (`NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`); `mapExceptionToErrorCode` maps legacy `IllegalStateException` messages.
@@ -35,9 +35,9 @@ Single-module Kotlin/JVM MCP server (stdio). No web UI, Docker, or dedicated lin
 
 `.cursor/environment.json` runs `.cursor/install.sh` on every Cloud Agent session:
 
-1. Ensures **JDK 17** for `./gradlew` (toolchain in `build.gradle.kts`; JDK 21+ can run the built JAR at runtime)
-2. `./gradlew jar` → symlinks fat JAR to `~/.local/share/gradle-tapi-mcp-server/gradle-tapi-mcp-server.jar`
-3. Configures `gh` from `/exec-daemon/gh` (optional `GH_TOKEN` / `GITHUB_TOKEN` login)
+1. Downloads release **v0.2.2** JAR (SHA-256 verified) to `~/.local/share/gradle-tapi-mcp-server/gradle-tapi-mcp-server.jar` — **before** `./gradlew` so MCP can drive this repo's build
+2. Configures `gh` from `/exec-daemon/gh` (optional `GH_TOKEN` / `GITHUB_TOKEN` login)
+3. Ensures **JDK 17** for `./gradlew` (toolchain in `build.gradle.kts`; JDK 21+ can run the MCP JAR at runtime)
 4. `./gradlew build` as the compile/test gate
 
 The `gradle` MCP server is defined in `.cursor/mcp.json`. Token-efficient workflows: `.cursor/skills/gradle-tapi-mcp/SKILL.md` (summary) and `skills/gradle-tapi-mcp/` (full reference).

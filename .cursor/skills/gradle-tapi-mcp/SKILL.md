@@ -7,11 +7,16 @@ description: >-
 
 # Gradle Tooling API MCP
 
-This repository **is** the MCP server. `.cursor/install.sh` builds the fat JAR with
-`./gradlew jar`, symlinks it to `~/.local/share/gradle-tapi-mcp-server/gradle-tapi-mcp-server.jar`,
-and `.cursor/mcp.json` launches it with `GRADLE_PROJECT_DIR=${workspaceFolder}`.
+The `gradle` MCP server (release v0.2.2) is configured in `.cursor/mcp.json`. `.cursor/install.sh`
+downloads the release JAR to `~/.local/share/gradle-tapi-mcp-server/`, verifies its SHA-256, and
+exposes it via a stable `gradle-tapi-mcp-server.jar` symlink **before** `./gradlew build` runs.
+`GRADLE_PROJECT_DIR` is set to the workspace root.
 
-After changing server code, rebuild (`./gradlew jar`) and restart MCP servers in Cursor.
+Do not point MCP at a JAR built from this workspace during Cloud Agent bootstrap — the Gradle build
+that compiles the server cannot use MCP while that same project is being built.
+
+When developing server code locally, rebuild with `./gradlew jar` and restart MCP with the local
+JAR only after you need to test server changes (not during `./gradlew build` of this repo).
 
 ## Workflow (token-efficient)
 
