@@ -22,12 +22,11 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.asSink
 import kotlinx.io.buffered
+import kotlin.time.Duration.Companion.minutes
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 
-fun main() {
-    System.setProperty("kotlin-logging-to-slf4j", "true")
-
+fun runGradleTapiMcpServer() {
     val connectionManager = GradleConnectionManager()
     val buildExecutionManager = BuildExecutionManager(connectionManager)
     connectionManager.tryAutoConnectFromEnvironment()
@@ -45,7 +44,9 @@ fun main() {
                 tools = ServerCapabilities.Tools(),
                 logging = ServerCapabilities.Logging,
             ),
-        ),
+        ).apply {
+            timeout = 30.minutes
+        },
     )
 
     with(runtime) {
@@ -62,26 +63,23 @@ fun main() {
     )
 
     val shutdownOnce = AtomicBoolean(false)
-    fun shutdownBestEffort() {
+    suspend fun shutdownBestEffort() {
         if (!shutdownOnce.compareAndSet(false, true)) {
             return
         }
         runCatching { buildExecutionManager.shutdown() }
         runCatching { connectionManager.disconnectAll() }
-        runCatching { runBlocking { server.close() } }
+        runCatching { server.close() }
         runCatching { serverScope.cancel() }
         transportClosed.countDown()
     }
 
-    Runtime.getRuntime().addShutdownHook(Thread { shutdownBestEffort() })
+    Runtime.getRuntime().addShutdownHook(Thread { runBlocking { shutdownBestEffort() } })
 
     runBlocking {
         val session = server.createSession(transport)
         val done = Job()
-        session.onClose {
-            shutdownBestEffort()
-            done.complete()
-        }
+        session.onClose { done.complete() }
         try {
             transportClosed.await()
         } catch (_: InterruptedException) {

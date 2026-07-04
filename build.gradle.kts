@@ -22,7 +22,7 @@ dependencies {
 }
 
 application {
-    mainClass = "com.example.gradle.mcp.GradleTapiMcpServerKt"
+    mainClass = "com.example.gradle.mcp.GradleTapiMcpServerLauncher"
 }
 
 testing {
@@ -40,7 +40,7 @@ testing {
 
 tasks.jar {
     manifest {
-        attributes("Main-Class" to "com.example.gradle.mcp.GradleTapiMcpServerKt")
+        attributes("Main-Class" to "com.example.gradle.mcp.GradleTapiMcpServerLauncher")
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
