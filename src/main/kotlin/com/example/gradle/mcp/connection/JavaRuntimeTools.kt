@@ -4,6 +4,7 @@ import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.build.BuildExecutionManager
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
@@ -24,14 +25,12 @@ private const val JAVA_RUNTIMES_DETECTION_SOURCE_TOOLCHAINS_TASK = "javaToolchai
 private val javaToolchainsSectionRegex = Regex("""^\+\s+(.+?)\s*$""")
 private val javaToolchainsPropertyRegex = Regex("""^\|\s*([^:]+):\s*(.*)$""")
 
-private fun javaRuntimesSchema(): Map<String, Any> =
+internal fun javaRuntimesSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
-            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
-                "Gradle project root to query.",
-            ),
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(),
             "includeToolchains" to booleanProperty(
-                "Run `javaToolchains -q` to list detected local JDKs. Default true; set false for daemon Java only.",
+                "List local JDKs via javaToolchains. Default true; false returns daemon Java only.",
             ),
         ),
     )
@@ -232,7 +231,7 @@ fun Server.registerJavaRuntimeTools(scope: CoroutineScope) {
     registerTool(
         scope,
         name = "gradle_get_java_runtimes",
-        description = "Return the daemon Java from BuildEnvironment plus detected local JDKs from `javaToolchains -q` when includeToolchains=true (default). InstalledJdk/JavaRuntime TAPI models are single-installation types, so toolchain listing uses the javaToolchains task. Daemon Java uses the BuildEnvironment snapshot captured at gradle_connect; reconnect to refresh after daemon JVM changes.",
+        description = McpToolDescriptions.JAVA_RUNTIMES,
         schema = javaRuntimesSchema(),
     ) { args ->
         val includeToolchains = args.optionalBoolean("includeToolchains", default = true)

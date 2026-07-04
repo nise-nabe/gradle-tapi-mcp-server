@@ -27,6 +27,16 @@ JAR only after you need to test server changes (not during `./gradlew build` of 
 
 Avoid `includeTasks=true` and heavy model queries unless necessary. `gradle_run_tasks` omits stdout/stderr by default (`includeOutput=false`).
 
+## MCP tool discovery (token-efficient)
+
+When using Cursor `mcp_get_tools`:
+
+1. Call with **no arguments** first (catalog: names + short descriptions)
+2. Fetch full schema with `server` + `toolName` only for tools you will call
+3. Avoid `server` without `toolName` unless you need every schema (~3.5k tokens after slimming, was ~7k)
+
+Full parameter docs: `skills/gradle-tapi-mcp/reference.md`.
+
 ## Full tool reference
 
 See `skills/gradle-tapi-mcp/SKILL.md` and `skills/gradle-tapi-mcp/reference.md` in this repository for the complete tool catalog and advanced workflows (background builds, multiple projects, output limits).

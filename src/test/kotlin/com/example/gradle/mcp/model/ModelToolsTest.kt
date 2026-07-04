@@ -18,7 +18,7 @@ class ModelToolsTest {
         listOf(
             projectTreeSchema(),
             modelQuerySchema(),
-            invocationsQuerySchema(),
+            buildInvocationsQuerySchema(),
             publicationsSchema(),
             helpSchema(),
         ).forEach { schema ->
