@@ -4,6 +4,7 @@ if (!recordDirPath) {
     return
 }
 
+import org.gradle.api.configuration.BuildFeatures
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.testing.TestDescriptor
 import org.gradle.api.tasks.testing.TestListener
@@ -105,6 +106,7 @@ gradle.ext.mcpRecordDirPath = resolvedRecordDir.absolutePath
 gradle.ext.mcpBuildId = gradle.startParameter.projectProperties["mcp.buildId"]
 gradle.ext.mcpEventWriteLock = new Object()
 gradle.ext.mcpHeartbeatIntervalMs = 15_000L
+gradle.ext.mcpHeartbeatTimer = null
 
 gradle.ext.mcpReadGradleResult = { ->
     McpBuildRecorderSupport.readGradleResult(gradle.ext.mcpRecordDirPath)
@@ -134,7 +136,9 @@ gradle.ext.mcpStartHeartbeat = { ->
 }
 
 gradle.ext.mcpFinalizeBuild = { String status, String failureMessage = null ->
-    gradle.ext.mcpHeartbeatTimer?.cancel()
+    def timer = gradle.ext.find('mcpHeartbeatTimer')
+    timer?.cancel()
+    gradle.ext.mcpHeartbeatTimer = null
     McpBuildRecorderSupport.writeTerminalGradleResult(
         gradle.ext.mcpRecordDirPath,
         gradle.ext.mcpBuildId,
@@ -143,7 +147,13 @@ gradle.ext.mcpFinalizeBuild = { String status, String failureMessage = null ->
     )
 }
 
-def configurationCacheRequested = gradle.startParameter.isConfigurationCacheRequested()
+def configurationCacheRequested = false
+try {
+    configurationCacheRequested = gradle.services.get(BuildFeatures)
+        .configurationCache.requested.getOrElse(false)
+} catch (Exception ignored) {
+    configurationCacheRequested = gradle.startParameter.isConfigurationCacheRequested()
+}
 def configurationCacheRecorderApisAvailable = false
 try {
     Class.forName("org.gradle.api.flow.FlowScope")
