@@ -44,7 +44,8 @@ fun mapExceptionToErrorCode(exception: Exception): McpErrorCode =
                 McpErrorCode.NOT_CONNECTED
             else -> when {
                 exception.message?.startsWith("Another build is already running") == true ||
-                    exception.message?.startsWith("Maximum concurrent background builds") == true ->
+                    exception.message?.startsWith("Maximum concurrent background builds") == true ||
+                    exception.message?.startsWith("Maximum concurrent builds") == true ->
                     McpErrorCode.BUILD_ALREADY_RUNNING
                 exception.message?.startsWith("Project directory does not exist:") == true ->
                     McpErrorCode.PROJECT_NOT_FOUND

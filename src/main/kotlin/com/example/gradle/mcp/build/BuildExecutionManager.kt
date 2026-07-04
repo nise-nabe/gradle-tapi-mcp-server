@@ -11,6 +11,8 @@ import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpBuildNotifier
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import io.modelcontextprotocol.kotlin.sdk.types.LoggingLevel
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import org.gradle.tooling.BuildCancelledException
 import org.gradle.tooling.ConfigurableLauncher
 import org.gradle.tooling.ProjectConnection
@@ -73,7 +75,7 @@ class BuildExecutionManager(
         }
     }
 
-    fun runForeground(
+    suspend fun runForeground(
         request: BuildRunRequest,
         notifier: McpBuildNotifier?,
     ): Map<String, Any?> {
@@ -102,19 +104,21 @@ class BuildExecutionManager(
             throw maxConcurrentBuildsException()
         }
 
-        return try {
-            completion.await()
-            BuildStatusAssembler.assemble(
-                view = BuildStatusView.fromRecord(start.record),
-                outputLimit = request.outputLimit,
-                progressOptions = request.progressOptions,
-                style = BuildStatusResponseStyle.FOREGROUND,
-            )
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
-            detachedForegroundResponse(start.record, request)
-        } finally {
-            pruneCompletedBuilds()
+        return withContext(NonCancellable) {
+            try {
+                completion.await()
+                BuildStatusAssembler.assemble(
+                    view = BuildStatusView.fromRecord(start.record),
+                    outputLimit = request.outputLimit,
+                    progressOptions = request.progressOptions,
+                    style = BuildStatusResponseStyle.FOREGROUND,
+                )
+            } catch (_: InterruptedException) {
+                Thread.interrupted()
+                detachedForegroundResponse(start.record, request)
+            } finally {
+                pruneCompletedBuilds()
+            }
         }
     }
 
@@ -625,7 +629,7 @@ class BuildExecutionManager(
     private fun maxConcurrentBuildsException(): McpException =
         McpException(
             McpErrorCode.BUILD_ALREADY_RUNNING,
-            "Maximum concurrent background builds ($MAX_CONCURRENT_BUILDS) reached. " +
+            "Maximum concurrent builds ($MAX_CONCURRENT_BUILDS) reached. " +
                 "Poll gradle_get_build_status or wait for a build to finish.",
         )
 
