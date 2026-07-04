@@ -20,8 +20,9 @@ import com.example.gradle.mcp.protocol.stringArrayProperty
 import com.example.gradle.mcp.protocol.stringProperty
 import com.example.gradle.mcp.protocol.projectDirectoryProperty
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
-import com.example.gradle.mcp.protocol.tool
-import io.modelcontextprotocol.server.McpServerFeatures
+import com.example.gradle.mcp.protocol.registerTool
+import io.modelcontextprotocol.kotlin.sdk.server.Server
+import kotlinx.coroutines.CoroutineScope
 
 internal fun progressProperties(): Map<String, Any> =
     mapOf(
@@ -101,9 +102,9 @@ internal fun runOutputSchema(
     )
 
 context(runtime: GradleMcpRuntime)
-fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
-    listOf(
-        tool(
+fun Server.registerBuildTools(scope: CoroutineScope) {
+    registerTool(
+        scope,
             name = "gradle_list_builds",
             description = "List recent MCP Gradle builds from in-memory records and .gradle/mcp-builds/ on disk. Does not require an active Tooling API connection. Use when a buildId was lost or to discover builds to poll with gradle_get_build_status. Each build summary always includes buildId, status, tasks, testClasses, and recordSource (memory|disk). Optional fields omitted when absent: kind, projectDirectory, startedAt, finishedAt, outcome (e.g. running builds omit outcome; Gradle-only disk records may omit kind). Sorted by finishedAt or startedAt, most recent first.",
             schema = listBuildsSchema(),
@@ -115,8 +116,9 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
             )
             val limit = args.optionalPositiveInt("limit") ?: BuildExecutionManager.DEFAULT_LIST_BUILDS
             jsonResult(runtime.buildExecutionManager.listBuilds(projectDirectory, limit))
-        },
-        tool(
+    }
+    registerTool(
+        scope,
             name = "gradle_cancel_build",
             description = "Cancel a background Gradle build started with background=true. Uses the Tooling API CancellationToken to stop the Gradle daemon build. Returns immediately with cancellation requested; poll gradle_get_build_status until status is no longer running, then inspect the terminal status (cancelled, succeeded, or failed). No-op when the build already finished.",
             schema = objectSchema(
@@ -140,107 +142,110 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
                     projectDirectory,
                 ),
             )
-        },
-        tool(
-            name = "gradle_get_build_status",
-            description = "Return status for a running or completed Gradle build started with background=true. buildId is required because multiple background builds may run concurrently. Status values: running, succeeded, failed, cancelled, not_found. Default response is outcome and buildSummary only (no stdout/stderr task log). Set includeOutput=true for captured stdout/stderr; while the build is running, live output is available only when the MCP server still holds the in-memory record—disk-only polls (after restart or memory eviction) return stdout/stderr only after MCP finalizes logs at build end. Disk-backed polls include statusSource (memory|disk), and when statusSource is disk also liveProgress=false, progressAvailable, and recordDirectory. Gradle on-disk records override in-memory status while Gradle is still active; stale Gradle running (MCP terminal, no post-finalize events) falls back to MCP. Optional projectDirectory locates disk artifacts when the in-memory record is gone and the connected project differs. Completed builds include failedTaskCount, failedTasks, and buildSummary.failureSummary without includeProgress when available (in-memory, MCP-terminal disk, or Gradle-terminal failed with events.ndjson). Set includeProgress=true for the full progress object (completedTasks, recentEvents); disk progress uses events.ndjson (task and test events). Set includeProblems=true to surface live Gradle Problems API events as liveProblems during the build and merged problems on terminal failures. Set includeDownloads=true for dependency download progress (activeDownloadCount, recentDownloads); requires an in-memory record with live Tooling API events. Set includeTestDetails=true to add progress.recentEvents[].test (requires includeProgress=true) and terminal failedTests for failed or cancelled builds; disk polls restore failedTests from events.ndjson when present.",
-            schema = buildStatusSchema(),
-        ) { args ->
-            val outputLimit = OutputLimitOptions.fromArgs(args)
-            val progressOptions = ProgressResponseOptions.fromArgs(args)
-            val scope = ProjectDirectoryScope(runtime.connectionManager)
-            val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
-                args,
-                boundary = scope::requireWithinBoundary,
-            )
-            jsonResult(
-                runtime.buildExecutionManager.status(
-                    args.requiredString("buildId"),
-                    outputLimit,
-                    progressOptions,
-                    projectDirectory,
-                ),
-            )
-        },
-        tool(
-            name = "gradle_run_tasks",
-            description = "Execute Gradle task paths and return build outcome and summary. stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. Use background=true to start a long build and poll gradle_get_build_status with the returned buildId; call gradle_cancel_build to stop an unneeded background build. Multiple background builds may run concurrently. Set includeProgress=true for detailed progress on foreground runs. Set includeProblems=true to capture live Gradle Problems API events. Set includeDownloads=true to track dependency download progress during long or first-time builds. Set includeTestDetails=true for structured TEST_* metadata in progress.recentEvents (requires includeProgress=true) and terminal failedTests summaries on failed or cancelled builds.",
-            schema = runOutputSchema(
-                required = listOf("tasks"),
-                extraProperties = mapOf(
-                    "tasks" to stringArrayProperty("Gradle task paths to execute"),
-                    "background" to booleanProperty("Start the build in the background and return a buildId immediately (default false)"),
-                ),
+    }
+    registerTool(
+        scope,
+        name = "gradle_get_build_status",
+        description = "Return status for a running or completed Gradle build started with background=true. buildId is required because multiple background builds may run concurrently. Status values: running, succeeded, failed, cancelled, not_found. Default response is outcome and buildSummary only (no stdout/stderr task log). Set includeOutput=true for captured stdout/stderr; while the build is running, live output is available only when the MCP server still holds the in-memory record—disk-only polls (after restart or memory eviction) return stdout/stderr only after MCP finalizes logs at build end. Disk-backed polls include statusSource (memory|disk), and when statusSource is disk also liveProgress=false, progressAvailable, and recordDirectory. Gradle on-disk records override in-memory status while Gradle is still active; stale Gradle running (MCP terminal, no post-finalize events) falls back to MCP. Optional projectDirectory locates disk artifacts when the in-memory record is gone and the connected project differs. Completed builds include failedTaskCount, failedTasks, and buildSummary.failureSummary without includeProgress when available (in-memory, MCP-terminal disk, or Gradle-terminal failed with events.ndjson). Set includeProgress=true for the full progress object (completedTasks, recentEvents); disk progress uses events.ndjson (task and test events). Set includeProblems=true to surface live Gradle Problems API events as liveProblems during the build and merged problems on terminal failures. Set includeDownloads=true for dependency download progress (activeDownloadCount, recentDownloads); requires an in-memory record with live Tooling API events. Set includeTestDetails=true to add progress.recentEvents[].test (requires includeProgress=true) and terminal failedTests for failed or cancelled builds; disk polls restore failedTests from events.ndjson when present.",
+        schema = buildStatusSchema(),
+    ) { args ->
+        val outputLimit = OutputLimitOptions.fromArgs(args)
+        val progressOptions = ProgressResponseOptions.fromArgs(args)
+        val scope = ProjectDirectoryScope(runtime.connectionManager)
+        val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
+            args,
+            boundary = scope::requireWithinBoundary,
+        )
+        jsonResult(
+            runtime.buildExecutionManager.status(
+                args.requiredString("buildId"),
+                outputLimit,
+                progressOptions,
+                projectDirectory,
             ),
-        ) { exchange, args, progressToken ->
-            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-            val tasks = args.requiredStringList("tasks")
-            val request = BuildRunRequest(
-                projectDirectory = projectDirectory,
-                kind = BuildKind.TASKS,
-                tasks = tasks,
-                arguments = args.optionalStringList("arguments").orEmpty(),
-                jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
-                outputLimit = OutputLimitOptions.fromArgs(args),
-                progressOptions = ProgressResponseOptions.fromArgs(args),
-            )
-            if (args.optionalBoolean("background", default = false)) {
-                jsonResult(runtime.buildExecutionManager.startBackground(request, exchange, progressToken))
-            } else {
-                runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                    jsonResult(runtime.buildExecutionManager.runForeground(request, connection, exchange, progressToken))
-                }
-            }
-        },
-        tool(
-            name = "gradle_run_tests",
-            description = "Execute JVM tests with class, method, pattern, or task-scoped selection and return build outcome and summary. " +
-                "Provide exactly one of testClasses, testMethods, or includePattern/includePatterns (patterns require tasks). " +
-                "Optional taskPath scopes classes/methods via withTaskAndTest*; optional tasks limits test tasks via TestLauncher.forTasks(). " +
-                "stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. " +
-                "Use background=true to start a long test run and poll gradle_get_build_status with the returned buildId; " +
-                "call gradle_cancel_build to stop an unneeded background test run. Multiple background test runs may run concurrently. " +
-                "Set includeProgress=true for detailed progress on foreground runs. " +
-                "Set includeProblems=true to capture live Gradle Problems API events. " +
-                "Set includeDownloads=true to track dependency download progress during long or first-time test runs. " +
-                "Set includeTestDetails=true for structured TEST_* metadata in progress.recentEvents (requires includeProgress=true) and terminal failedTests summaries on failed or cancelled builds.",
-            schema = runOutputSchema(
-                required = emptyList(),
-                extraProperties = mapOf(
-                    "testClasses" to stringArrayProperty("Fully qualified JVM test class names (withJvmTestClasses / withTaskAndTestClasses)"),
-                    "testMethods" to testMethodsProperty(
-                        "Map of class name to method names, e.g. {\"com.example.FooTest\": [\"method1\"]}, " +
-                            "or array form [{\"class\": \"com.example.FooTest\", \"methods\": [\"method1\"]}]",
-                    ),
-                    "taskPath" to stringProperty(
-                        "Gradle test task path for withTaskAndTestClasses / withTaskAndTestMethods (Gradle 6.1+). Requires testClasses or testMethods.",
-                    ),
-                    "includePattern" to stringProperty("Single test include pattern for withTestsFor TestSpec API (Gradle 7.6+). Requires tasks."),
-                    "includePatterns" to stringArrayProperty(
-                        "Test include patterns for withTestsFor TestSpec API (Gradle 7.6+). Requires tasks.",
-                    ),
-                    "tasks" to stringArrayProperty(
-                        "Optional Gradle test task paths for TestLauncher.forTasks() (Gradle 7.6+). Required when using includePattern/includePatterns.",
-                    ),
-                    "background" to booleanProperty("Start the test run in the background and return a buildId immediately (default false)"),
-                ),
+        )
+    }
+    registerTool(
+        scope,
+        name = "gradle_run_tasks",
+        description = "Execute Gradle task paths and return build outcome and summary. stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. Use background=true to start a long build and poll gradle_get_build_status with the returned buildId; call gradle_cancel_build to stop an unneeded background build. Multiple background builds may run concurrently. Set includeProgress=true for detailed progress on foreground runs. Set includeProblems=true to capture live Gradle Problems API events. Set includeDownloads=true to track dependency download progress during long or first-time builds. Set includeTestDetails=true for structured TEST_* metadata in progress.recentEvents (requires includeProgress=true) and terminal failedTests summaries on failed or cancelled builds.",
+        schema = runOutputSchema(
+            required = listOf("tasks"),
+            extraProperties = mapOf(
+                "tasks" to stringArrayProperty("Gradle task paths to execute"),
+                "background" to booleanProperty("Start the build in the background and return a buildId immediately (default false)"),
             ),
-        ) { exchange, args, progressToken ->
-            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-            val testOptions = parseTestRunOptions(args).validate(args.optionalString("taskPath"))
-            val request = testOptions.toBuildRunRequest(
-                projectDirectory = projectDirectory,
-                arguments = args.optionalStringList("arguments").orEmpty(),
-                jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
-                outputLimit = OutputLimitOptions.fromArgs(args),
-                progressOptions = ProgressResponseOptions.fromArgs(args),
-            )
-            if (args.optionalBoolean("background", default = false)) {
-                jsonResult(runtime.buildExecutionManager.startBackground(request, exchange, progressToken))
-            } else {
-                runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                    jsonResult(runtime.buildExecutionManager.runForeground(request, connection, exchange, progressToken))
-                }
+        ),
+    ) { args, notifier ->
+        val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+        val tasks = args.requiredStringList("tasks")
+        val request = BuildRunRequest(
+            projectDirectory = projectDirectory,
+            kind = BuildKind.TASKS,
+            tasks = tasks,
+            arguments = args.optionalStringList("arguments").orEmpty(),
+            jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
+            outputLimit = OutputLimitOptions.fromArgs(args),
+            progressOptions = ProgressResponseOptions.fromArgs(args),
+        )
+        if (args.optionalBoolean("background", default = false)) {
+            jsonResult(runtime.buildExecutionManager.startBackground(request, notifier))
+        } else {
+            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+                jsonResult(runtime.buildExecutionManager.runForeground(request, connection, notifier))
             }
-        },
-    )
+        }
+    }
+    registerTool(
+        scope,
+        name = "gradle_run_tests",
+        description = "Execute JVM tests with class, method, pattern, or task-scoped selection and return build outcome and summary. " +
+            "Provide exactly one of testClasses, testMethods, or includePattern/includePatterns (patterns require tasks). " +
+            "Optional taskPath scopes classes/methods via withTaskAndTest*; optional tasks limits test tasks via TestLauncher.forTasks(). " +
+            "stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. " +
+            "Use background=true to start a long test run and poll gradle_get_build_status with the returned buildId; " +
+            "call gradle_cancel_build to stop an unneeded background test run. Multiple background test runs may run concurrently. " +
+            "Set includeProgress=true for detailed progress on foreground runs. " +
+            "Set includeProblems=true to capture live Gradle Problems API events. " +
+            "Set includeDownloads=true to track dependency download progress during long or first-time test runs. " +
+            "Set includeTestDetails=true for structured TEST_* metadata in progress.recentEvents (requires includeProgress=true) and terminal failedTests summaries on failed or cancelled builds.",
+        schema = runOutputSchema(
+            required = emptyList(),
+            extraProperties = mapOf(
+                "testClasses" to stringArrayProperty("Fully qualified JVM test class names (withJvmTestClasses / withTaskAndTestClasses)"),
+                "testMethods" to testMethodsProperty(
+                    "Map of class name to method names, e.g. {\"com.example.FooTest\": [\"method1\"]}, " +
+                        "or array form [{\"class\": \"com.example.FooTest\", \"methods\": [\"method1\"]}]",
+                ),
+                "taskPath" to stringProperty(
+                    "Gradle test task path for withTaskAndTestClasses / withTaskAndTestMethods (Gradle 6.1+). Requires testClasses or testMethods.",
+                ),
+                "includePattern" to stringProperty("Single test include pattern for withTestsFor TestSpec API (Gradle 7.6+). Requires tasks."),
+                "includePatterns" to stringArrayProperty(
+                    "Test include patterns for withTestsFor TestSpec API (Gradle 7.6+). Requires tasks.",
+                ),
+                "tasks" to stringArrayProperty(
+                    "Optional Gradle test task paths for TestLauncher.forTasks() (Gradle 7.6+). Required when using includePattern/includePatterns.",
+                ),
+                "background" to booleanProperty("Start the test run in the background and return a buildId immediately (default false)"),
+            ),
+        ),
+    ) { args, notifier ->
+        val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+        val testOptions = parseTestRunOptions(args).validate(args.optionalString("taskPath"))
+        val request = testOptions.toBuildRunRequest(
+            projectDirectory = projectDirectory,
+            arguments = args.optionalStringList("arguments").orEmpty(),
+            jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
+            outputLimit = OutputLimitOptions.fromArgs(args),
+            progressOptions = ProgressResponseOptions.fromArgs(args),
+        )
+        if (args.optionalBoolean("background", default = false)) {
+            jsonResult(runtime.buildExecutionManager.startBackground(request, notifier))
+        } else {
+            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+                jsonResult(runtime.buildExecutionManager.runForeground(request, connection, notifier))
+            }
+        }
+    }
+}

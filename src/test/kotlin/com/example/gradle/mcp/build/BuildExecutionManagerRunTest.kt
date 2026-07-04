@@ -48,8 +48,7 @@ class BuildExecutionManagerRunTest {
 
         val result = concurrentManager.startBackground(
             request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
-            exchange = null,
-            progressToken = null,
+            notifier = null,
         )
 
         result["buildId"] shouldNotBe "running-build"
@@ -69,8 +68,7 @@ class BuildExecutionManagerRunTest {
             manager.runForeground(
                 request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
                 connection = connection,
-                exchange = null,
-                progressToken = null,
+                notifier = null,
             )
         }.apply { isDaemon = true }
         buildThread.start()
@@ -103,8 +101,7 @@ class BuildExecutionManagerRunTest {
         val error = shouldThrow<McpException> {
             manager.startBackground(
                 request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("other")),
-                exchange = null,
-                progressToken = null,
+                notifier = null,
             )
         }
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
@@ -131,8 +128,7 @@ class BuildExecutionManagerRunTest {
         val result = manager.runForeground(
             request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
             connection = connection,
-            exchange = null,
-            progressToken = null,
+            notifier = null,
         )
 
         result["status"] shouldBe "failed"

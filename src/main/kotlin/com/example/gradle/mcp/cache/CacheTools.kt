@@ -8,8 +8,9 @@ import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
-import com.example.gradle.mcp.protocol.tool
-import io.modelcontextprotocol.server.McpServerFeatures
+import com.example.gradle.mcp.protocol.registerTool
+import io.modelcontextprotocol.kotlin.sdk.server.Server
+import kotlinx.coroutines.CoroutineScope
 
 internal fun buildCacheStatusSchema(): Map<String, Any> =
     objectSchema(
@@ -33,36 +34,36 @@ internal fun buildCacheStatusSchema(): Map<String, Any> =
     )
 
 context(runtime: GradleMcpRuntime)
-fun cacheTools(): List<McpServerFeatures.SyncToolSpecification> =
-    listOf(
-        tool(
-            name = "gradle_get_build_cache_status",
-            description = "Inspect Gradle build cache and configuration cache settings without a full build. Returns resolved cache properties (via properties -q), declared gradle.properties entries, local cache directory summaries, and optional last MCP build cache stats. Set probeConfigurationCache=true to run a lightweight configuration-cache compatibility check.",
-            schema = buildCacheStatusSchema(),
-        ) { args ->
-            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-            if (runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
-                throw McpException(
-                    McpErrorCode.BUILD_ALREADY_RUNNING,
-                    "Cannot inspect build cache while a Gradle build is running for ${projectDirectory.path}. " +
-                        "Wait for the build to finish or call gradle_get_build_status.",
-                )
-            }
-            val options = BuildCacheStatusOptions.fromArgs(args)
-            val lastMcpBuild = if (options.includeLastMcpBuild) {
-                runtime.buildExecutionManager.lastMcpBuildInsight(projectDirectory)
-            } else {
-                null
-            }
-            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                jsonResult(
-                    BuildCacheStatusCollector.collect(
-                        connection = connection,
-                        projectDirectory = projectDirectory,
-                        options = options,
-                        lastMcpBuild = lastMcpBuild,
-                    ),
-                )
-            }
-        },
-    )
+fun Server.registerCacheTools(scope: CoroutineScope) {
+    registerTool(
+        scope,
+        name = "gradle_get_build_cache_status",
+        description = "Inspect Gradle build cache and configuration cache settings without a full build. Returns resolved cache properties (via properties -q), declared gradle.properties entries, local cache directory summaries, and optional last MCP build cache stats. Set probeConfigurationCache=true to run a lightweight configuration-cache compatibility check.",
+        schema = buildCacheStatusSchema(),
+    ) { args ->
+        val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+        if (runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
+            throw McpException(
+                McpErrorCode.BUILD_ALREADY_RUNNING,
+                "Cannot inspect build cache while a Gradle build is running for ${projectDirectory.path}. " +
+                    "Wait for the build to finish or call gradle_get_build_status.",
+            )
+        }
+        val options = BuildCacheStatusOptions.fromArgs(args)
+        val lastMcpBuild = if (options.includeLastMcpBuild) {
+            runtime.buildExecutionManager.lastMcpBuildInsight(projectDirectory)
+        } else {
+            null
+        }
+        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+            jsonResult(
+                BuildCacheStatusCollector.collect(
+                    connection = connection,
+                    projectDirectory = projectDirectory,
+                    options = options,
+                    lastMcpBuild = lastMcpBuild,
+                ),
+            )
+        }
+    }
+}

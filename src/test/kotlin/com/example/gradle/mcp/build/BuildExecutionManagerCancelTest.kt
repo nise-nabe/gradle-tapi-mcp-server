@@ -126,8 +126,7 @@ class BuildExecutionManagerCancelTest {
         val notConnected = shouldThrow<McpException> {
             manager.startBackground(
                 request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
-                exchange = null,
-                progressToken = null,
+                notifier = null,
             )
         }
         notConnected.code shouldBe McpErrorCode.NOT_CONNECTED
