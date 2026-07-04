@@ -191,9 +191,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         if (args.optionalBoolean("background", default = false)) {
             jsonResult(runtime.buildExecutionManager.startBackground(request, notifier))
         } else {
-            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                jsonResult(runtime.buildExecutionManager.runForeground(request, connection, notifier))
-            }
+            jsonResult(runtime.buildExecutionManager.runForeground(request, notifier))
         }
     }
     registerTool(
@@ -243,9 +241,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         if (args.optionalBoolean("background", default = false)) {
             jsonResult(runtime.buildExecutionManager.startBackground(request, notifier))
         } else {
-            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                jsonResult(runtime.buildExecutionManager.runForeground(request, connection, notifier))
-            }
+            jsonResult(runtime.buildExecutionManager.runForeground(request, notifier))
         }
     }
 }

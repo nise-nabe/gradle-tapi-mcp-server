@@ -129,6 +129,28 @@ internal fun blockingProjectConnection(
                         releaseBuild.await(5, TimeUnit.SECONDS)
                     },
                 )
+                "newTestLauncher" -> chainingProxy(
+                    Class.forName("org.gradle.tooling.TestLauncher"),
+                    onRun = {
+                        buildEntered.countDown()
+                        releaseBuild.await(5, TimeUnit.SECONDS)
+                    },
+                )
+                else -> defaultProxyReturn(method)
+            }
+        },
+    ) as ProjectConnection
+
+internal fun interruptedOnRunProjectConnection(): ProjectConnection =
+    Proxy.newProxyInstance(
+        ProjectConnection::class.java.classLoader,
+        arrayOf(ProjectConnection::class.java),
+        InvocationHandler { _, method, _ ->
+            when (method.name) {
+                "newBuild" -> chainingProxy(
+                    Class.forName("org.gradle.tooling.BuildLauncher"),
+                    onRun = { throw InterruptedException("simulated interrupt") },
+                )
                 else -> defaultProxyReturn(method)
             }
         },
