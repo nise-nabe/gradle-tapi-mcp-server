@@ -11,12 +11,12 @@ Publish `vX.Y.Z` tag and fat JAR on GitHub Releases. `main` is branch-protected 
 
 ## Current tags (newest first)
 
-`v0.2.2` (latest) · `v0.2.1` · `v0.2.0` · `v0.1.0`
+`v0.2.3` (latest) · `v0.2.2` · `v0.2.1` · `v0.2.0` · `v0.1.0`
 
 ```bash
 git fetch origin --tags && git tag -l --sort=-v:refname
 gh release list --repo nise-nabe/gradle-tapi-mcp-server
-git log v0.2.2..main --oneline   # unreleased commits
+git log v0.2.3..main --oneline   # unreleased commits
 ```
 
 ## Quick workflow
