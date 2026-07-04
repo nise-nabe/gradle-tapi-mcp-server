@@ -28,9 +28,9 @@ class McpErrorsTest {
     }
 
     @Test
-    fun `maps max concurrent background builds exception`() {
+    fun `maps max concurrent builds exception`() {
         val code = mapExceptionToErrorCode(
-            IllegalStateException("Maximum concurrent background builds (4) reached. Poll gradle_get_build_status."),
+            IllegalStateException("Maximum concurrent builds (4) reached. Poll gradle_get_build_status."),
         )
 
         code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
