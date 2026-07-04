@@ -36,8 +36,10 @@
 
 ## 既知の注意点
 
-- **kotlin-logging 初期化メッセージ**が起動時に stdout に 1 行出力される（SDK  transitively）。MCP クライアントが厳密な stdout パースをする場合は要監視。`System.setProperty("kotlin-logging-to-slf4j", "true")` を `main` 先頭で設定済み。
-- MCP 統合テストは引き続き手動 smoke のみ。
+- **kotlin-logging 起動メッセージ**: `GradleTapiMcpServerLauncher` が `KotlinLoggingConfiguration.logStartupMessage = false` を SDK 初期化前に設定し、stdio の stdout を JSON-RPC 専用に保つ。`gradle.tapi.mcp.smoke=true ./gradlew test` で起動 smoke を実行可能。
+- **リクエストタイムアウト**: `ServerOptions.timeout = 30.minutes`（Java SDK 移行前の `requestTimeout` と同等）。
+- **長時間ツール呼び出し**: ブロッキング Gradle 処理は `Dispatchers.IO` で実行し、stdio のメッセージ処理ループを解放する。
+- MCP 統合テストは引き続き手動 smoke のみ（上記 opt-in テストを除く）。
 
 ## 参考
 
