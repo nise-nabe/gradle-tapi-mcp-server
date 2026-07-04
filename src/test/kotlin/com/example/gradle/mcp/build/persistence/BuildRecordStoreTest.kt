@@ -16,6 +16,7 @@ import com.example.gradle.mcp.support.writeMcpResultToDisk
 import com.example.gradle.mcp.build.CapturingStreams
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import com.example.gradle.mcp.protocol.decodeMcpJson
 import com.example.gradle.mcp.protocol.encodeMcpJson
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldBeNull
@@ -34,14 +35,24 @@ class BuildRecordStoreTest {
     private val store = BuildRecordStore()
 
     @Test
-    fun `launcherArguments reserves mcp properties and init script`(@TempDir projectDir: File) {
-        val args = store.launcherArguments(projectDir, "build-1")
+    fun `launcherArguments writes stable metadata property and init script`(@TempDir projectDir: File) {
+        val metadataFile = McpBuildRecordPaths.launcherMetadataFile(projectDir)
+        val args = store.launcherArguments(projectDir, "build-1", listOf("build"))
 
-        args shouldContain "-Pmcp.buildId=build-1"
-        args shouldContain "-Pmcp.recordDir=${File(projectDir, ".gradle/mcp-builds/build-1").absolutePath}"
+        args shouldContain "-Pmcp.launcherMetadata=${metadataFile.absolutePath}"
         args.any { it.startsWith("-Pmcp.ccInitScript=") } shouldBe true
         args shouldContain "--init-script"
         args.last().shouldContain("mcp-build-recorder")
+
+        metadataFile.isFile shouldBe true
+        val metadata = decodeMcpJson<McpBuildLauncherMetadata>(metadataFile.readText(StandardCharsets.UTF_8))
+        metadata.buildId shouldBe "build-1"
+        metadata.recordDir shouldBe File(projectDir, ".gradle/mcp-builds/build-1").absolutePath
+
+        val recordDir = store.recordDirectory(projectDir, "build-1").shouldNotBeNull()
+        val gradleResult = store.readGradleResult(recordDir).shouldNotBeNull()
+        gradleResult.status shouldBe "running"
+        gradleResult.taskNames shouldBe listOf("build")
     }
 
     @Test

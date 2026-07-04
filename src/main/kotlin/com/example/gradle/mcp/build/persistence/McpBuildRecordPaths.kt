@@ -5,6 +5,8 @@ import java.nio.file.Files
 
 object McpBuildRecordPaths {
     const val RECORDS_ROOT = ".gradle/mcp-builds"
+    const val LAUNCHER_DIR = "_launcher"
+    const val LAUNCHER_METADATA_FILE = "metadata.json"
     private const val MAX_BUILD_ID_LENGTH = 128
 
     const val GRADLE_RESULT_FILE = "gradle-result.json"
@@ -15,6 +17,9 @@ object McpBuildRecordPaths {
 
     fun recordsRoot(projectDirectory: File): File =
         File(projectDirectory, RECORDS_ROOT)
+
+    fun launcherMetadataFile(projectDirectory: File): File =
+        File(recordsRoot(projectDirectory), LAUNCHER_DIR).resolve(LAUNCHER_METADATA_FILE)
 
     fun isSafeBuildId(buildId: String): Boolean {
         if (buildId.isBlank() || buildId.length > MAX_BUILD_ID_LENGTH) {
