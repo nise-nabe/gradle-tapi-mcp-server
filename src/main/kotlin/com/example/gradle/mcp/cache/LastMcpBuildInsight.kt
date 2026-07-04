@@ -10,4 +10,16 @@ data class LastMcpBuildInsight(
     val taskSummaryLine: String?,
     val resultLine: String?,
     val taskStats: TaskExecutionStats?,
-)
+) {
+    fun toResponseMap(): Map<String, Any?> = buildMap {
+        put("buildId", buildId)
+        put("kind", kind)
+        put("tasks", tasks)
+        put("testClasses", testClasses)
+        put("finishedAt", finishedAt)
+        put("outcome", outcome)
+        put("taskSummaryLine", taskSummaryLine)
+        put("resultLine", resultLine)
+        put("taskStats", taskStats?.toResponseMap())
+    }
+}
