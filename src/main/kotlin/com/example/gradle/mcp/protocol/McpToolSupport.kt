@@ -4,6 +4,7 @@ import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -40,6 +41,8 @@ fun Server.registerTool(
             withContext(Dispatchers.IO) {
                 handler(args, notifier)
             }
+        } catch (exception: CancellationException) {
+            throw exception
         } catch (exception: Exception) {
             val code = mapExceptionToErrorCode(exception)
             structuredErrorResult(code, exception.message ?: exception.toString())

@@ -39,10 +39,18 @@ class GradleTapiMcpServerLauncherSmokeTest {
         firstLine shouldNotContain "kotlin-logging"
     }
 
-    private fun projectJar() =
-        projectRoot()
-            .resolve("build/libs/gradle-tapi-mcp-server-0.2.3.jar")
-            .also { require(it.isFile) { "Missing ${it.absolutePath}; run ./gradlew jar first" } }
+    private fun projectJar(): File {
+        val libsDir = projectRoot().resolve("build/libs")
+        val jars = libsDir.listFiles { _, name ->
+            name.startsWith("gradle-tapi-mcp-server-") &&
+                name.endsWith(".jar") &&
+                !name.endsWith("-plain.jar")
+        }?.toList().orEmpty()
+        require(jars.size == 1) {
+            "Expected exactly one fat jar in ${libsDir.absolutePath}; run ./gradlew jar first"
+        }
+        return jars.single()
+    }
 
     private fun projectRoot(): File =
         System.getProperty("gradle.tapi.mcp.projectDir")?.let(::File)

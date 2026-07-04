@@ -19,8 +19,9 @@ object GradleTapiMcpServerLauncher {
         runCatching {
             val configurationClass = Class.forName("io.github.oshai.kotlinlogging.KotlinLoggingConfiguration")
             val field = configurationClass.getDeclaredField("logStartupMessage")
-            field.isAccessible = true
-            field.setBoolean(null, false)
+            if (field.trySetAccessible()) {
+                field.setBoolean(null, false)
+            }
         }
     }
 }
