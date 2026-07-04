@@ -134,6 +134,21 @@ internal fun blockingProjectConnection(
         },
     ) as ProjectConnection
 
+internal fun interruptedOnRunProjectConnection(): ProjectConnection =
+    Proxy.newProxyInstance(
+        ProjectConnection::class.java.classLoader,
+        arrayOf(ProjectConnection::class.java),
+        InvocationHandler { _, method, _ ->
+            when (method.name) {
+                "newBuild" -> chainingProxy(
+                    Class.forName("org.gradle.tooling.BuildLauncher"),
+                    onRun = { throw InterruptedException("simulated client interrupt") },
+                )
+                else -> defaultProxyReturn(method)
+            }
+        },
+    ) as ProjectConnection
+
 private fun chainingProxy(
     interfaceClass: Class<*>,
     onRun: () -> Unit,

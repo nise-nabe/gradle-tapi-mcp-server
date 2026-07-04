@@ -9,6 +9,7 @@ import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.support.blockingProjectConnection
 import com.example.gradle.mcp.support.cancelledTracker
 import com.example.gradle.mcp.support.failedTracker
+import com.example.gradle.mcp.support.interruptedOnRunProjectConnection
 import com.example.gradle.mcp.support.noopProjectConnection
 import com.example.gradle.mcp.support.seedNoopConnection
 import com.example.gradle.mcp.support.runningTracker
@@ -149,6 +150,23 @@ class BuildExecutionManagerCancelTest {
     }
 
     @Test
+    fun `InterruptedException during build is recorded as cancelled`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(interruptedOnRunProjectConnection())
+        val manager = BuildExecutionManager(connectionManager)
+
+        val result = manager.runForeground(
+            request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
+            exchange = null,
+            progressToken = null,
+        )
+
+        result["status"] shouldBe "cancelled"
+        (result["error"] as String) shouldContain "interrupted"
+        manager.hasActiveBuild().shouldBeFalse()
+    }
+
+    @Test
     fun `shutdown releases lifecycle lock before awaiting executor termination`() {
         val manager = BuildExecutionManager(GradleConnectionManager())
         manager.seedRunningBuildForTests(testBuildRecord(id = "running-build", tracker = runningTracker()))
@@ -167,10 +185,16 @@ class BuildExecutionManagerCancelTest {
         }
         taskEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
 
-        val shutdownThread = Thread { manager.shutdown() }.apply { isDaemon = true }
+        val shutdownStarted = CountDownLatch(1)
+        val shutdownThread = Thread {
+            shutdownStarted.countDown()
+            manager.shutdown()
+        }.apply { isDaemon = true }
         shutdownThread.start()
 
-        taskFinished.await(500, TimeUnit.MILLISECONDS).shouldBeTrue()
+        shutdownStarted.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        releaseBlock.countDown()
+        taskFinished.await(5, TimeUnit.SECONDS).shouldBeTrue()
         shutdownThread.join(10_000)
     }
 

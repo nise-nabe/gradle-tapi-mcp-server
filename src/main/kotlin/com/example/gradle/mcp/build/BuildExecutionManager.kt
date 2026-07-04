@@ -19,6 +19,7 @@ import java.io.File
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.SynchronousQueue
@@ -74,34 +75,43 @@ class BuildExecutionManager(
 
     fun runForeground(
         request: BuildRunRequest,
-        connection: ProjectConnection,
         exchange: McpSyncServerExchange?,
         progressToken: Any?,
     ): Map<String, Any?> {
+        connectionManager.requireConnection(request.projectDirectory)
+
         val start = newBuildStart(request, exchange, progressToken)
-        builds[start.record.id] = start.record
+        val buildId = start.record.id
+        val completion = CountDownLatch(1)
+
+        synchronized(lifecycleLock) {
+            builds[buildId] = start.record
+            pruneCompletedBuilds()
+            try {
+                executor.execute {
+                    try {
+                        runBuild(start.record, request, start.notifier)
+                    } finally {
+                        completion.countDown()
+                    }
+                }
+            } catch (_: RejectedExecutionException) {
+                builds.remove(buildId)
+                throw maxConcurrentBuildsException()
+            }
+        }
+
         return try {
-            runBuild(
-                start.record,
-                request,
-                connection,
-                start.record.streams,
-                start.record.progressTracker,
-                start.notifier,
-            )
+            completion.await()
             BuildStatusAssembler.assemble(
                 view = BuildStatusView.fromRecord(start.record),
                 outputLimit = request.outputLimit,
                 progressOptions = request.progressOptions,
                 style = BuildStatusResponseStyle.FOREGROUND,
             )
-        } catch (_: Exception) {
-            BuildStatusAssembler.assemble(
-                view = BuildStatusView.fromRecord(start.record),
-                outputLimit = request.outputLimit,
-                progressOptions = request.progressOptions,
-                style = BuildStatusResponseStyle.FOREGROUND,
-            )
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            detachedForegroundResponse(start.record, request)
         } finally {
             pruneCompletedBuilds()
         }
@@ -283,11 +293,15 @@ class BuildExecutionManager(
         val executorToAwait = synchronized(lifecycleLock) {
             markRunningBuildsCancelled("Server shutting down")
             val currentExecutor = executor
-            currentExecutor.shutdownNow()
+            currentExecutor.shutdown()
             currentExecutor
         }
         try {
-            executorToAwait.awaitTermination(5, TimeUnit.SECONDS)
+            if (!executorToAwait.awaitTermination(5, TimeUnit.SECONDS)) {
+                synchronized(lifecycleLock) {
+                    executorToAwait.shutdownNow()
+                }
+            }
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
         }
@@ -402,7 +416,7 @@ class BuildExecutionManager(
                 runBuild(record, request, connection, record.streams, record.progressTracker, notifier)
             }
         } catch (exception: Exception) {
-            finalizeBuild(record, terminalOutcomeFor(exception))
+            finalizeBuild(record, terminalOutcomeFor(exception, record))
             notifier.notifyFinal(record.progressTracker)
         } finally {
             pruneCompletedBuilds()
@@ -441,18 +455,49 @@ class BuildExecutionManager(
             finalizeBuild(record, BuildTerminalOutcome.Succeeded)
             notifier.notifyFinal(tracker)
         } catch (exception: Exception) {
-            val outcome = terminalOutcomeFor(exception)
+            val outcome = terminalOutcomeFor(exception, record)
             finalizeBuild(record, outcome)
             notifier.notifyFinal(tracker)
             throw exception
         }
     }
 
-    private fun terminalOutcomeFor(exception: Exception): BuildTerminalOutcome =
+    private fun terminalOutcomeFor(exception: Exception, record: BuildRecord? = null): BuildTerminalOutcome {
         if (exception is BuildCancelledException) {
-            BuildTerminalOutcome.Cancelled(exception.message ?: "Build cancelled")
-        } else {
-            BuildTerminalOutcome.Failed(exception.message ?: exception.toString())
+            return BuildTerminalOutcome.Cancelled(exception.message ?: "Build cancelled")
+        }
+        if (isInterruptRelated(exception)) {
+            record?.requestCancellationIfNeeded()
+            return BuildTerminalOutcome.Cancelled(
+                exception.message?.takeIf { it.isNotBlank() } ?: "Build interrupted",
+            )
+        }
+        return BuildTerminalOutcome.Failed(exception.message ?: exception.toString())
+    }
+
+    private fun isInterruptRelated(exception: Exception): Boolean =
+        exception is InterruptedException || exception.cause is InterruptedException
+
+    private fun BuildRecord.requestCancellationIfNeeded() {
+        if (!cancellationTokenSource.token().isCancellationRequested) {
+            cancellationTokenSource.cancel()
+        }
+    }
+
+    private fun detachedForegroundResponse(record: BuildRecord, request: BuildRunRequest): Map<String, Any?> =
+        buildMap {
+            put("buildId", record.id)
+            put("status", BuildProgressTracker.STATUS_RUNNING)
+            put("kind", request.kind.name.lowercase())
+            put("tasks", request.tasks)
+            put("testClasses", request.testClasses)
+            putTestRunSelection(request.selection)
+            put("detached", true)
+            put(
+                "message",
+                "MCP client request ended; build continues in background. " +
+                    "Poll gradle_get_build_status with this buildId.",
+            )
         }
 
     private fun configureLauncher(

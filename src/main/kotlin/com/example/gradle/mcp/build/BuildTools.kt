@@ -164,7 +164,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
         },
         tool(
             name = "gradle_run_tasks",
-            description = "Execute Gradle task paths and return build outcome and summary. stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. Use background=true to start a long build and poll gradle_get_build_status with the returned buildId; call gradle_cancel_build to stop an unneeded background build. Multiple background builds may run concurrently. Set includeProgress=true for detailed progress on foreground runs. Set includeProblems=true to capture live Gradle Problems API events. Set includeDownloads=true to track dependency download progress during long or first-time builds. Set includeTestDetails=true for structured TEST_* metadata in progress.recentEvents (requires includeProgress=true) and terminal failedTests summaries on failed or cancelled builds.",
+            description = "Execute Gradle task paths and return build outcome and summary. stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. Use background=true to start a long build and poll gradle_get_build_status with the returned buildId; call gradle_cancel_build to stop an unneeded background build. Multiple background builds may run concurrently. Foreground runs execute on a worker thread; if the MCP client request ends early (timeout or disconnect), the build detaches and continues in background (response includes buildId and detached=true). Set includeProgress=true for detailed progress on foreground runs. Set includeProblems=true to capture live Gradle Problems API events. Set includeDownloads=true to track dependency download progress during long or first-time builds. Set includeTestDetails=true for structured TEST_* metadata in progress.recentEvents (requires includeProgress=true) and terminal failedTests summaries on failed or cancelled builds.",
             schema = runOutputSchema(
                 required = listOf("tasks"),
                 extraProperties = mapOf(
@@ -187,9 +187,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
             if (args.optionalBoolean("background", default = false)) {
                 jsonResult(runtime.buildExecutionManager.startBackground(request, exchange, progressToken))
             } else {
-                runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                    jsonResult(runtime.buildExecutionManager.runForeground(request, connection, exchange, progressToken))
-                }
+                jsonResult(runtime.buildExecutionManager.runForeground(request, exchange, progressToken))
             }
         },
         tool(
@@ -200,6 +198,8 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
                 "stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. " +
                 "Use background=true to start a long test run and poll gradle_get_build_status with the returned buildId; " +
                 "call gradle_cancel_build to stop an unneeded background test run. Multiple background test runs may run concurrently. " +
+                "Foreground runs execute on a worker thread; if the MCP client request ends early (timeout or disconnect), " +
+                "the test run detaches and continues in background (response includes buildId and detached=true). " +
                 "Set includeProgress=true for detailed progress on foreground runs. " +
                 "Set includeProblems=true to capture live Gradle Problems API events. " +
                 "Set includeDownloads=true to track dependency download progress during long or first-time test runs. " +
@@ -238,9 +238,7 @@ fun buildTools(): List<McpServerFeatures.SyncToolSpecification> =
             if (args.optionalBoolean("background", default = false)) {
                 jsonResult(runtime.buildExecutionManager.startBackground(request, exchange, progressToken))
             } else {
-                runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                    jsonResult(runtime.buildExecutionManager.runForeground(request, connection, exchange, progressToken))
-                }
+                jsonResult(runtime.buildExecutionManager.runForeground(request, exchange, progressToken))
             }
         },
     )
