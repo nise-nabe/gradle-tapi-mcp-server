@@ -9,29 +9,21 @@ description: >-
 
 Publish `vX.Y.Z` tag and fat JAR on GitHub Releases. `main` is branch-protected — version bumps go through PRs.
 
-## Current tags (newest first)
-
-`v0.2.3` (latest) · `v0.2.2` · `v0.2.1` · `v0.2.0` · `v0.1.0`
+## Status check
 
 ```bash
-git fetch origin --tags && git tag -l --sort=-v:refname
+git fetch origin --tags && git tag -l --sort=-v:refname | head -1   # latest tag
 gh release list --repo nise-nabe/gradle-tapi-mcp-server
-git log v0.2.3..main --oneline   # unreleased commits
+git log "$(git tag -l --sort=-v:refname | head -1)"..main --oneline   # unreleased commits
 ```
 
-## Quick workflow
+## Workflow (summary)
 
-1. **Verify** — `./gradlew --no-daemon build` on `main`
-2. **Bump PR** — update `build.gradle.kts` (`version`) and `README.md` (2 JAR paths); commit `chore(release): bump version to X.Y.Z`; open PR via **ManagePullRequest** (`cloud-github` skill)
-3. **After merge** — on `main`: `./gradlew jar` → `build/libs/gradle-tapi-mcp-server-X.Y.Z.jar`
-4. **Tag** — `git tag vX.Y.Z && git push origin vX.Y.Z` on merged `main` HEAD
-5. **Release** — `gh release create vX.Y.Z --title X.Y.Z --generate-notes build/libs/gradle-tapi-mcp-server-X.Y.Z.jar`
-6. **Cloud bootstrap** (follow-up PR) — update `.cursor/install.sh` (`GRADLE_TAPI_MCP_VERSION`, `GRADLE_TAPI_MCP_SHA256` from `sha256sum` of the release JAR), plus `AGENTS.md` and `.cursor/skills/gradle-tapi-mcp/SKILL.md` version strings
-
-## Version choice
-
-Patch (`0.2.3`) for fixes/refactors/deps; minor within 0.x for notable features. Inspect `git log vLATEST..main`.
+1. **Verify** — `git checkout main && git pull origin main`, then `./gradlew --no-daemon build`
+2. **Bump PR** — `build.gradle.kts` + `README.md`; open PR via **ManagePullRequest** (`cloud-github` skill)
+3. **After merge** — on `main`: `./gradlew --no-daemon jar` → tag `vX.Y.Z` on `main` HEAD → `gh release create` with `--repo nise-nabe/gradle-tapi-mcp-server`
+4. **Cloud bootstrap** (follow-up PR) — `install.sh`, `AGENTS.md`, skill version strings (see full reference)
 
 ## Full reference
 
-See `skills/release/SKILL.md` in this repository for the checklist, release notes template, verification steps, and troubleshooting.
+See `skills/release/SKILL.md` for the checklist, file tables, SHA-256 capture, release notes template, verification steps, and troubleshooting.
