@@ -20,6 +20,7 @@
 - `gradle-wrapper.jar` is explicitly un-ignored so clones can run `./gradlew`.
 - Cursor Cloud bootstraps via `.cursor/environment.json` → `.cursor/install.sh` (release JAR download, gh symlink, JDK 17, `./gradlew build`).
 - Agent skill at `skills/gradle-tapi-mcp/` (install to `~/.cursor/skills/` globally) documents token-efficient MCP workflows: prefer `gradle_get_project_overview`; use `gradle_get_build_cache_status` for cache settings; task lists omitted unless `includeTasks=true`; run output omitted by default (`includeOutput=false`; outcome/buildSummary only).
+- Agent skill at `skills/release/` (summary in `.cursor/skills/release/SKILL.md`) documents the GitHub release workflow: version bump PR, JAR build, tag, Release asset upload, and `install.sh` SHA-256 follow-up.
 - MCP server holds a **connection pool** keyed by canonical project path; `gradle_connect` ensures a project without disconnecting others. Optional `projectDirectory` on tools defaults to `GRADLE_PROJECT_DIR`.
 - MCP tool errors use structured `McpException` with `McpErrorCode` (`NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`); `mapExceptionToErrorCode` maps legacy `IllegalStateException` messages.
 - Long Gradle builds: set `background=true` on `gradle_run_tasks`/`gradle_run_tests`, then poll `gradle_get_build_status` for progress and partial output; call `gradle_cancel_build` to stop unneeded background runs.
@@ -40,7 +41,7 @@ Single-module Kotlin/JVM MCP server (stdio). No web UI, Docker, or dedicated lin
 3. Ensures **JDK 17** for `./gradlew` (toolchain in `build.gradle.kts`; JDK 21+ can run the MCP JAR at runtime)
 4. `./gradlew build` as the compile/test gate
 
-The `gradle` MCP server is defined in `.cursor/mcp.json`. Token-efficient workflows: `.cursor/skills/gradle-tapi-mcp/SKILL.md` (summary) and `skills/gradle-tapi-mcp/` (full reference).
+The `gradle` MCP server is defined in `.cursor/mcp.json`. Token-efficient workflows: `.cursor/skills/gradle-tapi-mcp/SKILL.md` (summary) and `skills/gradle-tapi-mcp/` (full reference). Release workflow: `.cursor/skills/release/SKILL.md` (summary) and `skills/release/` (full reference).
 
 ### GitHub and pull requests (Cursor Cloud)
 

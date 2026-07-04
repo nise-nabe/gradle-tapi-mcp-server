@@ -8,38 +8,35 @@ description: >-
 
 # gradle-tapi-mcp-server リリース
 
-GitHub 上の **annotated tag** `vX.Y.Z` と **Release アセット**（fat JAR）を公開する手順。
+GitHub 上の lightweight tag `vX.Y.Z` と **Release アセット**（fat JAR）を公開する手順。
 `main` はブランチ保護のため、直接 push せず PR 経由でバージョン bump する。
 
-## 既存リリースタグ（2026-07 時点）
+## 既存リリースの確認
 
-| タグ | 日付（UTC 付近） | 備考 |
-|------|------------------|------|
-| `v0.2.3` | 2026-07-04 | 最新。アセット `gradle-tapi-mcp-server-0.2.3.jar` |
-| `v0.2.2` | 2026-06-28 | |
-| `v0.2.1` | 2026-06-28 | |
-| `v0.2.0` | 2026-06-28 | |
-| `v0.1.0` | 2026-06-27 | 初回 |
-
-確認コマンド:
+タグ一覧や日付はコマンドで確認する（スキル内の固定表は陳腐化しやすいため、正本はリモートのタグと Release）。
 
 ```bash
 git fetch origin --tags
+LATEST_TAG="$(git tag -l --sort=-v:refname | head -1)"
+echo "Latest tag: ${LATEST_TAG}"
 git tag -l --sort=-v:refname
 gh release list --repo nise-nabe/gradle-tapi-mcp-server
+git log "${LATEST_TAG}"..main --oneline   # 未リリースコミット
 ```
 
 `build.gradle.kts` の `version` が最新タグと一致していることを確認する。一致しない場合は未リリースの変更が `main` に積まれている。
 
 ## バージョン方針（SemVer 0.x）
 
+このリポジトリの慣習: **0.x では原則パッチ bump**（`0.2.0` → `0.2.1` → `0.2.2`）。複数の feat がまとまっているときのみ `0.(y+1).0` を検討する。
+
 | 変更の種類 | 例 | 推奨 bump |
 |-----------|-----|-----------|
 | 破壊的変更・大きな API 変更 | MCP ツール削除、応答形式の破壊 | `0.(y+1).0` または将来 `1.0.0` |
-| 新機能・目立つ改善 | 新 MCP ツール、進捗メタデータ | `0.y.(z+1)` または `0.(y+1).0` |
+| 新機能・目立つ改善 | 新 MCP ツール、進捗メタデータ | `0.y.(z+1)`（原則） |
 | バグ修正・リファクタ・依存更新 | `fix:`, `refactor:`, `build(deps):` | `0.y.(z+1)` |
 
-過去の実績では `0.2.0` → `0.2.1` → `0.2.2` → `0.2.3` とパッチを積み上げている。`main` 上の未リリースコミットを `git log vLATEST..main --oneline` で確認し、変更量に応じて次バージョンを決める。
+`main` 上の未リリースコミットを `git log vLATEST..main --oneline` で確認し、変更量に応じて次バージョンを決める。
 
 ## リリース対象ファイル
 
@@ -61,15 +58,26 @@ gh release list --repo nise-nabe/gradle-tapi-mcp-server
 | `.cursor/install.sh` | `GRADLE_TAPI_MCP_VERSION`, `GRADLE_TAPI_MCP_SHA256` |
 | `AGENTS.md` | リリース番号の記述（該当箇所） |
 | `.cursor/skills/gradle-tapi-mcp/SKILL.md` | `release vX.Y.Z` の記述 |
+| `.cursor/skills/release/SKILL.md` | 必要なら説明文の更新（バージョン例はプレースホルダのまま維持） |
+| `skills/release/SKILL.md` | 必要なら説明文の更新（タグはコマンドで確認する方針のため通常は変更不要） |
 
-SHA-256 はリリース用 JAR ビルド後に取得:
+SHA-256 は **GitHub Release にアップロードする JAR** から取得する。Release 作成直後に保存し、follow-up PR で使う（`main` が進んだあと再ビルドしない）。
 
 ```bash
-./gradlew jar
-sha256sum "build/libs/gradle-tapi-mcp-server-${VERSION}.jar" | awk '{print $1}'
+VERSION=X.Y.Z
+JAR="build/libs/gradle-tapi-mcp-server-${VERSION}.jar"
+sha256sum "${JAR}" | awk '{print $1}'
 ```
 
-`install.sh` の SHA は **GitHub Release にアップロードする JAR** と同一であること。
+Release 後にローカル JAR がない場合は、Release URL からダウンロードしてハッシュを取る:
+
+```bash
+curl -fsSL -o /tmp/release.jar \
+  "https://github.com/nise-nabe/gradle-tapi-mcp-server/releases/download/v${VERSION}/gradle-tapi-mcp-server-${VERSION}.jar"
+sha256sum /tmp/release.jar | awk '{print $1}'
+```
+
+`install.sh` の SHA は **GitHub Release にアップロードした JAR** と同一であること。
 
 ## 手順
 
@@ -123,6 +131,8 @@ gh release create "v${VERSION}" \
   "build/libs/gradle-tapi-mcp-server-${VERSION}.jar"
 ```
 
+Release 作成直後に SHA-256 を記録する（§ follow-up PR 参照）。
+
 Release 本文のテンプレ（`--notes` で上書きする場合）:
 
 ```markdown
@@ -147,9 +157,8 @@ curl -fsSL -o /tmp/test.jar \
   "https://github.com/nise-nabe/gradle-tapi-mcp-server/releases/download/v${VERSION}/gradle-tapi-mcp-server-${VERSION}.jar"
 sha256sum /tmp/test.jar
 
-# 起動スモーク（任意）
-GRADLE_PROJECT_DIR=/workspace java -jar /tmp/test.jar &
-# initialize → tools/list を stdio で送り、応答を確認
+# 起動スモーク（任意）— AGENTS.md の E2E 手順参照
+timeout 5 env GRADLE_PROJECT_DIR=/workspace java -jar /tmp/test.jar </dev/null || true
 ```
 
 ## チェックリスト
@@ -157,10 +166,11 @@ GRADLE_PROJECT_DIR=/workspace java -jar /tmp/test.jar &
 - [ ] `main` で `./gradlew build` 成功
 - [ ] `build.gradle.kts` / `README.md` のバージョン一致
 - [ ] bump PR が `main` にマージ済み
-- [ ] `./gradlew jar` で fat JAR 生成
+- [ ] `git checkout main && git pull` のあと `./gradlew --no-daemon jar` で fat JAR 生成
 - [ ] `vX.Y.Z` タグを `main` HEAD に push
 - [ ] GitHub Release に JAR アセットあり
-- [ ] （Cloud 向け）`install.sh` の VERSION / SHA-256 更新 PR
+- [ ] Release JAR の SHA-256 を記録済み
+- [ ] （Cloud 向け）`install.sh` / `AGENTS.md` / スキル類の follow-up PR
 
 ## 関連スキル
 
@@ -176,6 +186,6 @@ GRADLE_PROJECT_DIR=/workspace java -jar /tmp/test.jar &
 |------|------|
 | `main` へ直接 push 拒否 | バージョン bump は必ず PR |
 | `gh: command not found` | `/exec-daemon/gh` または `.cursor/install.sh` 再実行 |
-| Release に古い JAR | タグ付け**後**に `./gradlew jar` したか確認。`build.gradle.kts` の version と JAR 名が一致しているか確認 |
-| `install.sh` SHA 不一致 | Release アセットの `sha256sum` を再取得して更新 |
-| タグが `main` とずれる | タグを削除して `main` HEAD から再作成（`git push origin :refs/tags/vX.Y.Z` → 再 tag） |
+| Release に古い JAR | bump マージ後に `git pull origin main` したか。タグ・Release **前**に `./gradlew --no-daemon jar` したか。`build.gradle.kts` の `version` と JAR ファイル名が一致するか |
+| `install.sh` SHA 不一致 | Release アセット（または Release 直後に保存した JAR）の `sha256sum` を使う。follow-up 用に再ビルドした JAR と混同しない |
+| タグが `main` とずれる | `git checkout main && git pull` 後にタグ付け。ずれたら削除して再作成（`git push origin :refs/tags/vX.Y.Z` → 再 tag） |
