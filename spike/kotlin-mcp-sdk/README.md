@@ -1,6 +1,8 @@
-# Kotlin MCP SDK spike
+# Kotlin MCP SDK spike (historical)
 
-Standalone spike for option **C** from the Kotlin MCP SDK investigation. Not wired into the main MCP server.
+**Note:** The production server now uses Kotlin MCP SDK directly. This spike was used to validate stdio wiring before the full migration.
+
+Standalone spike used during the Kotlin MCP SDK investigation.
 
 ## Build
 
