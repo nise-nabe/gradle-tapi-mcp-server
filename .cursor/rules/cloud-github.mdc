@@ -1,0 +1,24 @@
+---
+description: GitHub and PR workflows for Cursor Cloud Agents — prefer ManagePullRequest over gh CLI
+alwaysApply: true
+---
+
+# Cloud GitHub operations
+
+In Cursor Cloud, do **not** assume `gh` is on PATH before `.cursor/install.sh` completes.
+
+## Pull requests
+
+- Use the built-in **ManagePullRequest** tool for `create_pr` and `update_pr`.
+- Use **EditPullRequestLabels** for label changes.
+- Do not run `gh pr create` / `gh pr edit` unless ManagePullRequest fails and `gh auth status` succeeds.
+
+## GitHub CLI fallback
+
+When a skill requires `gh` (CI checks, PR comments, API calls):
+
+1. Resolve: `command -v gh` or `/exec-daemon/gh`
+2. Verify: `gh auth status`
+3. If either step fails, stop — do not loop on missing `gh`. Use ManagePullRequest for PRs or `./gradlew build` for local verification.
+
+Do not install `gh` in agent sessions. See `.cursor/skills/cloud-github/SKILL.md`.
