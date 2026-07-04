@@ -8,6 +8,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotification
 import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotificationParams
 import io.modelcontextprotocol.kotlin.sdk.types.ProgressToken
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -23,8 +24,10 @@ internal class ClientConnectionBuildNotifier(
     private val connection: ClientConnection,
     private val progressToken: ProgressToken,
 ) : McpBuildNotifier {
+    private val orderedDispatcher = Dispatchers.Default.limitedParallelism(1)
+
     override fun notifyProgress(progress: Double, total: Double, message: String) {
-        scope.launch {
+        scope.launch(orderedDispatcher) {
             runCatching {
                 connection.notification(
                     ProgressNotification(
@@ -41,7 +44,7 @@ internal class ClientConnectionBuildNotifier(
     }
 
     override fun notifyLog(message: String, level: LoggingLevel) {
-        scope.launch {
+        scope.launch(orderedDispatcher) {
             runCatching {
                 connection.sendLoggingMessage(
                     LoggingMessageNotification(
