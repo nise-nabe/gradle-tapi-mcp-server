@@ -484,22 +484,25 @@ class BuildExecutionManager(
         private val delegate: McpBuildNotifier?,
     ) {
         fun notifyIfNeeded(tracker: BuildProgressTracker) {
-            if (delegate == null || !tracker.shouldNotifyProgress()) {
+            val active = delegate ?: return
+            if (!tracker.shouldNotifyProgress()) {
                 return
             }
-            sendProgress(tracker, final = false)
-            sendLog(tracker)
+            sendProgress(active, tracker, final = false)
+            sendLog(active, tracker)
         }
 
         fun notifyFinal(tracker: BuildProgressTracker) {
-            if (delegate == null) {
-                return
-            }
-            sendProgress(tracker, final = true)
-            sendLog(tracker)
+            val active = delegate ?: return
+            sendProgress(active, tracker, final = true)
+            sendLog(active, tracker)
         }
 
-        private fun sendProgress(tracker: BuildProgressTracker, final: Boolean) {
+        private fun sendProgress(
+            delegate: McpBuildNotifier,
+            tracker: BuildProgressTracker,
+            final: Boolean,
+        ) {
             val snapshot = tracker.snapshot()
             val completed = snapshot.completedTaskCount
             val total = (completed + snapshot.runningTaskCount + snapshot.failedTaskCount).coerceAtLeast(1)
@@ -512,14 +515,14 @@ class BuildExecutionManager(
                     append(snapshot.failedTaskCount)
                 }
             }
-            delegate?.notifyProgress(
+            delegate.notifyProgress(
                 progress = if (final) total.toDouble() else completed.toDouble(),
                 total = total.toDouble(),
                 message = message,
             )
         }
 
-        private fun sendLog(tracker: BuildProgressTracker) {
+        private fun sendLog(delegate: McpBuildNotifier, tracker: BuildProgressTracker) {
             val snapshot = tracker.snapshot()
             val latest = snapshot.recentEvents.lastOrNull() ?: return
             val level = when (latest.eventType) {
@@ -527,7 +530,7 @@ class BuildExecutionManager(
                 "TASK_SKIP", "TEST_SKIP" -> LoggingLevel.Warning
                 else -> LoggingLevel.Info
             }
-            delegate?.notifyLog(
+            delegate.notifyLog(
                 message = "${latest.eventType}: ${latest.displayName}",
                 level = level,
             )

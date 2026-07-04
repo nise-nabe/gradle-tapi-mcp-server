@@ -5,6 +5,8 @@ import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 fun Server.registerTool(
     scope: CoroutineScope,
@@ -30,8 +32,14 @@ fun Server.registerTool(
     ) { request ->
         try {
             val args = request.arguments.toToolArguments()
-            val notifier = buildProgressNotifier(scope, this, request.meta?.progressToken)
-            handler(args, notifier)
+            val notifier = buildProgressNotifier(
+                scope = scope,
+                connection = this,
+                progressToken = resolveProgressToken(request.meta?.progressToken, args),
+            )
+            withContext(Dispatchers.IO) {
+                handler(args, notifier)
+            }
         } catch (exception: Exception) {
             val code = mapExceptionToErrorCode(exception)
             structuredErrorResult(code, exception.message ?: exception.toString())

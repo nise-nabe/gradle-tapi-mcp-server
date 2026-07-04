@@ -102,59 +102,59 @@ internal fun runOutputSchema(
     )
 
 context(runtime: GradleMcpRuntime)
-fun Server.registerBuildTools(scope: CoroutineScope) {
+fun Server.registerBuildTools(serverScope: CoroutineScope) {
     registerTool(
-        scope,
-            name = "gradle_list_builds",
-            description = "List recent MCP Gradle builds from in-memory records and .gradle/mcp-builds/ on disk. Does not require an active Tooling API connection. Use when a buildId was lost or to discover builds to poll with gradle_get_build_status. Each build summary always includes buildId, status, tasks, testClasses, and recordSource (memory|disk). Optional fields omitted when absent: kind, projectDirectory, startedAt, finishedAt, outcome (e.g. running builds omit outcome; Gradle-only disk records may omit kind). Sorted by finishedAt or startedAt, most recent first.",
-            schema = listBuildsSchema(),
-        ) { args ->
-            val scope = ProjectDirectoryScope(runtime.connectionManager)
-            val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
-                args,
-                boundary = scope::requireWithinBoundary,
-            )
-            val limit = args.optionalPositiveInt("limit") ?: BuildExecutionManager.DEFAULT_LIST_BUILDS
-            jsonResult(runtime.buildExecutionManager.listBuilds(projectDirectory, limit))
+        serverScope,
+        name = "gradle_list_builds",
+        description = "List recent MCP Gradle builds from in-memory records and .gradle/mcp-builds/ on disk. Does not require an active Tooling API connection. Use when a buildId was lost or to discover builds to poll with gradle_get_build_status. Each build summary always includes buildId, status, tasks, testClasses, and recordSource (memory|disk). Optional fields omitted when absent: kind, projectDirectory, startedAt, finishedAt, outcome (e.g. running builds omit outcome; Gradle-only disk records may omit kind). Sorted by finishedAt or startedAt, most recent first.",
+        schema = listBuildsSchema(),
+    ) { args ->
+        val projectScope = ProjectDirectoryScope(runtime.connectionManager)
+        val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
+            args,
+            boundary = projectScope::requireWithinBoundary,
+        )
+        val limit = args.optionalPositiveInt("limit") ?: BuildExecutionManager.DEFAULT_LIST_BUILDS
+        jsonResult(runtime.buildExecutionManager.listBuilds(projectDirectory, limit))
     }
     registerTool(
-        scope,
-            name = "gradle_cancel_build",
-            description = "Cancel a background Gradle build started with background=true. Uses the Tooling API CancellationToken to stop the Gradle daemon build. Returns immediately with cancellation requested; poll gradle_get_build_status until status is no longer running, then inspect the terminal status (cancelled, succeeded, or failed). No-op when the build already finished.",
-            schema = objectSchema(
-                required = listOf("buildId"),
-                properties = mapOf(
-                    "buildId" to stringProperty("Build ID returned by gradle_run_tasks or gradle_run_tests with background=true"),
-                    "projectDirectory" to projectDirectoryProperty(
-                        "Gradle project root that started the build. Optional disambiguation when buildId alone is insufficient.",
-                    ),
+        serverScope,
+        name = "gradle_cancel_build",
+        description = "Cancel a background Gradle build started with background=true. Uses the Tooling API CancellationToken to stop the Gradle daemon build. Returns immediately with cancellation requested; poll gradle_get_build_status until status is no longer running, then inspect the terminal status (cancelled, succeeded, or failed). No-op when the build already finished.",
+        schema = objectSchema(
+            required = listOf("buildId"),
+            properties = mapOf(
+                "buildId" to stringProperty("Build ID returned by gradle_run_tasks or gradle_run_tests with background=true"),
+                "projectDirectory" to projectDirectoryProperty(
+                    "Gradle project root that started the build. Optional disambiguation when buildId alone is insufficient.",
                 ),
             ),
-        ) { args ->
-            val scope = ProjectDirectoryScope(runtime.connectionManager)
-            val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
-                args,
-                boundary = scope::requireWithinBoundary,
-            )
-            jsonResult(
-                runtime.buildExecutionManager.cancelBuild(
-                    args.requiredString("buildId"),
-                    projectDirectory,
-                ),
-            )
+        ),
+    ) { args ->
+        val projectScope = ProjectDirectoryScope(runtime.connectionManager)
+        val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
+            args,
+            boundary = projectScope::requireWithinBoundary,
+        )
+        jsonResult(
+            runtime.buildExecutionManager.cancelBuild(
+                args.requiredString("buildId"),
+                projectDirectory,
+            ),
+        )
     }
     registerTool(
-        scope,
+        serverScope,
         name = "gradle_get_build_status",
         description = "Return status for a running or completed Gradle build started with background=true. buildId is required because multiple background builds may run concurrently. Status values: running, succeeded, failed, cancelled, not_found. Default response is outcome and buildSummary only (no stdout/stderr task log). Set includeOutput=true for captured stdout/stderr; while the build is running, live output is available only when the MCP server still holds the in-memory record—disk-only polls (after restart or memory eviction) return stdout/stderr only after MCP finalizes logs at build end. Disk-backed polls include statusSource (memory|disk), and when statusSource is disk also liveProgress=false, progressAvailable, and recordDirectory. Gradle on-disk records override in-memory status while Gradle is still active; stale Gradle running (MCP terminal, no post-finalize events) falls back to MCP. Optional projectDirectory locates disk artifacts when the in-memory record is gone and the connected project differs. Completed builds include failedTaskCount, failedTasks, and buildSummary.failureSummary without includeProgress when available (in-memory, MCP-terminal disk, or Gradle-terminal failed with events.ndjson). Set includeProgress=true for the full progress object (completedTasks, recentEvents); disk progress uses events.ndjson (task and test events). Set includeProblems=true to surface live Gradle Problems API events as liveProblems during the build and merged problems on terminal failures. Set includeDownloads=true for dependency download progress (activeDownloadCount, recentDownloads); requires an in-memory record with live Tooling API events. Set includeTestDetails=true to add progress.recentEvents[].test (requires includeProgress=true) and terminal failedTests for failed or cancelled builds; disk polls restore failedTests from events.ndjson when present.",
         schema = buildStatusSchema(),
     ) { args ->
         val outputLimit = OutputLimitOptions.fromArgs(args)
         val progressOptions = ProgressResponseOptions.fromArgs(args)
-        val scope = ProjectDirectoryScope(runtime.connectionManager)
+        val projectScope = ProjectDirectoryScope(runtime.connectionManager)
         val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
             args,
-            boundary = scope::requireWithinBoundary,
+            boundary = projectScope::requireWithinBoundary,
         )
         jsonResult(
             runtime.buildExecutionManager.status(
@@ -166,7 +166,7 @@ fun Server.registerBuildTools(scope: CoroutineScope) {
         )
     }
     registerTool(
-        scope,
+        serverScope,
         name = "gradle_run_tasks",
         description = "Execute Gradle task paths and return build outcome and summary. stdout/stderr omitted by default (no UP-TO-DATE / task log noise); set includeOutput=true to include captured output. Use background=true to start a long build and poll gradle_get_build_status with the returned buildId; call gradle_cancel_build to stop an unneeded background build. Multiple background builds may run concurrently. Set includeProgress=true for detailed progress on foreground runs. Set includeProblems=true to capture live Gradle Problems API events. Set includeDownloads=true to track dependency download progress during long or first-time builds. Set includeTestDetails=true for structured TEST_* metadata in progress.recentEvents (requires includeProgress=true) and terminal failedTests summaries on failed or cancelled builds.",
         schema = runOutputSchema(
@@ -197,7 +197,7 @@ fun Server.registerBuildTools(scope: CoroutineScope) {
         }
     }
     registerTool(
-        scope,
+        serverScope,
         name = "gradle_run_tests",
         description = "Execute JVM tests with class, method, pattern, or task-scoped selection and return build outcome and summary. " +
             "Provide exactly one of testClasses, testMethods, or includePattern/includePatterns (patterns require tasks). " +

@@ -67,3 +67,23 @@ internal fun buildProgressNotifier(
     }
     return ClientConnectionBuildNotifier(scope, connection, progressToken)
 }
+
+internal fun resolveProgressToken(
+    metaToken: ProgressToken?,
+    args: Map<String, Any>,
+): ProgressToken? {
+    if (metaToken != null) {
+        return metaToken
+    }
+    @Suppress("UNCHECKED_CAST")
+    val nestedMeta = args["_meta"] as? Map<String, Any> ?: return null
+    return toProgressToken(nestedMeta["progressToken"])
+}
+
+private fun toProgressToken(raw: Any?): ProgressToken? =
+    when (raw) {
+        is ProgressToken -> raw
+        is String -> if (raw.isBlank()) null else ProgressToken(raw)
+        is Number -> ProgressToken(raw.toLong())
+        else -> null
+    }
