@@ -35,9 +35,20 @@ object ModelSerializers {
         return node + mapOf("tasks" to serializeTasks(project.tasks.map(::taskSnapshot), options))
     }
 
-    fun buildInvocations(invocations: BuildInvocations, options: ModelQueryOptions = ModelQueryOptions()): Map<String, Any?> =
+    fun buildInvocations(
+        invocations: BuildInvocations,
+        project: GradleProject,
+        options: ModelQueryOptions = ModelQueryOptions(),
+        treeOptions: ProjectTreeOptions = ProjectTreeOptions(),
+    ): Map<String, Any?> =
         buildMap {
-            put("tasks", serializeTasks(invocations.tasks.map(::taskSnapshot), options.copy(includeTasks = true)))
+            put(
+                "tasks",
+                serializeTasks(
+                    collectTasksFromProjectTree(project, treeOptions),
+                    options.copy(includeTasks = true),
+                ),
+            )
             if (options.includeTaskSelectors) {
                 put(
                     "taskSelectors",
@@ -134,6 +145,27 @@ object ModelSerializers {
             )
         },
     )
+
+    internal fun collectTasksFromProjectTree(
+        project: GradleProject,
+        treeOptions: ProjectTreeOptions,
+        depth: Int = 0,
+    ): List<TaskSnapshot> {
+        val tasks = mutableListOf<TaskSnapshot>()
+        tasks.addAll(project.tasks.map(::taskSnapshot))
+
+        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth, treeOptions.maxDepth, project.children.size)
+        if (depthLimit.omitChildren) {
+            return tasks
+        }
+
+        val allChildren = project.children.toList()
+        val childLimit = ProjectTreeLimits.applyChildLimit(allChildren.size, treeOptions.maxChildren)
+        allChildren.take(childLimit.visibleChildCount).forEach { child ->
+            tasks.addAll(collectTasksFromProjectTree(child, treeOptions, depth + 1))
+        }
+        return tasks
+    }
 
     fun filterTasks(tasks: List<TaskSnapshot>, options: ModelQueryOptions): List<TaskSnapshot> {
         if (!options.includeTasks) {
