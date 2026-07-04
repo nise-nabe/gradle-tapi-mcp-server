@@ -105,7 +105,7 @@ setup_gh_cli() {
 }
 
 ensure_jdk17() {
-  if [[ -n "${JAVA_HOME:-}" ]] && java -version 2>&1 | grep -q '"17\.'; then
+  if command -v java >/dev/null 2>&1 && java -version 2>&1 | grep -q '"17\.'; then
     return 0
   fi
 
