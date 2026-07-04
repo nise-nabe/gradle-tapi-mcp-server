@@ -8,7 +8,7 @@ MCP server that exposes [Gradle Tooling API](https://docs.gradle.org/current/use
 ./gradlew jar
 ```
 
-The fat JAR is written to `build/libs/gradle-tapi-mcp-server-0.3.0.jar`.
+The fat JAR is written to `build/libs/gradle-tapi-mcp-server-0.3.1.jar`.
 
 ## Cursor configuration
 
@@ -21,7 +21,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
       "command": "java",
       "args": [
         "-jar",
-        "/path/to/gradle-tapi-mcp-server/build/libs/gradle-tapi-mcp-server-0.3.0.jar"
+        "/path/to/gradle-tapi-mcp-server/build/libs/gradle-tapi-mcp-server-0.3.1.jar"
       ],
       "env": {
         "GRADLE_PROJECT_DIR": "${workspaceFolder}"
