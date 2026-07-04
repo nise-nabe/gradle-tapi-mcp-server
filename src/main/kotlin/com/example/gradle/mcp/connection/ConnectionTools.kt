@@ -84,7 +84,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
             gradleVersion = args.optionalString("gradleVersion"),
             gradleInstallation = args.optionalString("gradleInstallation"),
         )
-        jsonResult(runtime.connectionManager.connect(config))
+        jsonResult(runtime.connectionManager.connect(config).toResponseMap())
     }
     registerTool(
         scope,

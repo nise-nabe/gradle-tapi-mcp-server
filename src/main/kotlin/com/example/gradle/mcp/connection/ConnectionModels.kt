@@ -29,7 +29,12 @@ data class ConnectionConfig(
 data class ConnectionInfo(
     val projectDirectory: String,
     val state: String,
-)
+) {
+    fun toResponseMap(): Map<String, Any?> = mapOf(
+        "projectDirectory" to projectDirectory,
+        "state" to state,
+    )
+}
 
 data class ConnectionStatus(
     val connected: Boolean,
