@@ -1,5 +1,8 @@
 package com.example.gradle.mcp.build
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class BuildProblemSnapshot(
     val label: String,
     val details: String? = null,

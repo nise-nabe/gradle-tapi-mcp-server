@@ -4,7 +4,7 @@ import com.example.gradle.mcp.build.persistence.McpBuildRecordPaths
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
-import com.example.gradle.mcp.protocol.mcpObjectMapper
+import com.example.gradle.mcp.protocol.encodeMcpJson
 import com.example.gradle.mcp.support.failedTracker
 import com.example.gradle.mcp.support.gradleBuildResult
 import com.example.gradle.mcp.support.mcpBuildResult
@@ -79,7 +79,7 @@ class BuildExecutionManagerPersistenceTest {
         val leakedDir = File(projectDir, ".gradle/leaked-build")
         leakedDir.mkdirs()
         File(leakedDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 mcpBuildResult(buildId = "leaked", projectDirectory = projectDir.absolutePath),
             ),
             StandardCharsets.UTF_8,

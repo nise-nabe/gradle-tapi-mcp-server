@@ -9,11 +9,11 @@ import org.junit.jupiter.api.Test
 
 class McpSchemaMappingTest {
     @Test
-    fun `toArgumentMap reads JSON object arguments`() {
+    fun `toToolArguments reads JSON object arguments`() {
         val args = buildJsonObject {
             put("projectDirectory", "/workspace")
             put("background", true)
-        }.toArgumentMap()
+        }.toToolArguments()
 
         args["projectDirectory"] shouldBe "/workspace"
         args["background"] shouldBe true

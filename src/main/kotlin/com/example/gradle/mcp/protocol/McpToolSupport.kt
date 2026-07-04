@@ -29,7 +29,7 @@ fun Server.registerTool(
         inputSchema = schema.toToolSchema(),
     ) { request ->
         try {
-            val args = request.arguments.toArgumentMap()
+            val args = request.arguments.toToolArguments()
             val notifier = buildProgressNotifier(scope, this, request.meta?.progressToken)
             handler(args, notifier)
         } catch (exception: Exception) {
@@ -42,7 +42,7 @@ fun Server.registerTool(
 fun jsonResult(value: Any?): CallToolResult =
     CallToolResult(
         content = listOf(
-            TextContent(text = mcpObjectMapper().writeValueAsString(value)),
+            TextContent(text = encodeMcpJsonDynamic(value)),
         ),
         isError = false,
     )

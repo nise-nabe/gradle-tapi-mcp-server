@@ -4,20 +4,18 @@ import com.example.gradle.mcp.build.BuildListEntry
 import com.example.gradle.mcp.build.BuildOutputParser
 import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
-import com.example.gradle.mcp.build.BuildRecord
 import com.example.gradle.mcp.build.ProgressEventTypes
 import com.example.gradle.mcp.build.CapturedStreamSnapshot
 import com.example.gradle.mcp.build.TestProgressDetailsExtractor
-import com.example.gradle.mcp.protocol.mcpObjectMapper
-import tools.jackson.databind.json.JsonMapper
-import tools.jackson.module.kotlin.readValue
+import com.example.gradle.mcp.build.BuildRecord
+import com.example.gradle.mcp.protocol.decodeMcpJson
+import com.example.gradle.mcp.protocol.decodeMcpJsonMap
+import com.example.gradle.mcp.protocol.encodeMcpJson
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 
-class BuildRecordStore(
-    private val objectMapper: JsonMapper = mcpObjectMapper(),
-) {
+class BuildRecordStore {
     fun recordDirectory(projectDirectory: File, buildId: String): File? =
         McpBuildRecordPaths.recordDirectory(projectDirectory, buildId)
 
@@ -70,7 +68,7 @@ class BuildRecordStore(
         stderr: CapturedStreamSnapshot,
     ) {
         recordDir.mkdirs()
-        writeAtomically(File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE), objectMapper.writeValueAsString(result))
+        writeAtomically(File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE), encodeMcpJson(result))
         writeAtomically(
             File(recordDir, McpBuildRecordPaths.STDOUT_LOG),
             stdout.text,
@@ -192,11 +190,11 @@ class BuildRecordStore(
 
     internal fun readGradleResult(recordDir: File): GradleBuildResult? =
         McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE)
-            ?.let { readJsonFile(it) }
+            ?.let { readJsonFile<GradleBuildResult>(it) }
 
     internal fun readMcpResult(recordDir: File): McpBuildResult? =
         McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE)
-            ?.let { readJsonFile(it) }
+            ?.let { readJsonFile<McpBuildResult>(it) }
 
     internal fun readEvents(recordDir: File): List<DiskBuildEvent> {
         val file = McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.EVENTS_FILE)
@@ -212,7 +210,7 @@ class BuildRecordStore(
     }
 
     private fun parseEventLine(line: String): DiskBuildEvent? {
-        val map = objectMapper.readValue<Map<String, Any?>>(line)
+        val map = decodeMcpJsonMap(line)
         val eventType = map["type"] as? String ?: return null
         val timestamp = map["ts"] as? String ?: return null
         val displayName = map["displayName"] as? String ?: when (eventType) {
@@ -229,7 +227,7 @@ class BuildRecordStore(
     }
 
     private inline fun <reified T> readJsonFile(file: File): T? =
-        runCatching { objectMapper.readValue<T>(file.readText(StandardCharsets.UTF_8)) }.getOrNull()
+        runCatching { decodeMcpJson<T>(file.readText(StandardCharsets.UTF_8)) }.getOrNull()
 
     private fun readLogFile(
         recordDir: File,

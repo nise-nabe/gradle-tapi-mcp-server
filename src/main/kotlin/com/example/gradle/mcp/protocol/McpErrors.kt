@@ -22,7 +22,7 @@ fun structuredErrorResult(code: McpErrorCode, message: String): CallToolResult =
     CallToolResult(
         content = listOf(
             TextContent(
-                text = mcpObjectMapper().writeValueAsString(
+                text = encodeMcpJsonDynamic(
                     mapOf(
                         "error" to mapOf(
                             "code" to code.name,

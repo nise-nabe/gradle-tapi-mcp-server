@@ -14,7 +14,7 @@
 |------|-----|
 | Artifact | `io.modelcontextprotocol:kotlin-sdk-server:0.11.0` |
 | 補助 | `kotlinx-coroutines-core`, `kotlinx-serialization-json` |
-| ツール結果 JSON | Jackson 3（クライアント互換のため従来どおり `TextContent` 内 JSON 文字列） |
+| ツール結果 JSON | kotlinx.serialization（`McpJsonSupport`、クライアント互換のため `TextContent` 内 JSON 文字列） |
 | MCP ワイヤ | kotlinx.serialization（SDK 内部） |
 
 ## アーキテクチャ変更
