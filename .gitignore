@@ -1,7 +1,6 @@
 /build/
 /.gradle/
 /.kotlin/
-/.cursor/
 /.idea/
 *.iml
 *.jar
