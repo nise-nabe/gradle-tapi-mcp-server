@@ -99,14 +99,23 @@ class McpBuildRecorderSupport {
         }
         return "failed"
     }
+
+    static Map readLauncherMetadata(String metadataPath) {
+        def parsed = new groovy.json.JsonSlurper().parse(new File(metadataPath))
+        def recordDir = new File(parsed.recordDir as String).absoluteFile
+        recordDir.mkdirs()
+        return [
+            recordDirPath: recordDir.absolutePath,
+            buildId      : (parsed.buildId as String)?.trim(),
+        ]
+    }
 }
 
 abstract class McpConfigurationCacheRecorderService
         implements BuildService<McpConfigurationCacheRecorderService.Params>, OperationCompletionListener, AutoCloseable {
 
     interface Params extends BuildServiceParameters {
-        Property<String> getRecordDirPath()
-        Property<String> getBuildId()
+        Property<String> getLauncherMetadataPath()
     }
 
     private static final long HEARTBEAT_INTERVAL_MS = 15_000L
@@ -114,10 +123,15 @@ abstract class McpConfigurationCacheRecorderService
     private final Object writeLock = new Object()
     private java.util.Timer heartbeatTimer
 
+    private Map launcherContext() {
+        McpBuildRecorderSupport.readLauncherMetadata(parameters.launcherMetadataPath.get())
+    }
+
     private void appendEvent(Map event) {
+        def context = launcherContext()
         def line = groovy.json.JsonOutput.toJson(event) + "\n"
         synchronized(writeLock) {
-            def events = new File(parameters.recordDirPath.get(), "events.ndjson")
+            def events = new File(context.recordDirPath, "events.ndjson")
             events.withWriterAppend('UTF-8') { writer ->
                 writer.write(line)
             }
@@ -128,8 +142,7 @@ abstract class McpConfigurationCacheRecorderService
         if (heartbeatTimer != null) {
             return
         }
-        def recordDir = new File(parameters.recordDirPath.get())
-        recordDir.mkdirs()
+        launcherContext()
         heartbeatTimer = new java.util.Timer(true)
         heartbeatTimer.scheduleAtFixedRate({
             appendEvent([
@@ -177,10 +190,7 @@ abstract class McpBuildFinalizeFlowAction implements FlowAction<McpBuildFinalize
 
     interface Params extends FlowParameters {
         @Input
-        Property<String> getRecordDirPath()
-
-        @Input
-        Property<String> getBuildId()
+        Property<String> getLauncherMetadataPath()
 
         @Input
         Property<Boolean> getBuildFailed()
@@ -194,6 +204,7 @@ abstract class McpBuildFinalizeFlowAction implements FlowAction<McpBuildFinalize
 
     @Override
     void execute(Params parameters) {
+        def context = McpBuildRecorderSupport.readLauncherMetadata(parameters.launcherMetadataPath.get())
         def failureMessage = parameters.failureMessage.getOrNull()
         if (failureMessage != null && failureMessage.isEmpty()) {
             failureMessage = null
@@ -204,8 +215,8 @@ abstract class McpBuildFinalizeFlowAction implements FlowAction<McpBuildFinalize
             failureMessage,
         )
         McpBuildRecorderSupport.writeTerminalGradleResult(
-            parameters.recordDirPath.get(),
-            parameters.buildId.getOrNull(),
+            context.recordDirPath,
+            context.buildId,
             status,
             failureMessage,
         )
@@ -217,11 +228,7 @@ gradle.projectsLoaded {
         "mcpConfigurationCacheRecorder",
         McpConfigurationCacheRecorderService,
     ) { spec ->
-        spec.parameters.recordDirPath.set(gradle.ext.mcpRecordDirPath)
-        def buildId = gradle.ext.mcpBuildId?.trim()
-        if (buildId) {
-            spec.parameters.buildId.set(buildId)
-        }
+        spec.parameters.launcherMetadataPath.set(gradle.ext.mcpLauncherMetadataPath)
     }
     gradle.services.get(BuildEventsListenerRegistry).onTaskCompletion(listenerProvider)
     listenerProvider.get().startHeartbeatIfNeeded()
@@ -229,11 +236,7 @@ gradle.projectsLoaded {
     def flowScope = gradle.services.get(FlowScope)
     def flowProviders = gradle.services.get(FlowProviders)
     flowScope.always(McpBuildFinalizeFlowAction) { spec ->
-        spec.parameters.recordDirPath.set(gradle.ext.mcpRecordDirPath)
-        def buildId = gradle.ext.mcpBuildId?.trim()
-        if (buildId) {
-            spec.parameters.buildId.set(buildId)
-        }
+        spec.parameters.launcherMetadataPath.set(gradle.ext.mcpLauncherMetadataPath)
         spec.parameters.buildFailed.set(
             flowProviders.buildWorkResult.map { it.failure.present },
         )

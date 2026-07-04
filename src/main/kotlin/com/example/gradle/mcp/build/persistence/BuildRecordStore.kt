@@ -19,12 +19,32 @@ class BuildRecordStore {
     fun recordDirectory(projectDirectory: File, buildId: String): File? =
         McpBuildRecordPaths.recordDirectory(projectDirectory, buildId)
 
-    fun launcherArguments(projectDirectory: File, buildId: String): List<String> {
+    fun prepareLauncherMetadata(
+        projectDirectory: File,
+        buildId: String,
+        taskNames: List<String>,
+    ): File {
         val recordDir = recordDirectory(projectDirectory, buildId)
             ?: error("Unsafe or invalid buildId for persistence: $buildId")
+        val metadata = McpBuildLauncherMetadata(
+            buildId = buildId,
+            recordDir = recordDir.absolutePath,
+            ccInitScript = McpBuildInitScriptProvider.configurationCacheInitScriptPath(),
+        )
+        val metadataFile = McpBuildRecordPaths.launcherMetadataFile(projectDirectory)
+        writeAtomically(metadataFile, encodeMcpJson(metadata))
+        writeInitialGradleRunningState(recordDir, buildId, taskNames)
+        return metadataFile
+    }
+
+    fun launcherArguments(
+        projectDirectory: File,
+        buildId: String,
+        taskNames: List<String>,
+    ): List<String> {
+        val metadataFile = prepareLauncherMetadata(projectDirectory, buildId, taskNames)
         return listOf(
-            "-Pmcp.buildId=$buildId",
-            "-Pmcp.recordDir=${recordDir.absolutePath}",
+            "-Pmcp.launcherMetadata=${metadataFile.absolutePath}",
             "-Pmcp.ccInitScript=${McpBuildInitScriptProvider.configurationCacheInitScriptPath()}",
             "--init-script",
             McpBuildInitScriptProvider.initScriptPath(),
@@ -243,6 +263,41 @@ class BuildRecordStore {
             text.length
         }
         return CapturedStreamSnapshot(text = text, totalChars = totalChars)
+    }
+
+    private fun writeInitialGradleRunningState(
+        recordDir: File,
+        buildId: String,
+        taskNames: List<String>,
+    ) {
+        recordDir.mkdirs()
+        val result = GradleBuildResult(
+            buildId = buildId,
+            status = BuildProgressTracker.STATUS_RUNNING,
+            startedAt = Instant.now().toString(),
+            taskNames = taskNames,
+        )
+        writeAtomically(File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE), encodeMcpJson(result))
+        val displayName = if (taskNames.isNotEmpty()) {
+            "Gradle tasks: ${taskNames.joinToString(" ")}"
+        } else {
+            "Gradle build"
+        }
+        appendEvent(
+            recordDir,
+            mapOf(
+                "ts" to Instant.now().toString(),
+                "type" to ProgressEventTypes.START,
+                "displayName" to displayName,
+            ),
+        )
+    }
+
+    private fun appendEvent(recordDir: File, event: Map<String, String>) {
+        val line = encodeMcpJson(event) + "\n"
+        val events = File(recordDir, McpBuildRecordPaths.EVENTS_FILE)
+        events.parentFile?.mkdirs()
+        events.appendText(line, StandardCharsets.UTF_8)
     }
 
     private fun writeAtomically(target: File, content: String) {

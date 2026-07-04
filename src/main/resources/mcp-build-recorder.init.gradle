@@ -1,6 +1,6 @@
-def recordDirPath = gradle.startParameter.projectProperties["mcp.recordDir"]
+def launcherMetadataPath = gradle.startParameter.projectProperties["mcp.launcherMetadata"]
 // Event types must stay aligned with com.example.gradle.mcp.build.ProgressEventTypes (Kotlin).
-if (!recordDirPath) {
+if (!launcherMetadataPath) {
     return
 }
 
@@ -10,8 +10,8 @@ import org.gradle.api.tasks.testing.TestDescriptor
 import org.gradle.api.tasks.testing.TestListener
 import org.gradle.api.tasks.testing.TestResult
 
-def resolvedRecordDir = file(recordDirPath).absoluteFile
-resolvedRecordDir.mkdirs()
+// Stable configuration input: metadata file path only (contents vary per MCP build).
+gradle.ext.mcpLauncherMetadataPath = file(launcherMetadataPath).absolutePath
 
 class McpBuildRecorderSupport {
     static String resolveBuildId(String preferred, Map existing) {
@@ -99,30 +99,52 @@ class McpBuildRecorderSupport {
         }
         return "failed"
     }
+
+    static Map readLauncherMetadata(String metadataPath) {
+        def parsed = new groovy.json.JsonSlurper().parse(new File(metadataPath))
+        def recordDir = new File(parsed.recordDir as String).absoluteFile
+        recordDir.mkdirs()
+        return [
+            recordDirPath: recordDir.absolutePath,
+            buildId      : (parsed.buildId as String)?.trim(),
+        ]
+    }
 }
 
-// Store on gradle.ext so listener closures survive configuration-cache serialization.
-gradle.ext.mcpRecordDirPath = resolvedRecordDir.absolutePath
-gradle.ext.mcpBuildId = gradle.startParameter.projectProperties["mcp.buildId"]
+// Defer metadata content reads to execution phase so configuration cache can reuse entries.
+gradle.ext.mcpRecordDirPath = null
+gradle.ext.mcpBuildId = null
 gradle.ext.mcpEventWriteLock = new Object()
 gradle.ext.mcpHeartbeatIntervalMs = 15_000L
 gradle.ext.mcpHeartbeatTimer = null
 
+gradle.ext.mcpEnsureLauncherContext = { ->
+    if (gradle.ext.mcpRecordDirPath == null) {
+        def context = McpBuildRecorderSupport.readLauncherMetadata(gradle.ext.mcpLauncherMetadataPath)
+        gradle.ext.mcpRecordDirPath = context.recordDirPath
+        gradle.ext.mcpBuildId = context.buildId
+    }
+}
+
 gradle.ext.mcpReadGradleResult = { ->
+    gradle.ext.mcpEnsureLauncherContext()
     McpBuildRecorderSupport.readGradleResult(gradle.ext.mcpRecordDirPath)
 }
 
 gradle.ext.mcpWriteGradleResult = { Map data ->
+    gradle.ext.mcpEnsureLauncherContext()
     McpBuildRecorderSupport.writeGradleResult(gradle.ext.mcpRecordDirPath, data)
 }
 
 gradle.ext.mcpAppendEvent = { Map event ->
+    gradle.ext.mcpEnsureLauncherContext()
     synchronized(gradle.ext.mcpEventWriteLock) {
         McpBuildRecorderSupport.appendEvent(gradle.ext.mcpRecordDirPath, event)
     }
 }
 
 gradle.ext.mcpStartHeartbeat = { ->
+    gradle.ext.mcpEnsureLauncherContext()
     if (gradle.ext.mcpHeartbeatTimer == null) {
         gradle.ext.mcpHeartbeatTimer = new java.util.Timer(true)
     }
@@ -136,6 +158,7 @@ gradle.ext.mcpStartHeartbeat = { ->
 }
 
 gradle.ext.mcpFinalizeBuild = { String status, String failureMessage = null ->
+    gradle.ext.mcpEnsureLauncherContext()
     def timer = gradle.ext.find('mcpHeartbeatTimer')
     timer?.cancel()
     gradle.ext.mcpHeartbeatTimer = null
@@ -170,27 +193,12 @@ if (configurationCacheRequested && configurationCacheRecorderApisAvailable) {
     }
 }
 
-gradle.projectsLoaded {
-    def taskNames = gradle.startParameter.taskNames
-    gradle.ext.mcpWriteGradleResult([
-        schemaVersion: 1,
-        buildId       : McpBuildRecorderSupport.resolveBuildId(gradle.ext.mcpBuildId, [:]),
-        status        : "running",
-        startedAt     : java.time.Instant.now().toString(),
-        taskNames     : taskNames,
-    ])
-    gradle.ext.mcpAppendEvent([
-        ts          : java.time.Instant.now().toString(),
-        type        : "START",
-        displayName : taskNames ? "Gradle tasks: ${taskNames.join(' ')}" : "Gradle build",
-    ])
-    if (!configurationCacheRequested) {
-        gradle.ext.mcpStartHeartbeat()
-    }
-}
-
 if (!configurationCacheRequested) {
     gradle.taskGraph.beforeTask { task ->
+        gradle.ext.mcpEnsureLauncherContext()
+        if (gradle.ext.mcpHeartbeatTimer == null) {
+            gradle.ext.mcpStartHeartbeat()
+        }
         gradle.ext.mcpAppendEvent([
             ts          : java.time.Instant.now().toString(),
             type        : "TASK_START",
@@ -241,6 +249,7 @@ if (!configurationCacheRequested) {
     }
 
     gradle.taskGraph.afterTask { task, state ->
+        gradle.ext.mcpEnsureLauncherContext()
         def type = state.failure != null ? "TASK_FAIL" : (state.skipped ? "TASK_SKIP" : "TASK_SUCCESS")
         gradle.ext.mcpAppendEvent([
             ts          : java.time.Instant.now().toString(),
@@ -251,6 +260,7 @@ if (!configurationCacheRequested) {
     }
 
     gradle.buildFinished { result ->
+        gradle.ext.mcpEnsureLauncherContext()
         def failure = result.failure
         def status = McpBuildRecorderSupport.terminalStatus(
             failure != null,

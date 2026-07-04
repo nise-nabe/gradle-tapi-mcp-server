@@ -513,7 +513,7 @@ class BuildExecutionManager(
     ) {
         GradleArgumentPolicy.requireNoInitScript(request.arguments)
         val persistenceArguments = record.projectDirectory
-            ?.let { buildRecordStore.launcherArguments(File(it), record.id) }
+            ?.let { buildRecordStore.launcherArguments(File(it), record.id, request.tasks) }
             .orEmpty()
         launcher.addArguments(*(request.arguments + persistenceArguments).toTypedArray())
         launcher.addJvmArguments(*request.jvmArguments.toTypedArray())
