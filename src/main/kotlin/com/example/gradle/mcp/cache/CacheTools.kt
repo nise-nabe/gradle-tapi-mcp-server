@@ -4,6 +4,7 @@ import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
@@ -15,21 +16,11 @@ import kotlinx.coroutines.CoroutineScope
 internal fun buildCacheStatusSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
-            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
-                "Gradle project root to inspect.",
-            ),
-            "includeLastMcpBuild" to booleanProperty(
-                "Include task cache stats from the last MCP build run via gradle_run_tasks or gradle_run_tests (default true)",
-            ),
-            "includeLocalCacheDetails" to booleanProperty(
-                "Include local build-cache and configuration-cache directory summaries (default true)",
-            ),
-            "includeDeclaredProperties" to booleanProperty(
-                "Include cache-related entries from project and user gradle.properties files (default true)",
-            ),
-            "probeConfigurationCache" to booleanProperty(
-                "Run properties -q --configuration-cache to test configuration-cache compatibility (default false)",
-            ),
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(),
+            "includeLastMcpBuild" to booleanProperty("Last MCP build cache stats. Default true."),
+            "includeLocalCacheDetails" to booleanProperty("Local cache directory summaries. Default true."),
+            "includeDeclaredProperties" to booleanProperty("Cache keys from gradle.properties. Default true."),
+            "probeConfigurationCache" to booleanProperty("Run configuration-cache compatibility probe. Default false."),
         ),
     )
 
@@ -38,7 +29,7 @@ fun Server.registerCacheTools(scope: CoroutineScope) {
     registerTool(
         scope,
         name = "gradle_get_build_cache_status",
-        description = "Inspect Gradle build cache and configuration cache settings without a full build. Returns resolved cache properties (via properties -q), declared gradle.properties entries, local cache directory summaries, and optional last MCP build cache stats. Set probeConfigurationCache=true to run a lightweight configuration-cache compatibility check.",
+        description = McpToolDescriptions.BUILD_CACHE_STATUS,
         schema = buildCacheStatusSchema(),
     ) { args ->
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)

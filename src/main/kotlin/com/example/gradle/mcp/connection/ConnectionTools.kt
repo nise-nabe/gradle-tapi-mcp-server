@@ -4,11 +4,11 @@ import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.model.ModelSerializers
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
-import com.example.gradle.mcp.protocol.emptyObjectSchema
+import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
+import com.example.gradle.mcp.protocol.optionalProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.optionalString
-import com.example.gradle.mcp.protocol.projectDirectoryProperty
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.requiredString
 import com.example.gradle.mcp.protocol.stringProperty
@@ -26,37 +26,31 @@ internal fun connectSchema(): Map<String, Any> =
     objectSchema(
         required = listOf("projectDirectory"),
         properties = mapOf(
-            "projectDirectory" to stringProperty("Absolute or relative path to the Gradle project root"),
-            "gradleUserHome" to stringProperty("Optional GRADLE_USER_HOME directory"),
-            "gradleVersion" to stringProperty("Optional Gradle version to download and use"),
-            "gradleInstallation" to stringProperty("Optional local Gradle installation directory"),
+            "projectDirectory" to stringProperty("Gradle project root path"),
+            "gradleUserHome" to stringProperty("Optional GRADLE_USER_HOME"),
+            "gradleVersion" to stringProperty("Optional Gradle version to download"),
+            "gradleInstallation" to stringProperty("Optional local Gradle installation"),
         ),
     )
 
-private fun connectionStatusSchema(): Map<String, Any> =
+internal fun connectionStatusSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
-            "projectDirectory" to projectDirectoryProperty(
-                "Gradle project root to inspect. Omit to list all active connections plus the default project.",
-            ),
+            "projectDirectory" to optionalProjectDirectoryProperty(),
         ),
     )
 
-private fun buildEnvironmentSchema(): Map<String, Any> =
+internal fun buildEnvironmentSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
-            "projectDirectory" to resolveRequiredProjectDirectoryProperty(
-                "Gradle project root to query.",
-            ),
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(),
         ),
     )
 
-private fun disconnectSchema(): Map<String, Any> =
+internal fun disconnectSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
-            "projectDirectory" to projectDirectoryProperty(
-                "Gradle project root to disconnect. Omit to disconnect all active connections.",
-            ),
+            "projectDirectory" to optionalProjectDirectoryProperty(),
         ),
     )
 
@@ -65,7 +59,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
     registerTool(
         scope,
         name = "gradle_connect",
-        description = "Connect to a Gradle project via the Tooling API without disconnecting other projects. Call when gradle_connection_status shows the target is not connected, or to register an additional project. Rejects the call while a build is running for the same projectDirectory. Reuses an existing compatible daemon when available.",
+        description = McpToolDescriptions.CONNECT,
         schema = connectSchema(),
     ) { args ->
         val projectDirectory = ProjectDirectoryResolver.canonicalDirectory(
@@ -89,7 +83,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
     registerTool(
         scope,
         name = "gradle_connection_status",
-        description = "Return Tooling API connection status. Omit projectDirectory to list every active connection (connections[]) plus defaultProjectDirectory and legacy flat fields for the default project. With projectDirectory, return status for that project only. When GRADLE_PROJECT_DIR is set, the server auto-connects that project on startup. Use gradle_get_build_environment for a fresh query including gradleUserHome and jvmArguments.",
+        description = McpToolDescriptions.CONNECTION_STATUS,
         schema = connectionStatusSchema(),
     ) { args ->
         val projectDirectory = args.optionalString("projectDirectory")
@@ -99,7 +93,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
     registerTool(
         scope,
         name = "gradle_disconnect",
-        description = "Close one or all Tooling API project connections. Omit projectDirectory to disconnect all projects. Running builds for the disconnected project(s) are cancelled via the Tooling API CancellationToken.",
+        description = McpToolDescriptions.DISCONNECT,
         schema = disconnectSchema(),
     ) { args ->
         val projectDirectory = args.optionalString("projectDirectory")
@@ -137,7 +131,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
     registerTool(
         scope,
         name = "gradle_get_build_environment",
-        description = "Fetch BuildEnvironment (Gradle version, Gradle user home, Java home, versionInfo). versionInfo is the gradle --version output when the connected Gradle is 9.4+; omitted on older Gradle. Lightweight; prefer this over project model for stack checks.",
+        description = McpToolDescriptions.BUILD_ENVIRONMENT,
         schema = buildEnvironmentSchema(),
     ) { args ->
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)

@@ -21,13 +21,17 @@ internal fun stringProperty(description: String): Map<String, String> =
 internal fun projectDirectoryProperty(description: String): Map<String, String> =
     stringProperty(description)
 
-internal const val RESOLVE_REQUIRED_PROJECT_DIRECTORY_DEFAULT_SUFFIX =
-    "When omitted, uses the default connected project if available; " +
-        "otherwise the sole connected project when GRADLE_PROJECT_DIR is set but not connected; " +
-        "otherwise GRADLE_PROJECT_DIR."
+internal const val PROJECT_DIRECTORY_OPTIONAL_HINT =
+    "Gradle project root. Omit for default connected project or GRADLE_PROJECT_DIR."
 
-internal fun resolveRequiredProjectDirectoryProperty(purpose: String): Map<String, String> =
-    projectDirectoryProperty("$purpose $RESOLVE_REQUIRED_PROJECT_DIRECTORY_DEFAULT_SUFFIX")
+internal const val PROJECT_DIRECTORY_RESOLVE_HINT =
+    "Gradle project root. Omit to use default connected project or GRADLE_PROJECT_DIR."
+
+internal fun optionalProjectDirectoryProperty(): Map<String, String> =
+    projectDirectoryProperty(PROJECT_DIRECTORY_OPTIONAL_HINT)
+
+internal fun resolveRequiredProjectDirectoryProperty(): Map<String, String> =
+    projectDirectoryProperty(PROJECT_DIRECTORY_RESOLVE_HINT)
 
 internal fun stringArrayProperty(description: String, minItems: Int? = null): Map<String, Any> =
     buildMap {
@@ -45,27 +49,15 @@ internal fun booleanProperty(description: String): Map<String, String> =
 internal fun integerProperty(description: String): Map<String, String> =
     mapOf("type" to "integer", "description" to description)
 
+internal fun prepareTasksProperty(): Map<String, Any> =
+    stringArrayProperty("Tasks to run before model fetch (e.g. [\":app:compileJava\"]). Optional.")
+
 internal val testMethodsClassPropertyNames = listOf("class", "className", "testClass")
 
-internal fun testMethodsArrayEntrySchema(): Map<String, Any> {
-    val properties = mapOf(
-        "class" to stringProperty("Fully qualified JVM test class name"),
-        "className" to stringProperty("Alias for class"),
-        "testClass" to stringProperty("Alias for class"),
-        "methods" to stringArrayProperty("Method names in the test class", minItems = 1),
-    )
-    return mapOf(
-        "oneOf" to listOf(
-            objectSchema(required = listOf("class", "methods"), properties = properties),
-            objectSchema(required = listOf("className", "methods"), properties = properties),
-            objectSchema(required = listOf("testClass", "methods"), properties = properties),
-        ),
-    )
-}
-
-internal fun testMethodsProperty(description: String): Map<String, Any> =
+internal fun testMethodsProperty(): Map<String, Any> =
     mapOf(
-        "description" to description,
+        "description" to
+            "Map {FQCN: [methods]} or array [{class, methods}]. className and testClass aliases work at runtime.",
         "oneOf" to listOf(
             mapOf(
                 "type" to "object",
@@ -77,7 +69,13 @@ internal fun testMethodsProperty(description: String): Map<String, Any> =
             ),
             mapOf(
                 "type" to "array",
-                "items" to testMethodsArrayEntrySchema(),
+                "items" to objectSchema(
+                    required = listOf("class", "methods"),
+                    properties = mapOf(
+                        "class" to stringProperty("Fully qualified test class"),
+                        "methods" to stringArrayProperty("Test method names", minItems = 1),
+                    ),
+                ),
             ),
         ),
     )

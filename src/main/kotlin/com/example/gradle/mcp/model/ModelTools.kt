@@ -5,14 +5,15 @@ import com.example.gradle.mcp.build.BuildExecutionManager
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.integerProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
 import com.example.gradle.mcp.protocol.optionalStringList
+import com.example.gradle.mcp.protocol.prepareTasksProperty
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.stringProperty
-import com.example.gradle.mcp.protocol.stringArrayProperty
 import com.example.gradle.mcp.protocol.registerTool
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
@@ -29,46 +30,35 @@ import java.io.File
 
 private fun modelDirectoryProperties(): Map<String, Any> =
     mapOf(
-        "projectDirectory" to resolveRequiredProjectDirectoryProperty(
-            "Gradle project root to query.",
-        ),
+        "projectDirectory" to resolveRequiredProjectDirectoryProperty(),
         "prepareTasks" to prepareTasksProperty(),
     )
 
 internal fun projectTreeProperties(): Map<String, Any> =
     mapOf(
-        "maxDepth" to integerProperty("Maximum project tree depth (root=0); deeper child projects are omitted"),
-        "maxChildren" to integerProperty("Maximum child projects per node (omit for unlimited)"),
+        "maxDepth" to integerProperty("Max project tree depth (root=0)"),
+        "maxChildren" to integerProperty("Max child projects per node"),
     ) + modelDirectoryProperties()
-
-internal fun prepareTasksProperty(): Map<String, Any> =
-    stringArrayProperty(
-        "Optional prepareTasks runs tasks before model fetch (e.g. [\":app:compileJava\"]). " +
-            "Empty or omitted preserves the current lightweight behavior.",
-    )
-
-private const val PREPARE_TASKS_TOOL_NOTE =
-    "Optional prepareTasks runs tasks before model fetch (e.g. [\":app:compileJava\"])."
 
 internal fun projectTreeSchema(): Map<String, Any> =
     objectSchema(properties = projectTreeProperties())
 
 internal fun modelQueryProperties(): Map<String, Any> =
     mapOf(
-        "includeTasks" to booleanProperty("Include task lists. Default false to save tokens."),
+        "includeTasks" to booleanProperty("Include task lists. Default false."),
         "includeTaskDetails" to booleanProperty("Include task description and displayName. Default false."),
-        "taskGroup" to stringProperty("Filter tasks by Gradle task group"),
-        "taskNamePrefix" to stringProperty("Filter tasks whose name starts with this prefix"),
-        "maxTasks" to integerProperty("Maximum number of tasks to return after filtering"),
+        "taskGroup" to stringProperty("Filter by Gradle task group"),
+        "taskNamePrefix" to stringProperty("Filter by task name prefix"),
+        "maxTasks" to integerProperty("Max tasks after filtering"),
     )
 
 internal fun modelQuerySchema(): Map<String, Any> =
     objectSchema(properties = projectTreeProperties() + modelQueryProperties())
 
-internal fun invocationsQuerySchema(): Map<String, Any> =
+internal fun buildInvocationsQuerySchema(): Map<String, Any> =
     objectSchema(
         properties = projectTreeProperties() + modelQueryProperties() + mapOf(
-            "includeTaskSelectors" to booleanProperty("Include task selectors. Default false to save tokens."),
+            "includeTaskSelectors" to booleanProperty("Include task selectors. Default false."),
         ),
     )
 
@@ -79,11 +69,9 @@ internal fun helpSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
             "maxChars" to integerProperty(
-                "Maximum rendered help characters to return (default ${HelpLimitOptions.DEFAULT_MAX_CHARS})",
+                "Max help characters (default ${HelpLimitOptions.DEFAULT_MAX_CHARS})",
             ),
-            "tailOutput" to booleanProperty(
-                "When truncated, keep the tail of the help text (default true)",
-            ),
+            "tailOutput" to booleanProperty("Keep tail when truncated. Default true."),
         ) + modelDirectoryProperties(),
     )
 
@@ -143,7 +131,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
     registerTool(
         scope,
         name = "gradle_get_project_overview",
-        description = "Fetch project hierarchy and task counts without task lists. Token-efficient default for project context ingestion. $PREPARE_TASKS_TOOL_NOTE",
+        description = McpToolDescriptions.PROJECT_OVERVIEW,
         schema = projectTreeSchema(),
     ) { args ->
         val treeOptions = ProjectTreeOptions.fromArgs(args)
@@ -158,7 +146,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
     registerTool(
         scope,
         name = "gradle_get_gradle_build",
-        description = "Fetch GradleBuild structure: root project tree, all projects, included builds, and editable builds. Lightweight and read-only by default; no tasks unless prepareTasks is set. $PREPARE_TASKS_TOOL_NOTE Prefer for composite or includeBuild repositories.",
+        description = McpToolDescriptions.GRADLE_BUILD,
         schema = projectTreeSchema(),
     ) { args ->
         val treeOptions = ProjectTreeOptions.fromArgs(args)
@@ -173,7 +161,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
     registerTool(
         scope,
         name = "gradle_get_project_model",
-        description = "Fetch the GradleProject model. Tasks are omitted by default; set includeTasks=true only when needed. $PREPARE_TASKS_TOOL_NOTE",
+        description = McpToolDescriptions.PROJECT_MODEL,
         schema = modelQuerySchema(),
     ) { args ->
         val options = ModelQueryOptions.fromArgs(args)
@@ -189,8 +177,8 @@ fun Server.registerModelTools(scope: CoroutineScope) {
     registerTool(
         scope,
         name = "gradle_get_build_invocations",
-        description = "Fetch runnable Gradle tasks. Task selectors are omitted by default; tasks return name/path/group unless includeTaskDetails=true. $PREPARE_TASKS_TOOL_NOTE",
-        schema = invocationsQuerySchema(),
+        description = McpToolDescriptions.BUILD_INVOCATIONS,
+        schema = buildInvocationsQuerySchema(),
     ) { args ->
         val options = ModelQueryOptions.fromArgs(args).copy(includeTasks = true)
         val treeOptions = ProjectTreeOptions.fromArgs(args)
@@ -209,7 +197,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
     registerTool(
         scope,
         name = "gradle_get_project_publications",
-        description = "Fetch publications declared by the build. $PREPARE_TASKS_TOOL_NOTE",
+        description = McpToolDescriptions.PROJECT_PUBLICATIONS,
         schema = publicationsSchema(),
     ) { args ->
         fetchModelJson(
@@ -223,7 +211,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
     registerTool(
         scope,
         name = "gradle_get_help",
-        description = "Fetch Gradle CLI help text (equivalent to `gradle --help`). Requires Gradle 9.4+; returns a structured error if the Help model is unavailable. $PREPARE_TASKS_TOOL_NOTE",
+        description = McpToolDescriptions.HELP,
         schema = helpSchema(),
     ) { args ->
         val limitOptions = HelpLimitOptions.fromArgs(args)
