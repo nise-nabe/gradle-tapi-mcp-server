@@ -64,86 +64,86 @@ context(runtime: GradleMcpRuntime)
 fun Server.registerConnectionTools(scope: CoroutineScope) {
     registerTool(
         scope,
-            name = "gradle_connect",
-            description = "Connect to a Gradle project via the Tooling API without disconnecting other projects. Call when gradle_connection_status shows the target is not connected, or to register an additional project. Rejects the call while a build is running for the same projectDirectory. Reuses an existing compatible daemon when available.",
-            schema = connectSchema(),
-        ) { args ->
-            val projectDirectory = ProjectDirectoryResolver.canonicalDirectory(
-                args.requiredString("projectDirectory"),
+        name = "gradle_connect",
+        description = "Connect to a Gradle project via the Tooling API without disconnecting other projects. Call when gradle_connection_status shows the target is not connected, or to register an additional project. Rejects the call while a build is running for the same projectDirectory. Reuses an existing compatible daemon when available.",
+        schema = connectSchema(),
+    ) { args ->
+        val projectDirectory = ProjectDirectoryResolver.canonicalDirectory(
+            args.requiredString("projectDirectory"),
+        )
+        if (runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
+            throw McpException(
+                McpErrorCode.BUILD_ALREADY_RUNNING,
+                "Cannot connect while a Gradle build is running for ${projectDirectory.path}. " +
+                    "Wait for the build to finish, call gradle_cancel_build, or call gradle_disconnect.",
             )
-            if (runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
-                throw McpException(
-                    McpErrorCode.BUILD_ALREADY_RUNNING,
-                    "Cannot connect while a Gradle build is running for ${projectDirectory.path}. " +
-                        "Wait for the build to finish, call gradle_cancel_build, or call gradle_disconnect.",
-                )
-            }
-            val config = ConnectionConfig(
-                projectDirectory = projectDirectory.path,
-                gradleUserHome = args.optionalString("gradleUserHome"),
-                gradleVersion = args.optionalString("gradleVersion"),
-                gradleInstallation = args.optionalString("gradleInstallation"),
-            )
-            jsonResult(runtime.connectionManager.connect(config))
+        }
+        val config = ConnectionConfig(
+            projectDirectory = projectDirectory.path,
+            gradleUserHome = args.optionalString("gradleUserHome"),
+            gradleVersion = args.optionalString("gradleVersion"),
+            gradleInstallation = args.optionalString("gradleInstallation"),
+        )
+        jsonResult(runtime.connectionManager.connect(config))
     }
     registerTool(
         scope,
-            name = "gradle_connection_status",
-            description = "Return Tooling API connection status. Omit projectDirectory to list every active connection (connections[]) plus defaultProjectDirectory and legacy flat fields for the default project. With projectDirectory, return status for that project only. When GRADLE_PROJECT_DIR is set, the server auto-connects that project on startup. Use gradle_get_build_environment for a fresh query including gradleUserHome and jvmArguments.",
-            schema = connectionStatusSchema(),
-        ) { args ->
-            val projectDirectory = args.optionalString("projectDirectory")
-                ?.let(ProjectDirectoryResolver::bestEffortDirectory)
-            jsonResult(runtime.connectionManager.status(projectDirectory))
+        name = "gradle_connection_status",
+        description = "Return Tooling API connection status. Omit projectDirectory to list every active connection (connections[]) plus defaultProjectDirectory and legacy flat fields for the default project. With projectDirectory, return status for that project only. When GRADLE_PROJECT_DIR is set, the server auto-connects that project on startup. Use gradle_get_build_environment for a fresh query including gradleUserHome and jvmArguments.",
+        schema = connectionStatusSchema(),
+    ) { args ->
+        val projectDirectory = args.optionalString("projectDirectory")
+            ?.let(ProjectDirectoryResolver::bestEffortDirectory)
+        jsonResult(runtime.connectionManager.status(projectDirectory))
     }
     registerTool(
         scope,
-            name = "gradle_disconnect",
-            description = "Close one or all Tooling API project connections. Omit projectDirectory to disconnect all projects. Running builds for the disconnected project(s) are cancelled via the Tooling API CancellationToken.",
-            schema = disconnectSchema(),
-        ) { args ->
-            val projectDirectory = args.optionalString("projectDirectory")
-                ?.let(ProjectDirectoryResolver::bestEffortDirectory)
-            val hadActiveBuild = if (projectDirectory != null) {
-                runtime.buildExecutionManager.hasActiveBuild(projectDirectory)
+        name = "gradle_disconnect",
+        description = "Close one or all Tooling API project connections. Omit projectDirectory to disconnect all projects. Running builds for the disconnected project(s) are cancelled via the Tooling API CancellationToken.",
+        schema = disconnectSchema(),
+    ) { args ->
+        val projectDirectory = args.optionalString("projectDirectory")
+            ?.let(ProjectDirectoryResolver::bestEffortDirectory)
+        val hadActiveBuild = if (projectDirectory != null) {
+            runtime.buildExecutionManager.hasActiveBuild(projectDirectory)
+        } else {
+            runtime.buildExecutionManager.hasActiveBuild()
+        }
+        val disconnected = try {
+            if (projectDirectory != null) {
+                runtime.connectionManager.disconnect(projectDirectory)?.let { listOf(it) }.orEmpty()
             } else {
-                runtime.buildExecutionManager.hasActiveBuild()
+                runtime.connectionManager.disconnectAll()
             }
-            val disconnected = try {
-                if (projectDirectory != null) {
-                    runtime.connectionManager.disconnect(projectDirectory)?.let { listOf(it) }.orEmpty()
-                } else {
-                    runtime.connectionManager.disconnectAll()
-                }
-            } finally {
-                runtime.buildExecutionManager.onDisconnect(projectDirectory)
+        } finally {
+            runtime.buildExecutionManager.onDisconnect(projectDirectory)
+        }
+        val payload = buildMap<String, Any?> {
+            if (disconnected.isEmpty()) {
+                put("state", "not_connected")
+            } else if (disconnected.size == 1) {
+                put("projectDirectory", disconnected.single().projectDirectory)
+                put("state", disconnected.single().state)
+            } else {
+                put("state", "disconnected")
+                put("projectDirectories", disconnected.map { it.projectDirectory })
             }
-            val payload = buildMap<String, Any?> {
-                if (disconnected.isEmpty()) {
-                    put("state", "not_connected")
-                } else if (disconnected.size == 1) {
-                    put("projectDirectory", disconnected.single().projectDirectory)
-                    put("state", disconnected.single().state)
-                } else {
-                    put("state", "disconnected")
-                    put("projectDirectories", disconnected.map { it.projectDirectory })
-                }
-                if (hadActiveBuild) {
-                    put("warning", DISCONNECT_DURING_BUILD_WARNING)
-                }
-            }
-            jsonResult(payload)
-    }
-    registerTool(
-        scope,
-            name = "gradle_get_build_environment",
-            description = "Fetch BuildEnvironment (Gradle version, Gradle user home, Java home, versionInfo). versionInfo is the gradle --version output when the connected Gradle is 9.4+; omitted on older Gradle. Lightweight; prefer this over project model for stack checks.",
-            schema = buildEnvironmentSchema(),
-        ) { args ->
-            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val environment = connection.getModel(BuildEnvironment::class.java)
-                jsonResult(ModelSerializers.buildEnvironment(environment))
+            if (hadActiveBuild) {
+                put("warning", DISCONNECT_DURING_BUILD_WARNING)
             }
         }
+        jsonResult(payload)
+    }
+    registerTool(
+        scope,
+        name = "gradle_get_build_environment",
+        description = "Fetch BuildEnvironment (Gradle version, Gradle user home, Java home, versionInfo). versionInfo is the gradle --version output when the connected Gradle is 9.4+; omitted on older Gradle. Lightweight; prefer this over project model for stack checks.",
+        schema = buildEnvironmentSchema(),
+    ) { args ->
+        val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+            val environment = connection.getModel(BuildEnvironment::class.java)
+            jsonResult(ModelSerializers.buildEnvironment(environment))
+        }
+    }
 }
