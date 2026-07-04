@@ -136,7 +136,7 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `testClasses` | no* | `[]` | FQCN list (`withJvmTestClasses` / `withTaskAndTestClasses`) |
-| `testMethods` | no* | — | Map `{"com.example.FooTest": ["method1"]}` or array `[{"class": "...", "methods": ["..."]}]` |
+| `testMethods` | no* | — | Map `{"com.example.FooTest": ["method1"]}` or array `[{"class": "...", "methods": ["..."]}]`. `className` and `testClass` are accepted at runtime as aliases for `class`. |
 | `taskPath` | no | — | Test task path for `withTaskAndTest*` (Gradle 6.1+). Requires `testClasses` or `testMethods` |
 | `includePattern` | no* | — | Single include pattern for `withTestsFor` TestSpec (Gradle 7.6+) |
 | `includePatterns` | no* | `[]` | Include patterns for `withTestsFor` TestSpec (Gradle 7.6+) |
@@ -184,6 +184,25 @@ Cancels the Gradle daemon build via Tooling API `CancellationToken`. Returns imm
 | `tailOutput` | no | `true` | Keep tail when truncating |
 
 Returns `status` (`running`, `succeeded`, `failed`, `cancelled`, or `not_found`), timestamps, `outcome`, and `buildSummary`. Always includes `statusSource` (`memory` or `disk`). Disk-backed responses also include `liveProgress` (`false`), `progressAvailable`, and `recordDirectory`. When memory and disk disagree, Gradle on-disk status wins while Gradle is still active; stale Gradle `running` (MCP terminal, no post-finalize events in `events.ndjson`) falls back to MCP. Completed builds include `failedTaskCount`, `failedTasks`, and `buildSummary.failureSummary` without `includeProgress` when available (in-memory, MCP-terminal disk, or Gradle-terminal failed with `events.ndjson`). `stdout`/`stderr` are included only when `includeOutput=true`. While running, live output requires an in-memory record; disk-only polls return streams only after MCP finalizes logs at build end. `progress` only when `includeProgress=true`; with an in-memory record, includes `CONFIG_*` events from the live `ProgressListener` (task, test, and project-configuration) plus capped lists. Disk-only polls read `events.ndjson` (task and test events only—not project-configuration, which the init script does not write).
+
+#### includeProgress / includeProblems / includeDownloads / includeTestDetails
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `includeProgress` | `false` | `progress.completedTasks`, `progress.recentEvents` (live Tooling API or disk `events.ndjson`) |
+| `includeProblems` | `false` | Live Gradle Problems API as `liveProblems`; merged into terminal failure responses |
+| `includeDownloads` | `false` | `activeDownloadCount`, `recentDownloads` (requires in-memory live record) |
+| `includeTestDetails` | `false` | Terminal `failedTests`; with `includeProgress=true`, adds `progress.recentEvents[].test` on `TEST_*` events. Disk polls restore `failedTests` from `events.ndjson` (`className`, `methodName`, `failureMessage`; `sourcePath`/`sourceLine` need live Tooling API) |
+
+## MCP tool discovery (token-efficient)
+
+`tools/list` returns every tool name, description, and `inputSchema`. For Cursor agents, prefer lazy discovery:
+
+1. `mcp_get_tools` with no arguments — catalog only (names + short descriptions)
+2. `mcp_get_tools` with `server` + `toolName` — full schema for the tool you are about to call
+3. Avoid `mcp_get_tools` with `server` only unless you need every schema at once
+
+Detailed parameter semantics live in this reference (Layer 3). Tool `description` fields are summaries (Layer 1).
 
 ## Errors
 
