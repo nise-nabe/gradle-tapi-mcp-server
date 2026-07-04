@@ -22,6 +22,9 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
 import org.gradle.tooling.ProjectConnection
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -67,10 +70,12 @@ class BuildExecutionManagerRunTest {
         val manager = BuildExecutionManager(connectionManager)
 
         val buildThread = Thread {
-            manager.runForeground(
-                request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
-                notifier = null,
-            )
+            runBlocking {
+                manager.runForeground(
+                    request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
+                    notifier = null,
+                )
+            }
         }.apply { isDaemon = true }
         buildThread.start()
 
@@ -106,7 +111,7 @@ class BuildExecutionManagerRunTest {
             )
         }
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
-        error.message.shouldContain("Maximum concurrent background builds")
+        error.message.shouldContain("Maximum concurrent builds")
 
         releaseTasks.countDown()
     }
@@ -128,10 +133,12 @@ class BuildExecutionManagerRunTest {
         val manager = BuildExecutionManager(connectionManager)
         manager.seedRunningBuildForTests(testBuildRecord(id = "running-build", tracker = runningTracker()))
 
-        val result = manager.runForeground(
-            request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
-            notifier = null,
-        )
+        val result = runBlocking {
+            manager.runForeground(
+                request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
+                notifier = null,
+            )
+        }
 
         result["status"] shouldBe "failed"
         manager.hasActiveBuild().shouldBeTrue()
@@ -335,10 +342,12 @@ class BuildExecutionManagerRunTest {
 
         val waiterThread = Thread {
             resultRef.set(
-                manager.runForeground(
-                    request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
-                    notifier = null,
-                ),
+                runBlocking {
+                    manager.runForeground(
+                        request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
+                        notifier = null,
+                    )
+                },
             )
         }.apply { isDaemon = true }
         waiterThread.start()
@@ -349,6 +358,39 @@ class BuildExecutionManagerRunTest {
 
         val detached = resultRef.get()
         detached.shouldNotBeNull()
+        detached["status"] shouldBe "running"
+        detached["detached"] shouldBe true
+        detached["buildId"].shouldNotBeNull()
+        manager.hasActiveBuild().shouldBeTrue()
+
+        releaseBuild.countDown()
+        var attempts = 0
+        while (manager.hasActiveBuild() && attempts < 50) {
+            Thread.sleep(100)
+            attempts++
+        }
+        manager.hasActiveBuild().shouldBeFalse()
+    }
+
+    @Test
+    fun `runForeground returns detached response when coroutine is cancelled`() = runBlocking {
+        val connectionManager = GradleConnectionManager()
+        val buildEntered = CountDownLatch(1)
+        val releaseBuild = CountDownLatch(1)
+        connectionManager.seedConnectionForTests(blockingProjectConnection(buildEntered, releaseBuild))
+        val manager = BuildExecutionManager(connectionManager)
+
+        val deferred = async(Dispatchers.IO) {
+            manager.runForeground(
+                request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
+                notifier = null,
+            )
+        }
+
+        buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        deferred.cancel()
+        val detached = deferred.await()
+
         detached["status"] shouldBe "running"
         detached["detached"] shouldBe true
         detached["buildId"].shouldNotBeNull()

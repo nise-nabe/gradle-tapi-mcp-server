@@ -25,6 +25,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import kotlinx.coroutines.runBlocking
 import org.gradle.tooling.GradleConnector
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -154,10 +155,12 @@ class BuildExecutionManagerCancelTest {
         connectionManager.seedConnectionForTests(interruptedOnRunProjectConnection())
         val manager = BuildExecutionManager(connectionManager)
 
-        val result = manager.runForeground(
-            request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
-            notifier = null,
-        )
+        val result = runBlocking {
+            manager.runForeground(
+                request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
+                notifier = null,
+            )
+        }
 
         result["status"] shouldBe "cancelled"
         (result["error"] as String) shouldContain "interrupted"
