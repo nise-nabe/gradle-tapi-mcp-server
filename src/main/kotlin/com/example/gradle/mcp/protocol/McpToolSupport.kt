@@ -1,52 +1,59 @@
 package com.example.gradle.mcp.protocol
 
-import io.modelcontextprotocol.server.McpServerFeatures
-import io.modelcontextprotocol.server.McpSyncServerExchange
-import io.modelcontextprotocol.spec.McpSchema
+import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
+import io.modelcontextprotocol.kotlin.sdk.server.Server
+import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
+import io.modelcontextprotocol.kotlin.sdk.types.TextContent
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-fun tool(
+fun Server.registerTool(
+    scope: CoroutineScope,
     name: String,
     description: String,
     schema: Map<String, Any>,
-    handler: (Map<String, Any>) -> McpSchema.CallToolResult,
-): McpServerFeatures.SyncToolSpecification =
-    tool(name, description, schema) { _, args, _ -> handler(args) }
+    handler: suspend ClientConnection.(Map<String, Any>) -> CallToolResult,
+) {
+    registerTool(scope, name, description, schema) { args, _ -> handler(args) }
+}
 
-fun tool(
+fun Server.registerTool(
+    scope: CoroutineScope,
     name: String,
     description: String,
     schema: Map<String, Any>,
-    handler: (McpSyncServerExchange, Map<String, Any>, Any?) -> McpSchema.CallToolResult,
-): McpServerFeatures.SyncToolSpecification =
-    McpServerFeatures.SyncToolSpecification.builder()
-        .tool(
-            McpSchema.Tool.builder(name, mcpJsonMapper, mcpObjectMapper().writeValueAsString(schema))
-                .description(description)
-                .build(),
-        )
-        .callHandler { exchange, request ->
-            try {
-                handler(
-                    exchange,
-                    extractArgs(request),
-                    McpProgressSupport.extractProgressToken(request),
-                )
-            } catch (exception: Exception) {
-                val code = mapExceptionToErrorCode(exception)
-                structuredErrorResult(code, exception.message ?: exception.toString())
+    handler: suspend ClientConnection.(Map<String, Any>, McpBuildNotifier?) -> CallToolResult,
+) {
+    addTool(
+        name = name,
+        description = description,
+        inputSchema = schema.toToolSchema(),
+    ) { request ->
+        try {
+            val args = request.arguments.toToolArguments()
+            val notifier = buildProgressNotifier(
+                scope = scope,
+                connection = this,
+                progressToken = resolveProgressToken(request.meta?.progressToken, args),
+            )
+            withContext(Dispatchers.IO) {
+                handler(args, notifier)
             }
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            val code = mapExceptionToErrorCode(exception)
+            structuredErrorResult(code, exception.message ?: exception.toString())
         }
-        .build()
+    }
+}
 
-fun jsonResult(value: Any?): McpSchema.CallToolResult =
-    McpSchema.CallToolResult.builder()
-        .content(
-            listOf(
-                McpSchema.TextContent.builder(mcpObjectMapper().writeValueAsString(value)).build(),
-            ),
-        )
-        .isError(false)
-        .build()
-
-private fun extractArgs(request: McpSchema.CallToolRequest): Map<String, Any> =
-    request.arguments()
+fun jsonResult(value: Any?): CallToolResult =
+    CallToolResult(
+        content = listOf(
+            TextContent(text = encodeMcpJsonDynamic(value)),
+        ),
+        isError = false,
+    )

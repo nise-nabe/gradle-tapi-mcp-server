@@ -1,6 +1,8 @@
 package com.example.gradle.mcp.cache
 
 import com.example.gradle.mcp.build.GradlePropertiesStreamCapture
+import com.example.gradle.mcp.protocol.decodeMcpJsonMap
+import com.example.gradle.mcp.protocol.encodeMcpJsonDynamic
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.maps.shouldNotContainKey
@@ -240,5 +242,29 @@ class BuildCacheStatusTest {
         options.includeLocalCacheDetails.shouldBeTrue()
         options.includeDeclaredProperties.shouldBeTrue()
         options.probeConfigurationCache.shouldBeFalse()
+    }
+
+    @Test
+    fun `LastMcpBuildInsight toResponseMap encodes as JSON object`() {
+        val insight = LastMcpBuildInsight(
+            buildId = "build-1",
+            kind = "tasks",
+            tasks = listOf("build"),
+            testClasses = emptyList(),
+            finishedAt = "2026-01-01T00:00:00Z",
+            outcome = "success",
+            taskSummaryLine = "5 actionable tasks: 5 executed",
+            resultLine = "BUILD SUCCESSFUL",
+            taskStats = TaskExecutionStats(5, 5, null, null),
+        )
+        val payload = mapOf("lastMcpBuild" to insight.toResponseMap())
+        val decoded = decodeMcpJsonMap(encodeMcpJsonDynamic(payload))
+
+        @Suppress("UNCHECKED_CAST")
+        val lastMcpBuild = decoded["lastMcpBuild"] as Map<String, Any?>
+        lastMcpBuild["buildId"] shouldBe "build-1"
+        @Suppress("UNCHECKED_CAST")
+        val taskStats = lastMcpBuild["taskStats"] as Map<String, Any?>
+        taskStats["executed"] shouldBe 5
     }
 }

@@ -16,7 +16,7 @@ import com.example.gradle.mcp.support.writeMcpResultToDisk
 import com.example.gradle.mcp.build.CapturingStreams
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
-import com.example.gradle.mcp.protocol.mcpObjectMapper
+import com.example.gradle.mcp.protocol.encodeMcpJson
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -97,7 +97,7 @@ class BuildRecordStoreTest {
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
         recordDir.mkdirs()
         File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 GradleBuildResult(
                     buildId = buildId,
                     status = "succeeded",
@@ -141,7 +141,7 @@ class BuildRecordStoreTest {
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
         recordDir.mkdirs()
         File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 GradleBuildResult(
                     buildId = buildId,
                     status = "running",
@@ -175,7 +175,7 @@ class BuildRecordStoreTest {
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
         recordDir.mkdirs()
         File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 GradleBuildResult(
                     buildId = buildId,
                     status = "failed",
@@ -186,7 +186,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
         File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 McpBuildResult(
                     buildId = buildId,
                     kind = "tasks",
@@ -214,7 +214,7 @@ class BuildRecordStoreTest {
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
         recordDir.mkdirs()
         File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 GradleBuildResult(
                     buildId = buildId,
                     status = "running",
@@ -252,7 +252,7 @@ class BuildRecordStoreTest {
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
         recordDir.mkdirs()
         File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 GradleBuildResult(
                     buildId = buildId,
                     status = "succeeded",
@@ -316,7 +316,7 @@ class BuildRecordStoreTest {
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
         recordDir.mkdirs()
         File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 GradleBuildResult(
                     buildId = buildId,
                     status = "succeeded",
@@ -328,7 +328,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
         File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 McpBuildResult(
                     buildId = buildId,
                     kind = "tasks",
@@ -367,7 +367,7 @@ class BuildRecordStoreTest {
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
         recordDir.mkdirs()
         File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 GradleBuildResult(
                     buildId = buildId,
                     status = "succeeded",
@@ -392,7 +392,7 @@ class BuildRecordStoreTest {
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
         recordDir.mkdirs()
         File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 GradleBuildResult(
                     buildId = buildId,
                     status = "running",
@@ -403,7 +403,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
         File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 McpBuildResult(
                     buildId = buildId,
                     kind = "tasks",
@@ -440,7 +440,7 @@ class BuildRecordStoreTest {
         val staleFinishedAt = staleFinishedInstant.toString()
         val preFinalizeEventTs = staleFinishedInstant.minusSeconds(30).toString()
         File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 GradleBuildResult(
                     buildId = buildId,
                     status = "running",
@@ -451,7 +451,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
         File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 McpBuildResult(
                     buildId = buildId,
                     kind = "tasks",
@@ -487,7 +487,7 @@ class BuildRecordStoreTest {
         recordDir.mkdirs()
         val recentFinishedAt = Instant.now().minusSeconds(5).toString()
         File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 GradleBuildResult(
                     buildId = buildId,
                     status = "running",
@@ -498,7 +498,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
         File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 McpBuildResult(
                     buildId = buildId,
                     kind = "tasks",
@@ -536,7 +536,7 @@ class BuildRecordStoreTest {
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
         recordDir.mkdirs()
         File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 GradleBuildResult(
                     buildId = buildId,
                     status = "failed",
@@ -647,7 +647,7 @@ class BuildRecordStoreTest {
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
         recordDir.mkdirs()
         File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 GradleBuildResult(
                     buildId = buildId,
                     status = "failed",
@@ -668,7 +668,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
         File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 McpBuildResult(
                     buildId = buildId,
                     kind = "tasks",
@@ -712,7 +712,7 @@ class BuildRecordStoreTest {
         val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
         recordDir.mkdirs()
         File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 GradleBuildResult(
                     buildId = buildId,
                     status = "failed",
@@ -733,7 +733,7 @@ class BuildRecordStoreTest {
             StandardCharsets.UTF_8,
         )
         File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 McpBuildResult(
                     buildId = buildId,
                     kind = "tasks",
@@ -779,7 +779,7 @@ class BuildRecordStoreTest {
         val tail = "BUILD SUCCESSFUL in 1s\n"
         File(recordDir, McpBuildRecordPaths.STDOUT_LOG).writeText(tail, StandardCharsets.UTF_8)
         File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 McpBuildResult(
                     buildId = buildId,
                     kind = "tasks",
@@ -807,7 +807,7 @@ class BuildRecordStoreTest {
         val leakedDir = File(projectDir, ".gradle/leaked-build")
         leakedDir.mkdirs()
         File(leakedDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 McpBuildResult(
                     buildId = "leaked",
                     kind = "tasks",
@@ -838,7 +838,7 @@ class BuildRecordStoreTest {
         }
         val outsideJson = File(projectDir, "outside.json").apply {
             writeText(
-                mcpObjectMapper().writeValueAsString(
+                encodeMcpJson(
                     GradleBuildResult(
                         buildId = buildId,
                         status = "succeeded",
@@ -852,7 +852,7 @@ class BuildRecordStoreTest {
         assumeSymbolicLink(File(recordDir, McpBuildRecordPaths.STDOUT_LOG), outside)
         assumeSymbolicLink(File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE), outsideJson)
         File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
-            mcpObjectMapper().writeValueAsString(
+            encodeMcpJson(
                 McpBuildResult(
                     buildId = buildId,
                     kind = "tasks",

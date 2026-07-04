@@ -14,7 +14,7 @@
 
 - Standalone MCP server exposing Gradle Tooling API over stdio to MCP clients.
 - GitHub repository: `nise-nabe/gradle-tapi-mcp-server` (public, default branch `main`).
-- Stack: Kotlin 2.4.0, Java 17 toolchain, MCP SDK 0.10.0 (BOM), Gradle Tooling API 8.14, `jackson-module-kotlin` 2.17.0 via `jacksonObjectMapper()`.
+- Stack: Kotlin 2.4.0, Java 17 toolchain, **Kotlin** MCP SDK 0.11.0 (`io.modelcontextprotocol:kotlin-sdk-server`), Gradle Tooling API 9.6.1, kotlinx.serialization（ツール結果 JSON・MCP ワイヤ）。
 - Build uses `gradle/libs.versions.toml`, `dependencyResolutionManagement` with `FAIL_ON_PROJECT_REPOS`, JVM Test Suites (JUnit 5), and Configuration Cache enabled.
 - Single-module project with feature subpackages (`build`, `cache`, `connection`, `model`, `protocol`, `server`) under `com.example.gradle.mcp`; MCP tool definitions live in each feature package with shared helpers in `protocol`; `build-logic` deferred until multi-module need arises.
 - `gradle-wrapper.jar` is explicitly un-ignored so clones can run `./gradlew`.

@@ -2,8 +2,10 @@ package com.example.gradle.mcp.build.persistence
 
 import com.example.gradle.mcp.build.BuildProblemSnapshot
 import com.example.gradle.mcp.build.TestRunSelection
-import com.fasterxml.jackson.annotation.JsonIgnore
+import com.example.gradle.mcp.protocol.DynamicMapSerializer
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class McpBuildResult(
     val schemaVersion: Int = 2,
     val buildId: String,
@@ -19,6 +21,7 @@ data class McpBuildResult(
     val status: String,
     val outcome: String? = null,
     val error: String? = null,
+    @Serializable(with = DynamicMapSerializer::class)
     val buildSummary: Map<String, Any?>? = null,
     val failedTaskCount: Int = 0,
     val failedTasks: List<String> = emptyList(),
@@ -26,7 +29,6 @@ data class McpBuildResult(
     val stdoutTotalChars: Int = 0,
     val stderrTotalChars: Int = 0,
 ) {
-    @get:JsonIgnore
-    val selection: TestRunSelection? =
-        TestRunSelection.fromPersistedFlat(testClasses, testMethods, taskPath, includePatterns)
+    val selection: TestRunSelection?
+        get() = TestRunSelection.fromPersistedFlat(testClasses, testMethods, taskPath, includePatterns)
 }

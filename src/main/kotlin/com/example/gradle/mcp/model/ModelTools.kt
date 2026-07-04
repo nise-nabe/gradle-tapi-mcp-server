@@ -13,9 +13,10 @@ import com.example.gradle.mcp.protocol.optionalStringList
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.stringProperty
 import com.example.gradle.mcp.protocol.stringArrayProperty
-import com.example.gradle.mcp.protocol.tool
-import io.modelcontextprotocol.server.McpServerFeatures
-import io.modelcontextprotocol.spec.McpSchema
+import com.example.gradle.mcp.protocol.registerTool
+import io.modelcontextprotocol.kotlin.sdk.server.Server
+import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
+import kotlinx.coroutines.CoroutineScope
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.UnknownModelException
 import org.gradle.tooling.UnsupportedVersionException
@@ -128,7 +129,7 @@ private inline fun <T> fetchModelJson(
     args: Map<String, Any>,
     crossinline fetch: (ProjectConnection, List<String>) -> T,
     crossinline serialize: (T) -> Any,
-): McpSchema.CallToolResult {
+): CallToolResult {
     val prepareTasks = prepareTasksFromArgs(args)
     val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
     requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
@@ -138,88 +139,93 @@ private inline fun <T> fetchModelJson(
 }
 
 context(runtime: GradleMcpRuntime)
-fun modelTools(): List<McpServerFeatures.SyncToolSpecification> =
-    listOf(
-        tool(
-            name = "gradle_get_project_overview",
-            description = "Fetch project hierarchy and task counts without task lists. Token-efficient default for project context ingestion. $PREPARE_TASKS_TOOL_NOTE",
-            schema = projectTreeSchema(),
-        ) { args ->
-            val treeOptions = ProjectTreeOptions.fromArgs(args)
-            fetchModelJson(
-                args,
-                fetch = { connection, prepareTasks ->
-                    connection.fetchModel(GradleProject::class.java, prepareTasks)
-                },
-                serialize = { project -> ModelSerializers.projectOverview(project, treeOptions) },
-            )
-        },
-        tool(
-            name = "gradle_get_gradle_build",
-            description = "Fetch GradleBuild structure: root project tree, all projects, included builds, and editable builds. Lightweight and read-only by default; no tasks unless prepareTasks is set. $PREPARE_TASKS_TOOL_NOTE Prefer for composite or includeBuild repositories.",
-            schema = projectTreeSchema(),
-        ) { args ->
-            val treeOptions = ProjectTreeOptions.fromArgs(args)
-            fetchModelJson(
-                args,
-                fetch = { connection, prepareTasks ->
-                    connection.fetchModel(GradleBuild::class.java, prepareTasks)
-                },
-                serialize = { build -> ModelSerializers.gradleBuild(build, treeOptions) },
-            )
-        },
-        tool(
-            name = "gradle_get_project_model",
-            description = "Fetch the GradleProject model. Tasks are omitted by default; set includeTasks=true only when needed. $PREPARE_TASKS_TOOL_NOTE",
-            schema = modelQuerySchema(),
-        ) { args ->
-            val options = ModelQueryOptions.fromArgs(args)
-            val treeOptions = ProjectTreeOptions.fromArgs(args)
-            fetchModelJson(
-                args,
-                fetch = { connection, prepareTasks ->
-                    connection.fetchModel(GradleProject::class.java, prepareTasks)
-                },
-                serialize = { project -> ModelSerializers.gradleProject(project, options, treeOptions) },
-            )
-        },
-        tool(
-            name = "gradle_get_build_invocations",
-            description = "Fetch runnable Gradle tasks. Task selectors are omitted by default; tasks return name/path/group unless includeTaskDetails=true. $PREPARE_TASKS_TOOL_NOTE",
-            schema = invocationsQuerySchema(),
-        ) { args ->
-            val options = ModelQueryOptions.fromArgs(args).copy(includeTasks = true)
-            fetchModelJson(
-                args,
-                fetch = { connection, prepareTasks ->
-                    connection.fetchModel(BuildInvocations::class.java, prepareTasks)
-                },
-                serialize = { invocations -> ModelSerializers.buildInvocations(invocations, options) },
-            )
-        },
-        tool(
-            name = "gradle_get_project_publications",
-            description = "Fetch publications declared by the build. $PREPARE_TASKS_TOOL_NOTE",
-            schema = publicationsSchema(),
-        ) { args ->
-            fetchModelJson(
-                args,
-                fetch = { connection, prepareTasks ->
-                    connection.fetchModel(ProjectPublications::class.java, prepareTasks)
-                },
-                serialize = ModelSerializers::projectPublications,
-            )
-        },
-        tool(
-            name = "gradle_get_help",
-            description = "Fetch Gradle CLI help text (equivalent to `gradle --help`). Requires Gradle 9.4+; returns a structured error if the Help model is unavailable. $PREPARE_TASKS_TOOL_NOTE",
-            schema = helpSchema(),
-        ) { args ->
-            val limitOptions = HelpLimitOptions.fromArgs(args)
-            fetchModelJson(
-                args,
-                fetch = ::fetchHelpModel,
-                serialize = { help -> ModelSerializers.help(help, limitOptions) },
-            )
-        },
-    )
+fun Server.registerModelTools(scope: CoroutineScope) {
+    registerTool(
+        scope,
+        name = "gradle_get_project_overview",
+        description = "Fetch project hierarchy and task counts without task lists. Token-efficient default for project context ingestion. $PREPARE_TASKS_TOOL_NOTE",
+        schema = projectTreeSchema(),
+    ) { args ->
+        val treeOptions = ProjectTreeOptions.fromArgs(args)
+        fetchModelJson(
+            args,
+            fetch = { connection, prepareTasks ->
+                connection.fetchModel(GradleProject::class.java, prepareTasks)
+            },
+            serialize = { project -> ModelSerializers.projectOverview(project, treeOptions) },
+        )
+    }
+    registerTool(
+        scope,
+        name = "gradle_get_gradle_build",
+        description = "Fetch GradleBuild structure: root project tree, all projects, included builds, and editable builds. Lightweight and read-only by default; no tasks unless prepareTasks is set. $PREPARE_TASKS_TOOL_NOTE Prefer for composite or includeBuild repositories.",
+        schema = projectTreeSchema(),
+    ) { args ->
+        val treeOptions = ProjectTreeOptions.fromArgs(args)
+        fetchModelJson(
+            args,
+            fetch = { connection, prepareTasks ->
+                connection.fetchModel(GradleBuild::class.java, prepareTasks)
+            },
+            serialize = { build -> ModelSerializers.gradleBuild(build, treeOptions) },
+        )
+    }
+    registerTool(
+        scope,
+        name = "gradle_get_project_model",
+        description = "Fetch the GradleProject model. Tasks are omitted by default; set includeTasks=true only when needed. $PREPARE_TASKS_TOOL_NOTE",
+        schema = modelQuerySchema(),
+    ) { args ->
+        val options = ModelQueryOptions.fromArgs(args)
+        val treeOptions = ProjectTreeOptions.fromArgs(args)
+        fetchModelJson(
+            args,
+            fetch = { connection, prepareTasks ->
+                connection.fetchModel(GradleProject::class.java, prepareTasks)
+            },
+            serialize = { project -> ModelSerializers.gradleProject(project, options, treeOptions) },
+        )
+    }
+    registerTool(
+        scope,
+        name = "gradle_get_build_invocations",
+        description = "Fetch runnable Gradle tasks. Task selectors are omitted by default; tasks return name/path/group unless includeTaskDetails=true. $PREPARE_TASKS_TOOL_NOTE",
+        schema = invocationsQuerySchema(),
+    ) { args ->
+        val options = ModelQueryOptions.fromArgs(args).copy(includeTasks = true)
+        fetchModelJson(
+            args,
+            fetch = { connection, prepareTasks ->
+                connection.fetchModel(BuildInvocations::class.java, prepareTasks)
+            },
+            serialize = { invocations -> ModelSerializers.buildInvocations(invocations, options) },
+        )
+    }
+    registerTool(
+        scope,
+        name = "gradle_get_project_publications",
+        description = "Fetch publications declared by the build. $PREPARE_TASKS_TOOL_NOTE",
+        schema = publicationsSchema(),
+    ) { args ->
+        fetchModelJson(
+            args,
+            fetch = { connection, prepareTasks ->
+                connection.fetchModel(ProjectPublications::class.java, prepareTasks)
+            },
+            serialize = ModelSerializers::projectPublications,
+        )
+    }
+    registerTool(
+        scope,
+        name = "gradle_get_help",
+        description = "Fetch Gradle CLI help text (equivalent to `gradle --help`). Requires Gradle 9.4+; returns a structured error if the Help model is unavailable. $PREPARE_TASKS_TOOL_NOTE",
+        schema = helpSchema(),
+    ) { args ->
+        val limitOptions = HelpLimitOptions.fromArgs(args)
+        fetchModelJson(
+            args,
+            fetch = ::fetchHelpModel,
+            serialize = { help -> ModelSerializers.help(help, limitOptions) },
+        )
+    }
+}

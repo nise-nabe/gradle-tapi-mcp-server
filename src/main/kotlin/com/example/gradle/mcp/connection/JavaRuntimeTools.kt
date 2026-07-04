@@ -9,8 +9,9 @@ import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
 import com.example.gradle.mcp.protocol.optionalBoolean
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
-import com.example.gradle.mcp.protocol.tool
-import io.modelcontextprotocol.server.McpServerFeatures
+import com.example.gradle.mcp.protocol.registerTool
+import io.modelcontextprotocol.kotlin.sdk.server.Server
+import kotlinx.coroutines.CoroutineScope
 import org.gradle.tooling.ProjectConnection
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -227,28 +228,28 @@ internal fun requireNoActiveBuildForToolchainDetection(
 }
 
 context(runtime: GradleMcpRuntime)
-fun javaRuntimeTools(): List<McpServerFeatures.SyncToolSpecification> =
-    listOf(
-        tool(
-            name = "gradle_get_java_runtimes",
-            description = "Return the daemon Java from BuildEnvironment plus detected local JDKs from `javaToolchains -q` when includeToolchains=true (default). InstalledJdk/JavaRuntime TAPI models are single-installation types, so toolchain listing uses the javaToolchains task. Daemon Java uses the BuildEnvironment snapshot captured at gradle_connect; reconnect to refresh after daemon JVM changes.",
-            schema = javaRuntimesSchema(),
-        ) { args ->
-            val includeToolchains = args.optionalBoolean("includeToolchains", default = true)
-            val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-            requireNoActiveBuildForToolchainDetection(
-                includeToolchains = includeToolchains,
+fun Server.registerJavaRuntimeTools(scope: CoroutineScope) {
+    registerTool(
+        scope,
+        name = "gradle_get_java_runtimes",
+        description = "Return the daemon Java from BuildEnvironment plus detected local JDKs from `javaToolchains -q` when includeToolchains=true (default). InstalledJdk/JavaRuntime TAPI models are single-installation types, so toolchain listing uses the javaToolchains task. Daemon Java uses the BuildEnvironment snapshot captured at gradle_connect; reconnect to refresh after daemon JVM changes.",
+        schema = javaRuntimesSchema(),
+    ) { args ->
+        val includeToolchains = args.optionalBoolean("includeToolchains", default = true)
+        val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+        requireNoActiveBuildForToolchainDetection(
+            includeToolchains = includeToolchains,
+            projectDirectory = projectDirectory,
+            buildExecutionManager = runtime.buildExecutionManager,
+        )
+        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+            val runtimes = JavaRuntimesCollector.collect(
                 projectDirectory = projectDirectory,
-                buildExecutionManager = runtime.buildExecutionManager,
+                connection = connection,
+                cachedEnvironment = runtime.connectionManager.cachedEnvironment(projectDirectory),
+                includeToolchains = includeToolchains,
             )
-            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val runtimes = JavaRuntimesCollector.collect(
-                    projectDirectory = projectDirectory,
-                    connection = connection,
-                    cachedEnvironment = runtime.connectionManager.cachedEnvironment(projectDirectory),
-                    includeToolchains = includeToolchains,
-                )
-                jsonResult(runtimes.toMap(projectDirectory.path))
-            }
-        },
-    )
+            jsonResult(runtimes.toMap(projectDirectory.path))
+        }
+    }
+}

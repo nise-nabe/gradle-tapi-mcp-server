@@ -56,7 +56,7 @@ object BuildCacheStatusCollector {
                 )
             }
             if (options.includeLastMcpBuild) {
-                put("lastMcpBuild", lastMcpBuild)
+                put("lastMcpBuild", lastMcpBuild?.toResponseMap())
             }
             configurationCacheProbe?.let { put("configurationCacheProbe", it) }
         }

@@ -8,10 +8,9 @@ import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
-import com.example.gradle.mcp.protocol.McpProgressSupport
+import com.example.gradle.mcp.protocol.McpBuildNotifier
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
-import io.modelcontextprotocol.server.McpSyncServerExchange
-import io.modelcontextprotocol.spec.McpSchema
+import io.modelcontextprotocol.kotlin.sdk.types.LoggingLevel
 import org.gradle.tooling.BuildCancelledException
 import org.gradle.tooling.ConfigurableLauncher
 import org.gradle.tooling.ProjectConnection
@@ -37,12 +36,11 @@ class BuildExecutionManager(
 
     fun startBackground(
         request: BuildRunRequest,
-        exchange: McpSyncServerExchange?,
-        progressToken: Any?,
+        notifier: McpBuildNotifier?,
     ): Map<String, Any?> {
         connectionManager.requireConnection(request.projectDirectory)
 
-        val start = newBuildStart(request, exchange, progressToken)
+        val start = newBuildStart(request, notifier)
         val buildId = start.record.id
 
         synchronized(lifecycleLock) {
@@ -75,10 +73,9 @@ class BuildExecutionManager(
     fun runForeground(
         request: BuildRunRequest,
         connection: ProjectConnection,
-        exchange: McpSyncServerExchange?,
-        progressToken: Any?,
+        notifier: McpBuildNotifier?,
     ): Map<String, Any?> {
-        val start = newBuildStart(request, exchange, progressToken)
+        val start = newBuildStart(request, notifier)
         builds[start.record.id] = start.record
         return try {
             runBuild(
@@ -369,15 +366,14 @@ class BuildExecutionManager(
 
     private fun newBuildStart(
         request: BuildRunRequest,
-        exchange: McpSyncServerExchange?,
-        progressToken: Any?,
+        notifier: McpBuildNotifier?,
     ): BuildStart {
         val streams = CapturingStreams()
-        val notifier = ProgressNotifier(exchange, progressToken)
+        val progressNotifier = BuildProgressNotifier(notifier)
         lateinit var tracker: BuildProgressTracker
         tracker = BuildProgressTracker(
             trackDownloads = request.progressOptions.includeDownloads,
-            onUpdate = { notifier.notifyIfNeeded(tracker) },
+            onUpdate = { progressNotifier.notifyIfNeeded(tracker) },
         )
         val record = BuildRecord(
             id = UUID.randomUUID().toString(),
@@ -389,13 +385,13 @@ class BuildExecutionManager(
             streams = streams,
             projectDirectory = request.projectDirectory.absolutePath,
         )
-        return BuildStart(record, notifier)
+        return BuildStart(record, progressNotifier)
     }
 
     private fun runBuild(
         record: BuildRecord,
         request: BuildRunRequest,
-        notifier: ProgressNotifier,
+        notifier: BuildProgressNotifier,
     ) {
         try {
             connectionManager.withConnection(request.projectDirectory) { connection ->
@@ -415,7 +411,7 @@ class BuildExecutionManager(
         connection: ProjectConnection,
         streams: CapturingStreams,
         tracker: BuildProgressTracker,
-        notifier: ProgressNotifier,
+        notifier: BuildProgressNotifier,
     ) {
         val operationLabel = when (request.kind) {
             BuildKind.TASKS -> "Gradle tasks: ${request.tasks.joinToString()}"
@@ -484,27 +480,29 @@ class BuildExecutionManager(
         completed.drop(MAX_RETAINED_BUILDS).forEach { builds.remove(it.id) }
     }
 
-    private class ProgressNotifier(
-        private val exchange: McpSyncServerExchange?,
-        private val progressToken: Any?,
+    private class BuildProgressNotifier(
+        private val delegate: McpBuildNotifier?,
     ) {
         fun notifyIfNeeded(tracker: BuildProgressTracker) {
+            val active = delegate ?: return
             if (!tracker.shouldNotifyProgress()) {
                 return
             }
-            sendProgress(tracker, final = false)
-            sendLog(tracker)
+            sendProgress(active, tracker, final = false)
+            sendLog(active, tracker)
         }
 
         fun notifyFinal(tracker: BuildProgressTracker) {
-            sendProgress(tracker, final = true)
-            sendLog(tracker)
+            val active = delegate ?: return
+            sendProgress(active, tracker, final = true)
+            sendLog(active, tracker)
         }
 
-        private fun sendProgress(tracker: BuildProgressTracker, final: Boolean) {
-            if (exchange == null || progressToken == null) {
-                return
-            }
+        private fun sendProgress(
+            delegate: McpBuildNotifier,
+            tracker: BuildProgressTracker,
+            final: Boolean,
+        ) {
             val snapshot = tracker.snapshot()
             val completed = snapshot.completedTaskCount
             val total = (completed + snapshot.runningTaskCount + snapshot.failedTaskCount).coerceAtLeast(1)
@@ -517,26 +515,22 @@ class BuildExecutionManager(
                     append(snapshot.failedTaskCount)
                 }
             }
-            McpProgressSupport.sendProgress(
-                exchange = exchange,
-                progressToken = progressToken,
+            delegate.notifyProgress(
                 progress = if (final) total.toDouble() else completed.toDouble(),
                 total = total.toDouble(),
                 message = message,
             )
         }
 
-        private fun sendLog(tracker: BuildProgressTracker) {
+        private fun sendLog(delegate: McpBuildNotifier, tracker: BuildProgressTracker) {
             val snapshot = tracker.snapshot()
             val latest = snapshot.recentEvents.lastOrNull() ?: return
             val level = when (latest.eventType) {
-                "TASK_FAIL", "TEST_FAIL", "CONFIG_FAIL", "FAIL" -> McpSchema.LoggingLevel.ERROR
-                "TASK_SKIP", "TEST_SKIP" -> McpSchema.LoggingLevel.WARNING
-                else -> McpSchema.LoggingLevel.INFO
+                "TASK_FAIL", "TEST_FAIL", "CONFIG_FAIL", "FAIL" -> LoggingLevel.Error
+                "TASK_SKIP", "TEST_SKIP" -> LoggingLevel.Warning
+                else -> LoggingLevel.Info
             }
-            McpProgressSupport.sendLog(
-                exchange = exchange,
-                progressToken = progressToken,
+            delegate.notifyLog(
                 message = "${latest.eventType}: ${latest.displayName}",
                 level = level,
             )
@@ -545,7 +539,7 @@ class BuildExecutionManager(
 
     private data class BuildStart(
         val record: BuildRecord,
-        val notifier: ProgressNotifier,
+        val notifier: BuildProgressNotifier,
     )
 
     internal fun seedRunningBuildForTests(record: BuildRecord) {

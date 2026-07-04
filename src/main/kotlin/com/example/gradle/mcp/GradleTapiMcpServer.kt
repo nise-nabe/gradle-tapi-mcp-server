@@ -1,71 +1,92 @@
 package com.example.gradle.mcp
 
 import com.example.gradle.mcp.build.BuildExecutionManager
-import com.example.gradle.mcp.build.buildTools
-import com.example.gradle.mcp.cache.cacheTools
+import com.example.gradle.mcp.build.registerBuildTools
+import com.example.gradle.mcp.cache.registerCacheTools
 import com.example.gradle.mcp.connection.GradleConnectionManager
-import com.example.gradle.mcp.connection.connectionTools
-import com.example.gradle.mcp.connection.javaRuntimeTools
-import com.example.gradle.mcp.model.modelTools
-import com.example.gradle.mcp.protocol.mcpJsonMapper
+import com.example.gradle.mcp.connection.registerConnectionTools
+import com.example.gradle.mcp.connection.registerJavaRuntimeTools
+import com.example.gradle.mcp.model.registerModelTools
 import com.example.gradle.mcp.server.EofSignalingInputStream
-import io.modelcontextprotocol.server.McpServer
-import io.modelcontextprotocol.spec.McpSchema
-import io.modelcontextprotocol.server.transport.StdioServerTransportProvider
-import java.time.Duration
+import io.ktor.utils.io.streams.asInput
+import io.modelcontextprotocol.kotlin.sdk.server.Server
+import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
+import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
+import io.modelcontextprotocol.kotlin.sdk.types.Implementation
+import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
+import kotlinx.io.asSink
+import kotlinx.io.buffered
+import kotlin.time.Duration.Companion.minutes
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 
-fun main() {
+fun runGradleTapiMcpServer() {
     val connectionManager = GradleConnectionManager()
     val buildExecutionManager = BuildExecutionManager(connectionManager)
     connectionManager.tryAutoConnectFromEnvironment()
 
     val transportClosed = CountDownLatch(1)
-    val transport = StdioServerTransportProvider(
-        mcpJsonMapper,
-        EofSignalingInputStream(System.`in`, transportClosed),
-        System.out,
-    )
+    val serverScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
-    val server = context(runtime) {
-        McpServer.sync(transport)
-            .serverInfo("gradle-tapi-mcp-server", "0.1.0")
-            .requestTimeout(Duration.ofMinutes(30))
-            .capabilities(
-                McpSchema.ServerCapabilities.builder()
-                    .tools(true)
-                    .logging()
-                    .build()
-            )
-            .tools(
-                connectionTools() +
-                    javaRuntimeTools() +
-                    cacheTools() +
-                    modelTools() +
-                    buildTools()
-            )
-            .build()
+    val server = Server(
+        serverInfo = Implementation(
+            name = "gradle-tapi-mcp-server",
+            version = "0.2.3",
+        ),
+        options = ServerOptions(
+            capabilities = ServerCapabilities(
+                tools = ServerCapabilities.Tools(),
+                logging = ServerCapabilities.Logging,
+            ),
+        ).apply {
+            timeout = 30.minutes
+        },
+    )
+
+    with(runtime) {
+        server.registerConnectionTools(serverScope)
+        server.registerJavaRuntimeTools(serverScope)
+        server.registerCacheTools(serverScope)
+        server.registerModelTools(serverScope)
+        server.registerBuildTools(serverScope)
     }
 
+    val transport = StdioServerTransport(
+        inputStream = EofSignalingInputStream(System.`in`, transportClosed).asInput(),
+        outputStream = System.out.asSink().buffered(),
+    )
+
     val shutdownOnce = AtomicBoolean(false)
-    fun shutdownBestEffort() {
+    suspend fun shutdownBestEffort() {
         if (!shutdownOnce.compareAndSet(false, true)) {
             return
         }
         runCatching { buildExecutionManager.shutdown() }
         runCatching { connectionManager.disconnectAll() }
-        runCatching { server.closeGracefully() }
+        runCatching { server.close() }
+        runCatching { serverScope.cancel() }
         transportClosed.countDown()
     }
 
-    Runtime.getRuntime().addShutdownHook(Thread { shutdownBestEffort() })
+    Runtime.getRuntime().addShutdownHook(Thread { runBlocking { shutdownBestEffort() } })
 
-    try {
-        transportClosed.await()
-    } catch (_: InterruptedException) {
-        Thread.currentThread().interrupt()
-    } finally {
-        shutdownBestEffort()
+    runBlocking {
+        val session = server.createSession(transport)
+        val done = Job()
+        session.onClose { done.complete() }
+        try {
+            transportClosed.await()
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        } finally {
+            shutdownBestEffort()
+            done.join()
+        }
     }
 }

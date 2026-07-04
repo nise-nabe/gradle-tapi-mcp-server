@@ -12,7 +12,7 @@ import com.example.gradle.mcp.build.persistence.PersistedBuildViewFactory
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
-import com.example.gradle.mcp.protocol.mcpObjectMapper
+import com.example.gradle.mcp.protocol.encodeMcpJson
 import io.kotest.matchers.nulls.shouldNotBeNull
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -106,7 +106,7 @@ internal fun BuildRecordStore.writeMcpResultToDisk(projectDir: File, result: Mcp
         projectDir,
         result.buildId,
         McpBuildRecordPaths.MCP_RESULT_FILE,
-        mcpObjectMapper().writeValueAsString(result),
+        encodeMcpJson(result),
     )
 
 internal fun BuildRecordStore.writeGradleResultToDisk(
@@ -118,7 +118,7 @@ internal fun BuildRecordStore.writeGradleResultToDisk(
         projectDir,
         buildId,
         McpBuildRecordPaths.GRADLE_RESULT_FILE,
-        mcpObjectMapper().writeValueAsString(result),
+        encodeMcpJson(result),
     )
 }
 

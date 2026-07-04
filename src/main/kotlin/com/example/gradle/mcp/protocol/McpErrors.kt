@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.protocol
 
-import io.modelcontextprotocol.spec.McpSchema
+import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
+import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 
 enum class McpErrorCode {
     NOT_CONNECTED,
@@ -17,24 +18,22 @@ class McpException(
     cause: Throwable? = null,
 ) : Exception(message, cause)
 
-fun structuredErrorResult(code: McpErrorCode, message: String): McpSchema.CallToolResult =
-    McpSchema.CallToolResult.builder()
-        .content(
-            listOf(
-                McpSchema.TextContent.builder(
-                    mcpObjectMapper().writeValueAsString(
-                        mapOf(
-                            "error" to mapOf(
-                                "code" to code.name,
-                                "message" to message,
-                            ),
+fun structuredErrorResult(code: McpErrorCode, message: String): CallToolResult =
+    CallToolResult(
+        content = listOf(
+            TextContent(
+                text = encodeMcpJsonDynamic(
+                    mapOf(
+                        "error" to mapOf(
+                            "code" to code.name,
+                            "message" to message,
                         ),
                     ),
-                ).build(),
+                ),
             ),
-        )
-        .isError(true)
-        .build()
+        ),
+        isError = true,
+    )
 
 fun mapExceptionToErrorCode(exception: Exception): McpErrorCode =
     when (exception) {

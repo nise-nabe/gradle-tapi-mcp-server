@@ -5,4 +5,11 @@ data class TaskExecutionStats(
     val executed: Int?,
     val fromCache: Int?,
     val upToDate: Int?,
-)
+) {
+    fun toResponseMap(): Map<String, Any?> = mapOf(
+        "actionableTasks" to actionableTasks,
+        "executed" to executed,
+        "fromCache" to fromCache,
+        "upToDate" to upToDate,
+    )
+}
