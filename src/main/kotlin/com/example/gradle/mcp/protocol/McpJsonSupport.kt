@@ -77,6 +77,7 @@ internal fun JsonElement.toKotlinValue(): Any? =
         is JsonObject -> mapValues { (_, value) -> value.toKotlinValue() }
         is JsonArray -> map { element -> element.toKotlinValue() }
         is JsonPrimitive -> when {
+            isString -> content
             booleanOrNull != null -> booleanOrNull
             longOrNull != null -> longOrNull
             doubleOrNull != null -> doubleOrNull
