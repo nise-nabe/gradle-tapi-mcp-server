@@ -67,7 +67,7 @@ internal fun modelQuerySchema(): Map<String, Any> =
 
 internal fun invocationsQuerySchema(): Map<String, Any> =
     objectSchema(
-        properties = modelDirectoryProperties() + modelQueryProperties() + mapOf(
+        properties = projectTreeProperties() + modelQueryProperties() + mapOf(
             "includeTaskSelectors" to booleanProperty("Include task selectors. Default false to save tokens."),
         ),
     )
@@ -193,12 +193,17 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         schema = invocationsQuerySchema(),
     ) { args ->
         val options = ModelQueryOptions.fromArgs(args).copy(includeTasks = true)
+        val treeOptions = ProjectTreeOptions.fromArgs(args)
         fetchModelJson(
             args,
             fetch = { connection, prepareTasks ->
-                connection.fetchModel(BuildInvocations::class.java, prepareTasks)
+                val invocations = connection.fetchModel(BuildInvocations::class.java, prepareTasks)
+                val project = connection.fetchModel(GradleProject::class.java, prepareTasks)
+                invocations to project
             },
-            serialize = { invocations -> ModelSerializers.buildInvocations(invocations, options) },
+            serialize = { (invocations, project) ->
+                ModelSerializers.buildInvocations(invocations, project, options, treeOptions)
+            },
         )
     }
     registerTool(

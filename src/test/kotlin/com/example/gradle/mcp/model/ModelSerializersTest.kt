@@ -11,6 +11,8 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
 import org.gradle.tooling.model.BuildIdentifier
 import org.gradle.tooling.model.DomainObjectSet
+import org.gradle.tooling.model.GradleProject
+import org.gradle.tooling.model.Task
 import org.gradle.tooling.model.gradle.BasicGradleProject
 import org.gradle.tooling.model.gradle.GradleBuild
 import org.gradle.tooling.model.build.Help
@@ -304,6 +306,65 @@ class ModelSerializersTest {
     }
 
     @Test
+    fun `buildInvocations aggregates tasks from child projects`() {
+        val root = gradleProject(
+            name = "root",
+            path = ":",
+            directory = File("/root"),
+            tasks = emptyList(),
+            children = listOf(
+                gradleProject(
+                    name = "plugin",
+                    path = ":plugin",
+                    directory = File("/root/plugin"),
+                    tasks = listOf(mockTask("compileJava", ":plugin:compileJava", "build")),
+                ),
+            ),
+        )
+        val invocations = mockBuildInvocations(emptyList())
+
+        val result = ModelSerializers.buildInvocations(
+            invocations,
+            root,
+            ModelQueryOptions(includeTasks = true, taskNamePrefix = "compile"),
+        )
+
+        val tasks = result["tasks"] as List<*>
+        tasks shouldHaveSize 1
+        (tasks.first() as Map<*, *>)["path"] shouldBe ":plugin:compileJava"
+    }
+
+    @Test
+    fun `buildInvocations respects maxDepth when collecting tasks`() {
+        val root = gradleProject(
+            name = "root",
+            path = ":",
+            directory = File("/root"),
+            tasks = listOf(mockTask("rootTask", ":rootTask", "build")),
+            children = listOf(
+                gradleProject(
+                    name = "child",
+                    path = ":child",
+                    directory = File("/root/child"),
+                    tasks = listOf(mockTask("childTask", ":child:childTask", "build")),
+                ),
+            ),
+        )
+        val invocations = mockBuildInvocations(emptyList())
+
+        val result = ModelSerializers.buildInvocations(
+            invocations,
+            root,
+            ModelQueryOptions(includeTasks = true),
+            ProjectTreeOptions(maxDepth = 0),
+        )
+
+        val tasks = result["tasks"] as List<*>
+        tasks shouldHaveSize 1
+        (tasks.first() as Map<*, *>)["name"] shouldBe "rootTask"
+    }
+
+    @Test
     fun `help limit options parse maxChars and tailOutput from args`() {
         val options = HelpLimitOptions.fromArgs(
             mapOf(
@@ -315,6 +376,58 @@ class ModelSerializersTest {
         options.maxChars shouldBe 4_000
         options.tailOutput.shouldBeFalse()
     }
+
+    private fun mockTask(name: String, path: String, group: String): Task =
+        Proxy.newProxyInstance(
+            Task::class.java.classLoader,
+            arrayOf(Task::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "getName" -> name
+                "getPath" -> path
+                "getGroup" -> group
+                "getDescription" -> null
+                "getDisplayName" -> "task '$path'"
+                else -> defaultProxyReturn(method)
+            }
+        } as Task
+
+    private fun gradleProject(
+        name: String,
+        path: String,
+        directory: File,
+        tasks: List<Task> = emptyList(),
+        children: List<GradleProject> = emptyList(),
+    ): GradleProject =
+        Proxy.newProxyInstance(
+            GradleProject::class.java.classLoader,
+            arrayOf(GradleProject::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "getName" -> name
+                "getPath" -> path
+                "getProjectDirectory" -> directory
+                "getDescription" -> null
+                "getBuildDirectory" -> null
+                "getParent" -> null
+                "getChildren" -> domainObjectSet(children)
+                "getTasks" -> domainObjectSet(tasks)
+                "getProjectIdentifier" -> null
+                else -> defaultProxyReturn(method)
+            }
+        } as GradleProject
+
+    private fun mockBuildInvocations(tasks: List<Task>): org.gradle.tooling.model.gradle.BuildInvocations =
+        Proxy.newProxyInstance(
+            org.gradle.tooling.model.gradle.BuildInvocations::class.java.classLoader,
+            arrayOf(org.gradle.tooling.model.gradle.BuildInvocations::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "getTasks" -> domainObjectSet(tasks)
+                "getTaskSelectors" -> domainObjectSet(emptyList<Any>())
+                else -> defaultProxyReturn(method)
+            }
+        } as org.gradle.tooling.model.gradle.BuildInvocations
 
     private fun mockHelp(renderedText: String): Help =
         Proxy.newProxyInstance(
