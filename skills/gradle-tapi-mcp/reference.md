@@ -137,8 +137,8 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `testClasses` | no* | `[]` | FQCN list (`withJvmTestClasses` / `withTaskAndTestClasses`) |
-| `testMethods` | no* | — | Map `{"com.example.FooTest": ["method1"]}` or array `[{"class": "...", "methods": ["..."]}]`. `className` and `testClass` are accepted at runtime as aliases for `class`. |
+| `testClasses` | no* | `[]` | FQCN list (`withJvmTestClasses` / `withTaskAndTestClasses`). `Class.method` entries (e.g. `com.example.FooTest.testBar`) are normalized to `testMethods`. |
+| `testMethods` | no* | — | Preferred API for method selection: map `{"com.example.FooTest": ["method1"]}` or array `[{"class": "...", "methods": ["..."]}]`. `className` and `testClass` are accepted at runtime as aliases for `class`. |
 | `taskPath` | no | — | Test task path for `withTaskAndTest*` (Gradle 6.1+). Requires `testClasses` or `testMethods` |
 | `includePattern` | no* | — | Single include pattern for `withTestsFor` TestSpec (Gradle 7.6+) |
 | `includePatterns` | no* | `[]` | Include patterns for `withTestsFor` TestSpec (Gradle 7.6+) |

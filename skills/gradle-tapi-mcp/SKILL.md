@@ -199,13 +199,21 @@ Configuration Cache 互換性まで試す場合:
 
 → `gradle_run_tests`
 
-**テストメソッド指定**
+**テストメソッド指定（推奨）**
 
 ```json
 { "testMethods": { "com.example.FooTest": ["shouldWork"] } }
 ```
 
 → `gradle_run_tests`
+
+**テストメソッド指定（`testClasses` の Class.method 形式—自動正規化）**
+
+```json
+{ "testClasses": ["com.example.FooTest.shouldWork"] }
+```
+
+→ `gradle_run_tests`（内部で `testMethods` に変換）
 
 **テストパターン指定**（`tasks` 必須）
 
