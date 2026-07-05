@@ -42,6 +42,7 @@ class BuildExecutionManager(
         notifier: McpBuildNotifier?,
     ): Map<String, Any?> {
         connectionManager.requireConnection(request.projectDirectory)
+        requireNoActiveBuildForProject(request.projectDirectory)
 
         val start = newBuildStart(request, notifier = null)
         val buildId = start.record.id
@@ -80,6 +81,7 @@ class BuildExecutionManager(
         notifier: McpBuildNotifier?,
     ): Map<String, Any?> {
         connectionManager.requireConnection(request.projectDirectory)
+        requireNoActiveBuildForProject(request.projectDirectory)
 
         val start = newBuildStart(request, notifier)
         val buildId = start.record.id
@@ -624,6 +626,17 @@ class BuildExecutionManager(
     private fun replaceBuildExecutor() {
         executor.shutdownNow()
         executor = newBuildExecutor()
+    }
+
+    private fun requireNoActiveBuildForProject(projectDirectory: File) {
+        if (hasActiveBuild(projectDirectory)) {
+            throw McpException(
+                McpErrorCode.BUILD_ALREADY_RUNNING,
+                "A Gradle build is already running for ${projectDirectory.path}. " +
+                    "Poll gradle_get_build_status with the active buildId, call gradle_cancel_build to stop it, " +
+                    "or wait for it to finish. Do not start a parallel MCP build or shell ./gradlew on the same checkout.",
+            )
+        }
     }
 
     private fun maxConcurrentBuildsException(): McpException =

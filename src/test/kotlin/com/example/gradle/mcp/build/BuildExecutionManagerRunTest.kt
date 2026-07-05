@@ -25,12 +25,9 @@ import io.kotest.matchers.string.shouldContain
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
-import org.gradle.tooling.ProjectConnection
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
-import java.lang.reflect.InvocationHandler
-import java.lang.reflect.Proxy
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -40,7 +37,7 @@ class BuildExecutionManagerRunTest {
     private val manager = BuildExecutionManager(GradleConnectionManager())
 
     @Test
-    fun `startBackground allows concurrent builds`() {
+    fun `startBackground rejects second build for same project`() {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnection()
         val concurrentManager = BuildExecutionManager(connectionManager)
@@ -48,11 +45,38 @@ class BuildExecutionManagerRunTest {
             testBuildRecord(
                 id = "running-build",
                 tracker = runningTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+            ),
+        )
+
+        val error = shouldThrow<McpException> {
+            concurrentManager.startBackground(
+                request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
+                notifier = null,
+            )
+        }
+
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.message.shouldContain("already running")
+        error.message.shouldContain("gradle_get_build_status")
+    }
+
+    @Test
+    fun `startBackground allows concurrent builds for different projects`(@TempDir otherProject: File) {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedNoopConnection()
+        connectionManager.seedNoopConnection(otherProject)
+        val concurrentManager = BuildExecutionManager(connectionManager)
+        concurrentManager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "running-build",
+                tracker = runningTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
             ),
         )
 
         val result = concurrentManager.startBackground(
-            request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
+            request = BuildRunRequest(projectDirectory = otherProject, kind = BuildKind.TASKS, tasks = listOf("test")),
             notifier = null,
         )
 
@@ -117,30 +141,29 @@ class BuildExecutionManagerRunTest {
     }
 
     @Test
-    fun `runForeground does not reject when another build is running`() {
+    fun `runForeground rejects when another build is running for same project`() {
         val connectionManager = GradleConnectionManager()
-        val connection = Proxy.newProxyInstance(
-            ProjectConnection::class.java.classLoader,
-            arrayOf(ProjectConnection::class.java),
-            InvocationHandler { _, method, _ ->
-                if (method.name == "newBuild") {
-                    throw UnsupportedOperationException("simulated build failure")
-                }
-                null
-            },
-        ) as ProjectConnection
-        connectionManager.seedConnectionForTests(connection)
+        connectionManager.seedNoopConnection()
         val manager = BuildExecutionManager(connectionManager)
-        manager.seedRunningBuildForTests(testBuildRecord(id = "running-build", tracker = runningTracker()))
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "running-build",
+                tracker = runningTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+            ),
+        )
 
-        val result = runBlocking {
-            manager.runForeground(
-                request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
-                notifier = null,
-            )
+        val error = shouldThrow<McpException> {
+            runBlocking {
+                manager.runForeground(
+                    request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
+                    notifier = null,
+                )
+            }
         }
 
-        result["status"] shouldBe "failed"
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.message.shouldContain("already running")
         manager.hasActiveBuild().shouldBeTrue()
     }
 
