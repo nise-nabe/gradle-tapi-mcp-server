@@ -1,20 +1,25 @@
 package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.protocol.ProblemsSerializer
+import com.example.gradle.mcp.protocol.ProgressResponseOptions
 
 /**
- * Merges in-memory and disk [BuildStatusView]s. Gradle on-disk records win when status
- * disagrees (for example MCP marked a build failed on disconnect while Gradle kept running).
+ * Merges in-memory and disk [BuildStatusView]s for status polling.
+ * While memory reports `running`, memory status is authoritative and disk contributes
+ * streams, [BuildStatusView.recordDirectory], and task events from `events.ndjson`.
+ * When memory is terminal or absent, Gradle on-disk records win when status disagrees
+ * (for example MCP marked a build failed on disconnect while Gradle kept running).
  */
 internal object BuildStatusMerger {
     fun merge(memory: BuildStatusView, disk: BuildStatusView): BuildStatusView {
-        if (memory.status == BuildProgressTracker.STATUS_RUNNING &&
-            disk.status == BuildProgressTracker.STATUS_RUNNING
-        ) {
+        if (memory.status == BuildProgressTracker.STATUS_RUNNING) {
+            val mergedProgress = mergeRunningProgress(memory.progress, disk.progress)
             return memory.copy(
                 recordDirectory = disk.recordDirectory,
                 stdout = pickStream(disk.stdout, memory.stdout),
                 stderr = pickStream(disk.stderr, memory.stderr),
+                progress = mergedProgress,
+                progressAvailable = mergedProgress != null || memory.progressAvailable || disk.progressAvailable,
             )
         }
         if (disk.status != memory.status) {
@@ -42,6 +47,60 @@ internal object BuildStatusMerger {
         } else {
             disk.progress
         }
+
+    private fun mergeRunningProgress(
+        memory: BuildProgressSnapshot?,
+        disk: BuildProgressSnapshot?,
+    ): BuildProgressSnapshot? =
+        when {
+            memory == null && disk == null -> null
+            memory == null -> disk?.asRunningProgress()
+            disk == null -> memory
+            else -> {
+                val mergedRecentEvents = mergeRecentEvents(memory.recentEvents, disk.recentEvents)
+                memory.copy(
+                    status = BuildProgressTracker.STATUS_RUNNING,
+                    currentOperation = disk.currentOperation
+                        ?: memory.currentOperation
+                        ?: mergedRecentEvents.lastOrNull()?.displayName,
+                    completedTaskCount = maxOf(memory.completedTaskCount, disk.completedTaskCount),
+                    runningTaskCount = maxOf(memory.runningTaskCount, disk.runningTaskCount),
+                    failedTaskCount = memory.failedTaskCount,
+                    completedTasks = pickRicherTaskList(memory.completedTasks, disk.completedTasks),
+                    runningTasks = pickRicherTaskList(memory.runningTasks, disk.runningTasks),
+                    failedTasks = memory.failedTasks,
+                    recentEvents = mergedRecentEvents,
+                    totalEventCount = maxOf(
+                        memory.totalEventCount,
+                        disk.totalEventCount,
+                        mergedRecentEvents.size,
+                    ),
+                    problems = memory.problems,
+                    failedTests = memory.failedTests,
+                )
+            }
+        }
+
+    private fun BuildProgressSnapshot.asRunningProgress(): BuildProgressSnapshot =
+        copy(
+            status = BuildProgressTracker.STATUS_RUNNING,
+            failedTaskCount = 0,
+            failedTasks = emptyList(),
+            problems = emptyList(),
+            failedTests = emptyList(),
+        )
+
+    private fun mergeRecentEvents(
+        memory: List<ProgressEventSnapshot>,
+        disk: List<ProgressEventSnapshot>,
+    ): List<ProgressEventSnapshot> =
+        (memory + disk)
+            .distinctBy { "${it.timestamp}|${it.eventType}|${it.displayName}" }
+            .sortedBy { it.timestamp }
+            .takeLast(ProgressResponseOptions.MAX_RECENT_EVENTS_IN_RESPONSE)
+
+    private fun pickRicherTaskList(memory: List<String>, disk: List<String>): List<String> =
+        if (disk.size > memory.size) disk else memory
 
     private fun mergedTerminalBuildSummary(
         status: String,

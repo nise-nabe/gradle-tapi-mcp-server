@@ -16,6 +16,7 @@ import com.example.gradle.mcp.support.withWorkspaceDirectory
 import com.example.gradle.mcp.support.writeDiskFile
 import com.example.gradle.mcp.support.writeGradleResultToDisk
 import com.example.gradle.mcp.support.writeMcpResultToDisk
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -246,7 +247,7 @@ class BuildExecutionManagerPersistenceTest {
     }
 
     @Test
-    fun `status skips disk merge while in-memory build is still running`(@TempDir projectDir: File) {
+    fun `status merges disk progress while in-memory build is still running`(@TempDir projectDir: File) {
         val buildId = "active-running-build"
         val (manager, store) = persistedBuildManager(projectDir)
         manager.seedRunningBuildForTests(
@@ -285,9 +286,19 @@ class BuildExecutionManagerPersistenceTest {
         )
 
         val result = manager.status(buildId, OutputLimitOptions(), ProgressResponseOptions())
+        val withProgress = manager.status(
+            buildId,
+            OutputLimitOptions(),
+            ProgressResponseOptions(includeProgress = true),
+        )
 
         result["status"] shouldBe "running"
         result["statusSource"] shouldBe "memory"
         result.containsKey("error") shouldBe false
+        result["recordDirectory"].shouldNotBeNull()
+        val progress = withProgress["progress"] as Map<*, *>
+        progress["status"] shouldBe "running"
+        progress["totalEventCount"] shouldBe 2
+        (progress["recentEvents"] as List<*>).map { (it as Map<*, *>)["displayName"] } shouldContain ":app:build"
     }
 }

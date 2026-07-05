@@ -117,9 +117,9 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | `statusSource` | `"memory"` | `"disk"` |
 | `liveProgress` | なし | `false` |
 | `progressAvailable` | なし | あり |
-| `recordDirectory` | なし | 絶対パス |
+| `recordDirectory` | 実行中マージ時はあり | 絶対パス |
 
-**ステータス解決**: メモリとディスクが食い違うとき（例: `gradle_disconnect` で MCP が `cancelled` としたが Gradle が走り続けた）は **ディスクの `gradle-result.json` を優先**。Gradle が `running` のまま MCP が終端確定し、`events.ndjson` に MCP `finishedAt` 以降のイベントが無い場合は **MCP 終端ステータス**（デーモン停止の可能性）。
+**ステータス解決**: 実行中はメモリの `status` を優先し、ディスクの `events.ndjson` からタスク進捗をマージする。メモリとディスクが食い違うとき（例: `gradle_disconnect` で MCP が `cancelled` としたが Gradle が走り続けた）は **ディスクの `gradle-result.json` を優先**。Gradle が `running` のまま MCP が終端確定し、`events.ndjson` に MCP `finishedAt` 以降のイベントが無い場合は **MCP 終端ステータス**（デーモン停止の可能性）。
 
 **永続化の正**:
 - 実行中ステータス → `gradle-result.json`（init script）
@@ -143,7 +143,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 { "buildId": "<id>" }
 ```
 
-→ `gradle_get_build_status`（`status`, `outcome`, `buildSummary`；失敗時は `problems` も；`stdout`/`stderr` は `includeOutput=true` 時のみ—ディスクのみポーリングでは完了まで空；`progress` は `includeProgress=true` 時のみ—メモリ上の実行中ビルドでは `CONFIG_*`（プロジェクト構成）イベントも含むが、ディスクの `events.ndjson` にはタスク/テストのみ；`statusSource` は常に付与）
+→ `gradle_get_build_status`（`status`, `outcome`, `buildSummary`；失敗時は `problems` も；`stdout`/`stderr` は `includeOutput=true` 時のみ—ディスクのみポーリングでは完了まで空；`progress` は `includeProgress=true` 時のみ—実行中はメモリと disk の `events.ndjson` をマージ；`recordDirectory` で `.gradle/mcp-builds/<buildId>/` を参照可能；`statusSource` は常に付与）
 
 `buildId` は必須（並行ビルド時の取り違え防止）。**同一 `projectDirectory` では MCP ビルドは 1 本のみ**（2 本目は `BUILD_ALREADY_RUNNING`）。別プロジェクトへの並行ビルドはサーバー側上限まで可能。同一 checkout で MCP と shell の `./gradlew` を並行しないこと（IntelliJ Platform の `:plugin:test` は sandbox 競合でハングしやすい）。上限到達時も `BUILD_ALREADY_RUNNING` が返る。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` を `running` でなくなるまでポーリングして終端ステータス（`cancelled` / `succeeded` / `failed`）を確認する。
 
