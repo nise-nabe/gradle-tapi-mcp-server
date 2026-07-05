@@ -143,9 +143,10 @@ abstract class McpConfigurationCacheRecorderService
             return
         }
         launcherContext()
+        def recorder = this
         heartbeatTimer = new java.util.Timer(true)
         heartbeatTimer.scheduleAtFixedRate({
-            appendEvent([
+            recorder.appendEvent([
                 ts          : java.time.Instant.now().toString(),
                 type        : "HEARTBEAT",
                 displayName : "Gradle build active",
@@ -165,7 +166,7 @@ abstract class McpConfigurationCacheRecorderService
         def outcome = null
         if (result instanceof TaskFailureResult) {
             type = "TASK_FAIL"
-            outcome = result.failure.message
+            outcome = result.failures?.firstOrNull()?.message ?: "failed"
         } else if (result instanceof TaskSkippedResult) {
             type = "TASK_SKIP"
         }
