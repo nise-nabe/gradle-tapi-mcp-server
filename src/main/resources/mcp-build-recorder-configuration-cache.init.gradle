@@ -166,7 +166,7 @@ abstract class McpConfigurationCacheRecorderService
         def outcome = null
         if (result instanceof TaskFailureResult) {
             type = "TASK_FAIL"
-            outcome = result.failures?.firstOrNull()?.message ?: "failed"
+            outcome = result.failures?.find { true }?.message ?: "failed"
         } else if (result instanceof TaskSkippedResult) {
             type = "TASK_SKIP"
         }
