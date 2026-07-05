@@ -94,7 +94,7 @@ One MCP server process can hold **multiple Gradle project connections** at once.
 2. Pass optional `projectDirectory` on query/build tools. When omitted, the server uses the default connected project, then `GRADLE_PROJECT_DIR` when set and connected, or the sole connected project when the workspace env is unset or not connected. With **multiple** connections and no usable workspace default, `projectDirectory` is **required**.
 3. `gradle_connection_status` without arguments returns `connections[]` plus legacy flat fields for the default project
 4. `gradle_disconnect` with `projectDirectory` closes one project; omit to close all
-5. Background builds are scoped per project; concurrent builds across projects share the global pool limit
+5. Background builds are scoped per project; only one MCP build may run per `projectDirectory` at a time (concurrent builds across different projects share the global pool limit). Do not run shell `./gradlew` in parallel on the same checkout while an MCP build is active—especially IntelliJ Platform `:plugin:test`, which competes for the same test sandbox and can hang or corrupt state.
 
 Example:
 
@@ -104,12 +104,13 @@ Example:
 
 ## Long-running builds
 
-For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` or `gradle_run_tests`. The tool returns immediately with a `buildId`. Multiple background builds may run concurrently (up to a server-side limit). Call `gradle_cancel_build` with that `buildId` to stop an unneeded background run. Poll `gradle_get_build_status` with that `buildId` (required) to read:
+For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` or `gradle_run_tests`. The tool returns immediately with a `buildId`. Only one MCP build may run per `projectDirectory` at a time; concurrent builds across different projects are allowed up to a server-side limit. Do not run shell `./gradlew` on the same checkout while an MCP build is active (IntelliJ Platform `:plugin:test` sandboxes are especially sensitive). Call `gradle_cancel_build` with that `buildId` to stop an unneeded background run. Poll `gradle_get_build_status` with that `buildId` (required) to read:
 
 - `status`: `running`, `succeeded`, `failed`, or `cancelled`
 - `statusSource`: `memory` (in-process record) or `disk` (`.gradle/mcp-builds/<buildId>/`)
 - `outcome` and `buildSummary` when the build has finished
-- `progress` (only when `includeProgress: true`): capped task lists and recent events; disk polls use `events.ndjson` (task and test events)
+- `progress` (only when `includeProgress: true`): capped task lists and recent events; running polls merge in-memory progress with disk `events.ndjson` when available
+- `recordDirectory`: path to `.gradle/mcp-builds/<buildId>/` (included during running polls when disk artifacts exist)
 - `stdout`/`stderr` only when `includeOutput: true` — live partial output while running only when the MCP server still holds the in-memory record; disk-only polls return streams after MCP finalizes logs at build end
 - optional `projectDirectory` when the in-memory record was evicted and the connected project differs (disk-only lookup)
 

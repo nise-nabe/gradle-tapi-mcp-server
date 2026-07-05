@@ -143,9 +143,9 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 { "buildId": "<id>" }
 ```
 
-→ `gradle_get_build_status`（`status`, `outcome`, `buildSummary`；失敗時は `problems` も；`stdout`/`stderr` は `includeOutput=true` 時のみ—ディスクのみポーリングでは完了まで空；`progress` は `includeProgress=true` 時のみ—メモリ上の実行中ビルドでは `CONFIG_*`（プロジェクト構成）イベントも含むが、ディスクの `events.ndjson` にはタスク/テストのみ；`statusSource` は常に付与）
+→ `gradle_get_build_status`（`status`, `outcome`, `buildSummary`；失敗時は `problems` も；`stdout`/`stderr` は `includeOutput=true` 時のみ—ディスクのみポーリングでは完了まで空；`progress` は `includeProgress=true` 時のみ—実行中はメモリと disk の `events.ndjson` をマージ；`recordDirectory` で `.gradle/mcp-builds/<buildId>/` を参照可能；`statusSource` は常に付与）
 
-`buildId` は必須（並行ビルド時の取り違え防止）。複数の `background=true` ビルドを同時実行できる（サーバー側の上限あり）。上限到達時は `BUILD_ALREADY_RUNNING` が返る。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` を `running` でなくなるまでポーリングして終端ステータス（`cancelled` / `succeeded` / `failed`）を確認する。
+`buildId` は必須（並行ビルド時の取り違え防止）。**同一 `projectDirectory` では MCP ビルドは 1 本のみ**（2 本目は `BUILD_ALREADY_RUNNING`）。別プロジェクトへの並行ビルドはサーバー側上限まで可能。同一 checkout で MCP と shell の `./gradlew` を並行しないこと（IntelliJ Platform の `:plugin:test` は sandbox 競合でハングしやすい）。上限到達時も `BUILD_ALREADY_RUNNING` が返る。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` を `running` でなくなるまでポーリングして終端ステータス（`cancelled` / `succeeded` / `failed`）を確認する。
 
 `buildId` を失ったときは `gradle_list_builds` で直近の MCP ビルドを探し、見つかった `buildId` で `gradle_get_build_status` をポーリングする。TAPI 接続は不要（メモリ上のビルドは常に含まれる。ディスク走査は `projectDirectory`、接続中プロジェクト、または `GRADLE_PROJECT_DIR` を使用）。`projectDirectory` を明示する場合は、接続中プロジェクトまたは `GRADLE_PROJECT_DIR` で許可境界が定義されている必要がある（未定義だと `INVALID_ARGUMENT`）。
 
@@ -199,13 +199,21 @@ Configuration Cache 互換性まで試す場合:
 
 → `gradle_run_tests`
 
-**テストメソッド指定**
+**テストメソッド指定（推奨）**
 
 ```json
 { "testMethods": { "com.example.FooTest": ["shouldWork"] } }
 ```
 
 → `gradle_run_tests`
+
+**テストメソッド指定（`testClasses` の Class.method 形式—自動正規化）**
+
+```json
+{ "testClasses": ["com.example.FooTest.shouldWork"] }
+```
+
+→ `gradle_run_tests`（内部で `testMethods` に変換）
 
 **テストパターン指定**（`tasks` 必須）
 

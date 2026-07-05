@@ -23,7 +23,9 @@
 
 `gradle_connect` keeps existing connections open. It rejects the call while a build is running for the same `projectDirectory`.
 
-Multiple `background=true` builds may run concurrently across connected projects (bounded by a server-side pool). When the pool is full, new background starts return `BUILD_ALREADY_RUNNING`.
+Multiple `background=true` builds may run concurrently across **different** connected projects (bounded by a server-side pool). Only one MCP build may run per `projectDirectory` at a time; a second `gradle_run_tasks` / `gradle_run_tests` for the same project returns `BUILD_ALREADY_RUNNING`. When the global pool is full, new background starts also return `BUILD_ALREADY_RUNNING`.
+
+Do not run shell `./gradlew` in parallel on the same checkout while an MCP build is active. IntelliJ Platform `:plugin:test` runs compete for the same IDE test sandbox and can appear hung for many minutes or corrupt sandbox state.
 
 Most query/build tools accept optional `projectDirectory` (defaults to `GRADLE_PROJECT_DIR`).
 
@@ -135,8 +137,8 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `testClasses` | no* | `[]` | FQCN list (`withJvmTestClasses` / `withTaskAndTestClasses`) |
-| `testMethods` | no* | — | Map `{"com.example.FooTest": ["method1"]}` or array `[{"class": "...", "methods": ["..."]}]`. `className` and `testClass` are accepted at runtime as aliases for `class`. |
+| `testClasses` | no* | `[]` | FQCN list (`withJvmTestClasses` / `withTaskAndTestClasses`). `Class.method` entries (e.g. `com.example.FooTest.testBar`) are normalized to `testMethods`. |
+| `testMethods` | no* | — | Preferred API for method selection: map `{"com.example.FooTest": ["method1"]}` or array `[{"class": "...", "methods": ["..."]}]`. `className` and `testClass` are accepted at runtime as aliases for `class`. |
 | `taskPath` | no | — | Test task path for `withTaskAndTest*` (Gradle 6.1+). Requires `testClasses` or `testMethods` |
 | `includePattern` | no* | — | Single include pattern for `withTestsFor` TestSpec (Gradle 7.6+) |
 | `includePatterns` | no* | `[]` | Include patterns for `withTestsFor` TestSpec (Gradle 7.6+) |
@@ -149,7 +151,7 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 | `includeProgress` | no | `false` | Include detailed `progress` object |
 | `background` | no | `false` | Return `buildId` immediately; poll with `gradle_get_build_status` |
 
-\* Provide exactly one of `testClasses`, `testMethods`, or `includePattern`/`includePatterns` (patterns also require `tasks`). Optional `taskPath` and `tasks` scope the selected tests.
+\* Provide exactly one of `testClasses`, `testMethods`, or `includePattern`/`includePatterns` (patterns also require `tasks`). Optional `taskPath` and `tasks` scope the selected tests. For a single test method, prefer `testMethods`; `testClasses` also accepts Gradle `--tests`-style `Class.method` entries and normalizes them automatically. Wildcard patterns (`Class.*`, package patterns) belong in `includePattern` / `includePatterns` with `tasks`.
 
 `taskPath` uses `withTaskAndTest*` when combined with classes or methods. `tasks` applies `TestLauncher.forTasks()` when non-empty.
 
@@ -217,7 +219,7 @@ Failed tool calls return JSON:
 }
 ```
 
-Codes: `NOT_CONNECTED`, `BUILD_ALREADY_RUNNING` (max concurrent background builds reached), `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`.
+Codes: `NOT_CONNECTED`, `BUILD_ALREADY_RUNNING` (active build for the same `projectDirectory`, or max concurrent background builds reached), `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`.
 
 ## Environment variables (server startup)
 
