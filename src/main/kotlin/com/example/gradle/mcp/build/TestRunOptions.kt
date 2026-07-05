@@ -13,6 +13,7 @@ import java.io.File
 internal data class TestRunOptions(
     val selection: TestRunSelection? = null,
     val tasks: List<String> = emptyList(),
+    val selectionNormalized: Boolean = false,
 ) {
     val testClasses: List<String> get() = selection.testClassesForReporting()
     val testMethods: Map<String, List<String>> get() = selection.testMethodsOrEmpty()
@@ -21,16 +22,26 @@ internal data class TestRunOptions(
 }
 
 internal fun parseTestRunOptions(args: Map<String, Any>): TestRunOptions {
-    val testClasses = args.optionalStringList("testClasses").orEmpty().filter { it.isNotBlank() }.distinct()
+    val rawTestClasses = args.optionalStringList("testClasses").orEmpty().filter { it.isNotBlank() }.distinct()
     val testMethods = parseTestMethods(args)
+    val normalized = normalizeTestClassEntries(rawTestClasses, testMethods)
     val taskPath = args.optionalString("taskPath")
     val includePatterns = buildList {
         args.optionalString("includePattern")?.takeIf { it.isNotBlank() }?.let { add(it) }
         args.optionalStringList("includePatterns")?.let { patterns -> addAll(patterns.filter { it.isNotBlank() }) }
     }.distinct()
     val tasks = args.optionalStringList("tasks").orEmpty().filter { it.isNotBlank() }.distinct()
-    val selection = TestRunSelection.fromFlat(testClasses, testMethods, taskPath, includePatterns)
-    return TestRunOptions(selection = selection, tasks = tasks)
+    val selection = TestRunSelection.fromFlat(
+        normalized.classes,
+        normalized.methods,
+        taskPath,
+        includePatterns,
+    )
+    return TestRunOptions(
+        selection = selection,
+        tasks = tasks,
+        selectionNormalized = normalized.normalized,
+    )
 }
 
 internal fun TestRunOptions.validate(inputTaskPath: String? = null): TestRunOptions {
@@ -66,6 +77,7 @@ internal fun TestRunOptions.toBuildRunRequest(
         jvmArguments = jvmArguments,
         outputLimit = outputLimit,
         progressOptions = progressOptions,
+        selectionNormalized = selectionNormalized,
     )
 
 private fun formatTestMethodsLabel(testMethods: Map<String, List<String>>): String =
@@ -200,3 +212,60 @@ private fun parseMethodNameList(value: Any?, field: String): List<String> {
 
 private fun invalidTestMethods(message: String): McpException =
     McpException(McpErrorCode.INVALID_ARGUMENT, message)
+
+private data class NormalizedTestClassEntries(
+    val classes: List<String>,
+    val methods: Map<String, List<String>>,
+    val normalized: Boolean,
+)
+
+private sealed interface ParsedTestClassEntry {
+    data class ClassName(val name: String) : ParsedTestClassEntry
+
+    data class MethodRef(val className: String, val methodName: String) : ParsedTestClassEntry
+}
+
+private fun normalizeTestClassEntries(
+    testClasses: List<String>,
+    existingMethods: Map<String, List<String>>,
+): NormalizedTestClassEntries {
+    if (existingMethods.isNotEmpty()) {
+        return NormalizedTestClassEntries(testClasses, existingMethods, normalized = false)
+    }
+    val classes = mutableListOf<String>()
+    val methods = LinkedHashMap<String, MutableList<String>>()
+    var normalized = false
+    for (entry in testClasses) {
+        when (val parsed = parseTestClassEntry(entry)) {
+            is ParsedTestClassEntry.ClassName -> classes.add(parsed.name)
+            is ParsedTestClassEntry.MethodRef -> {
+                normalized = true
+                methods.getOrPut(parsed.className) { mutableListOf() }.add(parsed.methodName)
+            }
+        }
+    }
+    if (classes.isNotEmpty() && methods.isNotEmpty()) {
+        throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "testClasses cannot mix fully qualified class names with Class.method entries; use testMethods for method selection",
+        )
+    }
+    return NormalizedTestClassEntries(
+        classes = classes,
+        methods = methods.mapValues { (_, methodNames) -> methodNames.distinct() },
+        normalized = normalized,
+    )
+}
+
+private fun parseTestClassEntry(entry: String): ParsedTestClassEntry {
+    val dotIndex = entry.lastIndexOf('.')
+    if (dotIndex <= 0 || dotIndex >= entry.length - 1) {
+        return ParsedTestClassEntry.ClassName(entry)
+    }
+    val className = entry.substring(0, dotIndex)
+    val methodName = entry.substring(dotIndex + 1)
+    if (methodName.first().isLowerCase()) {
+        return ParsedTestClassEntry.MethodRef(className, methodName)
+    }
+    return ParsedTestClassEntry.ClassName(entry)
+}

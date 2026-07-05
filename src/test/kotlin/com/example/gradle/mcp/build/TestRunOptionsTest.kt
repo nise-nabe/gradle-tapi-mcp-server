@@ -13,6 +13,51 @@ import java.util.stream.Stream
 
 class TestRunOptionsTest {
     @Test
+    fun `parseTestRunOptions normalizes Class method entries in testClasses`() {
+        val options = parseTestRunOptions(
+            mapOf("testClasses" to listOf("com.example.FooTest.testBar")),
+        )
+
+        options.selection shouldBe TestRunSelection.Methods(
+            mapOf("com.example.FooTest" to listOf("testBar")),
+        )
+        options.selectionNormalized shouldBe true
+    }
+
+    @Test
+    fun `parseTestRunOptions merges multiple Class method entries into testMethods`() {
+        val options = parseTestRunOptions(
+            mapOf(
+                "testClasses" to listOf(
+                    "com.example.FooTest.testOne",
+                    "com.example.FooTest.testTwo",
+                ),
+            ),
+        )
+
+        options.selection shouldBe TestRunSelection.Methods(
+            mapOf("com.example.FooTest" to listOf("testOne", "testTwo")),
+        )
+        options.selectionNormalized shouldBe true
+    }
+
+    @Test
+    fun `toBuildRunRequest propagates selectionNormalized`() {
+        val request = TestRunOptions(
+            selection = TestRunSelection.Methods(mapOf("com.example.FooTest" to listOf("testBar"))),
+            selectionNormalized = true,
+        ).toBuildRunRequest(
+            projectDirectory = testProjectDirectory,
+            arguments = emptyList(),
+            jvmArguments = emptyList(),
+            outputLimit = OutputLimitOptions(),
+            progressOptions = ProgressResponseOptions(),
+        )
+
+        request.selectionNormalized shouldBe true
+    }
+
+    @Test
     fun `parseTestRunOptions accepts testClasses`() {
         val options = parseTestRunOptions(mapOf("testClasses" to listOf("com.example.FooTest")))
 
@@ -242,6 +287,20 @@ class TestRunOptionsTest {
         @JvmStatic
         fun invalidArgumentCases(): Stream<Arguments> =
             Stream.of(
+                Arguments.of(
+                    "mixed class and Class.method entries in testClasses",
+                    {
+                        parseTestRunOptions(
+                            mapOf(
+                                "testClasses" to listOf(
+                                    "com.example.FooTest",
+                                    "com.example.BarTest.testBar",
+                                ),
+                            ),
+                        )
+                    },
+                    "testClasses cannot mix fully qualified class names with Class.method entries; use testMethods for method selection",
+                ),
                 Arguments.of(
                     "blank testMethods map keys",
                     {

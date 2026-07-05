@@ -99,7 +99,9 @@ internal fun runTestsSchema(): Map<String, Any> =
     runOutputSchema(
         required = emptyList(),
         extraProperties = mapOf(
-            "testClasses" to stringArrayProperty("Fully qualified JVM test class names"),
+            "testClasses" to stringArrayProperty(
+                "Fully qualified JVM test class names. Class.method entries (e.g. com.example.FooTest.testBar) are normalized to testMethods.",
+            ),
             "testMethods" to testMethodsProperty(),
             "taskPath" to stringProperty("Test task path for withTaskAndTest*. Requires testClasses or testMethods."),
             "includePattern" to stringProperty("Single test include pattern (Gradle 7.6+). Requires tasks."),

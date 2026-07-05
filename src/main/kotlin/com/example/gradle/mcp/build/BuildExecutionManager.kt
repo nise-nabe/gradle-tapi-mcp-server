@@ -68,6 +68,9 @@ class BuildExecutionManager(
                 "message",
                 "Build started in background. Poll gradle_get_build_status with this buildId.",
             )
+            if (request.selectionNormalized) {
+                put("selectionNormalized", true)
+            }
         }
     }
 
