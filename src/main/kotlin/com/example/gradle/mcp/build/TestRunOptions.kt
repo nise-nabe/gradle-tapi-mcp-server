@@ -13,7 +13,6 @@ import java.io.File
 internal data class TestRunOptions(
     val selection: TestRunSelection? = null,
     val tasks: List<String> = emptyList(),
-    val selectionNormalized: Boolean = false,
 ) {
     val testClasses: List<String> get() = selection.testClassesForReporting()
     val testMethods: Map<String, List<String>> get() = selection.testMethodsOrEmpty()
@@ -21,7 +20,12 @@ internal data class TestRunOptions(
     val includePatterns: List<String> get() = selection.includePatternsOrEmpty()
 }
 
-internal fun parseTestRunOptions(args: Map<String, Any>): TestRunOptions {
+internal data class TestRunOptionsParseResult(
+    val options: TestRunOptions,
+    val selectionNormalized: Boolean = false,
+)
+
+internal fun parseTestRunOptions(args: Map<String, Any>): TestRunOptionsParseResult {
     val rawTestClasses = args.optionalStringList("testClasses").orEmpty().filter { it.isNotBlank() }.distinct()
     val testMethods = parseTestMethods(args)
     val normalized = normalizeTestClassEntries(rawTestClasses, testMethods)
@@ -37,9 +41,8 @@ internal fun parseTestRunOptions(args: Map<String, Any>): TestRunOptions {
         taskPath,
         includePatterns,
     )
-    return TestRunOptions(
-        selection = selection,
-        tasks = tasks,
+    return TestRunOptionsParseResult(
+        options = TestRunOptions(selection = selection, tasks = tasks),
         selectionNormalized = normalized.normalized,
     )
 }
@@ -265,7 +268,7 @@ private fun parseTestClassEntry(entry: String): ParsedTestClassEntry {
     val className = entry.substring(0, dotIndex)
     val methodName = entry.substring(dotIndex + 1)
     // Wildcard patterns belong in includePatterns, not Class.method normalization.
-    if (methodName.any { it == '*' || it == '?' }) {
+    if (className.any { it == '*' || it == '?' } || methodName.any { it == '*' || it == '?' }) {
         return ParsedTestClassEntry.ClassName(entry)
     }
     // Lowercase leading segment is treated as a JVM method name (camelCase convention).

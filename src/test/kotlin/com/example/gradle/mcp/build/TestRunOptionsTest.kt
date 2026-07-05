@@ -14,19 +14,19 @@ import java.util.stream.Stream
 class TestRunOptionsTest {
     @Test
     fun `parseTestRunOptions normalizes Class method entries in testClasses`() {
-        val options = parseTestRunOptions(
+        val parsed = parseTestRunOptions(
             mapOf("testClasses" to listOf("com.example.FooTest.testBar")),
         )
 
-        options.selection shouldBe TestRunSelection.Methods(
+        parsed.options.selection shouldBe TestRunSelection.Methods(
             mapOf("com.example.FooTest" to listOf("testBar")),
         )
-        options.selectionNormalized shouldBe true
+        parsed.selectionNormalized shouldBe true
     }
 
     @Test
     fun `parseTestRunOptions merges multiple Class method entries into testMethods`() {
-        val options = parseTestRunOptions(
+        val parsed = parseTestRunOptions(
             mapOf(
                 "testClasses" to listOf(
                     "com.example.FooTest.testOne",
@@ -35,10 +35,10 @@ class TestRunOptionsTest {
             ),
         )
 
-        options.selection shouldBe TestRunSelection.Methods(
+        parsed.options.selection shouldBe TestRunSelection.Methods(
             mapOf("com.example.FooTest" to listOf("testOne", "testTwo")),
         )
-        options.selectionNormalized shouldBe true
+        parsed.selectionNormalized shouldBe true
     }
 
     @Test
@@ -53,25 +53,67 @@ class TestRunOptionsTest {
 
     @Test
     fun `parseTestRunOptions keeps wildcard Class method entries as classes`() {
-        val options = parseTestRunOptions(
+        val parsed = parseTestRunOptions(
             mapOf("testClasses" to listOf("com.example.FooTest.test*")),
         )
 
-        options.selection shouldBe TestRunSelection.Classes(listOf("com.example.FooTest.test*"))
-        options.selectionNormalized shouldBe false
+        parsed.options.selection shouldBe TestRunSelection.Classes(listOf("com.example.FooTest.test*"))
+        parsed.selectionNormalized shouldBe false
+    }
+
+    @Test
+    fun `parseTestRunOptions keeps class-side wildcard entries as classes`() {
+        val parsed = parseTestRunOptions(
+            mapOf("testClasses" to listOf("com.example.Foo*.testBar")),
+        )
+
+        parsed.options.selection shouldBe TestRunSelection.Classes(listOf("com.example.Foo*.testBar"))
+        parsed.selectionNormalized shouldBe false
+    }
+
+    @Test
+    fun `parseTestRunOptions keeps uppercase final segment as class name`() {
+        val parsed = parseTestRunOptions(
+            mapOf("testClasses" to listOf("com.example.FooTest.Inner")),
+        )
+
+        parsed.options.selection shouldBe TestRunSelection.Classes(listOf("com.example.FooTest.Inner"))
+        parsed.selectionNormalized shouldBe false
+    }
+
+    @Test
+    fun `parseTestRunOptions normalizes dollar inner class method entries`() {
+        val parsed = parseTestRunOptions(
+            mapOf("testClasses" to listOf("com.example.Outer\$Inner.testMethod")),
+        )
+
+        parsed.options.selection shouldBe TestRunSelection.Methods(
+            mapOf("com.example.Outer\$Inner" to listOf("testMethod")),
+        )
+        parsed.selectionNormalized shouldBe true
+    }
+
+    @Test
+    fun `withTestRunResponseMetadata omits selectionNormalized when false`() {
+        val response = withTestRunResponseMetadata(
+            mapOf("status" to "running"),
+            selectionNormalized = false,
+        )
+
+        response.containsKey("selectionNormalized") shouldBe false
     }
 
     @Test
     fun `parseTestRunOptions accepts testClasses`() {
-        val options = parseTestRunOptions(mapOf("testClasses" to listOf("com.example.FooTest")))
+        val parsed = parseTestRunOptions(mapOf("testClasses" to listOf("com.example.FooTest")))
 
-        options.testClasses shouldBe listOf("com.example.FooTest")
-        options.selection shouldBe TestRunSelection.Classes(listOf("com.example.FooTest"))
+        parsed.options.testClasses shouldBe listOf("com.example.FooTest")
+        parsed.options.selection shouldBe TestRunSelection.Classes(listOf("com.example.FooTest"))
     }
 
     @Test
     fun `parseTestRunOptions accepts testMethods map form`() {
-        val options = parseTestRunOptions(
+        val parsed = parseTestRunOptions(
             mapOf(
                 "testMethods" to mapOf(
                     "com.example.FooTest" to listOf("method1", "method2"),
@@ -79,15 +121,15 @@ class TestRunOptionsTest {
             ),
         )
 
-        options.testMethods shouldBe mapOf("com.example.FooTest" to listOf("method1", "method2"))
-        options.selection shouldBe TestRunSelection.Methods(
+        parsed.options.testMethods shouldBe mapOf("com.example.FooTest" to listOf("method1", "method2"))
+        parsed.options.selection shouldBe TestRunSelection.Methods(
             mapOf("com.example.FooTest" to listOf("method1", "method2")),
         )
     }
 
     @Test
     fun `parseTestRunOptions accepts testMethods array form`() {
-        val options = parseTestRunOptions(
+        val parsed = parseTestRunOptions(
             mapOf(
                 "testMethods" to listOf(
                     mapOf("class" to "com.example.FooTest", "methods" to listOf("method1")),
@@ -96,7 +138,7 @@ class TestRunOptionsTest {
             ),
         )
 
-        options.testMethods shouldBe mapOf(
+        parsed.options.testMethods shouldBe mapOf(
             "com.example.FooTest" to listOf("method1"),
             "com.example.BarTest" to listOf("method2"),
         )
@@ -104,7 +146,7 @@ class TestRunOptionsTest {
 
     @Test
     fun `parseTestRunOptions merges includePattern and includePatterns`() {
-        val options = parseTestRunOptions(
+        val parsed = parseTestRunOptions(
             mapOf(
                 "includePattern" to "com.example.*",
                 "includePatterns" to listOf("com.other.*"),
@@ -112,56 +154,56 @@ class TestRunOptionsTest {
             ),
         )
 
-        options.includePatterns shouldBe listOf("com.example.*", "com.other.*")
-        options.tasks shouldBe listOf(":app:test")
+        parsed.options.includePatterns shouldBe listOf("com.example.*", "com.other.*")
+        parsed.options.tasks shouldBe listOf(":app:test")
     }
 
     @Test
     fun `parseTestRunOptions ignores blank includePatterns entries`() {
-        val options = parseTestRunOptions(
+        val parsed = parseTestRunOptions(
             mapOf(
                 "includePatterns" to listOf("", "  ", "com.example.*"),
                 "tasks" to listOf(":app:test"),
             ),
         )
 
-        options.includePatterns shouldBe listOf("com.example.*")
+        parsed.options.includePatterns shouldBe listOf("com.example.*")
     }
 
     @Test
     fun `parseTestRunOptions ignores blank includePatterns when testClasses provided`() {
-        val options = parseTestRunOptions(
+        val parsed = parseTestRunOptions(
             mapOf(
                 "testClasses" to listOf("com.example.FooTest"),
                 "includePatterns" to listOf(""),
             ),
         )
 
-        options.testClasses shouldBe listOf("com.example.FooTest")
-        options.includePatterns shouldBe emptyList()
+        parsed.options.testClasses shouldBe listOf("com.example.FooTest")
+        parsed.options.includePatterns shouldBe emptyList()
     }
 
     @Test
     fun `parseTestRunOptions ignores blank and duplicate tasks`() {
-        val options = parseTestRunOptions(
+        val parsed = parseTestRunOptions(
             mapOf(
                 "testClasses" to listOf("com.example.FooTest"),
                 "tasks" to listOf("", "  ", ":app:test", ":app:test"),
             ),
         )
 
-        options.tasks shouldBe listOf(":app:test")
+        parsed.options.tasks shouldBe listOf(":app:test")
     }
 
     @Test
     fun `parseTestRunOptions ignores blank and duplicate testClasses`() {
-        val options = parseTestRunOptions(
+        val parsed = parseTestRunOptions(
             mapOf(
                 "testClasses" to listOf("", "  ", "com.example.FooTest", "com.example.FooTest"),
             ),
         )
 
-        options.testClasses shouldBe listOf("com.example.FooTest")
+        parsed.options.testClasses shouldBe listOf("com.example.FooTest")
     }
 
     @ParameterizedTest(name = "{0}")
@@ -172,7 +214,7 @@ class TestRunOptionsTest {
 
     @Test
     fun `parseTestRunOptions filters blank method names`() {
-        val options = parseTestRunOptions(
+        val parsed = parseTestRunOptions(
             mapOf(
                 "testMethods" to mapOf(
                     "com.example.FooTest" to listOf("", "  ", "method1", "method1"),
@@ -180,12 +222,12 @@ class TestRunOptionsTest {
             ),
         )
 
-        options.testMethods shouldBe mapOf("com.example.FooTest" to listOf("method1"))
+        parsed.options.testMethods shouldBe mapOf("com.example.FooTest" to listOf("method1"))
     }
 
     @Test
     fun `parseTestRunOptions deduplicates method names in map form`() {
-        val options = parseTestRunOptions(
+        val parsed = parseTestRunOptions(
             mapOf(
                 "testMethods" to mapOf(
                     "com.example.FooTest" to listOf("method1", "method1", "method2"),
@@ -193,12 +235,12 @@ class TestRunOptionsTest {
             ),
         )
 
-        options.testMethods shouldBe mapOf("com.example.FooTest" to listOf("method1", "method2"))
+        parsed.options.testMethods shouldBe mapOf("com.example.FooTest" to listOf("method1", "method2"))
     }
 
     @Test
     fun `parseTestRunOptions deduplicates includePatterns after merge`() {
-        val options = parseTestRunOptions(
+        val parsed = parseTestRunOptions(
             mapOf(
                 "includePattern" to "com.example.*",
                 "includePatterns" to listOf("com.example.*", "com.other.*"),
@@ -206,7 +248,7 @@ class TestRunOptionsTest {
             ),
         )
 
-        options.includePatterns shouldBe listOf("com.example.*", "com.other.*")
+        parsed.options.includePatterns shouldBe listOf("com.example.*", "com.other.*")
     }
 
     @Test
@@ -367,7 +409,7 @@ class TestRunOptionsTest {
                                 "includePatterns" to listOf("com.example.*"),
                                 "tasks" to listOf("", "  "),
                             ),
-                        ).validate()
+                        ).options.validate()
                     },
                     "includePattern/includePatterns requires tasks for test task scoping",
                 ),
@@ -420,7 +462,7 @@ class TestRunOptionsTest {
                                 "includePatterns" to listOf("com.example.*"),
                                 "tasks" to listOf(":app:test"),
                             ),
-                        ).validate()
+                        ).options.validate()
                     },
                     "Specify only one of testClasses, testMethods, or includePattern/includePatterns",
                 ),

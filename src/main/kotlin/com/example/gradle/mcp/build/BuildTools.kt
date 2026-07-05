@@ -197,7 +197,8 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         schema = runTestsSchema(),
     ) { args, notifier ->
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-        val testOptions = parseTestRunOptions(args).validate(args.optionalString("taskPath"))
+        val parsed = parseTestRunOptions(args)
+        val testOptions = parsed.options.validate(args.optionalString("taskPath"))
         val request = testOptions.toBuildRunRequest(
             projectDirectory = projectDirectory,
             arguments = args.optionalStringList("arguments").orEmpty(),
@@ -205,21 +206,13 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
             outputLimit = OutputLimitOptions.fromArgs(args),
             progressOptions = ProgressResponseOptions.fromArgs(args),
         )
-        if (args.optionalBoolean("background", default = false)) {
-            jsonResult(
-                withTestRunResponseMetadata(
-                    runtime.buildExecutionManager.startBackground(request, notifier),
-                    testOptions.selectionNormalized,
-                ),
-            )
+        val background = args.optionalBoolean("background", default = false)
+        val response = if (background) {
+            runtime.buildExecutionManager.startBackground(request, notifier)
         } else {
-            jsonResult(
-                withTestRunResponseMetadata(
-                    runtime.buildExecutionManager.runForeground(request, notifier),
-                    testOptions.selectionNormalized,
-                ),
-            )
+            runtime.buildExecutionManager.runForeground(request, notifier)
         }
+        jsonResult(withTestRunResponseMetadata(response, parsed.selectionNormalized))
     }
 }
 

@@ -137,7 +137,7 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `testClasses` | no* | `[]` | FQCN list (`withJvmTestClasses` / `withTaskAndTestClasses`). `Class.method` entries with a lowercase-leading final segment (e.g. `com.example.FooTest.testBar`) normalize to `testMethods`. Wildcards (`*`, `?`) and uppercase final segments stay as class names; prefer `testMethods` or `includePatterns` when ambiguous. |
+| `testClasses` | no* | `[]` | FQCN list (`withJvmTestClasses` / `withTaskAndTestClasses`). `Class.method` entries with a lowercase-leading final segment (e.g. `com.example.FooTest.testBar`) normalize to `testMethods`. Wildcards (`*`, `?`) in either segment and uppercase final segments stay as class names; nested classes use JVM `$` notation (e.g. `com.example.Outer$Inner.testMethod`). Prefer `testMethods` or `includePatterns` when ambiguous. |
 | `testMethods` | no* | — | Preferred API for method selection: map `{"com.example.FooTest": ["method1"]}` or array `[{"class": "...", "methods": ["..."]}]`. `className` and `testClass` are accepted at runtime as aliases for `class`. |
 | `taskPath` | no | — | Test task path for `withTaskAndTest*` (Gradle 6.1+). Requires `testClasses` or `testMethods` |
 | `includePattern` | no* | — | Single include pattern for `withTestsFor` TestSpec (Gradle 7.6+) |
@@ -155,7 +155,7 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 
 `taskPath` uses `withTaskAndTest*` when combined with classes or methods. `tasks` applies `TestLauncher.forTasks()` when non-empty.
 
-Same foreground/background response shape as `gradle_run_tasks`.
+Same foreground/background response shape as `gradle_run_tasks`. When `testClasses` entries were normalized to `testMethods`, the initial tool response may include `selectionNormalized: true` (not present on `gradle_get_build_status` polls).
 
 ### gradle_list_builds
 
