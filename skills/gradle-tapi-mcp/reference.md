@@ -23,7 +23,9 @@
 
 `gradle_connect` keeps existing connections open. It rejects the call while a build is running for the same `projectDirectory`.
 
-Multiple `background=true` builds may run concurrently across connected projects (bounded by a server-side pool). When the pool is full, new background starts return `BUILD_ALREADY_RUNNING`.
+Multiple `background=true` builds may run concurrently across **different** connected projects (bounded by a server-side pool). Only one MCP build may run per `projectDirectory` at a time; a second `gradle_run_tasks` / `gradle_run_tests` for the same project returns `BUILD_ALREADY_RUNNING`. When the global pool is full, new background starts also return `BUILD_ALREADY_RUNNING`.
+
+Do not run shell `./gradlew` in parallel on the same checkout while an MCP build is active. IntelliJ Platform `:plugin:test` runs compete for the same IDE test sandbox and can appear hung for many minutes or corrupt sandbox state.
 
 Most query/build tools accept optional `projectDirectory` (defaults to `GRADLE_PROJECT_DIR`).
 
@@ -217,7 +219,7 @@ Failed tool calls return JSON:
 }
 ```
 
-Codes: `NOT_CONNECTED`, `BUILD_ALREADY_RUNNING` (max concurrent background builds reached), `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`.
+Codes: `NOT_CONNECTED`, `BUILD_ALREADY_RUNNING` (active build for the same `projectDirectory`, or max concurrent background builds reached), `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`.
 
 ## Environment variables (server startup)
 
