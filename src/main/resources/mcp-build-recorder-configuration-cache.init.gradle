@@ -57,6 +57,11 @@ class McpBuildRecorderSupport {
         }
     }
 
+    /** First Tooling API failure message; mirrors Kotlin BuildProgressTracker.firstOrNull fallback. */
+    static String firstFailureMessage(def failures, String fallback = "failed") {
+        failures?.head()?.message ?: fallback
+    }
+
     static void writeTerminalGradleResult(
             String dirPath,
             String preferredBuildId,
@@ -138,20 +143,25 @@ abstract class McpConfigurationCacheRecorderService
         }
     }
 
+    private void appendHeartbeatEvent() {
+        appendEvent([
+            ts          : java.time.Instant.now().toString(),
+            type        : "HEARTBEAT",
+            displayName : "Gradle build active",
+        ])
+    }
+
     void startHeartbeatIfNeeded() {
         if (heartbeatTimer != null) {
             return
         }
         launcherContext()
-        def recorder = this
         heartbeatTimer = new java.util.Timer(true)
-        heartbeatTimer.scheduleAtFixedRate({
-            recorder.appendEvent([
-                ts          : java.time.Instant.now().toString(),
-                type        : "HEARTBEAT",
-                displayName : "Gradle build active",
-            ])
-        } as java.util.TimerTask, HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS)
+        heartbeatTimer.scheduleAtFixedRate(
+            this.&appendHeartbeatEvent as java.util.TimerTask,
+            HEARTBEAT_INTERVAL_MS,
+            HEARTBEAT_INTERVAL_MS,
+        )
     }
 
     @Override
@@ -166,7 +176,8 @@ abstract class McpConfigurationCacheRecorderService
         def outcome = null
         if (result instanceof TaskFailureResult) {
             type = "TASK_FAIL"
-            outcome = result.failures?.find { true }?.message ?: "failed"
+            // Gradle 9.6+: TaskFailureResult.failure removed; use failures collection.
+            outcome = McpBuildRecorderSupport.firstFailureMessage(result.failures)
         } else if (result instanceof TaskSkippedResult) {
             type = "TASK_SKIP"
         }
