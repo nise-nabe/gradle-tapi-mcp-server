@@ -6,6 +6,7 @@ import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.support.TEST_ISO_FINISH
 import com.example.gradle.mcp.support.TEST_ISO_START
 import com.example.gradle.mcp.support.failedTestSnapshot
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -128,7 +129,68 @@ class BuildStatusMergerTest {
         merged.status shouldBe BuildProgressTracker.STATUS_RUNNING
         merged.statusSource shouldBe BuildStatusView.SOURCE_MEMORY
         merged.recordDirectory shouldBe "/tmp/record"
+        merged.progress?.status shouldBe BuildProgressTracker.STATUS_RUNNING
         merged.progress?.totalEventCount shouldBe 2
+        merged.progress?.recentEvents.orEmpty().map { it.displayName } shouldContain ":app:compileJava"
+    }
+
+    @Test
+    fun `merge unions disk task events when memory has more total events`() {
+        val memory = BuildStatusView.fromRecord(runningRecord("running-merge")).copy(
+            progress = progressSnapshot(
+                status = BuildProgressTracker.STATUS_RUNNING,
+                totalEventCount = 3,
+                recentEvents = listOf(
+                    ProgressEventSnapshot(
+                        timestamp = "2026-06-14T10:00:10Z",
+                        eventType = "CONFIG_START",
+                        displayName = "Configure project",
+                    ),
+                    ProgressEventSnapshot(
+                        timestamp = "2026-06-14T10:00:20Z",
+                        eventType = "CONFIG_FINISH",
+                        displayName = "Configure project",
+                    ),
+                    ProgressEventSnapshot(
+                        timestamp = "2026-06-14T10:00:25Z",
+                        eventType = "CONFIG_START",
+                        displayName = "Configure :app",
+                    ),
+                ),
+            ),
+            progressAvailable = true,
+        )
+        val disk = diskView(
+            buildId = "running-merge",
+            status = BuildProgressTracker.STATUS_RUNNING,
+            stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+            buildSummary = null,
+            recordDirectory = "/tmp/record",
+            progress = progressSnapshot(
+                status = BuildProgressTracker.STATUS_RUNNING,
+                totalEventCount = 1,
+                recentEvents = listOf(
+                    ProgressEventSnapshot(
+                        timestamp = "2026-06-14T10:00:30Z",
+                        eventType = "TASK_START",
+                        displayName = ":app:compileJava",
+                    ),
+                ),
+                currentOperation = ":app:compileJava",
+            ),
+        )
+
+        val merged = BuildStatusMerger.merge(memory, disk)
+
+        merged.progress?.status shouldBe BuildProgressTracker.STATUS_RUNNING
+        merged.progress?.totalEventCount shouldBe 3
+        merged.progress?.recentEvents.orEmpty().map { it.eventType } shouldBe listOf(
+            "CONFIG_START",
+            "CONFIG_FINISH",
+            "CONFIG_START",
+            "TASK_START",
+        )
+        merged.progress?.currentOperation shouldBe ":app:compileJava"
     }
 
     @Test
@@ -159,8 +221,10 @@ class BuildStatusMergerTest {
         merged.status shouldBe BuildProgressTracker.STATUS_RUNNING
         merged.statusSource shouldBe BuildStatusView.SOURCE_MEMORY
         merged.recordDirectory shouldBe "/tmp/record"
+        merged.progress?.status shouldBe BuildProgressTracker.STATUS_RUNNING
         merged.progress?.totalEventCount shouldBe 2
-        merged.progress?.recentEvents.orEmpty() shouldHaveSize 1
+        merged.progress?.recentEvents.orEmpty() shouldHaveSize 2
+        merged.progress?.recentEvents.orEmpty().map { it.displayName } shouldContain ":app:compileJava"
         merged.progress?.currentOperation shouldBe ":app:compileJava"
     }
 

@@ -117,9 +117,9 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | `statusSource` | `"memory"` | `"disk"` |
 | `liveProgress` | なし | `false` |
 | `progressAvailable` | なし | あり |
-| `recordDirectory` | なし | 絶対パス |
+| `recordDirectory` | 実行中マージ時はあり | 絶対パス |
 
-**ステータス解決**: メモリとディスクが食い違うとき（例: `gradle_disconnect` で MCP が `cancelled` としたが Gradle が走り続けた）は **ディスクの `gradle-result.json` を優先**。Gradle が `running` のまま MCP が終端確定し、`events.ndjson` に MCP `finishedAt` 以降のイベントが無い場合は **MCP 終端ステータス**（デーモン停止の可能性）。
+**ステータス解決**: 実行中はメモリの `status` を優先し、ディスクの `events.ndjson` からタスク進捗をマージする。メモリとディスクが食い違うとき（例: `gradle_disconnect` で MCP が `cancelled` としたが Gradle が走り続けた）は **ディスクの `gradle-result.json` を優先**。Gradle が `running` のまま MCP が終端確定し、`events.ndjson` に MCP `finishedAt` 以降のイベントが無い場合は **MCP 終端ステータス**（デーモン停止の可能性）。
 
 **永続化の正**:
 - 実行中ステータス → `gradle-result.json`（init script）

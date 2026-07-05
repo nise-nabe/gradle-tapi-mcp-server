@@ -174,11 +174,7 @@ class BuildExecutionManager(
             ?: projectDirectoryHint
             ?: connectionManager.defaultProjectDirectory()
             ?: ProjectDirectoryResolver.workspaceFromEnvironment()
-        val artifacts = if (shouldLoadDiskArtifacts(record)) {
-            projectDirectory?.let { buildRecordStore.loadArtifacts(it, buildId) }
-        } else {
-            null
-        }
+        val artifacts = projectDirectory?.let { buildRecordStore.loadArtifacts(it, buildId) }
 
         val view = when {
             record != null && artifacts != null -> {
@@ -263,8 +259,6 @@ class BuildExecutionManager(
         hint
             ?: connectionManager.defaultProjectDirectory()
             ?: ProjectDirectoryResolver.workspaceFromEnvironment()
-
-    private fun shouldLoadDiskArtifacts(record: BuildRecord?): Boolean = true
 
     fun hasActiveBuild(projectDirectory: File? = null): Boolean =
         builds.values.any { record ->

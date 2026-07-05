@@ -16,6 +16,7 @@ import com.example.gradle.mcp.support.withWorkspaceDirectory
 import com.example.gradle.mcp.support.writeDiskFile
 import com.example.gradle.mcp.support.writeGradleResultToDisk
 import com.example.gradle.mcp.support.writeMcpResultToDisk
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -295,6 +296,9 @@ class BuildExecutionManagerPersistenceTest {
         result["statusSource"] shouldBe "memory"
         result.containsKey("error") shouldBe false
         result["recordDirectory"].shouldNotBeNull()
-        (withProgress["progress"] as Map<*, *>)["totalEventCount"] shouldBe 1
+        val progress = withProgress["progress"] as Map<*, *>
+        progress["status"] shouldBe "running"
+        progress["totalEventCount"] shouldBe 1
+        (progress["recentEvents"] as List<*>).map { (it as Map<*, *>)["displayName"] } shouldContain ":app:build"
     }
 }
