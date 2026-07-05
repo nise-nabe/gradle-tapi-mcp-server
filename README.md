@@ -109,7 +109,8 @@ For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` o
 - `status`: `running`, `succeeded`, `failed`, or `cancelled`
 - `statusSource`: `memory` (in-process record) or `disk` (`.gradle/mcp-builds/<buildId>/`)
 - `outcome` and `buildSummary` when the build has finished
-- `progress` (only when `includeProgress: true`): capped task lists and recent events; disk polls use `events.ndjson` (task and test events)
+- `progress` (only when `includeProgress: true`): capped task lists and recent events; running polls merge in-memory progress with disk `events.ndjson` when available
+- `recordDirectory`: path to `.gradle/mcp-builds/<buildId>/` (included during running polls when disk artifacts exist)
 - `stdout`/`stderr` only when `includeOutput: true` — live partial output while running only when the MCP server still holds the in-memory record; disk-only polls return streams after MCP finalizes logs at build end
 - optional `projectDirectory` when the in-memory record was evicted and the connected project differs (disk-only lookup)
 

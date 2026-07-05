@@ -143,7 +143,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 { "buildId": "<id>" }
 ```
 
-→ `gradle_get_build_status`（`status`, `outcome`, `buildSummary`；失敗時は `problems` も；`stdout`/`stderr` は `includeOutput=true` 時のみ—ディスクのみポーリングでは完了まで空；`progress` は `includeProgress=true` 時のみ—メモリ上の実行中ビルドでは `CONFIG_*`（プロジェクト構成）イベントも含むが、ディスクの `events.ndjson` にはタスク/テストのみ；`statusSource` は常に付与）
+→ `gradle_get_build_status`（`status`, `outcome`, `buildSummary`；失敗時は `problems` も；`stdout`/`stderr` は `includeOutput=true` 時のみ—ディスクのみポーリングでは完了まで空；`progress` は `includeProgress=true` 時のみ—実行中はメモリと disk の `events.ndjson` をマージ；`recordDirectory` で `.gradle/mcp-builds/<buildId>/` を参照可能；`statusSource` は常に付与）
 
 `buildId` は必須（並行ビルド時の取り違え防止）。複数の `background=true` ビルドを同時実行できる（サーバー側の上限あり）。上限到達時は `BUILD_ALREADY_RUNNING` が返る。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` を `running` でなくなるまでポーリングして終端ステータス（`cancelled` / `succeeded` / `failed`）を確認する。
 
