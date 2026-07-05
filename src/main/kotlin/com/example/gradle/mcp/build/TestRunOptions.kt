@@ -20,17 +20,31 @@ internal data class TestRunOptions(
     val includePatterns: List<String> get() = selection.includePatternsOrEmpty()
 }
 
-internal fun parseTestRunOptions(args: Map<String, Any>): TestRunOptions {
-    val testClasses = args.optionalStringList("testClasses").orEmpty().filter { it.isNotBlank() }.distinct()
+internal data class TestRunOptionsParseResult(
+    val options: TestRunOptions,
+    val selectionNormalized: Boolean = false,
+)
+
+internal fun parseTestRunOptions(args: Map<String, Any>): TestRunOptionsParseResult {
+    val rawTestClasses = args.optionalStringList("testClasses").orEmpty().filter { it.isNotBlank() }.distinct()
     val testMethods = parseTestMethods(args)
+    val normalized = normalizeTestClassEntries(rawTestClasses, testMethods)
     val taskPath = args.optionalString("taskPath")
     val includePatterns = buildList {
         args.optionalString("includePattern")?.takeIf { it.isNotBlank() }?.let { add(it) }
         args.optionalStringList("includePatterns")?.let { patterns -> addAll(patterns.filter { it.isNotBlank() }) }
     }.distinct()
     val tasks = args.optionalStringList("tasks").orEmpty().filter { it.isNotBlank() }.distinct()
-    val selection = TestRunSelection.fromFlat(testClasses, testMethods, taskPath, includePatterns)
-    return TestRunOptions(selection = selection, tasks = tasks)
+    val selection = TestRunSelection.fromFlat(
+        normalized.classes,
+        normalized.methods,
+        taskPath,
+        includePatterns,
+    )
+    return TestRunOptionsParseResult(
+        options = TestRunOptions(selection = selection, tasks = tasks),
+        selectionNormalized = normalized.normalized,
+    )
 }
 
 internal fun TestRunOptions.validate(inputTaskPath: String? = null): TestRunOptions {
@@ -200,3 +214,66 @@ private fun parseMethodNameList(value: Any?, field: String): List<String> {
 
 private fun invalidTestMethods(message: String): McpException =
     McpException(McpErrorCode.INVALID_ARGUMENT, message)
+
+private data class NormalizedTestClassEntries(
+    val classes: List<String>,
+    val methods: Map<String, List<String>>,
+    val normalized: Boolean,
+)
+
+private sealed interface ParsedTestClassEntry {
+    data class ClassName(val name: String) : ParsedTestClassEntry
+
+    data class MethodRef(val className: String, val methodName: String) : ParsedTestClassEntry
+}
+
+private fun normalizeTestClassEntries(
+    testClasses: List<String>,
+    existingMethods: Map<String, List<String>>,
+): NormalizedTestClassEntries {
+    if (existingMethods.isNotEmpty()) {
+        // testClasses + testMethods together is rejected later by TestRunSelection.fromFlat.
+        return NormalizedTestClassEntries(testClasses, existingMethods, normalized = false)
+    }
+    val classes = mutableListOf<String>()
+    val methods = LinkedHashMap<String, MutableList<String>>()
+    var normalized = false
+    for (entry in testClasses) {
+        when (val parsed = parseTestClassEntry(entry)) {
+            is ParsedTestClassEntry.ClassName -> classes.add(parsed.name)
+            is ParsedTestClassEntry.MethodRef -> {
+                normalized = true
+                methods.getOrPut(parsed.className) { mutableListOf() }.add(parsed.methodName)
+            }
+        }
+    }
+    if (classes.isNotEmpty() && methods.isNotEmpty()) {
+        throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "testClasses cannot mix fully qualified class names with Class.method entries; use testMethods for method selection",
+        )
+    }
+    return NormalizedTestClassEntries(
+        classes = classes,
+        methods = methods.mapValues { (_, methodNames) -> methodNames.distinct() },
+        normalized = normalized,
+    )
+}
+
+private fun parseTestClassEntry(entry: String): ParsedTestClassEntry {
+    val dotIndex = entry.lastIndexOf('.')
+    if (dotIndex <= 0 || dotIndex >= entry.length - 1) {
+        return ParsedTestClassEntry.ClassName(entry)
+    }
+    val className = entry.substring(0, dotIndex)
+    val methodName = entry.substring(dotIndex + 1)
+    // Wildcard patterns belong in includePatterns, not Class.method normalization.
+    if (className.any { it == '*' || it == '?' } || methodName.any { it == '*' || it == '?' }) {
+        return ParsedTestClassEntry.ClassName(entry)
+    }
+    // Lowercase leading segment is treated as a JVM method name (camelCase convention).
+    if (methodName.first().isLowerCase()) {
+        return ParsedTestClassEntry.MethodRef(className, methodName)
+    }
+    return ParsedTestClassEntry.ClassName(entry)
+}

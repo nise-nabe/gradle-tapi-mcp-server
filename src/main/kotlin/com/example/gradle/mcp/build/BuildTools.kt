@@ -99,7 +99,9 @@ internal fun runTestsSchema(): Map<String, Any> =
     runOutputSchema(
         required = emptyList(),
         extraProperties = mapOf(
-            "testClasses" to stringArrayProperty("Fully qualified JVM test class names"),
+            "testClasses" to stringArrayProperty(
+                "Fully qualified JVM test class names. Class.method entries (e.g. com.example.FooTest.testBar) are normalized to testMethods.",
+            ),
             "testMethods" to testMethodsProperty(),
             "taskPath" to stringProperty("Test task path for withTaskAndTest*. Requires testClasses or testMethods."),
             "includePattern" to stringProperty("Single test include pattern (Gradle 7.6+). Requires tasks."),
@@ -195,7 +197,8 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         schema = runTestsSchema(),
     ) { args, notifier ->
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-        val testOptions = parseTestRunOptions(args).validate(args.optionalString("taskPath"))
+        val parsed = parseTestRunOptions(args)
+        val testOptions = parsed.options.validate(args.optionalString("taskPath"))
         val request = testOptions.toBuildRunRequest(
             projectDirectory = projectDirectory,
             arguments = args.optionalStringList("arguments").orEmpty(),
@@ -203,10 +206,22 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
             outputLimit = OutputLimitOptions.fromArgs(args),
             progressOptions = ProgressResponseOptions.fromArgs(args),
         )
-        if (args.optionalBoolean("background", default = false)) {
-            jsonResult(runtime.buildExecutionManager.startBackground(request, notifier))
+        val background = args.optionalBoolean("background", default = false)
+        val response = if (background) {
+            runtime.buildExecutionManager.startBackground(request, notifier)
         } else {
-            jsonResult(runtime.buildExecutionManager.runForeground(request, notifier))
+            runtime.buildExecutionManager.runForeground(request, notifier)
         }
+        jsonResult(withTestRunResponseMetadata(response, parsed.selectionNormalized))
     }
 }
+
+internal fun withTestRunResponseMetadata(
+    response: Map<String, Any?>,
+    selectionNormalized: Boolean,
+): Map<String, Any?> =
+    if (selectionNormalized) {
+        response + ("selectionNormalized" to true)
+    } else {
+        response
+    }
