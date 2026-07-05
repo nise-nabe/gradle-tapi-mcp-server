@@ -103,13 +103,23 @@ class BuildStatusMergerTest {
     }
 
     @Test
-    fun `merge keeps memory progress when both are running`() {
+    fun `merge keeps memory status when disk has stale terminal state`() {
         val memory = BuildStatusView.fromRecord(runningRecord("running-merge"))
-        val disk = diskView(
+        val disk = failedView(
             buildId = "running-merge",
-            status = BuildProgressTracker.STATUS_RUNNING,
-            stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
-            buildSummary = null,
+            progress = progressSnapshot(
+                totalEventCount = 2,
+                recentEvents = listOf(
+                    ProgressEventSnapshot(
+                        timestamp = "2026-06-14T10:00:30Z",
+                        eventType = "TASK_START",
+                        displayName = ":app:compileJava",
+                    ),
+                ),
+            ),
+        ).copy(
+            status = BuildProgressTracker.STATUS_FAILED,
+            statusSource = BuildStatusView.SOURCE_DISK,
             recordDirectory = "/tmp/record",
         )
 
@@ -118,6 +128,40 @@ class BuildStatusMergerTest {
         merged.status shouldBe BuildProgressTracker.STATUS_RUNNING
         merged.statusSource shouldBe BuildStatusView.SOURCE_MEMORY
         merged.recordDirectory shouldBe "/tmp/record"
+        merged.progress?.totalEventCount shouldBe 2
+    }
+
+    @Test
+    fun `merge merges disk progress when both are running`() {
+        val memory = BuildStatusView.fromRecord(runningRecord("running-merge"))
+        val disk = diskView(
+            buildId = "running-merge",
+            status = BuildProgressTracker.STATUS_RUNNING,
+            stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+            buildSummary = null,
+            recordDirectory = "/tmp/record",
+            progress = progressSnapshot(
+                status = BuildProgressTracker.STATUS_RUNNING,
+                totalEventCount = 2,
+                recentEvents = listOf(
+                    ProgressEventSnapshot(
+                        timestamp = "2026-06-14T10:00:30Z",
+                        eventType = "TASK_START",
+                        displayName = ":app:compileJava",
+                    ),
+                ),
+                currentOperation = ":app:compileJava",
+            ),
+        )
+
+        val merged = BuildStatusMerger.merge(memory, disk)
+
+        merged.status shouldBe BuildProgressTracker.STATUS_RUNNING
+        merged.statusSource shouldBe BuildStatusView.SOURCE_MEMORY
+        merged.recordDirectory shouldBe "/tmp/record"
+        merged.progress?.totalEventCount shouldBe 2
+        merged.progress?.recentEvents.orEmpty() shouldHaveSize 1
+        merged.progress?.currentOperation shouldBe ":app:compileJava"
     }
 
     @Test
@@ -255,6 +299,7 @@ class BuildStatusMergerTest {
         stdout: CapturedStreamSnapshot,
         buildSummary: Map<String, Any?>?,
         recordDirectory: String,
+        progress: BuildProgressSnapshot? = null,
     ): BuildStatusView =
         PersistedBuildViewFactory.fromArtifacts(
             buildId,
@@ -270,6 +315,8 @@ class BuildStatusMergerTest {
             status = status,
             buildSummary = buildSummary,
             recordDirectory = recordDirectory,
+            progress = progress,
+            progressAvailable = progress != null,
         )
 
     private fun failedView(
@@ -295,22 +342,25 @@ class BuildStatusMergerTest {
         )
 
     private fun progressSnapshot(
+        status: String = BuildProgressTracker.STATUS_FAILED,
         failedTaskCount: Int = 0,
         failedTasks: List<String> = emptyList(),
         totalEventCount: Int = 0,
         problems: List<BuildProblemSnapshot> = emptyList(),
         failedTests: List<FailedTestSnapshot> = emptyList(),
+        recentEvents: List<ProgressEventSnapshot> = emptyList(),
+        currentOperation: String? = null,
     ): BuildProgressSnapshot =
         BuildProgressSnapshot(
-            status = BuildProgressTracker.STATUS_FAILED,
-            currentOperation = null,
+            status = status,
+            currentOperation = currentOperation,
             completedTaskCount = 0,
             runningTaskCount = 0,
             failedTaskCount = failedTaskCount,
             completedTasks = emptyList(),
             runningTasks = emptyList(),
             failedTasks = failedTasks,
-            recentEvents = emptyList(),
+            recentEvents = recentEvents,
             totalEventCount = totalEventCount,
             problems = problems,
             failedTests = failedTests,
