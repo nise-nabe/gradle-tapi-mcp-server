@@ -84,6 +84,7 @@ class BuildExecutionManagerRunTest {
 
         result["buildId"] shouldNotBe "running-build"
         result["status"] shouldBe "running"
+        concurrentManager.cancelBuild(result["buildId"] as String, otherProject)
     }
 
     @Test
@@ -113,6 +114,12 @@ class BuildExecutionManagerRunTest {
 
         buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
         releaseBuild.countDown()
+        var waitedMs = 0
+        while (manager.hasActiveBuild() && waitedMs < 5_000) {
+            Thread.sleep(50)
+            waitedMs += 50
+        }
+        manager.hasActiveBuild().shouldBeFalse()
     }
 
     @Test
