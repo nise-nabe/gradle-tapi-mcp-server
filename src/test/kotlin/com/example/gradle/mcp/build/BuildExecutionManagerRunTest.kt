@@ -22,7 +22,6 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
-import io.kotest.matchers.collections.shouldHaveSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -203,6 +202,38 @@ class BuildExecutionManagerRunTest {
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
         error.message.shouldContain("already running")
         manager.hasActiveBuild().shouldBeTrue()
+    }
+
+    @Test
+    fun `startBackground rejects when foreground build is running for same project`() {
+        val connectionManager = GradleConnectionManager()
+        val buildEntered = CountDownLatch(1)
+        val releaseBuild = CountDownLatch(1)
+        connectionManager.seedConnectionForTests(blockingProjectConnection(buildEntered, releaseBuild))
+        val manager = BuildExecutionManager(connectionManager)
+        val request = BuildRunRequest(
+            projectDirectory = testProjectDirectory,
+            kind = BuildKind.TASKS,
+            tasks = listOf("test"),
+        )
+
+        val foregroundThread = Thread {
+            runBlocking { manager.runForeground(request, notifier = null) }
+        }.apply { isDaemon = true }
+        foregroundThread.start()
+
+        buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        manager.hasActiveBuild().shouldBeTrue()
+
+        val error = shouldThrow<McpException> {
+            manager.startBackground(request, notifier = null)
+        }
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.message.shouldContain("already running")
+
+        releaseBuild.countDown()
+        foregroundThread.join(5_000)
+        manager.hasActiveBuild().shouldBeFalse()
     }
 
     @Test

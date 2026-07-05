@@ -44,7 +44,7 @@ class BuildExecutionManager(
         connectionManager.requireConnection(request.projectDirectory)
 
         val start = newBuildStart(request, notifier = null)
-        val buildId = registerBuildStart(start, request.projectDirectory)
+        val buildId = registerBuildStart(start)
 
         try {
             executor.execute {
@@ -78,7 +78,7 @@ class BuildExecutionManager(
         connectionManager.requireConnection(request.projectDirectory)
 
         val start = newBuildStart(request, notifier)
-        val buildId = registerBuildStart(start, request.projectDirectory)
+        val buildId = registerBuildStart(start)
         val completion = CountDownLatch(1)
 
         try {
@@ -618,7 +618,9 @@ class BuildExecutionManager(
         executor = newBuildExecutor()
     }
 
-    private fun registerBuildStart(start: BuildStart, projectDirectory: File): String {
+    private fun registerBuildStart(start: BuildStart): String {
+        val projectDirectory = start.record.projectDirectory?.let { File(it) }
+            ?: error("Build record missing projectDirectory")
         synchronized(lifecycleLock) {
             if (hasActiveBuild(projectDirectory)) {
                 throw buildAlreadyRunningForProjectException(projectDirectory)
