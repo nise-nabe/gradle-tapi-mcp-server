@@ -13,6 +13,7 @@ data class BuildRunRequest(
     val jvmArguments: List<String> = emptyList(),
     val outputLimit: OutputLimitOptions = OutputLimitOptions(),
     val progressOptions: ProgressResponseOptions = ProgressResponseOptions(),
+    val selectionNormalized: Boolean = false,
 ) {
     val testClasses: List<String> get() = selection.testClassesForReporting()
     val testMethods: Map<String, List<String>> get() = selection.testMethodsOrEmpty()
