@@ -183,7 +183,7 @@ class BuildStatusMergerTest {
         val merged = BuildStatusMerger.merge(memory, disk)
 
         merged.progress?.status shouldBe BuildProgressTracker.STATUS_RUNNING
-        merged.progress?.totalEventCount shouldBe 3
+        merged.progress?.totalEventCount shouldBe 4
         merged.progress?.recentEvents.orEmpty().map { it.eventType } shouldBe listOf(
             "CONFIG_START",
             "CONFIG_FINISH",

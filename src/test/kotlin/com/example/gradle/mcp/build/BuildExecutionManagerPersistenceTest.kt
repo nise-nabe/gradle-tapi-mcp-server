@@ -298,7 +298,7 @@ class BuildExecutionManagerPersistenceTest {
         result["recordDirectory"].shouldNotBeNull()
         val progress = withProgress["progress"] as Map<*, *>
         progress["status"] shouldBe "running"
-        progress["totalEventCount"] shouldBe 1
+        progress["totalEventCount"] shouldBe 2
         (progress["recentEvents"] as List<*>).map { (it as Map<*, *>)["displayName"] } shouldContain ":app:build"
     }
 }

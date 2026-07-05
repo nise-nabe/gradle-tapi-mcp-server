@@ -70,7 +70,11 @@ internal object BuildStatusMerger {
                     runningTasks = pickRicherTaskList(memory.runningTasks, disk.runningTasks),
                     failedTasks = memory.failedTasks,
                     recentEvents = mergedRecentEvents,
-                    totalEventCount = maxOf(memory.totalEventCount, disk.totalEventCount),
+                    totalEventCount = maxOf(
+                        memory.totalEventCount,
+                        disk.totalEventCount,
+                        mergedRecentEvents.size,
+                    ),
                     problems = memory.problems,
                     failedTests = memory.failedTests,
                 )
