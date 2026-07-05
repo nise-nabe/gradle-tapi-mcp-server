@@ -22,8 +22,10 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.collections.shouldHaveSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -82,6 +84,35 @@ class BuildExecutionManagerRunTest {
 
         result["buildId"] shouldNotBe "running-build"
         result["status"] shouldBe "running"
+    }
+
+    @Test
+    fun `startBackground rejects concurrent starts for same project`() {
+        val connectionManager = GradleConnectionManager()
+        val buildEntered = CountDownLatch(1)
+        val releaseBuild = CountDownLatch(1)
+        connectionManager.seedConnectionForTests(blockingProjectConnection(buildEntered, releaseBuild))
+        val manager = BuildExecutionManager(connectionManager)
+        val request = BuildRunRequest(
+            projectDirectory = testProjectDirectory,
+            kind = BuildKind.TASKS,
+            tasks = listOf("test"),
+        )
+
+        val outcomes = runBlocking {
+            listOf(
+                async(Dispatchers.Default) { runCatching { manager.startBackground(request, notifier = null) } },
+                async(Dispatchers.Default) { runCatching { manager.startBackground(request, notifier = null) } },
+            ).awaitAll()
+        }
+
+        outcomes.count { it.isSuccess } shouldBe 1
+        val failure = outcomes.single { it.isFailure }.exceptionOrNull().shouldNotBeNull()
+        (failure as McpException).code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        failure.message.shouldContain("already running")
+
+        buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        releaseBuild.countDown()
     }
 
     @Test
