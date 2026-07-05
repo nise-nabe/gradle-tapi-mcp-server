@@ -44,12 +44,8 @@ class BuildExecutionManager(
         connectionManager.requireConnection(request.projectDirectory)
 
         val start = newBuildStart(request, notifier = null)
-        val buildId = start.record.id
+        val buildId = registerBuildStart(start)
 
-        synchronized(lifecycleLock) {
-            builds[buildId] = start.record
-            pruneCompletedBuilds()
-        }
         try {
             executor.execute {
                 runBuild(start.record, request, start.notifier)
@@ -82,13 +78,9 @@ class BuildExecutionManager(
         connectionManager.requireConnection(request.projectDirectory)
 
         val start = newBuildStart(request, notifier)
-        val buildId = start.record.id
+        val buildId = registerBuildStart(start)
         val completion = CountDownLatch(1)
 
-        synchronized(lifecycleLock) {
-            builds[buildId] = start.record
-            pruneCompletedBuilds()
-        }
         try {
             executor.execute {
                 try {
@@ -625,6 +617,27 @@ class BuildExecutionManager(
         executor.shutdownNow()
         executor = newBuildExecutor()
     }
+
+    private fun registerBuildStart(start: BuildStart): String {
+        val projectDirectory = start.record.projectDirectory?.let { File(it) }
+            ?: error("Build record missing projectDirectory")
+        synchronized(lifecycleLock) {
+            if (hasActiveBuild(projectDirectory)) {
+                throw buildAlreadyRunningForProjectException(projectDirectory)
+            }
+            builds[start.record.id] = start.record
+            pruneCompletedBuilds()
+            return start.record.id
+        }
+    }
+
+    private fun buildAlreadyRunningForProjectException(projectDirectory: File): McpException =
+        McpException(
+            McpErrorCode.BUILD_ALREADY_RUNNING,
+            "A Gradle build is already running for ${projectDirectory.path}. " +
+                "Poll gradle_get_build_status with the active buildId, call gradle_cancel_build to stop it, " +
+                "or wait for it to finish.",
+        )
 
     private fun maxConcurrentBuildsException(): McpException =
         McpException(

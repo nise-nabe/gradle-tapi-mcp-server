@@ -24,13 +24,11 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
-import org.gradle.tooling.ProjectConnection
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
-import java.lang.reflect.InvocationHandler
-import java.lang.reflect.Proxy
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -40,7 +38,7 @@ class BuildExecutionManagerRunTest {
     private val manager = BuildExecutionManager(GradleConnectionManager())
 
     @Test
-    fun `startBackground allows concurrent builds`() {
+    fun `startBackground rejects second build for same project`() {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnection()
         val concurrentManager = BuildExecutionManager(connectionManager)
@@ -48,16 +46,79 @@ class BuildExecutionManagerRunTest {
             testBuildRecord(
                 id = "running-build",
                 tracker = runningTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+            ),
+        )
+
+        val error = shouldThrow<McpException> {
+            concurrentManager.startBackground(
+                request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
+                notifier = null,
+            )
+        }
+
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.message.shouldContain("already running")
+        error.message.shouldContain("gradle_get_build_status")
+    }
+
+    @Test
+    fun `startBackground allows concurrent builds for different projects`(@TempDir otherProject: File) {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedNoopConnection()
+        connectionManager.seedNoopConnection(otherProject)
+        val concurrentManager = BuildExecutionManager(connectionManager)
+        concurrentManager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "running-build",
+                tracker = runningTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
             ),
         )
 
         val result = concurrentManager.startBackground(
-            request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
+            request = BuildRunRequest(projectDirectory = otherProject, kind = BuildKind.TASKS, tasks = listOf("test")),
             notifier = null,
         )
 
         result["buildId"] shouldNotBe "running-build"
         result["status"] shouldBe "running"
+        concurrentManager.cancelBuild(result["buildId"] as String, otherProject)
+    }
+
+    @Test
+    fun `startBackground rejects concurrent starts for same project`() {
+        val connectionManager = GradleConnectionManager()
+        val buildEntered = CountDownLatch(1)
+        val releaseBuild = CountDownLatch(1)
+        connectionManager.seedConnectionForTests(blockingProjectConnection(buildEntered, releaseBuild))
+        val manager = BuildExecutionManager(connectionManager)
+        val request = BuildRunRequest(
+            projectDirectory = testProjectDirectory,
+            kind = BuildKind.TASKS,
+            tasks = listOf("test"),
+        )
+
+        val outcomes = runBlocking {
+            listOf(
+                async(Dispatchers.Default) { runCatching { manager.startBackground(request, notifier = null) } },
+                async(Dispatchers.Default) { runCatching { manager.startBackground(request, notifier = null) } },
+            ).awaitAll()
+        }
+
+        outcomes.count { it.isSuccess } shouldBe 1
+        val failure = outcomes.single { it.isFailure }.exceptionOrNull().shouldNotBeNull()
+        (failure as McpException).code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        failure.message.shouldContain("already running")
+
+        buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        releaseBuild.countDown()
+        var waitedMs = 0
+        while (manager.hasActiveBuild() && waitedMs < 5_000) {
+            Thread.sleep(50)
+            waitedMs += 50
+        }
+        manager.hasActiveBuild().shouldBeFalse()
     }
 
     @Test
@@ -117,31 +178,62 @@ class BuildExecutionManagerRunTest {
     }
 
     @Test
-    fun `runForeground does not reject when another build is running`() {
+    fun `runForeground rejects when another build is running for same project`() {
         val connectionManager = GradleConnectionManager()
-        val connection = Proxy.newProxyInstance(
-            ProjectConnection::class.java.classLoader,
-            arrayOf(ProjectConnection::class.java),
-            InvocationHandler { _, method, _ ->
-                if (method.name == "newBuild") {
-                    throw UnsupportedOperationException("simulated build failure")
-                }
-                null
-            },
-        ) as ProjectConnection
-        connectionManager.seedConnectionForTests(connection)
+        connectionManager.seedNoopConnection()
         val manager = BuildExecutionManager(connectionManager)
-        manager.seedRunningBuildForTests(testBuildRecord(id = "running-build", tracker = runningTracker()))
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "running-build",
+                tracker = runningTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+            ),
+        )
 
-        val result = runBlocking {
-            manager.runForeground(
-                request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
-                notifier = null,
-            )
+        val error = shouldThrow<McpException> {
+            runBlocking {
+                manager.runForeground(
+                    request = BuildRunRequest(projectDirectory = testProjectDirectory, kind = BuildKind.TASKS, tasks = listOf("test")),
+                    notifier = null,
+                )
+            }
         }
 
-        result["status"] shouldBe "failed"
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.message.shouldContain("already running")
         manager.hasActiveBuild().shouldBeTrue()
+    }
+
+    @Test
+    fun `startBackground rejects when foreground build is running for same project`() {
+        val connectionManager = GradleConnectionManager()
+        val buildEntered = CountDownLatch(1)
+        val releaseBuild = CountDownLatch(1)
+        connectionManager.seedConnectionForTests(blockingProjectConnection(buildEntered, releaseBuild))
+        val manager = BuildExecutionManager(connectionManager)
+        val request = BuildRunRequest(
+            projectDirectory = testProjectDirectory,
+            kind = BuildKind.TASKS,
+            tasks = listOf("test"),
+        )
+
+        val foregroundThread = Thread {
+            runBlocking { manager.runForeground(request, notifier = null) }
+        }.apply { isDaemon = true }
+        foregroundThread.start()
+
+        buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        manager.hasActiveBuild().shouldBeTrue()
+
+        val error = shouldThrow<McpException> {
+            manager.startBackground(request, notifier = null)
+        }
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.message.shouldContain("already running")
+
+        releaseBuild.countDown()
+        foregroundThread.join(5_000)
+        manager.hasActiveBuild().shouldBeFalse()
     }
 
     @Test
