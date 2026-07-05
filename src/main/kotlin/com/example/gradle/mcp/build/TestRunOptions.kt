@@ -77,7 +77,6 @@ internal fun TestRunOptions.toBuildRunRequest(
         jvmArguments = jvmArguments,
         outputLimit = outputLimit,
         progressOptions = progressOptions,
-        selectionNormalized = selectionNormalized,
     )
 
 private fun formatTestMethodsLabel(testMethods: Map<String, List<String>>): String =
@@ -230,6 +229,7 @@ private fun normalizeTestClassEntries(
     existingMethods: Map<String, List<String>>,
 ): NormalizedTestClassEntries {
     if (existingMethods.isNotEmpty()) {
+        // testClasses + testMethods together is rejected later by TestRunSelection.fromFlat.
         return NormalizedTestClassEntries(testClasses, existingMethods, normalized = false)
     }
     val classes = mutableListOf<String>()
@@ -264,6 +264,11 @@ private fun parseTestClassEntry(entry: String): ParsedTestClassEntry {
     }
     val className = entry.substring(0, dotIndex)
     val methodName = entry.substring(dotIndex + 1)
+    // Wildcard patterns belong in includePatterns, not Class.method normalization.
+    if (methodName.any { it == '*' || it == '?' }) {
+        return ParsedTestClassEntry.ClassName(entry)
+    }
+    // Lowercase leading segment is treated as a JVM method name (camelCase convention).
     if (methodName.first().isLowerCase()) {
         return ParsedTestClassEntry.MethodRef(className, methodName)
     }

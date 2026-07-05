@@ -42,19 +42,23 @@ class TestRunOptionsTest {
     }
 
     @Test
-    fun `toBuildRunRequest propagates selectionNormalized`() {
-        val request = TestRunOptions(
-            selection = TestRunSelection.Methods(mapOf("com.example.FooTest" to listOf("testBar"))),
+    fun `withTestRunResponseMetadata adds selectionNormalized when flagged`() {
+        val response = withTestRunResponseMetadata(
+            mapOf("status" to "running"),
             selectionNormalized = true,
-        ).toBuildRunRequest(
-            projectDirectory = testProjectDirectory,
-            arguments = emptyList(),
-            jvmArguments = emptyList(),
-            outputLimit = OutputLimitOptions(),
-            progressOptions = ProgressResponseOptions(),
         )
 
-        request.selectionNormalized shouldBe true
+        response["selectionNormalized"] shouldBe true
+    }
+
+    @Test
+    fun `parseTestRunOptions keeps wildcard Class method entries as classes`() {
+        val options = parseTestRunOptions(
+            mapOf("testClasses" to listOf("com.example.FooTest.test*")),
+        )
+
+        options.selection shouldBe TestRunSelection.Classes(listOf("com.example.FooTest.test*"))
+        options.selectionNormalized shouldBe false
     }
 
     @Test

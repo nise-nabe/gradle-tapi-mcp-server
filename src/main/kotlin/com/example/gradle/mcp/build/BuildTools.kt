@@ -206,9 +206,29 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
             progressOptions = ProgressResponseOptions.fromArgs(args),
         )
         if (args.optionalBoolean("background", default = false)) {
-            jsonResult(runtime.buildExecutionManager.startBackground(request, notifier))
+            jsonResult(
+                withTestRunResponseMetadata(
+                    runtime.buildExecutionManager.startBackground(request, notifier),
+                    testOptions.selectionNormalized,
+                ),
+            )
         } else {
-            jsonResult(runtime.buildExecutionManager.runForeground(request, notifier))
+            jsonResult(
+                withTestRunResponseMetadata(
+                    runtime.buildExecutionManager.runForeground(request, notifier),
+                    testOptions.selectionNormalized,
+                ),
+            )
         }
     }
 }
+
+internal fun withTestRunResponseMetadata(
+    response: Map<String, Any?>,
+    selectionNormalized: Boolean,
+): Map<String, Any?> =
+    if (selectionNormalized) {
+        response + ("selectionNormalized" to true)
+    } else {
+        response
+    }
