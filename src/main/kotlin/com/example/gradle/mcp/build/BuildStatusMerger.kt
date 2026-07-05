@@ -8,13 +8,14 @@ import com.example.gradle.mcp.protocol.ProblemsSerializer
  */
 internal object BuildStatusMerger {
     fun merge(memory: BuildStatusView, disk: BuildStatusView): BuildStatusView {
-        if (memory.status == BuildProgressTracker.STATUS_RUNNING &&
-            disk.status == BuildProgressTracker.STATUS_RUNNING
-        ) {
+        if (memory.status == BuildProgressTracker.STATUS_RUNNING) {
+            val mergedProgress = pickProgress(disk.progress, memory.progress)
             return memory.copy(
                 recordDirectory = disk.recordDirectory,
                 stdout = pickStream(disk.stdout, memory.stdout),
                 stderr = pickStream(disk.stderr, memory.stderr),
+                progress = mergedProgress,
+                progressAvailable = mergedProgress != null || memory.progressAvailable || disk.progressAvailable,
             )
         }
         if (disk.status != memory.status) {

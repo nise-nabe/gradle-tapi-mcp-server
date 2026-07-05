@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test
 
 class BuildStatusAssemblerTest {
     @Test
-    fun `assemble omits recordDirectory for memory status source`() {
+    fun `assemble includes recordDirectory when present on memory status source`() {
         val response = BuildStatusAssembler.assemble(
             view = BuildStatusView(
                 buildId = "memory-build",
@@ -47,7 +47,7 @@ class BuildStatusAssemblerTest {
         )
 
         response["statusSource"] shouldBe "memory"
-        response.containsKey("recordDirectory") shouldBe false
+        response["recordDirectory"] shouldBe "/tmp/record"
         response.containsKey("liveProgress") shouldBe false
     }
 

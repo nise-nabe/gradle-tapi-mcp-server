@@ -43,8 +43,8 @@ internal object BuildStatusAssembler {
 
         response["status"] = view.status
         view.kind?.let { response["kind"] = it }
+        view.recordDirectory?.let { response["recordDirectory"] = it }
         if (view.statusSource == BuildStatusView.SOURCE_DISK) {
-            view.recordDirectory?.let { response["recordDirectory"] = it }
             response["liveProgress"] = false
             response["progressAvailable"] = view.progressAvailable
         }

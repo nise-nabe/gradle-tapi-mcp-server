@@ -264,8 +264,7 @@ class BuildExecutionManager(
             ?: connectionManager.defaultProjectDirectory()
             ?: ProjectDirectoryResolver.workspaceFromEnvironment()
 
-    private fun shouldLoadDiskArtifacts(record: BuildRecord?): Boolean =
-        record == null || record.progressTracker.snapshot().status != BuildProgressTracker.STATUS_RUNNING
+    private fun shouldLoadDiskArtifacts(record: BuildRecord?): Boolean = true
 
     fun hasActiveBuild(projectDirectory: File? = null): Boolean =
         builds.values.any { record ->

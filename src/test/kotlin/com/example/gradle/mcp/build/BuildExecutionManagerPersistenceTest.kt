@@ -246,7 +246,7 @@ class BuildExecutionManagerPersistenceTest {
     }
 
     @Test
-    fun `status skips disk merge while in-memory build is still running`(@TempDir projectDir: File) {
+    fun `status merges disk progress while in-memory build is still running`(@TempDir projectDir: File) {
         val buildId = "active-running-build"
         val (manager, store) = persistedBuildManager(projectDir)
         manager.seedRunningBuildForTests(
@@ -285,9 +285,16 @@ class BuildExecutionManagerPersistenceTest {
         )
 
         val result = manager.status(buildId, OutputLimitOptions(), ProgressResponseOptions())
+        val withProgress = manager.status(
+            buildId,
+            OutputLimitOptions(),
+            ProgressResponseOptions(includeProgress = true),
+        )
 
         result["status"] shouldBe "running"
         result["statusSource"] shouldBe "memory"
         result.containsKey("error") shouldBe false
+        result["recordDirectory"].shouldNotBeNull()
+        (withProgress["progress"] as Map<*, *>)["totalEventCount"] shouldBe 1
     }
 }
