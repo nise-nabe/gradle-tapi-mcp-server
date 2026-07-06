@@ -39,4 +39,6 @@ Full parameter docs: `skills/gradle-tapi-mcp/reference.md`.
 
 ## Full tool reference
 
-See `skills/gradle-tapi-mcp/SKILL.md` and `skills/gradle-tapi-mcp/reference.md` in this repository for the complete tool catalog and advanced workflows (background builds, multiple projects, output limits).
+See `skills/gradle-tapi-mcp/SKILL.md` and `skills/gradle-tapi-mcp/reference.md` in this repository for the complete tool catalog and advanced workflows (background builds, multiple projects, test concurrency, output limits).
+
+**Test concurrency:** Only one MCP build per `projectDirectory` at a time. Batch multiple tests in a single `gradle_run_tests` call; parallel separate calls for the same project return `BUILD_ALREADY_RUNNING`.

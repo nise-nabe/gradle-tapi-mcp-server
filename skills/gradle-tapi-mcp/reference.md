@@ -155,6 +155,8 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 
 `taskPath` uses `withTaskAndTest*` when combined with classes or methods. `tasks` applies `TestLauncher.forTasks()` when non-empty.
 
+**Concurrency:** Do not start multiple `gradle_run_tests` calls in parallel for the same `projectDirectory` (including parallel MCP tool invocations with `background: true`); the second call returns `BUILD_ALREADY_RUNNING`. Batch multiple classes or methods in one call via `testMethods`, `testClasses`, or `includePatterns`. Parallel test runs are only supported across **different** `projectDirectory` values, up to the server concurrent-build limit (see Connection section).
+
 Same foreground/background response shape as `gradle_run_tasks`. When `testClasses` entries were normalized to `testMethods`, the initial tool response may include `selectionNormalized: true` (not present on `gradle_get_build_status` polls).
 
 ### gradle_list_builds
