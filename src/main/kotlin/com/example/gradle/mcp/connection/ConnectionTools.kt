@@ -18,6 +18,40 @@ import kotlinx.coroutines.CoroutineScope
 import org.gradle.tooling.model.build.BuildEnvironment
 import java.io.File
 
+internal fun disconnectProjects(
+    runtime: GradleMcpRuntime,
+    projectDirectoryArg: String?,
+): Map<String, Any?> {
+    val projectDirectory = projectDirectoryArg?.let(ProjectDirectoryResolver::bestEffortDirectory)
+    val hadActiveBuild = if (projectDirectory != null) {
+        runtime.buildExecutionManager.hasActiveBuild(projectDirectory)
+    } else {
+        runtime.buildExecutionManager.hasActiveBuild()
+    }
+    val disconnected = synchronized(ProjectLifecycleLock) {
+        runtime.buildExecutionManager.onDisconnect(projectDirectory)
+        if (projectDirectory != null) {
+            runtime.connectionManager.disconnect(projectDirectory)?.let { listOf(it) }.orEmpty()
+        } else {
+            runtime.connectionManager.disconnectAll()
+        }
+    }
+    return buildMap {
+        if (disconnected.isEmpty()) {
+            put("state", "not_connected")
+        } else if (disconnected.size == 1) {
+            put("projectDirectory", disconnected.single().projectDirectory)
+            put("state", disconnected.single().state)
+        } else {
+            put("state", "disconnected")
+            put("projectDirectories", disconnected.map { it.projectDirectory })
+        }
+        if (hadActiveBuild) {
+            put("warning", DISCONNECT_DURING_BUILD_WARNING)
+        }
+    }
+}
+
 private const val DISCONNECT_DURING_BUILD_WARNING =
     "One or more builds were still in progress for the disconnected project(s). The server cancelled them " +
         "via the Tooling API CancellationToken and marked status cancelled."
@@ -65,20 +99,23 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
         val projectDirectory = ProjectDirectoryResolver.canonicalDirectory(
             args.requiredString("projectDirectory"),
         )
-        if (runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
-            throw McpException(
-                McpErrorCode.BUILD_ALREADY_RUNNING,
-                "Cannot connect while a Gradle build is running for ${projectDirectory.path}. " +
-                    "Wait for the build to finish, call gradle_cancel_build, or call gradle_disconnect.",
-            )
-        }
         val config = ConnectionConfig(
             projectDirectory = projectDirectory.path,
             gradleUserHome = args.optionalString("gradleUserHome"),
             gradleVersion = args.optionalString("gradleVersion"),
             gradleInstallation = args.optionalString("gradleInstallation"),
         )
-        jsonResult(runtime.connectionManager.connect(config).toResponseMap())
+        val response = synchronized(ProjectLifecycleLock) {
+            if (runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
+                throw McpException(
+                    McpErrorCode.BUILD_ALREADY_RUNNING,
+                    "Cannot connect while a Gradle build is running for ${projectDirectory.path}. " +
+                        "Wait for the build to finish, call gradle_cancel_build, or call gradle_disconnect.",
+                )
+            }
+            runtime.connectionManager.connect(config).toResponseMap()
+        }
+        jsonResult(response)
     }
     registerTool(
         scope,
@@ -96,37 +133,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
         description = McpToolDescriptions.DISCONNECT,
         schema = disconnectSchema(),
     ) { args ->
-        val projectDirectory = args.optionalString("projectDirectory")
-            ?.let(ProjectDirectoryResolver::bestEffortDirectory)
-        val hadActiveBuild = if (projectDirectory != null) {
-            runtime.buildExecutionManager.hasActiveBuild(projectDirectory)
-        } else {
-            runtime.buildExecutionManager.hasActiveBuild()
-        }
-        val disconnected = try {
-            if (projectDirectory != null) {
-                runtime.connectionManager.disconnect(projectDirectory)?.let { listOf(it) }.orEmpty()
-            } else {
-                runtime.connectionManager.disconnectAll()
-            }
-        } finally {
-            runtime.buildExecutionManager.onDisconnect(projectDirectory)
-        }
-        val payload = buildMap<String, Any?> {
-            if (disconnected.isEmpty()) {
-                put("state", "not_connected")
-            } else if (disconnected.size == 1) {
-                put("projectDirectory", disconnected.single().projectDirectory)
-                put("state", disconnected.single().state)
-            } else {
-                put("state", "disconnected")
-                put("projectDirectories", disconnected.map { it.projectDirectory })
-            }
-            if (hadActiveBuild) {
-                put("warning", DISCONNECT_DURING_BUILD_WARNING)
-            }
-        }
-        jsonResult(payload)
+        jsonResult(disconnectProjects(runtime, args.optionalString("projectDirectory")))
     }
     registerTool(
         scope,

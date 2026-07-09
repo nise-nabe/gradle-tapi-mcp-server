@@ -83,14 +83,16 @@ internal fun requireNoActiveBuildForPrepareTasks(
     projectDirectory: File,
     buildExecutionManager: BuildExecutionManager,
 ) {
-    if (prepareTasks.isEmpty()) {
-        return
-    }
     if (buildExecutionManager.hasActiveBuild(projectDirectory)) {
         throw McpException(
             McpErrorCode.BUILD_ALREADY_RUNNING,
-            "Cannot run prepareTasks while a Gradle build is running for ${projectDirectory.path}. " +
-                "Wait for the build to finish or call gradle_get_build_status.",
+            if (prepareTasks.isEmpty()) {
+                "Cannot query Gradle models while a build is running for ${projectDirectory.path}. " +
+                    "Wait for the build to finish, call gradle_cancel_build, or poll gradle_get_build_status."
+            } else {
+                "Cannot run prepareTasks while a Gradle build is running for ${projectDirectory.path}. " +
+                    "Wait for the build to finish or call gradle_get_build_status."
+            },
         )
     }
 }

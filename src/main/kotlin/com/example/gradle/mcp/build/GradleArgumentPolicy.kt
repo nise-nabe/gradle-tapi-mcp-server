@@ -4,6 +4,8 @@ import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 
 internal object GradleArgumentPolicy {
+    private val MCP_CONTROL_PROPERTY_PREFIX = Regex("""(?i)^-P(?:mcp\.|project\.mcp\.)""")
+
     fun requireNoInitScript(arguments: List<String>) {
         var index = 0
         while (index < arguments.size) {
@@ -22,6 +24,17 @@ internal object GradleArgumentPolicy {
         }
     }
 
+    fun requireNoMcpControlArguments(arguments: List<String>) {
+        arguments.forEach { arg ->
+            if (isMcpControlArgument(arg)) {
+                throw mcpControlArgumentException(arg)
+            }
+        }
+    }
+
+    internal fun isMcpControlArgument(arg: String): Boolean =
+        MCP_CONTROL_PROPERTY_PREFIX.containsMatchIn(arg)
+
     private fun isCombinedInitScriptFlag(arg: String): Boolean =
         arg.startsWith("-I") && arg.length > 2
 
@@ -37,5 +50,12 @@ internal object GradleArgumentPolicy {
             McpErrorCode.INVALID_ARGUMENT,
             "Gradle argument files are not allowed in arguments ($flag). " +
                 "They can inject init scripts that conflict with MCP build recording.",
+        )
+
+    private fun mcpControlArgumentException(flag: String): McpException =
+        McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "MCP-controlled project properties cannot be set in arguments ($flag). " +
+                "The server injects persistence metadata and init scripts automatically.",
         )
 }

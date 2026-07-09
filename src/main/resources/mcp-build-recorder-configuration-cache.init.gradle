@@ -105,14 +105,40 @@ class McpBuildRecorderSupport {
         return "failed"
     }
 
-    static Map readLauncherMetadata(String metadataPath) {
+    static Map readLauncherMetadata(String metadataPath, File projectDirectory) {
         def parsed = new groovy.json.JsonSlurper().parse(new File(metadataPath))
+        def buildId = (parsed.buildId as String)?.trim()
         def recordDir = new File(parsed.recordDir as String).absoluteFile
+        if (!McpBuildRecorderSupport.isSafeRecordDir(projectDirectory, buildId, recordDir)) {
+            throw new IllegalStateException(
+                "Invalid MCP recordDir for build ${buildId ?: '<missing>'}: path must be under " +
+                    ".gradle/mcp-builds/<buildId> in the project directory."
+            )
+        }
         recordDir.mkdirs()
         return [
             recordDirPath: recordDir.absolutePath,
-            buildId      : (parsed.buildId as String)?.trim(),
+            buildId      : buildId,
         ]
+    }
+
+    static File projectDirectoryFromMetadataPath(String metadataPath) {
+        def metadataFile = new File(metadataPath).canonicalFile
+        def launcherDir = metadataFile.parentFile
+        def recordsRoot = launcherDir?.parentFile
+        def gradleDir = recordsRoot?.parentFile
+        return gradleDir?.parentFile
+    }
+
+    static boolean isSafeRecordDir(File projectDirectory, String buildId, File recordDir) {
+        if (!projectDirectory || !buildId || buildId == '.' || buildId == '..' ||
+            buildId.contains('/') || buildId.contains('\\') || buildId.contains('..')) {
+            return false
+        }
+        def recordsRoot = new File(projectDirectory, ".gradle/mcp-builds").canonicalFile
+        def expected = new File(recordsRoot, buildId).canonicalFile
+        def canonicalRecordDir = recordDir.canonicalFile
+        return canonicalRecordDir == expected && canonicalRecordDir.toPath().startsWith(recordsRoot.toPath())
     }
 }
 
@@ -129,7 +155,11 @@ abstract class McpConfigurationCacheRecorderService
     private java.util.Timer heartbeatTimer
 
     private Map launcherContext() {
-        McpBuildRecorderSupport.readLauncherMetadata(parameters.launcherMetadataPath.get())
+        def metadataPath = parameters.launcherMetadataPath.get()
+        McpBuildRecorderSupport.readLauncherMetadata(
+            metadataPath,
+            McpBuildRecorderSupport.projectDirectoryFromMetadataPath(metadataPath),
+        )
     }
 
     private void appendEvent(Map event) {
@@ -216,7 +246,11 @@ abstract class McpBuildFinalizeFlowAction implements FlowAction<McpBuildFinalize
 
     @Override
     void execute(Params parameters) {
-        def context = McpBuildRecorderSupport.readLauncherMetadata(parameters.launcherMetadataPath.get())
+        def metadataPath = parameters.launcherMetadataPath.get()
+        def context = McpBuildRecorderSupport.readLauncherMetadata(
+            metadataPath,
+            McpBuildRecorderSupport.projectDirectoryFromMetadataPath(metadataPath),
+        )
         def failureMessage = parameters.failureMessage.getOrNull()
         if (failureMessage != null && failureMessage.isEmpty()) {
             failureMessage = null

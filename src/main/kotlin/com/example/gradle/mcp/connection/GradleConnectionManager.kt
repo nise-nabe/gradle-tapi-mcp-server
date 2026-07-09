@@ -128,13 +128,17 @@ class GradleConnectionManager {
 
     fun tryAutoConnectFromEnvironment() {
         val projectDir = ProjectDirectoryResolver.workspaceFromEnvironment() ?: return
-        if (isConnected(projectDir)) {
+        tryAutoConnectFromDirectory(projectDir)
+    }
+
+    internal fun tryAutoConnectFromDirectory(projectDirectory: File) {
+        if (isConnected(projectDirectory)) {
             return
         }
         try {
             connect(
                 ConnectionConfig(
-                    projectDirectory = projectDir.path,
+                    projectDirectory = projectDirectory.canonicalFile.path,
                     gradleUserHome = System.getenv("GRADLE_USER_HOME")?.takeIf { it.isNotBlank() },
                     gradleVersion = System.getenv("GRADLE_VERSION")?.takeIf { it.isNotBlank() },
                     gradleInstallation = System.getenv("GRADLE_INSTALLATION")?.takeIf { it.isNotBlank() },

@@ -2,15 +2,21 @@ package com.example.gradle.mcp.cache
 
 internal object BuildCacheUrlRedactor {
     private const val REMOTE_URL_KEY = "org.gradle.caching.remote.url"
+    private const val REDACTED_VALUE = "***"
+    private val SENSITIVE_KEY_PATTERN =
+        Regex("""(?i)(password|credentials|token|secret|api[_-]?key)""")
 
     fun sanitizeCacheProperties(properties: Map<String, String>): Map<String, String> =
         properties.mapValues { (key, value) ->
-            if (key == REMOTE_URL_KEY) {
-                redactUserInfo(value)
-            } else {
-                value
+            when {
+                key == REMOTE_URL_KEY -> redactUserInfo(value)
+                isSensitiveKey(key) -> REDACTED_VALUE
+                else -> value
             }
         }
+
+    internal fun isSensitiveKey(key: String): Boolean =
+        SENSITIVE_KEY_PATTERN.containsMatchIn(key)
 
     fun redactUserInfo(url: String): String {
         val trimmed = url.trim()
