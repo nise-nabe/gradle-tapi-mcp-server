@@ -45,7 +45,7 @@ Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `gradle.versionInfo` (G
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `includeToolchains` | `false` | Include `javaToolchains` probe results (extra Gradle work) |
+| `includeToolchains` | `true` | Include `javaToolchains` probe results (extra Gradle work) |
 
 Returns daemon Java from the connected project (`javaHome`, `javaVersion`, `jvmArguments`) and, when `includeToolchains=true`, toolchain metadata from `javaToolchains`. Prefer `gradle_get_build_environment` for a lightweight stack snapshot; use this tool when selecting or comparing JDK installations for toolchain configuration.
 

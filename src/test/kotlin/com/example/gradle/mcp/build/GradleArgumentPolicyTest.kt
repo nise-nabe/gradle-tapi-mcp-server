@@ -65,6 +65,21 @@ class GradleArgumentPolicyTest {
     }
 
     @Test
+    fun `rejects mcp control properties as system properties in arguments`() {
+        val cases = listOf(
+            "-Dorg.gradle.project.mcp.recordDir=/tmp",
+            "-Dorg.gradle.project.mcp.ccInitScript=/tmp/evil.gradle",
+            "-Dorg.gradle.project.project.mcp.launcherMetadata=/tmp/evil.json",
+        )
+        for (argument in cases) {
+            val exception = shouldThrow<McpException> {
+                GradleArgumentPolicy.requireNoMcpControlArguments(listOf(argument))
+            }
+            exception.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        }
+    }
+
+    @Test
     fun `rejects mcp control properties in jvmArguments`() {
         val cases = listOf(
             "-Dorg.gradle.project.mcp.recordDir=/tmp",
@@ -85,6 +100,17 @@ class GradleArgumentPolicyTest {
             GradleArgumentPolicy.validateUserBuildArguments(
                 arguments = emptyList(),
                 jvmArguments = listOf("-Dorg.gradle.project.mcp.recordDir=/tmp"),
+            )
+        }
+        exception.code shouldBe McpErrorCode.INVALID_ARGUMENT
+    }
+
+    @Test
+    fun `validateUserBuildArguments rejects arguments system property bypass`() {
+        val exception = shouldThrow<McpException> {
+            GradleArgumentPolicy.validateUserBuildArguments(
+                arguments = listOf("-Dorg.gradle.project.mcp.recordDir=/tmp"),
+                jvmArguments = emptyList(),
             )
         }
         exception.code shouldBe McpErrorCode.INVALID_ARGUMENT

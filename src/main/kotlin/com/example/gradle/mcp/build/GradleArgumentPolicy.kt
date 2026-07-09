@@ -50,6 +50,7 @@ internal object GradleArgumentPolicy {
                 }
                 else -> {
                     when {
+                        isMcpControlJvmArgument(arg) -> throw mcpControlArgumentException(arg)
                         isCombinedProjectPropertyFlag(arg) -> {
                             val propertyToken = arg.substring(2)
                             if (isMcpControlProjectPropToken(propertyToken)) {

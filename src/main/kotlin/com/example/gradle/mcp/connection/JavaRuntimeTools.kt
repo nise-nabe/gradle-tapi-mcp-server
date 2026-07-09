@@ -209,6 +209,10 @@ internal object JavaRuntimesCollector {
     }
 }
 
+private fun toolchainDetectionBlockedMessage(projectDirectory: File): String =
+    "Cannot detect installed JDKs while a Gradle build is running for ${projectDirectory.path}. " +
+        "Wait for the build to finish, call gradle_get_build_status, or set includeToolchains=false."
+
 internal fun requireNoActiveBuildForToolchainDetection(
     includeToolchains: Boolean,
     projectDirectory: File,
@@ -220,10 +224,7 @@ internal fun requireNoActiveBuildForToolchainDetection(
     ProjectLifecycleGuard.withNoActiveBuild(
         projectDirectory = projectDirectory,
         buildExecutionManager = buildExecutionManager,
-        message = { directory ->
-            "Cannot detect installed JDKs while a Gradle build is running for ${directory.path}. " +
-                "Wait for the build to finish, call gradle_get_build_status, or set includeToolchains=false."
-        },
+        message = ::toolchainDetectionBlockedMessage,
     ) { }
 }
 
@@ -251,10 +252,7 @@ fun Server.registerJavaRuntimeTools(scope: CoroutineScope) {
         return@registerTool ProjectLifecycleGuard.withNoActiveBuild(
             projectDirectory = projectDirectory,
             buildExecutionManager = runtime.buildExecutionManager,
-            message = { directory ->
-                "Cannot detect installed JDKs while a Gradle build is running for ${directory.path}. " +
-                    "Wait for the build to finish, call gradle_get_build_status, or set includeToolchains=false."
-            },
+            message = ::toolchainDetectionBlockedMessage,
         ) {
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
                 val runtimes = JavaRuntimesCollector.collect(
