@@ -199,6 +199,21 @@ class BuildCacheStatusTest {
     }
 
     @Test
+    fun `BuildCacheUrlRedactor masks credential-like cache property values`() {
+        val sanitized = BuildCacheUrlRedactor.sanitizeCacheProperties(
+            mapOf(
+                "org.gradle.caching.http.credentials.password" to "secret-pass",
+                "org.gradle.caching.remote.token" to "abc123",
+                "org.gradle.caching" to "true",
+            ),
+        )
+
+        sanitized["org.gradle.caching.http.credentials.password"] shouldBe "***"
+        sanitized["org.gradle.caching.remote.token"] shouldBe "***"
+        sanitized["org.gradle.caching"] shouldBe "true"
+    }
+
+    @Test
     fun `BuildCacheUrlRedactor strips userinfo from remote cache URLs`() {
         BuildCacheUrlRedactor.redactUserInfo("https://user:pass@cache.example.com/path") shouldBe
             "https://cache.example.com/path"

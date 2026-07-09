@@ -44,7 +44,7 @@ git log "${LATEST_TAG}"..main --oneline   # 未リリースコミット
 
 | ファイル | 変更内容 |
 |---------|---------|
-| `build.gradle.kts` | `version = "X.Y.Z"` |
+| `build.gradle.kts` | `version = "X.Y.Z"`（JAR `Implementation-Version` / MCP `initialize` serverInfo に反映） |
 | `README.md` | JAR パス例 2 箇所（`build/libs/gradle-tapi-mcp-server-X.Y.Z.jar`） |
 
 コミットメッセージ: `chore(release): bump version to X.Y.Z`

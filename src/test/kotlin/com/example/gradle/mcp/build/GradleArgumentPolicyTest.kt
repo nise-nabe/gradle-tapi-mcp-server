@@ -33,6 +33,22 @@ class GradleArgumentPolicyTest {
     }
 
     @Test
+    fun `rejects mcp control project properties`() {
+        val cases = listOf(
+            "-Pmcp.launcherMetadata=/tmp/evil.json",
+            "-Pmcp.ccInitScript=/tmp/evil.gradle",
+            "-Pmcp.recordDir=/tmp",
+            "-Pproject.mcp.launcherMetadata=/tmp/evil.json",
+        )
+        for (arguments in cases) {
+            val exception = shouldThrow<McpException> {
+                GradleArgumentPolicy.requireNoMcpControlArguments(listOf(arguments))
+            }
+            exception.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        }
+    }
+
+    @Test
     fun `allows regular gradle arguments`() {
         GradleArgumentPolicy.requireNoInitScript(
             listOf("--info", "-Dorg.gradle.parallel=true", "-Pfoo=bar"),

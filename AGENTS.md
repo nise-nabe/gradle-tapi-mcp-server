@@ -68,7 +68,9 @@ Logging goes to **stderr** only; **stdout** is reserved for MCP JSON-RPC (newlin
 
 ### E2E smoke test (MCP + Gradle Tooling API)
 
-After `./gradlew jar`, drive the server over stdio: send `initialize` → `notifications/initialized` → `tools/list` → `tools/call` for `gradle_connection_status` and `gradle_get_project_overview` with `GRADLE_PROJECT_DIR` set to a Gradle project (this repo works). Expect `connected: true`, Gradle 9.5.1, and project name `gradle-tapi-mcp-server`.
+After `./gradlew jar`, drive the server over stdio: send `initialize` → `notifications/initialized` → `tools/list` → `tools/call` for `gradle_connection_status` and `gradle_get_project_overview` with `GRADLE_PROJECT_DIR` set to a Gradle project (this repo works). Expect `connected: true`, the resolved Gradle version of the connected project (this repo: wrapper **9.6.1**), and project name `gradle-tapi-mcp-server`.
+
+`GradleTapiMcpServerLauncherSmokeTest` runs during `./gradlew build` (jar + initialize smoke). Optional local benchmark: `scripts/measure_startup.py` after `./gradlew jar`.
 
 There are no automated MCP integration tests in the repo; unit tests under `src/test/` do not start the MCP server or Gradle daemon.
 
