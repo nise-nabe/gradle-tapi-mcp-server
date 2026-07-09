@@ -35,4 +35,23 @@ class ProgressEventAccumulatorTest {
         diskSnapshot.failedTaskCount shouldBe 1
         diskSnapshot.failedTasks shouldBe listOf(":app:broken")
     }
+
+    @Test
+    fun `running tasks clear when Gradle start and finish display names differ`() {
+        val accumulator = ProgressEventAccumulator()
+        accumulator.apply(ProgressEventTypes.TASK_START, "Task :app:compile started")
+        accumulator.apply(ProgressEventTypes.TASK_SUCCESS, "Task :app:compile UP-TO-DATE")
+
+        val snapshot = accumulator.snapshot(
+            status = BuildProgressTracker.STATUS_RUNNING,
+            currentOperation = null,
+            recentEvents = emptyList(),
+            totalEventCount = 2,
+        )
+
+        snapshot.runningTasks shouldBe emptyList()
+        snapshot.completedTasks shouldBe listOf(":app:compile")
+        snapshot.runningTaskCount shouldBe 0
+        snapshot.completedTaskCount shouldBe 1
+    }
 }

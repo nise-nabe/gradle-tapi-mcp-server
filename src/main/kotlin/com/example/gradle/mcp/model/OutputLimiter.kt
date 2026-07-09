@@ -30,9 +30,9 @@ object OutputLimiter {
             normalized.take(excerptBudget)
         }
         var omittedChars = normalized.length - excerpt.length
-        var prefix = "... [truncated $omittedChars chars] ...\n"
-        if (prefix.length + excerpt.length > options.maxOutputChars) {
-            val adjustedBudget = (options.maxOutputChars - prefix.length).coerceAtLeast(0)
+        var marker = "... [truncated $omittedChars chars] ..."
+        if (marker.length + 1 + excerpt.length > options.maxOutputChars) {
+            val adjustedBudget = (options.maxOutputChars - marker.length - 1).coerceAtLeast(0)
             excerpt = if (adjustedBudget == 0) {
                 ""
             } else if (options.tailOutput) {
@@ -41,10 +41,14 @@ object OutputLimiter {
                 normalized.take(adjustedBudget)
             }
             omittedChars = normalized.length - excerpt.length
-            prefix = "... [truncated $omittedChars chars] ...\n"
+            marker = "... [truncated $omittedChars chars] ..."
         }
-        val text = if (prefix.length + excerpt.length <= options.maxOutputChars) {
-            prefix + excerpt
+        val text = if (marker.length + 1 + excerpt.length <= options.maxOutputChars) {
+            if (options.tailOutput) {
+                "$marker\n$excerpt"
+            } else {
+                "$excerpt\n$marker"
+            }
         } else if (options.tailOutput) {
             normalized.takeLast(options.maxOutputChars)
         } else {

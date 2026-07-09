@@ -76,9 +76,11 @@ class JavaRuntimeToolsTest {
             launcher = launcher.launcher,
         )
 
+        val manager = GradleConnectionManager()
         val snapshot = JavaRuntimesCollector.collect(
             projectDirectory = File("/workspace"),
             connection = connection,
+            connectionManager = manager,
             cachedEnvironment = BuildEnvironmentSnapshot(
                 gradleVersion = "9.6.0",
                 gradleUserHome = "/gradle/home",
@@ -116,9 +118,11 @@ class JavaRuntimeToolsTest {
             launcher = launcher.launcher,
         )
 
+        val manager = GradleConnectionManager()
         val snapshot = JavaRuntimesCollector.collect(
             projectDirectory = File("/workspace"),
             connection = connection,
+            connectionManager = manager,
             cachedEnvironment = BuildEnvironmentSnapshot(
                 gradleVersion = "9.6.0",
                 gradleUserHome = "/gradle/home",
@@ -158,9 +162,12 @@ class JavaRuntimeToolsTest {
             launcher = launcher.launcher,
         )
 
+        val manager = GradleConnectionManager()
+        manager.seedConnectionForTests(connection, projectDirectory = File("/workspace"))
         val snapshot = JavaRuntimesCollector.collect(
             projectDirectory = File("/workspace"),
             connection = connection,
+            connectionManager = manager,
             cachedEnvironment = null,
         )
 
@@ -168,6 +175,7 @@ class JavaRuntimeToolsTest {
             javaHome = javaHome.path,
             javaVersion = "21.0.10",
         )
+        manager.cachedEnvironment(File("/workspace"))?.javaVersion shouldBe "21.0.10"
         snapshot.detectedJdks shouldContainExactly listOf(
             DetectedJdk(
                 javaHome = javaHome.path,
@@ -191,6 +199,7 @@ class JavaRuntimeToolsTest {
             JavaRuntimesCollector.collect(
                 projectDirectory = File("/workspace"),
                 connection = connection,
+                connectionManager = GradleConnectionManager(),
                 cachedEnvironment = BuildEnvironmentSnapshot(
                     gradleVersion = "9.6.0",
                     gradleUserHome = null,

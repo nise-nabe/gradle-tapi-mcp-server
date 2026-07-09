@@ -1,7 +1,6 @@
 package com.example.gradle.mcp.connection
 
 import com.example.gradle.mcp.GradleMcpRuntime
-import com.example.gradle.mcp.model.ModelSerializers
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpToolDescriptions
@@ -15,7 +14,6 @@ import com.example.gradle.mcp.protocol.stringProperty
 import com.example.gradle.mcp.protocol.registerTool
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import kotlinx.coroutines.CoroutineScope
-import org.gradle.tooling.model.build.BuildEnvironment
 import java.io.File
 
 internal fun connectProject(
@@ -155,8 +153,8 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
     ) { args ->
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
         runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-            val environment = connection.getModel(BuildEnvironment::class.java)
-            jsonResult(ModelSerializers.buildEnvironment(environment))
+            val snapshot = runtime.connectionManager.fetchAndCacheEnvironment(projectDirectory, connection)
+            jsonResult(snapshot.toMap())
         }
     }
 }

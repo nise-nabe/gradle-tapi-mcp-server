@@ -50,5 +50,5 @@ internal object McpToolDescriptions {
         "Run Gradle task paths. Outcome/summary by default; background=true returns buildId. One MCP build per projectDirectory (BUILD_ALREADY_RUNNING on overlap)."
 
     const val RUN_TESTS =
-        "Run JVM tests by class, method, or pattern. One MCP build per projectDirectory (BUILD_ALREADY_RUNNING on overlap). Class.method in testClasses -> testMethods. Provide testMethods, testClasses, or includePattern."
+        "Run JVM tests by class, method, or pattern. Multi-project builds require taskPath or tasks with testClasses/testMethods to avoid cross-module fan-out."
 }

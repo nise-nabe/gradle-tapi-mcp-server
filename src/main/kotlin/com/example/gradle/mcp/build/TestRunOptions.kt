@@ -7,7 +7,9 @@ import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.optionalStringList
 import com.example.gradle.mcp.protocol.testMethodsClassPropertyNames
+import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.TestLauncher
+import org.gradle.tooling.model.GradleProject
 import java.io.File
 
 internal data class TestRunOptions(
@@ -62,6 +64,42 @@ internal fun TestRunOptions.validate(inputTaskPath: String? = null): TestRunOpti
     }
     selection.validateWithTasks(tasks)
     return this
+}
+
+internal fun validateJvmTestProjectScope(
+    connection: ProjectConnection,
+    selection: TestRunSelection?,
+    tasks: List<String>,
+) {
+    val unscoped = when (selection) {
+        is TestRunSelection.Classes -> selection.taskPath.isNullOrBlank()
+        is TestRunSelection.Methods -> selection.taskPath.isNullOrBlank()
+        is TestRunSelection.Patterns, null -> false
+    }
+    if (!unscoped || tasks.isNotEmpty()) {
+        return
+    }
+
+    val subprojectCount = countGradleSubprojects(connection.getModel(GradleProject::class.java))
+    if (subprojectCount > 0) {
+        throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "testClasses/testMethods without taskPath or tasks run matching tests in every subproject " +
+                "($subprojectCount subprojects). Specify taskPath (e.g. \":module:test\") or tasks to scope execution.",
+        )
+    }
+}
+
+private fun countGradleSubprojects(project: GradleProject): Int {
+    var count = 0
+    fun visit(node: GradleProject) {
+        for (child in node.children) {
+            count++
+            visit(child)
+        }
+    }
+    visit(project)
+    return count
 }
 
 internal fun TestRunOptions.toBuildRunRequest(

@@ -1,14 +1,25 @@
 package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.model.OutputLimitOptions
+import com.example.gradle.mcp.protocol.McpErrorCode
+import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.support.assertInvalidArgument
+import com.example.gradle.mcp.support.defaultProxyReturn
 import com.example.gradle.mcp.support.testProjectDirectory
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import org.gradle.tooling.ProjectConnection
+import org.gradle.tooling.model.DomainObjectSet
+import org.gradle.tooling.model.GradleProject
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
+import java.io.File
+import java.lang.reflect.Proxy
+import java.util.AbstractSet
 import java.util.stream.Stream
 
 class TestRunOptionsTest {
@@ -486,4 +497,83 @@ class TestRunOptionsTest {
                 ),
             )
     }
+
+    @Test
+    fun `validateJvmTestProjectScope rejects unscoped classes in multi-project builds`() {
+        val connection = gradleProjectConnection(
+            gradleProjectNode(
+                children = listOf(gradleProjectNode(name = "app", path = ":app")),
+            ),
+        )
+
+        val error = shouldThrow<McpException> {
+            validateJvmTestProjectScope(
+                connection = connection,
+                selection = TestRunSelection.Classes(listOf("com.example.FooTest")),
+                tasks = emptyList(),
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "taskPath"
+    }
+
+    @Test
+    fun `validateJvmTestProjectScope allows unscoped classes for single-project builds`() {
+        val connection = gradleProjectConnection(gradleProjectNode())
+
+        validateJvmTestProjectScope(
+            connection = connection,
+            selection = TestRunSelection.Classes(listOf("com.example.FooTest")),
+            tasks = emptyList(),
+        )
+    }
 }
+
+private fun gradleProjectConnection(project: GradleProject): ProjectConnection =
+    Proxy.newProxyInstance(
+        ProjectConnection::class.java.classLoader,
+        arrayOf(ProjectConnection::class.java),
+    ) { _, method, args ->
+        when (method.name) {
+            "getModel" -> {
+                val modelType = args?.get(0) as Class<*>
+                if (modelType == GradleProject::class.java) project else null
+            }
+            else -> defaultProxyReturn(method)
+        }
+    } as ProjectConnection
+
+private fun gradleProjectNode(
+    name: String = "root",
+    path: String = ":",
+    children: List<GradleProject> = emptyList(),
+): GradleProject =
+    Proxy.newProxyInstance(
+        GradleProject::class.java.classLoader,
+        arrayOf(GradleProject::class.java),
+    ) { _, method, _ ->
+        when (method.name) {
+            "getName" -> name
+            "getPath" -> path
+            "getProjectDirectory" -> File("/root")
+            "getDescription" -> null
+            "getBuildDirectory" -> null
+            "getParent" -> null
+            "getChildren" -> domainObjectSet(children)
+            "getTasks" -> domainObjectSet(emptyList<Any>())
+            "getProjectIdentifier" -> null
+            else -> defaultProxyReturn(method)
+        }
+    } as GradleProject
+
+private fun <T> domainObjectSet(items: List<T>): DomainObjectSet<T> =
+    object : AbstractSet<T>(), DomainObjectSet<T> {
+        override fun iterator(): MutableIterator<T> = items.toMutableList().iterator()
+
+        override val size: Int get() = items.size
+
+        override fun getAll(): List<T> = items
+
+        override fun getAt(index: Int): T = items[index]
+    }

@@ -8,6 +8,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldStartWith
 import org.gradle.tooling.model.BuildIdentifier
 import org.gradle.tooling.model.DomainObjectSet
@@ -104,6 +105,77 @@ class ModelSerializersTest {
         limited.totalChars shouldBe text.length
         limited.text.length shouldBeLessThanOrEqual 40
         limited.text shouldStartWith "... [truncated "
+    }
+
+    @Test
+    fun `output limiter places truncation marker after head excerpt`() {
+        val text = "USAGE: gradle [option...]\n" + "x".repeat(10_000)
+        val limited = OutputLimiter.limit(
+            text,
+            OutputLimitOptions(maxOutputChars = 2000, tailOutput = false),
+        )
+
+        limited.truncated.shouldBeTrue()
+        limited.text shouldStartWith "USAGE:"
+        limited.text shouldContain "... [truncated "
+    }
+
+    @Test
+    fun `gradleProject applies maxTasks globally across subprojects`() {
+        fun compileTasks(prefix: String, count: Int): List<org.gradle.tooling.model.Task> =
+            (1..count).map { index ->
+                mockTask("compile$index", "$prefix:compile$index", "build")
+            }
+
+        val root = gradleProject(
+            name = "root",
+            path = ":",
+            directory = File("/root"),
+            tasks = emptyList(),
+            children = listOf(
+                gradleProject(
+                    name = "plugin",
+                    path = ":plugin",
+                    directory = File("/root/plugin"),
+                    tasks = compileTasks(":plugin", 6),
+                ),
+                gradleProject(
+                    name = "route-analysis",
+                    path = ":plugin-route-analysis",
+                    directory = File("/root/route-analysis"),
+                    tasks = compileTasks(":plugin-route-analysis", 8),
+                ),
+                gradleProject(
+                    name = "shared",
+                    path = ":plugin-shared",
+                    directory = File("/root/shared"),
+                    tasks = compileTasks(":plugin-shared", 6),
+                ),
+                gradleProject(
+                    name = "wizard",
+                    path = ":plugin-wizard",
+                    directory = File("/root/wizard"),
+                    tasks = compileTasks(":plugin-wizard", 6),
+                ),
+            ),
+        )
+
+        val result = ModelSerializers.gradleProject(
+            root,
+            ModelQueryOptions(includeTasks = true, taskNamePrefix = "compile", maxTasks = 20),
+        )
+
+        fun tasksInNode(node: Map<*, *>): List<Map<*, *>> {
+            val direct = node["tasks"] as List<*>
+            val childTasks = (node["children"] as List<*>).flatMap { child ->
+                tasksInNode(child as Map<*, *>)
+            }
+            return direct.map { it as Map<*, *> } + childTasks
+        }
+
+        tasksInNode(result) shouldHaveSize 20
+        result["tasksTruncated"] shouldBe true
+        result["tasksTotalMatched"] shouldBe 26
     }
 
     @Test

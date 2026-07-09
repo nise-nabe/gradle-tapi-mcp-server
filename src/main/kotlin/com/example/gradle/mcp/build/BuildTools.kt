@@ -199,6 +199,9 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
         val parsed = parseTestRunOptions(args)
         val testOptions = parsed.options.validate(args.optionalString("taskPath"))
+        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+            validateJvmTestProjectScope(connection, testOptions.selection, testOptions.tasks)
+        }
         val request = testOptions.toBuildRunRequest(
             projectDirectory = projectDirectory,
             arguments = args.optionalStringList("arguments").orEmpty(),

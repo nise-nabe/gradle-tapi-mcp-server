@@ -112,6 +112,23 @@ class GradleConnectionManager {
     fun cachedEnvironment(projectDirectory: File): BuildEnvironmentSnapshot? =
         pool[ProjectDirectoryResolver.canonicalKey(projectDirectory)]?.cachedEnvironment
 
+    fun cacheEnvironmentSnapshot(projectDirectory: File, snapshot: BuildEnvironmentSnapshot) {
+        val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
+        synchronized(pool) {
+            val existing = pool[key] ?: return
+            pool[key] = existing.copy(cachedEnvironment = snapshot)
+        }
+    }
+
+    fun fetchAndCacheEnvironment(
+        projectDirectory: File,
+        connection: ProjectConnection,
+    ): BuildEnvironmentSnapshot {
+        val snapshot = requireBuildEnvironmentSnapshot(connection, projectDirectory)
+        cacheEnvironmentSnapshot(projectDirectory, snapshot)
+        return snapshot
+    }
+
     fun status(projectDirectory: File? = null): Map<String, Any?> {
         if (projectDirectory != null) {
             return connectionStatus(projectDirectory).toResponseMap()
@@ -188,7 +205,7 @@ class GradleConnectionManager {
     private fun connectionStatus(projectDirectory: File): ConnectionStatus {
         val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
         val pooled = pool[key]
-        val env = pooled?.cachedEnvironment
+        val env = pooled?.cachedEnvironment ?: pooled?.let { refreshCachedEnvironment(it) }
         return ConnectionStatus(
             connected = pooled != null,
             projectDirectory = projectDirectory.path,
@@ -198,6 +215,12 @@ class GradleConnectionManager {
             javaVersion = env?.javaVersion,
             runtimeStackAvailable = env != null,
         )
+    }
+
+    private fun refreshCachedEnvironment(pooled: PooledConnection): BuildEnvironmentSnapshot? {
+        val snapshot = loadEnvironmentSnapshot(pooled.connection) ?: return null
+        cacheEnvironmentSnapshot(pooled.projectDirectory, snapshot)
+        return snapshot
     }
 
     private fun borrowConnection(projectDirectory: File): ProjectConnection {

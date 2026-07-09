@@ -30,9 +30,25 @@ object ModelSerializers {
         options: ModelQueryOptions = ModelQueryOptions(),
         treeOptions: ProjectTreeOptions = ProjectTreeOptions(),
         depth: Int = 0,
+    ): Map<String, Any?> =
+        gradleProjectWithBudget(project, options, treeOptions, depth, TaskFilterBudget(options))
+
+    internal fun gradleProjectWithBudget(
+        project: GradleProject,
+        options: ModelQueryOptions,
+        treeOptions: ProjectTreeOptions,
+        depth: Int,
+        taskBudget: TaskFilterBudget,
     ): Map<String, Any?> {
-        val node = projectNode(project, treeOptions, options, depth, includeTasks = true)
-        return node + mapOf("tasks" to serializeTasks(project.tasks.map(::taskSnapshot), options))
+        val node = projectNode(project, treeOptions, options, depth, includeTasks = true, taskBudget)
+        val result = node + mapOf(
+            "tasks" to taskBudget.filterAndSerialize(project.tasks.map(::taskSnapshot)),
+        )
+        return if (depth == 0) {
+            result + taskBudget.rootMetadata()
+        } else {
+            result
+        }
     }
 
     fun buildInvocations(
@@ -171,6 +187,15 @@ object ModelSerializers {
         if (!options.includeTasks) {
             return emptyList()
         }
+        return filterTasksWithoutLimit(tasks, options).let { filtered ->
+            options.maxTasks?.let { max -> filtered.take(max) } ?: filtered
+        }
+    }
+
+    internal fun filterTasksWithoutLimit(tasks: List<TaskSnapshot>, options: ModelQueryOptions): List<TaskSnapshot> {
+        if (!options.includeTasks) {
+            return emptyList()
+        }
 
         var filtered = tasks.asSequence()
         options.taskGroup?.let { group ->
@@ -179,14 +204,14 @@ object ModelSerializers {
         options.taskNamePrefix?.let { prefix ->
             filtered = filtered.filter { it.name.startsWith(prefix) }
         }
-        options.maxTasks?.let { max ->
-            filtered = filtered.take(max)
-        }
         return filtered.toList()
     }
 
     fun serializeTasks(tasks: List<TaskSnapshot>, options: ModelQueryOptions): List<Map<String, Any?>> =
-        filterTasks(tasks, options).map { serializeTask(it, options.includeTaskDetails) }
+        filterTasks(tasks, options).map { serializeTaskSnapshot(it, options.includeTaskDetails) }
+
+    internal fun serializeTaskSnapshot(task: TaskSnapshot, includeDetails: Boolean): Map<String, Any?> =
+        serializeTask(task, includeDetails)
 
     private fun projectNode(
         project: GradleProject,
@@ -194,6 +219,7 @@ object ModelSerializers {
         modelOptions: ModelQueryOptions,
         depth: Int,
         includeTasks: Boolean,
+        taskBudget: TaskFilterBudget = TaskFilterBudget(modelOptions),
     ): Map<String, Any?> {
         val result = mutableMapOf<String, Any?>(
             "name" to project.name,
@@ -220,7 +246,7 @@ object ModelSerializers {
 
         result["children"] = childrenToSerialize.map { child ->
             if (includeTasks) {
-                gradleProject(child, modelOptions, treeOptions, depth + 1)
+                gradleProjectWithBudget(child, modelOptions, treeOptions, depth + 1, taskBudget)
             } else {
                 projectOverview(child, treeOptions, depth + 1)
             }

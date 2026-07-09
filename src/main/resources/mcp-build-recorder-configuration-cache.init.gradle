@@ -96,6 +96,14 @@ class McpBuildRecorderSupport {
         return terminalStatusFromFailure(failureClassName, failureMessage)
     }
 
+    static void appendHeartbeatEvent(String dirPath) {
+        appendEvent(dirPath, [
+            ts          : java.time.Instant.now().toString(),
+            type        : "HEARTBEAT",
+            displayName : "Gradle build active",
+        ])
+    }
+
     static String terminalStatusFromFailure(String failureClassName, String failureMessage) {
         if (failureClassName?.contains("BuildCancelled") ||
             failureClassName?.contains("CancellationException") ||
@@ -173,22 +181,14 @@ abstract class McpConfigurationCacheRecorderService
         }
     }
 
-    private void appendHeartbeatEvent() {
-        appendEvent([
-            ts          : java.time.Instant.now().toString(),
-            type        : "HEARTBEAT",
-            displayName : "Gradle build active",
-        ])
-    }
-
     void startHeartbeatIfNeeded() {
         if (heartbeatTimer != null) {
             return
         }
-        launcherContext()
+        def recordDirPath = launcherContext().recordDirPath
         heartbeatTimer = new java.util.Timer(true)
         heartbeatTimer.scheduleAtFixedRate(
-            this.&appendHeartbeatEvent as java.util.TimerTask,
+            { -> McpBuildRecorderSupport.appendHeartbeatEvent(recordDirPath) } as java.util.TimerTask,
             HEARTBEAT_INTERVAL_MS,
             HEARTBEAT_INTERVAL_MS,
         )
