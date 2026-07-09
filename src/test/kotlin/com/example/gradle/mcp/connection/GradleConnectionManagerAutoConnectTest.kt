@@ -9,16 +9,16 @@ import java.io.File
 
 class GradleConnectionManagerAutoConnectTest {
     @Test
-    fun `tryAutoConnectFromDirectory connects workspace project`() {
-        val workspace = File(System.getProperty("user.dir")).canonicalFile
+    fun `tryAutoConnectFromDirectory connects minimal gradle project`(@TempDir projectDir: File) {
+        writeMinimalGradleProject(projectDir)
         val manager = GradleConnectionManager()
         try {
-            manager.tryAutoConnectFromDirectory(workspace)
+            manager.tryAutoConnectFromDirectory(projectDir)
 
-            manager.isConnected(workspace).shouldBeTrue()
-            manager.status(workspace)["connected"] shouldBe true
+            manager.isConnected(projectDir).shouldBeTrue()
+            manager.status(projectDir)["connected"] shouldBe true
         } finally {
-            manager.disconnect(workspace)
+            manager.disconnect(projectDir)
         }
     }
 
@@ -31,4 +31,13 @@ class GradleConnectionManagerAutoConnectTest {
 
         manager.connectedProjectDirectories().single().canonicalFile shouldBe projectDir.canonicalFile
     }
+}
+
+private fun writeMinimalGradleProject(projectDir: File) {
+    projectDir.resolve("settings.gradle.kts").writeText(
+        """
+        rootProject.name = "auto-connect-test"
+        """.trimIndent(),
+    )
+    projectDir.resolve("build.gradle.kts").writeText("")
 }

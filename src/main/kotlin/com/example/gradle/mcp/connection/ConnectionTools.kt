@@ -18,6 +18,21 @@ import kotlinx.coroutines.CoroutineScope
 import org.gradle.tooling.model.build.BuildEnvironment
 import java.io.File
 
+internal fun connectProject(
+    runtime: GradleMcpRuntime,
+    projectDirectory: File,
+    config: ConnectionConfig,
+): Map<String, Any?> = synchronized(ProjectLifecycleLock) {
+    if (runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
+        throw McpException(
+            McpErrorCode.BUILD_ALREADY_RUNNING,
+            "Cannot connect while a Gradle build is running for ${projectDirectory.path}. " +
+                "Wait for the build to finish, call gradle_cancel_build, or call gradle_disconnect.",
+        )
+    }
+    runtime.connectionManager.connect(config).toResponseMap()
+}
+
 internal fun disconnectProjects(
     runtime: GradleMcpRuntime,
     projectDirectoryArg: String?,
@@ -105,16 +120,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
             gradleVersion = args.optionalString("gradleVersion"),
             gradleInstallation = args.optionalString("gradleInstallation"),
         )
-        val response = synchronized(ProjectLifecycleLock) {
-            if (runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
-                throw McpException(
-                    McpErrorCode.BUILD_ALREADY_RUNNING,
-                    "Cannot connect while a Gradle build is running for ${projectDirectory.path}. " +
-                        "Wait for the build to finish, call gradle_cancel_build, or call gradle_disconnect.",
-                )
-            }
-            runtime.connectionManager.connect(config).toResponseMap()
-        }
+        val response = connectProject(runtime, projectDirectory, config)
         jsonResult(response)
     }
     registerTool(

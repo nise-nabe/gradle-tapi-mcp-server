@@ -217,13 +217,14 @@ internal fun requireNoActiveBuildForToolchainDetection(
     if (!includeToolchains) {
         return
     }
-    if (buildExecutionManager.hasActiveBuild(projectDirectory)) {
-        throw McpException(
-            McpErrorCode.BUILD_ALREADY_RUNNING,
-            "Cannot detect installed JDKs while a Gradle build is running for ${projectDirectory.path}. " +
-                "Wait for the build to finish, call gradle_get_build_status, or set includeToolchains=false.",
-        )
-    }
+    ProjectLifecycleGuard.withNoActiveBuild(
+        projectDirectory = projectDirectory,
+        buildExecutionManager = buildExecutionManager,
+        message = { directory ->
+            "Cannot detect installed JDKs while a Gradle build is running for ${directory.path}. " +
+                "Wait for the build to finish, call gradle_get_build_status, or set includeToolchains=false."
+        },
+    ) { }
 }
 
 context(runtime: GradleMcpRuntime)
@@ -236,19 +237,34 @@ fun Server.registerJavaRuntimeTools(scope: CoroutineScope) {
     ) { args ->
         val includeToolchains = args.optionalBoolean("includeToolchains", default = true)
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-        requireNoActiveBuildForToolchainDetection(
-            includeToolchains = includeToolchains,
+        if (!includeToolchains) {
+            return@registerTool runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+                val runtimes = JavaRuntimesCollector.collect(
+                    projectDirectory = projectDirectory,
+                    connection = connection,
+                    cachedEnvironment = runtime.connectionManager.cachedEnvironment(projectDirectory),
+                    includeToolchains = false,
+                )
+                jsonResult(runtimes.toMap(projectDirectory.path))
+            }
+        }
+        return@registerTool ProjectLifecycleGuard.withNoActiveBuild(
             projectDirectory = projectDirectory,
             buildExecutionManager = runtime.buildExecutionManager,
-        )
-        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-            val runtimes = JavaRuntimesCollector.collect(
-                projectDirectory = projectDirectory,
-                connection = connection,
-                cachedEnvironment = runtime.connectionManager.cachedEnvironment(projectDirectory),
-                includeToolchains = includeToolchains,
-            )
-            jsonResult(runtimes.toMap(projectDirectory.path))
+            message = { directory ->
+                "Cannot detect installed JDKs while a Gradle build is running for ${directory.path}. " +
+                    "Wait for the build to finish, call gradle_get_build_status, or set includeToolchains=false."
+            },
+        ) {
+            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+                val runtimes = JavaRuntimesCollector.collect(
+                    projectDirectory = projectDirectory,
+                    connection = connection,
+                    cachedEnvironment = runtime.connectionManager.cachedEnvironment(projectDirectory),
+                    includeToolchains = true,
+                )
+                jsonResult(runtimes.toMap(projectDirectory.path))
+            }
         }
     }
 }

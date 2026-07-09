@@ -41,14 +41,11 @@ class ProjectLifecycleLockTest {
         val runtime = DefaultGradleMcpRuntime(connectionManager, buildManager)
 
         val error = shouldThrow<com.example.gradle.mcp.protocol.McpException> {
-            synchronized(ProjectLifecycleLock) {
-                if (buildManager.hasActiveBuild(testProjectDirectory)) {
-                    throw com.example.gradle.mcp.protocol.McpException(
-                        com.example.gradle.mcp.protocol.McpErrorCode.BUILD_ALREADY_RUNNING,
-                        "Cannot connect while a Gradle build is running for ${testProjectDirectory.path}.",
-                    )
-                }
-            }
+            connectProject(
+                runtime = runtime,
+                projectDirectory = testProjectDirectory,
+                config = ConnectionConfig(projectDirectory = testProjectDirectory.path),
+            )
         }
         error.code shouldBe com.example.gradle.mcp.protocol.McpErrorCode.BUILD_ALREADY_RUNNING
     }
@@ -108,13 +105,15 @@ class McpToolRegistrationCatalogTest {
             server.registerBuildTools(scope)
         }
 
-        val catalogNames = allMcpToolSpecs().map { it.name }.toSet()
+        val catalogNames = allMcpToolSpecs().map { it.name }
+        val catalogNameSet = catalogNames.toSet()
         val registeredNames = registeredMcpToolNames.toSet()
-        val missingFromCatalog = registeredNames - catalogNames
-        val missingFromRegistration = catalogNames - registeredNames
+        val missingFromCatalog = registeredNames - catalogNameSet
+        val missingFromRegistration = catalogNameSet - registeredNames
 
         missingFromCatalog.shouldBeEmpty()
         missingFromRegistration.shouldBeEmpty()
-        catalogNames.size shouldBe 17
+        catalogNames.size shouldBe registeredNames.size
+        catalogNameSet.size shouldBe 17
     }
 }

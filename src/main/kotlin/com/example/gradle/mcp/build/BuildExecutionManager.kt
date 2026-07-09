@@ -497,8 +497,7 @@ class BuildExecutionManager(
         streams: CapturingStreams,
         tracker: BuildProgressTracker,
     ) {
-        GradleArgumentPolicy.requireNoInitScript(request.arguments)
-        GradleArgumentPolicy.requireNoMcpControlArguments(request.arguments)
+        GradleArgumentPolicy.validateUserBuildArguments(request.arguments, request.jvmArguments)
         val persistenceArguments = record.projectDirectory
             ?.let { buildRecordStore.launcherArguments(File(it), record.id, request.tasks) }
             .orEmpty()
