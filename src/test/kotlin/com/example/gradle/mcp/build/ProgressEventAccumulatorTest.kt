@@ -54,4 +54,22 @@ class ProgressEventAccumulatorTest {
         snapshot.runningTaskCount shouldBe 0
         snapshot.completedTaskCount shouldBe 1
     }
+
+    @Test
+    fun `running tasks clear for failed task finish display names`() {
+        val accumulator = ProgressEventAccumulator()
+        accumulator.apply(ProgressEventTypes.TASK_START, "Task :app:broken started")
+        accumulator.apply(ProgressEventTypes.TASK_FAIL, "Task :app:broken failed")
+
+        val snapshot = accumulator.snapshot(
+            status = BuildProgressTracker.STATUS_FAILED,
+            currentOperation = null,
+            recentEvents = emptyList(),
+            totalEventCount = 2,
+        )
+
+        snapshot.runningTasks shouldBe emptyList()
+        snapshot.failedTasks shouldBe listOf(":app:broken")
+        snapshot.failedTaskCount shouldBe 1
+    }
 }
