@@ -30,16 +30,16 @@ INIT = {
 
 def resolve_jar() -> Path:
     libs_dir = PROJECT_DIR / "build/libs"
-    jars = sorted(
+    jars = [
         path
         for path in libs_dir.glob("gradle-tapi-mcp-server-*.jar")
         if not path.name.endswith("-plain.jar")
-    )
-    if len(jars) != 1:
+    ]
+    if not jars:
         raise FileNotFoundError(
-            f"Expected exactly one fat jar in {libs_dir}; run ./gradlew jar first"
+            f"No fat jar found in {libs_dir}; run ./gradlew jar first"
         )
-    return jars[0]
+    return max(jars, key=lambda path: path.stat().st_mtime)
 
 
 def measure_once(jar: Path, env: dict[str, str] | None) -> tuple[int | None, str | None]:
