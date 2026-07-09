@@ -33,7 +33,6 @@ class BuildExecutionManager(
     private val connectionManager: GradleConnectionManager,
     private val buildRecordStore: BuildRecordStore = BuildRecordStore(),
 ) {
-    private val lifecycleLock = ProjectLifecycleLock
     private var executor: ExecutorService = newBuildExecutor()
     private val builds = ConcurrentHashMap<String, BuildRecord>()
     private val lastCompletedBuildSnapshots = ConcurrentHashMap<String, CompletedBuildSnapshot>()
@@ -52,7 +51,7 @@ class BuildExecutionManager(
                 runBuild(start.record, request, start.notifier)
             }
         } catch (_: RejectedExecutionException) {
-            synchronized(lifecycleLock) {
+            synchronized(ProjectLifecycleLock.forProject(request.projectDirectory)) {
                 builds.remove(buildId)
             }
             throw maxConcurrentBuildsException()
@@ -91,7 +90,7 @@ class BuildExecutionManager(
                 }
             }
         } catch (_: RejectedExecutionException) {
-            synchronized(lifecycleLock) {
+            synchronized(ProjectLifecycleLock.forProject(request.projectDirectory)) {
                 builds.remove(buildId)
             }
             throw maxConcurrentBuildsException()
@@ -260,7 +259,7 @@ class BuildExecutionManager(
         }
 
     fun resetBuildState(reason: String, projectDirectory: File? = null) {
-        synchronized(lifecycleLock) {
+        synchronized(lifecycleLockFor(projectDirectory)) {
             markRunningBuildsCancelled(reason, projectDirectory)
             if (shouldReplaceExecutor(projectDirectory)) {
                 replaceBuildExecutor()
@@ -281,7 +280,7 @@ class BuildExecutionManager(
         projectDirectory == null || connectionManager.connectedProjectDirectories().isEmpty()
 
     fun shutdown() {
-        val executorToAwait = synchronized(lifecycleLock) {
+        val executorToAwait = synchronized(ProjectLifecycleLock.global()) {
             markRunningBuildsCancelled("Server shutting down")
             val currentExecutor = executor
             currentExecutor.shutdown()
@@ -289,7 +288,7 @@ class BuildExecutionManager(
         }
         try {
             if (!executorToAwait.awaitTermination(5, TimeUnit.SECONDS)) {
-                synchronized(lifecycleLock) {
+                synchronized(ProjectLifecycleLock.global()) {
                     executorToAwait.shutdownNow()
                 }
             }
@@ -625,7 +624,7 @@ class BuildExecutionManager(
     private fun registerBuildStart(start: BuildStart): String {
         val projectDirectory = start.record.projectDirectory?.let { File(it) }
             ?: error("Build record missing projectDirectory")
-        synchronized(lifecycleLock) {
+        synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
             if (hasActiveBuild(projectDirectory)) {
                 throw buildAlreadyRunningForProjectException(projectDirectory)
             }
@@ -634,6 +633,13 @@ class BuildExecutionManager(
             return start.record.id
         }
     }
+
+    private fun lifecycleLockFor(projectDirectory: File?): Any =
+        if (projectDirectory != null) {
+            ProjectLifecycleLock.forProject(projectDirectory)
+        } else {
+            ProjectLifecycleLock.global()
+        }
 
     private fun buildAlreadyRunningForProjectException(projectDirectory: File): McpException =
         McpException(

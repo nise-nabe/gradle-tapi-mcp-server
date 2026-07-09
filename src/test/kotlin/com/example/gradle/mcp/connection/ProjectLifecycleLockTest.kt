@@ -13,6 +13,7 @@ import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
@@ -21,8 +22,19 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.junit.jupiter.api.Test
+import java.io.File
 
 class ProjectLifecycleLockTest {
+    @Test
+    fun `lifecycle locks are scoped per canonical project path`() {
+        val projectA = File("project-a").absoluteFile
+        val projectB = File("project-b").absoluteFile
+
+        ProjectLifecycleLock.forProject(projectA) shouldBe ProjectLifecycleLock.forProject(projectA)
+        ProjectLifecycleLock.forProject(projectA) shouldNotBe ProjectLifecycleLock.forProject(projectB)
+        ProjectLifecycleLock.global() shouldNotBe ProjectLifecycleLock.forProject(projectA)
+    }
+
     @Test
     fun `connect rejects project with active build under lifecycle lock`() {
         val connectionManager = GradleConnectionManager()

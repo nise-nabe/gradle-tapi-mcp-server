@@ -22,7 +22,7 @@ internal fun connectProject(
     runtime: GradleMcpRuntime,
     projectDirectory: File,
     config: ConnectionConfig,
-): Map<String, Any?> = synchronized(ProjectLifecycleLock) {
+): Map<String, Any?> = synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
     if (runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
         throw McpException(
             McpErrorCode.BUILD_ALREADY_RUNNING,
@@ -38,12 +38,18 @@ internal fun disconnectProjects(
     projectDirectoryArg: String?,
 ): Map<String, Any?> {
     val projectDirectory = projectDirectoryArg?.let(ProjectDirectoryResolver::bestEffortDirectory)
-    val hadActiveBuild = if (projectDirectory != null) {
-        runtime.buildExecutionManager.hasActiveBuild(projectDirectory)
+    val lifecycleLock = if (projectDirectory != null) {
+        ProjectLifecycleLock.forProject(projectDirectory)
     } else {
-        runtime.buildExecutionManager.hasActiveBuild()
+        ProjectLifecycleLock.global()
     }
-    val disconnected = synchronized(ProjectLifecycleLock) {
+    val hadActiveBuild: Boolean
+    val disconnected = synchronized(lifecycleLock) {
+        hadActiveBuild = if (projectDirectory != null) {
+            runtime.buildExecutionManager.hasActiveBuild(projectDirectory)
+        } else {
+            runtime.buildExecutionManager.hasActiveBuild()
+        }
         runtime.buildExecutionManager.onDisconnect(projectDirectory)
         if (projectDirectory != null) {
             runtime.connectionManager.disconnect(projectDirectory)?.let { listOf(it) }.orEmpty()
