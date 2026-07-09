@@ -2,8 +2,7 @@ package com.example.gradle.mcp.cache
 
 import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
-import com.example.gradle.mcp.protocol.McpErrorCode
-import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.connection.ProjectLifecycleGuard
 import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
@@ -33,28 +32,30 @@ fun Server.registerCacheTools(scope: CoroutineScope) {
         schema = buildCacheStatusSchema(),
     ) { args ->
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-        if (runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
-            throw McpException(
-                McpErrorCode.BUILD_ALREADY_RUNNING,
-                "Cannot inspect build cache while a Gradle build is running for ${projectDirectory.path}. " +
-                    "Wait for the build to finish or call gradle_get_build_status.",
-            )
-        }
         val options = BuildCacheStatusOptions.fromArgs(args)
-        val lastMcpBuild = if (options.includeLastMcpBuild) {
-            runtime.buildExecutionManager.lastMcpBuildInsight(projectDirectory)
-        } else {
-            null
-        }
-        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-            jsonResult(
-                BuildCacheStatusCollector.collect(
-                    connection = connection,
-                    projectDirectory = projectDirectory,
-                    options = options,
-                    lastMcpBuild = lastMcpBuild,
-                ),
-            )
+        ProjectLifecycleGuard.withNoActiveBuild(
+            projectDirectory = projectDirectory,
+            buildExecutionManager = runtime.buildExecutionManager,
+            message = { directory ->
+                "Cannot inspect build cache while a Gradle build is running for ${directory.path}. " +
+                    "Wait for the build to finish or call gradle_get_build_status."
+            },
+        ) {
+            val lastMcpBuild = if (options.includeLastMcpBuild) {
+                runtime.buildExecutionManager.lastMcpBuildInsight(projectDirectory)
+            } else {
+                null
+            }
+            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+                jsonResult(
+                    BuildCacheStatusCollector.collect(
+                        connection = connection,
+                        projectDirectory = projectDirectory,
+                        options = options,
+                        lastMcpBuild = lastMcpBuild,
+                    ),
+                )
+            }
         }
     }
 }

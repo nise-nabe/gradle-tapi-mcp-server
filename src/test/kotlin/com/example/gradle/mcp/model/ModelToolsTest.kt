@@ -31,15 +31,20 @@ class ModelToolsTest {
     }
 
     @Test
-    fun `requireNoActiveBuildForPrepareTasks allows empty prepareTasks while build is running`() {
+    fun `requireNoActiveBuildForPrepareTasks rejects model queries while build is running`() {
         val manager = BuildExecutionManager(GradleConnectionManager())
         manager.seedRunningBuildForTests(runningBuildRecord())
 
-        requireNoActiveBuildForPrepareTasks(
-            prepareTasks = emptyList(),
-            projectDirectory = testProjectDirectory,
-            buildExecutionManager = manager,
-        )
+        val error = shouldThrow<McpException> {
+            requireNoActiveBuildForPrepareTasks(
+                prepareTasks = emptyList(),
+                projectDirectory = testProjectDirectory,
+                buildExecutionManager = manager,
+            )
+        }
+
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.message shouldContain "Cannot query Gradle models"
     }
 
     @Test

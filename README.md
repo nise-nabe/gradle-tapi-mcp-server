@@ -86,6 +86,8 @@ Tune captured output with `includeOutput` (default `false`), `maxOutputChars` (d
 
 Tool errors return structured JSON: `{ "error": { "code": "NOT_CONNECTED", "message": "..." } }`.
 
+Build task failures are **not** tool errors: `gradle_run_tasks` / `gradle_run_tests` return `status: "failed"` / `outcome: "FAILED"` in the success payload (`isError=false`). Reserve `BUILD_FAILED` for tooling failures (for example `javaToolchains` probe errors on `gradle_get_java_runtimes`).
+
 ## Multiple projects
 
 One MCP server process can hold **multiple Gradle project connections** at once.

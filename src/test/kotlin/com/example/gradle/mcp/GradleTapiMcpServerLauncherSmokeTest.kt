@@ -1,17 +1,17 @@
 package com.example.gradle.mcp
 
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.string.shouldStartWith
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.Executors
 
 class GradleTapiMcpServerLauncherSmokeTest {
     @Test
-    @EnabledIfSystemProperty(named = "gradle.tapi.mcp.smoke", matches = "true")
     fun `launcher keeps stdout json only on initialize`() {
         val jar = projectJar()
         val process = ProcessBuilder("java", "-jar", jar.absolutePath)
@@ -28,12 +28,20 @@ class GradleTapiMcpServerLauncherSmokeTest {
         writer.write("\n")
         writer.flush()
 
-        val firstLine = process.inputStream.bufferedReader(StandardCharsets.UTF_8).readLine()
+        val executor = Executors.newSingleThreadExecutor()
+        val firstLine = try {
+            executor.submit<String?> {
+                process.inputStream.bufferedReader(StandardCharsets.UTF_8).readLine()
+            }.get(30, TimeUnit.SECONDS)
+        } finally {
+            executor.shutdownNow()
+        }
         process.destroyForcibly()
         process.waitFor(5, TimeUnit.SECONDS)
 
         firstLine.shouldNotBeNull()
-        firstLine shouldStartWith "{\"jsonrpc\""
+        firstLine shouldStartWith "{"
+        firstLine shouldContain "\"jsonrpc\""
         firstLine shouldNotContain "kotlin-logging"
     }
 

@@ -3,6 +3,7 @@ package com.example.gradle.mcp.model
 import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.build.BuildExecutionManager
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
+import com.example.gradle.mcp.connection.ProjectLifecycleGuard
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpToolDescriptions
@@ -83,17 +84,21 @@ internal fun requireNoActiveBuildForPrepareTasks(
     projectDirectory: File,
     buildExecutionManager: BuildExecutionManager,
 ) {
-    if (prepareTasks.isEmpty()) {
-        return
-    }
-    if (buildExecutionManager.hasActiveBuild(projectDirectory)) {
-        throw McpException(
-            McpErrorCode.BUILD_ALREADY_RUNNING,
-            "Cannot run prepareTasks while a Gradle build is running for ${projectDirectory.path}. " +
-                "Wait for the build to finish or call gradle_get_build_status.",
-        )
-    }
+    ProjectLifecycleGuard.withNoActiveBuild(
+        projectDirectory = projectDirectory,
+        buildExecutionManager = buildExecutionManager,
+        message = { directory -> modelQueryBlockedMessage(prepareTasks, directory) },
+    ) { }
 }
+
+private fun modelQueryBlockedMessage(prepareTasks: List<String>, projectDirectory: File): String =
+    if (prepareTasks.isEmpty()) {
+        "Cannot query Gradle models while a build is running for ${projectDirectory.path}. " +
+            "Wait for the build to finish, call gradle_cancel_build, or poll gradle_get_build_status."
+    } else {
+        "Cannot run prepareTasks while a Gradle build is running for ${projectDirectory.path}. " +
+            "Wait for the build to finish or call gradle_get_build_status."
+    }
 
 private fun fetchHelpModel(connection: ProjectConnection, prepareTasks: List<String>): Help =
     try {
@@ -120,9 +125,14 @@ private inline fun <T> fetchModelJson(
 ): CallToolResult {
     val prepareTasks = prepareTasksFromArgs(args)
     val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-    requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
-    return runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-        jsonResult(serialize(fetch(connection, prepareTasks)))
+    return ProjectLifecycleGuard.withNoActiveBuild(
+        projectDirectory = projectDirectory,
+        buildExecutionManager = runtime.buildExecutionManager,
+        message = { directory -> modelQueryBlockedMessage(prepareTasks, directory) },
+    ) {
+        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+            jsonResult(serialize(fetch(connection, prepareTasks)))
+        }
     }
 }
 

@@ -40,8 +40,15 @@ testing {
 
 tasks.jar {
     manifest {
-        attributes("Main-Class" to "com.example.gradle.mcp.GradleTapiMcpServerLauncher")
+        attributes(
+            "Main-Class" to "com.example.gradle.mcp.GradleTapiMcpServerLauncher",
+            "Implementation-Version" to project.version,
+        )
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
+}
+
+tasks.named<Test>("test") {
+    dependsOn(tasks.jar)
 }

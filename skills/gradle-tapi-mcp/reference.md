@@ -29,6 +29,8 @@ Do not run shell `./gradlew` in parallel on the same checkout while an MCP build
 
 Most query/build tools accept optional `projectDirectory` (defaults to `GRADLE_PROJECT_DIR`).
 
+Model and overview tools also accept optional `prepareTasks` (string array): Gradle tasks to run before fetching the Tooling API model (for example `:app:compileJava` to ensure sources exist). Empty or omitted means no pre-tasks. **While an MCP build is running for the same `projectDirectory`, model queries are rejected** with `BUILD_ALREADY_RUNNING` (Tooling API connection is not shared with active builds). Non-empty `prepareTasks` execute Gradle work and can be slow—use only when needed.
+
 ## Query (read-only)
 
 ### gradle_get_build_environment
@@ -38,6 +40,14 @@ Most query/build tools accept optional `projectDirectory` (defaults to `GRADLE_P
 | `projectDirectory` | no | Gradle project root (default: `GRADLE_PROJECT_DIR`) |
 
 Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `gradle.versionInfo` (Gradle 9.4+; same text as `gradle --version`; omitted on older Gradle), `java.javaHome`, `java.javaVersion`, `java.jvmArguments`.
+
+### gradle_get_java_runtimes
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `includeToolchains` | `true` | Include `javaToolchains` probe results (extra Gradle work) |
+
+Returns daemon Java from the connected project (`javaHome`, `javaVersion`, `jvmArguments`) and, when `includeToolchains=true`, toolchain metadata from `javaToolchains`. Prefer `gradle_get_build_environment` for a lightweight stack snapshot; use this tool when selecting or comparing JDK installations for toolchain configuration.
 
 ### gradle_get_help
 
@@ -72,6 +82,7 @@ Returns:
 |----------|---------|-------------|
 | `maxDepth` | unlimited | Maximum project tree depth |
 | `maxChildren` | unlimited | Maximum child projects per node |
+| `prepareTasks` | `[]` | Optional tasks to run before fetching the model |
 
 Returns hierarchy with `taskCount` per project; no task lists. When truncated: `truncated: true`, `totalChildCount`.
 
@@ -119,7 +130,7 @@ No arguments.
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `tasks` | yes | — | Task paths (e.g. `["build"]`, `[":app:test"]`) |
-| `arguments` | no | `[]` | Extra Gradle CLI args |
+| `arguments` | no | `[]` | Extra Gradle CLI args (init scripts, `@` arg files, and `mcp.*` control properties are rejected) |
 | `jvmArguments` | no | `[]` | JVM args for the build |
 | `includeOutput` | no | `false` | Include stdout/stderr (task log). Default false returns outcome/buildSummary only |
 | `maxOutputChars` | no | `8000` | Per-stream char limit when `includeOutput=true` |
@@ -143,7 +154,7 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 | `includePattern` | no* | — | Single include pattern for `withTestsFor` TestSpec (Gradle 7.6+) |
 | `includePatterns` | no* | `[]` | Include patterns for `withTestsFor` TestSpec (Gradle 7.6+) |
 | `tasks` | no | `[]` | Test task paths for `TestLauncher.forTasks()` (Gradle 7.6+). Required with patterns |
-| `arguments` | no | `[]` | Extra Gradle CLI args |
+| `arguments` | no | `[]` | Extra Gradle CLI args (init scripts, `@` arg files, and `mcp.*` control properties are rejected) |
 | `jvmArguments` | no | `[]` | JVM args |
 | `includeOutput` | no | `false` | Include stdout/stderr (task log). Default false returns outcome/buildSummary only |
 | `maxOutputChars` | no | `8000` | Per-stream char limit when `includeOutput=true` |
@@ -209,6 +220,12 @@ Returns `status` (`running`, `succeeded`, `failed`, `cancelled`, or `not_found`)
 Detailed parameter semantics live in this reference (Layer 3). Tool `description` fields are summaries (Layer 1).
 
 ## Errors
+
+### Tool errors vs build outcomes
+
+- **Tool errors** (`isError=true`): structured `{ "error": { "code", "message" } }` for preflight failures (`NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, …).
+- **Build outcomes** (`isError=false`): `gradle_run_tasks` / `gradle_run_tests` foreground responses and `gradle_get_build_status` terminal polls return `status: "failed"` / `outcome: "FAILED"` with `buildSummary`—not `error.code: BUILD_FAILED`.
+- **`BUILD_FAILED`**: reserved for tooling/setup failures where Gradle could not be invoked meaningfully (for example `gradle_get_java_runtimes` when `javaToolchains` probing fails).
 
 Failed tool calls return JSON:
 

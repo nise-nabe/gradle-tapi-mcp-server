@@ -7,7 +7,10 @@ import org.junit.jupiter.api.Test
 class McpToolSchemaSizeTest {
     @Test
     fun `all tools are registered in the catalog`() {
-        allMcpToolSpecs().size shouldBe 17
+        val catalogNames = allMcpToolSpecs().map { it.name }
+        val catalogNameSet = catalogNames.toSet()
+        catalogNames.size shouldBe catalogNameSet.size
+        catalogNameSet.size shouldBe 17
     }
 
     @Test

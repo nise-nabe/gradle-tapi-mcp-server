@@ -32,6 +32,8 @@ import java.io.File
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 class BuildExecutionManagerRunTest {
@@ -146,6 +148,40 @@ class BuildExecutionManagerRunTest {
         releaseBuild.countDown()
         buildThread.join(5_000)
         manager.hasActiveBuild().shouldBeFalse()
+    }
+
+    @Test
+    fun `startBackground propagates progress notifier`() {
+        val connectionManager = GradleConnectionManager()
+        val buildEntered = CountDownLatch(1)
+        val releaseBuild = CountDownLatch(1)
+        connectionManager.seedConnectionForTests(blockingProjectConnection(buildEntered, releaseBuild))
+        val manager = BuildExecutionManager(connectionManager)
+        val progressCalls = AtomicInteger(0)
+        val notifier = object : com.example.gradle.mcp.protocol.McpBuildNotifier {
+            override fun notifyProgress(progress: Double, total: Double, message: String) {
+                progressCalls.incrementAndGet()
+            }
+
+            override fun notifyLog(message: String, level: io.modelcontextprotocol.kotlin.sdk.types.LoggingLevel) = Unit
+        }
+        val request = BuildRunRequest(
+            projectDirectory = testProjectDirectory,
+            kind = BuildKind.TASKS,
+            tasks = listOf("test"),
+        )
+
+        val result = manager.startBackground(request, notifier)
+
+        buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        var waitedMs = 0
+        while (progressCalls.get() == 0 && waitedMs < 5_000) {
+            Thread.sleep(50)
+            waitedMs += 50
+        }
+        progressCalls.get() shouldNotBe 0
+        releaseBuild.countDown()
+        manager.cancelBuild(result["buildId"] as String, testProjectDirectory)
     }
 
     @Test

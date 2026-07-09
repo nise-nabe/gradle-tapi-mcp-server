@@ -12,7 +12,6 @@ import threading
 import time
 from pathlib import Path
 
-JAR = Path(__file__).resolve().parents[1] / "build/libs/gradle-tapi-mcp-server-0.1.0-SNAPSHOT.jar"
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 RUNS = 3
 TIMEOUT_SEC = 120
@@ -29,9 +28,23 @@ INIT = {
 }
 
 
-def measure_once(env: dict[str, str] | None) -> tuple[int | None, str | None]:
+def resolve_jar() -> Path:
+    libs_dir = PROJECT_DIR / "build/libs"
+    jars = [
+        path
+        for path in libs_dir.glob("gradle-tapi-mcp-server-*.jar")
+        if not path.name.endswith("-plain.jar")
+    ]
+    if not jars:
+        raise FileNotFoundError(
+            f"No fat jar found in {libs_dir}; run ./gradlew jar first"
+        )
+    return max(jars, key=lambda path: path.stat().st_mtime)
+
+
+def measure_once(jar: Path, env: dict[str, str] | None) -> tuple[int | None, str | None]:
     proc = subprocess.Popen(
-        ["java", "-jar", str(JAR)],
+        ["java", "-jar", str(jar)],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -71,11 +84,11 @@ def measure_once(env: dict[str, str] | None) -> tuple[int | None, str | None]:
     return elapsed_ms, line_holder[0][:120]
 
 
-def run_scenario(label: str, env: dict[str, str] | None) -> None:
+def run_scenario(jar: Path, label: str, env: dict[str, str] | None) -> None:
     print(f"\n=== {label} ===")
     samples: list[int] = []
     for i in range(1, RUNS + 1):
-        ms, preview = measure_once(env)
+        ms, preview = measure_once(jar, env)
         if ms is None:
             print(f"  run {i}: FAILED ({preview})")
         else:
@@ -89,13 +102,16 @@ def run_scenario(label: str, env: dict[str, str] | None) -> None:
 
 
 def main() -> int:
-    if not JAR.is_file():
-        print(f"JAR not found: {JAR}", file=sys.stderr)
+    try:
+        jar = resolve_jar()
+    except FileNotFoundError as error:
+        print(str(error), file=sys.stderr)
         return 1
-    print(f"JAR: {JAR}")
+    print(f"JAR: {jar}")
     print(f"Runs per scenario: {RUNS}, timeout: {TIMEOUT_SEC}s")
-    run_scenario("MCP only (no GRADLE_PROJECT_DIR)", None)
+    run_scenario(jar, "MCP only (no GRADLE_PROJECT_DIR)", None)
     run_scenario(
+        jar,
         "MCP + auto-connect (GRADLE_PROJECT_DIR)",
         {"GRADLE_PROJECT_DIR": str(PROJECT_DIR)},
     )

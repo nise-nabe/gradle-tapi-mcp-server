@@ -5,6 +5,10 @@ import io.kotest.matchers.shouldBe
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
+import java.util.stream.Stream
 
 class McpErrorsTest {
     @Test
@@ -18,31 +22,46 @@ class McpErrorsTest {
         code shouldBe McpErrorCode.NOT_CONNECTED
     }
 
-    @Test
-    fun `maps build already running exception`() {
-        val code = mapExceptionToErrorCode(
-            McpException(McpErrorCode.BUILD_ALREADY_RUNNING, "Another build is already running"),
-        )
-
-        code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+    @ParameterizedTest
+    @MethodSource("buildAlreadyRunningMessages")
+    fun `maps build already running messages`(message: String) {
+        mapExceptionToErrorCode(IllegalStateException(message)) shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
     }
 
     @Test
-    fun `maps max concurrent builds exception`() {
-        val code = mapExceptionToErrorCode(
-            IllegalStateException("Maximum concurrent builds (4) reached. Poll gradle_get_build_status."),
-        )
-
-        code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+    fun `maps mcp exception directly`() {
+        mapExceptionToErrorCode(
+            McpException(McpErrorCode.BUILD_ALREADY_RUNNING, "A Gradle build is already running for /tmp."),
+        ) shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
     }
 
     @Test
-    fun `maps missing project directory to project not found`() {
-        val code = mapExceptionToErrorCode(
-            McpException(McpErrorCode.PROJECT_NOT_FOUND, "Project directory does not exist: /missing"),
-        )
+    fun `maps illegal argument exception`() {
+        mapExceptionToErrorCode(IllegalArgumentException("bad arg")) shouldBe McpErrorCode.INVALID_ARGUMENT
+    }
 
-        code shouldBe McpErrorCode.PROJECT_NOT_FOUND
+    @Test
+    fun `maps project not found legacy message`() {
+        mapExceptionToErrorCode(
+            IllegalStateException("Project directory does not exist: /missing"),
+        ) shouldBe McpErrorCode.PROJECT_NOT_FOUND
+    }
+
+    @Test
+    fun `maps per project not connected message`() {
+        mapExceptionToErrorCode(
+            IllegalStateException("Not connected to Gradle project: /tmp. Call gradle_connect first."),
+        ) shouldBe McpErrorCode.NOT_CONNECTED
+    }
+
+    @Test
+    fun `maps unknown illegal state to internal error`() {
+        mapExceptionToErrorCode(IllegalStateException("unexpected")) shouldBe McpErrorCode.INTERNAL_ERROR
+    }
+
+    @Test
+    fun `maps generic exception to internal error`() {
+        mapExceptionToErrorCode(RuntimeException("boom")) shouldBe McpErrorCode.INTERNAL_ERROR
     }
 
     @Test
@@ -54,5 +73,17 @@ class McpErrorsTest {
         text shouldContain "\"error\""
         val payload = decodeMcpJsonMap(text)
         payload["error"] shouldBe mapOf("code" to "NOT_CONNECTED", "message" to "Not connected")
+    }
+
+    companion object {
+        @JvmStatic
+        fun buildAlreadyRunningMessages(): Stream<Arguments> =
+            Stream.of(
+                Arguments.of("A Gradle build is already running for /tmp."),
+                Arguments.of("Cannot connect while a Gradle build is running for /tmp."),
+                Arguments.of("Cannot query Gradle models while a build is running for /tmp."),
+                Arguments.of("Cannot run prepareTasks while a Gradle build is running for /tmp."),
+                Arguments.of("Maximum concurrent builds (4) reached. Poll gradle_get_build_status."),
+            )
     }
 }
