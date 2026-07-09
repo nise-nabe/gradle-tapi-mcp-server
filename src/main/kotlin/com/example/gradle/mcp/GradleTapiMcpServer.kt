@@ -58,9 +58,12 @@ fun runGradleTapiMcpServer() {
     }
 
     val transport = StdioServerTransport(
-        inputStream = EofSignalingInputStream(System.`in`, transportClosed).asInput(),
-        outputStream = System.out.asSink().buffered(),
-    )
+        input = EofSignalingInputStream(System.`in`, transportClosed).asInput(),
+        output = System.out.asSink().buffered(),
+    ) {
+        scope = serverScope
+        ioDispatcher = Dispatchers.IO
+    }
 
     val shutdownOnce = AtomicBoolean(false)
     suspend fun shutdownBestEffort() {
