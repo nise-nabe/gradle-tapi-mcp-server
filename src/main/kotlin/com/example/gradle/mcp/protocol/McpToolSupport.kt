@@ -8,6 +8,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
+
+internal val registeredMcpToolNames: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
 fun Server.registerTool(
     scope: CoroutineScope,
@@ -26,6 +29,7 @@ fun Server.registerTool(
     schema: Map<String, Any>,
     handler: suspend ClientConnection.(Map<String, Any>, McpBuildNotifier?) -> CallToolResult,
 ) {
+    registeredMcpToolNames.add(name)
     addTool(
         name = name,
         description = description,

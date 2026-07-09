@@ -37,7 +37,7 @@ fun runGradleTapiMcpServer() {
     val server = Server(
         serverInfo = Implementation(
             name = "gradle-tapi-mcp-server",
-            version = "0.3.3",
+            version = mcpServerVersion(),
         ),
         options = ServerOptions(
             capabilities = ServerCapabilities(
@@ -90,3 +90,6 @@ fun runGradleTapiMcpServer() {
         }
     }
 }
+
+private fun mcpServerVersion(): String =
+    GradleTapiMcpServerLauncher::class.java.`package`?.implementationVersion ?: "dev"
