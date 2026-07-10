@@ -27,7 +27,8 @@ internal object McpToolDescriptions {
         "GradleBuild structure: projects, included builds, editable builds. Prefer for composite/includeBuild repos."
 
     const val PROJECT_MODEL =
-        "GradleProject model. Tasks omitted by default; set includeTasks=true only when needed."
+        "GradleProject model. includeTasks=true for tasks. maxTasks is a global tree cap (root first); " +
+            "root adds tasksTruncated when capped."
 
     const val BUILD_INVOCATIONS =
         "Runnable Gradle tasks. Task selectors omitted by default unless includeTaskSelectors=true."

@@ -106,7 +106,7 @@ Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`
 | `includeTaskDetails` | `false` | Add `description`, `displayName` per task |
 | `taskGroup` | — | Filter by Gradle task group |
 | `taskNamePrefix` | — | Filter by task name prefix |
-| `maxTasks` | — | Cap after filtering |
+| `maxTasks` | — | Global cap across the project tree after filtering (root tasks first). When capped, the root response includes `tasksTruncated` and `tasksTotalMatched` for visited nodes only (`maxDepth` / `maxChildren` omissions are not counted). |
 
 Slim task shape (default): `{ name, path, group }`.
 
