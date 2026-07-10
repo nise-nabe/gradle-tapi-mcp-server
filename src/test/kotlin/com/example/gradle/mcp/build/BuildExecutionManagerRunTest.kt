@@ -532,4 +532,41 @@ class BuildExecutionManagerRunTest {
         }
         manager.hasActiveBuild().shouldBeFalse()
     }
+
+    @Test
+    fun `runForeground detaches with buildId when promote timeout elapses`() = runBlocking {
+        val connectionManager = GradleConnectionManager()
+        val buildEntered = CountDownLatch(1)
+        val releaseBuild = CountDownLatch(1)
+        connectionManager.seedConnectionForTests(blockingProjectConnection(buildEntered, releaseBuild))
+        val manager = BuildExecutionManager(connectionManager)
+
+        val deferred = async(Dispatchers.IO) {
+            manager.runForeground(
+                request = BuildRunRequest(
+                    projectDirectory = testProjectDirectory,
+                    kind = BuildKind.TASKS,
+                    tasks = listOf("test"),
+                ),
+                notifier = null,
+                foregroundDetachTimeoutMs = 50L,
+            )
+        }
+
+        buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        val detached = deferred.await()
+
+        detached["status"] shouldBe "running"
+        detached["detached"] shouldBe true
+        detached["buildId"].shouldNotBeNull()
+        manager.hasActiveBuild().shouldBeTrue()
+
+        releaseBuild.countDown()
+        var attempts = 0
+        while (manager.hasActiveBuild() && attempts < 50) {
+            Thread.sleep(100)
+            attempts++
+        }
+        manager.hasActiveBuild().shouldBeFalse()
+    }
 }

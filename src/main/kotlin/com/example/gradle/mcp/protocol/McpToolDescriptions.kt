@@ -48,7 +48,8 @@ internal object McpToolDescriptions {
         "Poll a background build by buildId. Outcome/summary by default; set includeOutput/includeProgress/includeProblems/includeDownloads/includeTestDetails as needed. See reference for disk vs memory behavior."
 
     const val RUN_TASKS =
-        "Run Gradle task paths. Outcome/summary by default; background=true returns buildId. One MCP build per projectDirectory (BUILD_ALREADY_RUNNING on overlap)."
+        "Run Gradle task paths. Outcome/summary by default; background=true returns buildId. " +
+            "Foreground >45s returns detached buildId. One build per project."
 
     const val RUN_TESTS =
         "Run JVM tests by class, method, or pattern. Multi-project builds require taskPath or tasks with testClasses/testMethods to avoid cross-module fan-out."

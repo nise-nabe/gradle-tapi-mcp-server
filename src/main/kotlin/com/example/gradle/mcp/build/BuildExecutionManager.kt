@@ -74,6 +74,7 @@ class BuildExecutionManager(
     suspend fun runForeground(
         request: BuildRunRequest,
         notifier: McpBuildNotifier?,
+        foregroundDetachTimeoutMs: Long = DEFAULT_FOREGROUND_DETACH_TIMEOUT_MS,
     ): Map<String, Any?> {
         connectionManager.requireConnection(request.projectDirectory)
 
@@ -98,13 +99,17 @@ class BuildExecutionManager(
 
         return withContext(NonCancellable) {
             try {
-                completion.await()
-                BuildStatusAssembler.assemble(
-                    view = BuildStatusView.fromRecord(start.record),
-                    outputLimit = request.outputLimit,
-                    progressOptions = request.progressOptions,
-                    style = BuildStatusResponseStyle.FOREGROUND,
-                )
+                val completedInTime = awaitBuildCompletion(completion, foregroundDetachTimeoutMs)
+                if (completedInTime) {
+                    BuildStatusAssembler.assemble(
+                        view = BuildStatusView.fromRecord(start.record),
+                        outputLimit = request.outputLimit,
+                        progressOptions = request.progressOptions,
+                        style = BuildStatusResponseStyle.FOREGROUND,
+                    )
+                } else {
+                    detachedForegroundResponse(start.record, request)
+                }
             } catch (_: InterruptedException) {
                 Thread.interrupted()
                 detachedForegroundResponse(start.record, request)
@@ -112,6 +117,14 @@ class BuildExecutionManager(
                 pruneCompletedBuilds()
             }
         }
+    }
+
+    private fun awaitBuildCompletion(completion: CountDownLatch, timeoutMs: Long): Boolean {
+        if (timeoutMs <= 0L) {
+            completion.await()
+            return true
+        }
+        return completion.await(timeoutMs, TimeUnit.MILLISECONDS)
     }
 
     fun cancelBuild(buildId: String, projectDirectoryHint: File? = null): Map<String, Any?> {
@@ -687,6 +700,7 @@ class BuildExecutionManager(
     companion object {
         private val MAX_CONCURRENT_BUILDS = maxOf(4, Runtime.getRuntime().availableProcessors())
         private const val MAX_RETAINED_BUILDS = 10
+        internal const val DEFAULT_FOREGROUND_DETACH_TIMEOUT_MS = 45_000L
         internal const val DEFAULT_LIST_BUILDS = 20
         internal const val MAX_LIST_BUILDS = 100
     }
