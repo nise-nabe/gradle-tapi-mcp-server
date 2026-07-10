@@ -90,9 +90,11 @@ class BuildRecordStore {
             resolved.terminalSource == BuildPersistenceContract.TerminalStatusSource.GRADLE
         ) {
             status = resolved.status
-            if (status == BuildProgressTracker.STATUS_SUCCEEDED) {
-                error = null
-            }
+            error = BuildPersistenceContract.resolveError(
+                gradleResult,
+                provisionalResult,
+                resolved.terminalSource,
+            )
         }
         val result = provisionalResult.copy(
             status = status,
