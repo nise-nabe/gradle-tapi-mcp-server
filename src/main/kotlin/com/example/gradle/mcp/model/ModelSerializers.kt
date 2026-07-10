@@ -23,67 +23,35 @@ object ModelSerializers {
         options: ProjectTreeOptions = ProjectTreeOptions(),
         depth: Int = 0,
     ): Map<String, Any?> =
-        projectNode(project, options, depth)
+        walkGradleProjectTree(
+            project = project,
+            treeOptions = options,
+            depth = depth,
+            enrichNode = { _, _ -> },
+            recurseChild = { child, childDepth -> projectOverview(child, options, childDepth) },
+        )
 
     fun gradleProject(
         project: GradleProject,
         options: ModelQueryOptions = ModelQueryOptions(),
         treeOptions: ProjectTreeOptions = ProjectTreeOptions(),
         depth: Int = 0,
-    ): Map<String, Any?> =
-        gradleProjectWithBudget(project, options, treeOptions, depth, TaskFilterBudget(options.maxTasks))
-
-    internal fun gradleProjectWithBudget(
-        project: GradleProject,
-        options: ModelQueryOptions,
-        treeOptions: ProjectTreeOptions,
-        depth: Int,
-        taskBudget: TaskFilterBudget,
     ): Map<String, Any?> {
-        val result = mutableMapOf<String, Any?>(
-            "name" to project.name,
-            "path" to project.path,
-            "description" to project.description,
-            "buildDirectory" to project.buildDirectory?.absolutePath,
-            "projectDirectory" to project.projectDirectory.absolutePath,
-            "taskCount" to project.tasks.size,
-        )
-        result["tasks"] = taskBudget.takeAndSerialize(
-            filterTasksWithoutLimit(project.tasks.map(::taskSnapshot), options),
-        ) { serializeTask(it, options.includeTaskDetails) }
-
-        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth, treeOptions.maxDepth, project.children.size)
-        if (depthLimit.omitChildren) {
-            if (depthLimit.truncated) {
-                result["truncated"] = true
-                result["totalChildCount"] = depthLimit.totalChildCount
-            }
-            result["children"] = emptyList<Map<String, Any?>>()
-            return if (depth == 0) {
-                result + taskBudget.rootMetadata()
-            } else {
-                result
-            }
-        }
-
-        val allChildren = project.children.toList()
-        val childLimit = ProjectTreeLimits.applyChildLimit(allChildren.size, treeOptions.maxChildren)
-        val childrenToSerialize = allChildren.take(childLimit.visibleChildCount)
-
-        result["children"] = childrenToSerialize.map { child ->
-            gradleProjectWithBudget(child, options, treeOptions, depth + 1, taskBudget)
-        }
-
-        if (childLimit.truncated) {
-            result["truncated"] = true
-            result["totalChildCount"] = childLimit.totalChildCount
-        }
-
-        return if (depth == 0) {
-            result + taskBudget.rootMetadata()
-        } else {
-            result
-        }
+        val taskBudget = TaskFilterBudget(options.maxTasks)
+        fun walk(p: GradleProject, d: Int): Map<String, Any?> =
+            walkGradleProjectTree(
+                project = p,
+                treeOptions = treeOptions,
+                depth = d,
+                enrichNode = { node, result ->
+                    result["tasks"] = taskBudget.takeAndSerialize(
+                        filterTasksWithoutLimit(node.tasks.map(::taskSnapshot), options),
+                    ) { serializeTask(it, options.includeTaskDetails) }
+                },
+                recurseChild = { child, childDepth -> walk(child, childDepth) },
+                rootMetadata = { taskBudget.rootMetadata() },
+            )
+        return walk(project, depth)
     }
 
     fun buildInvocations(
@@ -245,10 +213,13 @@ object ModelSerializers {
     fun serializeTasks(tasks: List<TaskSnapshot>, options: ModelQueryOptions): List<Map<String, Any?>> =
         filterTasks(tasks, options).map { serializeTask(it, options.includeTaskDetails) }
 
-    private fun projectNode(
+    private fun walkGradleProjectTree(
         project: GradleProject,
         treeOptions: ProjectTreeOptions,
         depth: Int,
+        enrichNode: (GradleProject, MutableMap<String, Any?>) -> Unit,
+        recurseChild: (GradleProject, Int) -> Map<String, Any?>,
+        rootMetadata: () -> Map<String, Any?> = { emptyMap() },
     ): Map<String, Any?> {
         val result = mutableMapOf<String, Any?>(
             "name" to project.name,
@@ -258,6 +229,7 @@ object ModelSerializers {
             "projectDirectory" to project.projectDirectory.absolutePath,
             "taskCount" to project.tasks.size,
         )
+        enrichNode(project, result)
 
         val depthLimit = ProjectTreeLimits.applyDepthLimit(depth, treeOptions.maxDepth, project.children.size)
         if (depthLimit.omitChildren) {
@@ -266,7 +238,11 @@ object ModelSerializers {
                 result["totalChildCount"] = depthLimit.totalChildCount
             }
             result["children"] = emptyList<Map<String, Any?>>()
-            return result
+            return if (depth == 0) {
+                result + rootMetadata()
+            } else {
+                result
+            }
         }
 
         val allChildren = project.children.toList()
@@ -274,7 +250,7 @@ object ModelSerializers {
         val childrenToSerialize = allChildren.take(childLimit.visibleChildCount)
 
         result["children"] = childrenToSerialize.map { child ->
-            projectOverview(child, treeOptions, depth + 1)
+            recurseChild(child, depth + 1)
         }
 
         if (childLimit.truncated) {
@@ -282,7 +258,11 @@ object ModelSerializers {
             result["totalChildCount"] = childLimit.totalChildCount
         }
 
-        return result
+        return if (depth == 0) {
+            result + rootMetadata()
+        } else {
+            result
+        }
     }
 
     private fun serializeTask(task: TaskSnapshot, includeDetails: Boolean): Map<String, Any?> =
@@ -318,4 +298,33 @@ object ModelSerializers {
             group = task.group,
             displayName = task.displayName,
         )
+
+    private class TaskFilterBudget(private val maxTasks: Int?) {
+        private var remaining: Int? = maxTasks
+        private var totalMatched: Int = 0
+        private var totalEmitted: Int = 0
+
+        fun <T> takeAndSerialize(items: List<T>, serialize: (T) -> Map<String, Any?>): List<Map<String, Any?>> {
+            totalMatched += items.size
+            val max = remaining
+            val taken = when {
+                max == null -> items
+                max <= 0 -> emptyList()
+                else -> items.take(max).also { remaining = max - it.size }
+            }
+            val serialized = taken.map(serialize)
+            totalEmitted += serialized.size
+            return serialized
+        }
+
+        fun rootMetadata(): Map<String, Any?> =
+            if (maxTasks != null && totalMatched > totalEmitted) {
+                mapOf(
+                    "tasksTruncated" to true,
+                    "tasksTotalMatched" to totalMatched,
+                )
+            } else {
+                emptyMap()
+            }
+    }
 }
