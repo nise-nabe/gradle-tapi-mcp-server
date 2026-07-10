@@ -13,6 +13,7 @@ internal data class BuildListEntry(
     val finishedAt: String?,
     val outcome: String?,
     val recordSource: String,
+    val statusSource: String? = null,
 ) {
     val testClasses: List<String> get() = selection.testClassesForReporting()
     val testMethods: Map<String, List<String>> get() = selection.testMethodsOrEmpty()
@@ -37,6 +38,7 @@ internal data class BuildListEntry(
             finishedAt?.let { put("finishedAt", it) }
             outcome?.let { put("outcome", it) }
             put("recordSource", recordSource)
+            statusSource?.let { put("statusSource", it) }
         }
 
     private fun parseInstant(value: String?): Instant? =
