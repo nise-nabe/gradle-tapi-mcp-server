@@ -63,6 +63,10 @@ class McpBuildRecorderSupport {
         }
     }
 
+    static void releaseAppendEventLock(String dirPath) {
+        APPEND_EVENT_LOCKS.remove(dirPath)
+    }
+
     /** First Tooling API failure message; mirrors Kotlin BuildProgressTracker.firstOrNull fallback. */
     static String firstFailureMessage(def failures, String fallback = "failed") {
         failures?.head()?.message ?: fallback
@@ -264,6 +268,7 @@ abstract class McpBuildFinalizeFlowAction implements FlowAction<McpBuildFinalize
             status,
             failureMessage,
         )
+        McpBuildRecorderSupport.releaseAppendEventLock(context.recordDirPath)
     }
 }
 
