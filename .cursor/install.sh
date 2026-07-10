@@ -104,27 +104,58 @@ setup_gh_cli() {
   fi
 }
 
-ensure_jdk17() {
-  if command -v java >/dev/null 2>&1 && java -version 2>&1 | grep -q '"17\.'; then
-    return 0
-  fi
-
-  local jdk17_home="/usr/lib/jvm/java-17-openjdk-amd64"
-  if [[ -d "${jdk17_home}" ]]; then
-    export JAVA_HOME="${jdk17_home}"
-    export PATH="${JAVA_HOME}/bin:${PATH}"
-    return 0
-  fi
-
-  echo "JDK 17 is required for ./gradlew (Java toolchain in build.gradle.kts)." >&2
-  echo "Install openjdk-17-jdk or set JAVA_HOME to a Java 17 installation." >&2
+find_jdk_home() {
+  local version="$1"
+  local home
+  for home in "/usr/lib/jvm/java-${version}-openjdk-"*; do
+    if [[ -d "${home}/bin" && -x "${home}/bin/java" ]]; then
+      echo "${home}"
+      return 0
+    fi
+  done
   return 1
+}
+
+install_missing_jdks() {
+  local packages=()
+  find_jdk_home 17 >/dev/null || packages+=(openjdk-17-jdk)
+  find_jdk_home 21 >/dev/null || packages+=(openjdk-21-jdk)
+
+  if [[ ${#packages[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
+    echo "sudo is required to install JDK packages: ${packages[*]}" >&2
+    return 1
+  fi
+
+  echo "Installing JDK packages: ${packages[*]}..." >&2
+  sudo apt-get update -qq
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${packages[@]}"
+}
+
+ensure_jdks() {
+  install_missing_jdks || return 1
+
+  local jdk17_home jdk21_home
+  if ! jdk17_home="$(find_jdk_home 17)"; then
+    echo "JDK 17 is required for ./gradlew (Java toolchain in build.gradle.kts)." >&2
+    return 1
+  fi
+  if ! jdk21_home="$(find_jdk_home 21)"; then
+    echo "JDK 21 is required to run the MCP server JAR (see AGENTS.md)." >&2
+    return 1
+  fi
+
+  export JAVA_HOME="${jdk17_home}"
+  export PATH="${JAVA_HOME}/bin:${jdk21_home}/bin:${PATH}"
 }
 
 # Download the release JAR before ./gradlew so the MCP server can drive this repo's build.
 ensure_jar
 setup_gh_cli
-ensure_jdk17
+ensure_jdks
 
 cd "${REPO_ROOT}"
 ./gradlew --no-daemon build
