@@ -72,4 +72,21 @@ class ProgressEventAccumulatorTest {
         snapshot.failedTasks shouldBe listOf(":app:broken")
         snapshot.failedTaskCount shouldBe 1
     }
+
+    @Test
+    fun `running tests clear when Gradle test display names include spaces`() {
+        val accumulator = ProgressEventAccumulator()
+        accumulator.apply(ProgressEventTypes.TEST_START, "Test com.example.FooTest.my method name")
+        accumulator.apply(ProgressEventTypes.TEST_SUCCESS, "Test com.example.FooTest.my method name")
+
+        val snapshot = accumulator.snapshot(
+            status = BuildProgressTracker.STATUS_RUNNING,
+            currentOperation = null,
+            recentEvents = emptyList(),
+            totalEventCount = 2,
+        )
+
+        snapshot.runningTasks shouldBe emptyList()
+        snapshot.completedTasks shouldBe listOf("com.example.FooTest.my method name")
+    }
 }

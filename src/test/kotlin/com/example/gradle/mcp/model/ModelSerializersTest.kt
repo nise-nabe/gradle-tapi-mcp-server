@@ -433,6 +433,40 @@ class ModelSerializersTest {
     }
 
     @Test
+    fun `buildInvocations applies maxTasks globally with truncation metadata`() {
+        fun compileTasks(prefix: String, count: Int): List<org.gradle.tooling.model.Task> =
+            (1..count).map { index ->
+                mockTask("compile$index", "$prefix:compile$index", "build")
+            }
+
+        val root = gradleProjectProxy(
+            name = "root",
+            path = ":",
+            directory = File("/root"),
+            tasks = compileTasks(":", 2),
+            children = listOf(
+                gradleProjectProxy(
+                    name = "plugin",
+                    path = ":plugin",
+                    directory = File("/root/plugin"),
+                    tasks = compileTasks(":plugin", 4),
+                ),
+            ),
+        )
+        val invocations = mockBuildInvocations(emptyList())
+
+        val result = ModelSerializers.buildInvocations(
+            invocations,
+            root,
+            ModelQueryOptions(includeTasks = true, taskNamePrefix = "compile", maxTasks = 3),
+        )
+
+        (result["tasks"] as List<*>) shouldHaveSize 3
+        result["tasksTruncated"] shouldBe true
+        result["tasksTotalMatched"] shouldBe 6
+    }
+
+    @Test
     fun `buildInvocations respects maxDepth when collecting tasks`() {
         val root = gradleProjectProxy(
             name = "root",

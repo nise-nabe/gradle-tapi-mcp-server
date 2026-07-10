@@ -59,15 +59,12 @@ object ModelSerializers {
         project: GradleProject,
         options: ModelQueryOptions = ModelQueryOptions(),
         treeOptions: ProjectTreeOptions = ProjectTreeOptions(),
-    ): Map<String, Any?> =
-        buildMap {
-            put(
-                "tasks",
-                serializeTasks(
-                    collectTasksFromProjectTree(project, treeOptions),
-                    options.copy(includeTasks = true),
-                ),
-            )
+    ): Map<String, Any?> {
+        val taskBudget = TaskFilterBudget(options.maxTasks)
+        val tasks = collectSerializedTasksWithGlobalBudget(project, treeOptions, options, taskBudget)
+        return buildMap {
+            put("tasks", tasks)
+            putAll(taskBudget.rootMetadata())
             if (options.includeTaskSelectors) {
                 put(
                     "taskSelectors",
@@ -81,6 +78,7 @@ object ModelSerializers {
                 )
             }
         }
+    }
 
     fun gradleBuild(
         build: GradleBuild,
@@ -212,6 +210,33 @@ object ModelSerializers {
 
     fun serializeTasks(tasks: List<TaskSnapshot>, options: ModelQueryOptions): List<Map<String, Any?>> =
         filterTasks(tasks, options).map { serializeTask(it, options.includeTaskDetails) }
+
+    private fun collectSerializedTasksWithGlobalBudget(
+        project: GradleProject,
+        treeOptions: ProjectTreeOptions,
+        options: ModelQueryOptions,
+        budget: TaskFilterBudget,
+        depth: Int = 0,
+    ): List<Map<String, Any?>> {
+        val result = mutableListOf<Map<String, Any?>>()
+        result.addAll(
+            budget.takeAndSerialize(
+                filterTasksWithoutLimit(project.tasks.map(::taskSnapshot), options),
+            ) { serializeTask(it, options.includeTaskDetails) },
+        )
+
+        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth, treeOptions.maxDepth, project.children.size)
+        if (depthLimit.omitChildren) {
+            return result
+        }
+
+        val allChildren = project.children.toList()
+        val childLimit = ProjectTreeLimits.applyChildLimit(allChildren.size, treeOptions.maxChildren)
+        allChildren.take(childLimit.visibleChildCount).forEach { child ->
+            result.addAll(collectSerializedTasksWithGlobalBudget(child, treeOptions, options, budget, depth + 1))
+        }
+        return result
+    }
 
     private fun walkGradleProjectTree(
         project: GradleProject,

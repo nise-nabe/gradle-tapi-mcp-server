@@ -16,7 +16,7 @@
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `projectDirectory` | no | Inspect or disconnect one project. Omit to list/disconnect all. |
-| `refresh` | no | When `true`, fetches `BuildEnvironment` for connected projects missing cached runtime stack. Default `false` (cache-only). |
+| `refresh` | no | When `true`, fetches `BuildEnvironment` for connected projects missing cached runtime stack. Default `false` (cache-only). Omitting `projectDirectory` with `refresh=true` fetches once per connected project. |
 
 `gradle_connection_status` without `projectDirectory` returns `defaultProjectDirectory`, `connections[]`, and legacy flat fields for the default project. With `projectDirectory`, returns status for that project only. When `runtimeStackAvailable` is `false`, call `gradle_get_build_environment` or pass `refresh: true` to populate `gradleVersion` / `javaHome` / `javaVersion`.
 
@@ -112,7 +112,7 @@ Slim task shape (default): `{ name, path, group }`.
 
 ### gradle_get_build_invocations
 
-Same as `gradle_get_project_model` (including `maxDepth` / `maxChildren`), plus:
+Same task query options as `gradle_get_project_model` (including global `maxTasks`, `maxDepth` / `maxChildren`). When `maxTasks` caps the result, the response includes `tasksTruncated` and `tasksTotalMatched`. Plus:
 
 | Argument | Default | Description |
 |----------|---------|-------------|

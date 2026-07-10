@@ -120,12 +120,14 @@ class GradleConnectionManagerTest {
     }
 
     @Test
-    fun `cacheHasSubprojects updates pooled connection`() {
+    fun `cacheHasSubprojects only caches true`() {
         manager.seedConnectionForTests(getModelCountingConnection(), environment = null)
 
         manager.cachedHasSubprojects(File(".")).shouldBeNull()
         manager.cacheHasSubprojects(File("."), hasSubprojects = false)
-        manager.cachedHasSubprojects(File(".")).shouldBeFalse()
+        manager.cachedHasSubprojects(File(".")).shouldBeNull()
+        manager.cacheHasSubprojects(File("."), hasSubprojects = true)
+        manager.cachedHasSubprojects(File(".")).shouldBeTrue()
     }
 
     @Test

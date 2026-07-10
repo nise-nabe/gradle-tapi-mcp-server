@@ -122,10 +122,13 @@ class GradleConnectionManager {
         pool[ProjectDirectoryResolver.canonicalKey(projectDirectory)]?.cachedHasSubprojects
 
     fun cacheHasSubprojects(projectDirectory: File, hasSubprojects: Boolean) {
+        if (!hasSubprojects) {
+            return
+        }
         val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
         synchronized(pool) {
             val existing = pool[key] ?: return
-            pool[key] = existing.copy(cachedHasSubprojects = hasSubprojects)
+            pool[key] = existing.copy(cachedHasSubprojects = true)
         }
     }
 

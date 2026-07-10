@@ -37,8 +37,10 @@ internal fun gradleProjectProxy(
 internal fun gradleProjectConnectionProxy(
     project: GradleProject,
     getModelCalls: AtomicInteger? = null,
-): ProjectConnection =
-    Proxy.newProxyInstance(
+    projectSequence: List<GradleProject>? = null,
+): ProjectConnection {
+    val sequenceIndex = AtomicInteger(0)
+    return Proxy.newProxyInstance(
         ProjectConnection::class.java.classLoader,
         arrayOf(ProjectConnection::class.java),
     ) { _, method, args ->
@@ -46,11 +48,18 @@ internal fun gradleProjectConnectionProxy(
             "getModel" -> {
                 getModelCalls?.incrementAndGet()
                 val modelType = args?.get(0) as Class<*>
-                if (modelType == GradleProject::class.java) project else null
+                if (modelType == GradleProject::class.java) {
+                    projectSequence?.let { sequence ->
+                        sequence[sequenceIndex.getAndIncrement().coerceAtMost(sequence.lastIndex)]
+                    } ?: project
+                } else {
+                    null
+                }
             }
             else -> defaultProxyReturn(method)
         }
     } as ProjectConnection
+}
 
 @Suppress("UNCHECKED_CAST")
 internal fun <T> toolingDomainObjectSet(items: List<T>): DomainObjectSet<T> =

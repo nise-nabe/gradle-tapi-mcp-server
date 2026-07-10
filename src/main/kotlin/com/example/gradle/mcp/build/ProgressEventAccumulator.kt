@@ -62,7 +62,7 @@ internal class ProgressEventAccumulator {
 
 internal object TaskProgressKey {
     private val taskDisplayPattern = Regex("^Task (\\S+)")
-    private val testDisplayPattern = Regex("^Test (\\S+)")
+    private val testDisplayPattern = Regex("^Test (.+)$")
 
     fun fromDisplayName(displayName: String): String =
         taskDisplayPattern.find(displayName)?.groupValues?.get(1)

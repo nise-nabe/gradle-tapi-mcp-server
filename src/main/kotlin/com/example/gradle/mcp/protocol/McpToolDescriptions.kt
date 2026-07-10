@@ -5,8 +5,7 @@ internal object McpToolDescriptions {
         "Connect to a Gradle project via Tooling API. Keeps other connections; rejects if a build is running for the same project."
 
     const val CONNECTION_STATUS =
-        "Tooling API connection status for one project or all connections. Omit projectDirectory for the full list. " +
-            "Set refresh=true to fetch BuildEnvironment when the cached runtime stack is missing."
+        "Connection status for one or all projects. refresh=true fetches missing BuildEnvironment (per project when listing all)."
 
     const val DISCONNECT =
         "Close one or all Tooling API connections. Running builds for disconnected projects are cancelled."
@@ -31,7 +30,7 @@ internal object McpToolDescriptions {
             "root adds tasksTruncated when capped."
 
     const val BUILD_INVOCATIONS =
-        "Runnable Gradle tasks. Task selectors omitted by default unless includeTaskSelectors=true."
+        "Runnable Gradle tasks; global maxTasks cap adds tasksTruncated. Task selectors omitted unless includeTaskSelectors=true."
 
     const val PROJECT_PUBLICATIONS =
         "Publications declared by the build."
