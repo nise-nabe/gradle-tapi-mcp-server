@@ -23,7 +23,7 @@ object ModelSerializers {
         options: ProjectTreeOptions = ProjectTreeOptions(),
         depth: Int = 0,
     ): Map<String, Any?> =
-        projectNode(project, options, ModelQueryOptions(), depth, includeTasks = false)
+        projectNode(project, options, depth)
 
     fun gradleProject(
         project: GradleProject,
@@ -31,7 +31,7 @@ object ModelSerializers {
         treeOptions: ProjectTreeOptions = ProjectTreeOptions(),
         depth: Int = 0,
     ): Map<String, Any?> =
-        gradleProjectWithBudget(project, options, treeOptions, depth, TaskFilterBudget(options))
+        gradleProjectWithBudget(project, options, treeOptions, depth, TaskFilterBudget(options.maxTasks))
 
     internal fun gradleProjectWithBudget(
         project: GradleProject,
@@ -40,10 +40,45 @@ object ModelSerializers {
         depth: Int,
         taskBudget: TaskFilterBudget,
     ): Map<String, Any?> {
-        val node = projectNode(project, treeOptions, options, depth, includeTasks = true, taskBudget)
-        val result = node + mapOf(
-            "tasks" to taskBudget.filterAndSerialize(project.tasks.map(::taskSnapshot)),
+        val result = mutableMapOf<String, Any?>(
+            "name" to project.name,
+            "path" to project.path,
+            "description" to project.description,
+            "buildDirectory" to project.buildDirectory?.absolutePath,
+            "projectDirectory" to project.projectDirectory.absolutePath,
+            "taskCount" to project.tasks.size,
         )
+        result["tasks"] = taskBudget.takeAndSerialize(
+            filterTasksWithoutLimit(project.tasks.map(::taskSnapshot), options),
+        ) { serializeTask(it, options.includeTaskDetails) }
+
+        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth, treeOptions.maxDepth, project.children.size)
+        if (depthLimit.omitChildren) {
+            if (depthLimit.truncated) {
+                result["truncated"] = true
+                result["totalChildCount"] = depthLimit.totalChildCount
+            }
+            result["children"] = emptyList<Map<String, Any?>>()
+            return if (depth == 0) {
+                result + taskBudget.rootMetadata()
+            } else {
+                result
+            }
+        }
+
+        val allChildren = project.children.toList()
+        val childLimit = ProjectTreeLimits.applyChildLimit(allChildren.size, treeOptions.maxChildren)
+        val childrenToSerialize = allChildren.take(childLimit.visibleChildCount)
+
+        result["children"] = childrenToSerialize.map { child ->
+            gradleProjectWithBudget(child, options, treeOptions, depth + 1, taskBudget)
+        }
+
+        if (childLimit.truncated) {
+            result["truncated"] = true
+            result["totalChildCount"] = childLimit.totalChildCount
+        }
+
         return if (depth == 0) {
             result + taskBudget.rootMetadata()
         } else {
@@ -208,18 +243,12 @@ object ModelSerializers {
     }
 
     fun serializeTasks(tasks: List<TaskSnapshot>, options: ModelQueryOptions): List<Map<String, Any?>> =
-        filterTasks(tasks, options).map { serializeTaskSnapshot(it, options.includeTaskDetails) }
-
-    internal fun serializeTaskSnapshot(task: TaskSnapshot, includeDetails: Boolean): Map<String, Any?> =
-        serializeTask(task, includeDetails)
+        filterTasks(tasks, options).map { serializeTask(it, options.includeTaskDetails) }
 
     private fun projectNode(
         project: GradleProject,
         treeOptions: ProjectTreeOptions,
-        modelOptions: ModelQueryOptions,
         depth: Int,
-        includeTasks: Boolean,
-        taskBudget: TaskFilterBudget = TaskFilterBudget(modelOptions),
     ): Map<String, Any?> {
         val result = mutableMapOf<String, Any?>(
             "name" to project.name,
@@ -245,11 +274,7 @@ object ModelSerializers {
         val childrenToSerialize = allChildren.take(childLimit.visibleChildCount)
 
         result["children"] = childrenToSerialize.map { child ->
-            if (includeTasks) {
-                gradleProjectWithBudget(child, modelOptions, treeOptions, depth + 1, taskBudget)
-            } else {
-                projectOverview(child, treeOptions, depth + 1)
-            }
+            projectOverview(child, treeOptions, depth + 1)
         }
 
         if (childLimit.truncated) {

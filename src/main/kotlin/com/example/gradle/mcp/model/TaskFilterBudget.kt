@@ -1,37 +1,25 @@
 package com.example.gradle.mcp.model
 
-internal class TaskFilterBudget(private val options: ModelQueryOptions) {
-    private var remaining: Int? = options.maxTasks
+internal class TaskFilterBudget(private val maxTasks: Int?) {
+    private var remaining: Int? = maxTasks
     private var totalMatched: Int = 0
     private var totalEmitted: Int = 0
 
-    fun filterAndSerialize(tasks: List<TaskSnapshot>): List<Map<String, Any?>> {
-        if (!options.includeTasks) {
-            return emptyList()
-        }
-
-        val filtered = ModelSerializers.filterTasksWithoutLimit(tasks, options)
-        totalMatched += filtered.size
-
+    fun <T> takeAndSerialize(items: List<T>, serialize: (T) -> Map<String, Any?>): List<Map<String, Any?>> {
+        totalMatched += items.size
         val max = remaining
-        if (max == null) {
-            val serialized = filtered.map { ModelSerializers.serializeTaskSnapshot(it, options.includeTaskDetails) }
-            totalEmitted += serialized.size
-            return serialized
+        val taken = when {
+            max == null -> items
+            max <= 0 -> emptyList()
+            else -> items.take(max).also { remaining = max - it.size }
         }
-        if (max <= 0) {
-            return emptyList()
-        }
-
-        val taken = filtered.take(max)
-        remaining = max - taken.size
-        val serialized = taken.map { ModelSerializers.serializeTaskSnapshot(it, options.includeTaskDetails) }
+        val serialized = taken.map(serialize)
         totalEmitted += serialized.size
         return serialized
     }
 
     fun rootMetadata(): Map<String, Any?> =
-        if (options.maxTasks != null && totalMatched > totalEmitted) {
+        if (maxTasks != null && totalMatched > totalEmitted) {
             mapOf(
                 "tasksTruncated" to true,
                 "tasksTotalMatched" to totalMatched,
