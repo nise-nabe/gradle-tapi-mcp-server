@@ -180,7 +180,7 @@ abstract class McpConfigurationCacheRecorderService
     }
 
     private void appendEvent(Map event) {
-        appendEvent(launcherContext().recordDirPath, event)
+        McpBuildRecorderSupport.appendEvent(launcherContext().recordDirPath, event)
     }
 
     void startHeartbeatIfNeeded() {
