@@ -11,6 +11,7 @@ import com.example.gradle.mcp.support.loadAssembledStatus
 import com.example.gradle.mcp.support.mcpBuildResult
 import com.example.gradle.mcp.support.failedTracker
 import com.example.gradle.mcp.support.succeededBuildRecord
+import com.example.gradle.mcp.support.succeededTracker
 import com.example.gradle.mcp.support.testBuildRecord
 import com.example.gradle.mcp.support.writeDiskFile
 import com.example.gradle.mcp.support.writeGradleResultToDisk
@@ -137,6 +138,37 @@ class BuildRecordStoreTest {
             status shouldBe BuildProgressTracker.STATUS_SUCCEEDED
             outcome shouldBe "SUCCESS"
             error.shouldBeNull()
+        }
+    }
+
+    @Test
+    fun `writeMcpResult prefers gradle failure message when memory succeeded`(@TempDir projectDir: File) {
+        store.writeGradleResultToDisk(
+            projectDir,
+            "gradle-failed",
+            gradleBuildResult(
+                buildId = "gradle-failed",
+                status = BuildProgressTracker.STATUS_FAILED,
+                finishedAt = TEST_ISO_FINISH,
+                failure = "Execution failed for task ':app:compileJava'.",
+            ),
+        )
+        val record = testBuildRecord(
+            id = "gradle-failed",
+            tracker = succeededTracker(),
+            projectDirectory = projectDir.absolutePath,
+        ) {
+            finishedAt = Instant.parse(TEST_ISO_FINISH)
+        }
+
+        store.writeMcpResult(record, record.progressTracker.snapshot())
+
+        store.readMcpResult(
+            store.recordDirectory(projectDir, "gradle-failed").shouldNotBeNull(),
+        ).shouldNotBeNull().apply {
+            status shouldBe BuildProgressTracker.STATUS_FAILED
+            outcome shouldBe "FAILED"
+            error shouldBe "Execution failed for task ':app:compileJava'."
         }
     }
 

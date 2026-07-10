@@ -264,8 +264,9 @@ class BuildExecutionManager(
         var recordSource = "memory"
         var statusSource: String? = null
         val memoryStatus = status
-        if (projectDirectory != null && status != BuildProgressTracker.STATUS_RUNNING) {
-            buildRecordStore.loadArtifacts(projectDirectory, record.id)?.let { artifacts ->
+        val artifactProject = record.projectDirectory?.let(::File) ?: projectDirectory
+        if (artifactProject != null && status != BuildProgressTracker.STATUS_RUNNING) {
+            buildRecordStore.loadArtifacts(artifactProject, record.id)?.let { artifacts ->
                 val merged = BuildStatusMerger.merge(
                     BuildStatusView.fromRecord(record),
                     PersistedBuildViewFactory.fromArtifacts(record.id, artifacts),

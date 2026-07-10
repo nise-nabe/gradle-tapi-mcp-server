@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.build
 
+import com.example.gradle.mcp.build.persistence.BuildRecordStore
 import com.example.gradle.mcp.build.persistence.McpBuildRecordPaths
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.support.failedTracker
@@ -204,5 +205,53 @@ class BuildExecutionManagerListBuildsTest {
         result["projectDirectory"] shouldBe projectA.absolutePath
         result["totalAvailable"] shouldBe 2
         builds.map { (it as Map<*, *>)["buildId"] } shouldBe listOf("build-a", "build-b")
+    }
+
+    @Test
+    fun `listBuilds merges disk from record project when hint is omitted`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val buildId = "cross-project-build"
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedNoopConnection(projectA)
+        val manager = BuildExecutionManager(connectionManager)
+        val store = BuildRecordStore()
+
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = buildId,
+                startedAt = Instant.parse("2026-06-14T10:00:00Z"),
+                tracker = failedTracker(message = "Could not execute build using connection"),
+                projectDirectory = projectB.absolutePath,
+            ) {
+                finishedAt = Instant.parse("2026-06-14T10:01:00Z")
+            },
+        )
+        store.writeMcpResultToDisk(
+            projectB,
+            mcpBuildResult(
+                buildId = buildId,
+                projectDirectory = projectB.absolutePath,
+                status = "failed",
+                outcome = "FAILED",
+            ),
+        )
+        store.writeGradleResultToDisk(
+            projectB,
+            buildId,
+            gradleBuildResult(
+                buildId = buildId,
+                status = "succeeded",
+                finishedAt = "2026-06-14T10:01:00Z",
+            ),
+        )
+
+        val builds = (manager.listBuilds(projectDirectoryHint = null, limit = 10)["builds"] as List<Map<*, *>>)
+        val crossProjectBuild = builds.single { it["buildId"] == buildId }
+
+        crossProjectBuild["status"] shouldBe "succeeded"
+        crossProjectBuild["recordSource"] shouldBe "merged"
+        crossProjectBuild["statusSource"] shouldBe "disk"
     }
 }
