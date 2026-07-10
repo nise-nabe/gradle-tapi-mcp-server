@@ -7,6 +7,7 @@ import org.gradle.tooling.model.Task
 import java.io.File
 import java.lang.reflect.Proxy
 import java.util.AbstractSet
+import java.util.concurrent.atomic.AtomicInteger
 
 internal fun gradleProjectProxy(
     name: String = "root",
@@ -33,13 +34,17 @@ internal fun gradleProjectProxy(
         }
     } as GradleProject
 
-internal fun gradleProjectConnectionProxy(project: GradleProject): ProjectConnection =
+internal fun gradleProjectConnectionProxy(
+    project: GradleProject,
+    getModelCalls: AtomicInteger? = null,
+): ProjectConnection =
     Proxy.newProxyInstance(
         ProjectConnection::class.java.classLoader,
         arrayOf(ProjectConnection::class.java),
     ) { _, method, args ->
         when (method.name) {
             "getModel" -> {
+                getModelCalls?.incrementAndGet()
                 val modelType = args?.get(0) as Class<*>
                 if (modelType == GradleProject::class.java) project else null
             }

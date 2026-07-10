@@ -120,6 +120,15 @@ class GradleConnectionManagerTest {
     }
 
     @Test
+    fun `cacheHasSubprojects updates pooled connection`() {
+        manager.seedConnectionForTests(getModelCountingConnection(), environment = null)
+
+        manager.cachedHasSubprojects(File(".")).shouldBeNull()
+        manager.cacheHasSubprojects(File("."), hasSubprojects = false)
+        manager.cachedHasSubprojects(File(".")).shouldBeFalse()
+    }
+
+    @Test
     fun `status does not refresh missing cached environment by default`() {
         val getModelCalls = AtomicInteger(0)
         manager.seedConnectionForTests(getModelCountingConnection(getModelCalls), environment = null)

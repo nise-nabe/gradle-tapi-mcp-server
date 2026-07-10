@@ -41,6 +41,9 @@ internal fun preflightRunTests(projectDirectory: File, options: TestRunOptions) 
     if (!TestRunPreflight.requiresProjectScopeCheck(options)) {
         return
     }
+    if (runtime.connectionManager.cachedHasSubprojects(projectDirectory) == false) {
+        return
+    }
     ProjectLifecycleGuard.withNoActiveBuild(
         projectDirectory = projectDirectory,
         buildExecutionManager = runtime.buildExecutionManager,
@@ -52,6 +55,11 @@ internal fun preflightRunTests(projectDirectory: File, options: TestRunOptions) 
     ) {
         runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
             val project = connection.getModel(GradleProject::class.java)
+            val hasSubprojects = project.children.isNotEmpty()
+            runtime.connectionManager.cacheHasSubprojects(projectDirectory, hasSubprojects)
+            if (!hasSubprojects) {
+                return@withConnectionResult
+            }
             TestRunPreflight.validateProjectScope(options, project)
         }
     }

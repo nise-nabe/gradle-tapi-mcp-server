@@ -520,4 +520,25 @@ class TestRunOptionsTest {
             gradleProjectProxy(),
         )
     }
+
+    @Test
+    fun `validateProjectScope rejects unscoped methods in multi-project builds`() {
+        val project = gradleProjectProxy(
+            children = listOf(gradleProjectProxy(name = "app", path = ":app")),
+        )
+
+        val error = shouldThrow<McpException> {
+            TestRunPreflight.validateProjectScope(
+                TestRunOptions(
+                    selection = TestRunSelection.Methods(
+                        mapOf("com.example.FooTest" to listOf("bar")),
+                    ),
+                ),
+                project,
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "taskPath"
+    }
 }

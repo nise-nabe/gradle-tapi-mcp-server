@@ -13,6 +13,7 @@ class GradleConnectionManager {
         val projectDirectory: File,
         val connection: ProjectConnection,
         val cachedEnvironment: BuildEnvironmentSnapshot?,
+        val cachedHasSubprojects: Boolean? = null,
         val config: ConnectionConfig,
     )
 
@@ -34,7 +35,12 @@ class GradleConnectionManager {
 
         val newConnection = connector.connect()
         val snapshot = loadEnvironmentSnapshot(newConnection)
-        val newPooled = PooledConnection(projectDir, newConnection, snapshot, normalizedConfig)
+        val newPooled = PooledConnection(
+            projectDirectory = projectDir,
+            connection = newConnection,
+            cachedEnvironment = snapshot,
+            config = normalizedConfig,
+        )
 
         synchronized(pool) {
             pool.putIfAbsent(key, newPooled)?.let { existing ->
@@ -112,6 +118,17 @@ class GradleConnectionManager {
     fun cachedEnvironment(projectDirectory: File): BuildEnvironmentSnapshot? =
         pool[ProjectDirectoryResolver.canonicalKey(projectDirectory)]?.cachedEnvironment
 
+    fun cachedHasSubprojects(projectDirectory: File): Boolean? =
+        pool[ProjectDirectoryResolver.canonicalKey(projectDirectory)]?.cachedHasSubprojects
+
+    fun cacheHasSubprojects(projectDirectory: File, hasSubprojects: Boolean) {
+        val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
+        synchronized(pool) {
+            val existing = pool[key] ?: return
+            pool[key] = existing.copy(cachedHasSubprojects = hasSubprojects)
+        }
+    }
+
     fun cacheEnvironmentSnapshot(projectDirectory: File, snapshot: BuildEnvironmentSnapshot) {
         val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
         synchronized(pool) {
@@ -180,6 +197,7 @@ class GradleConnectionManager {
         connection: ProjectConnection,
         projectDirectory: File = File("."),
         environment: BuildEnvironmentSnapshot? = null,
+        cachedHasSubprojects: Boolean? = null,
         config: ConnectionConfig? = null,
     ) {
         val canonical = projectDirectory.canonicalFile
@@ -188,6 +206,7 @@ class GradleConnectionManager {
                 projectDirectory = canonical,
                 connection = connection,
                 cachedEnvironment = environment,
+                cachedHasSubprojects = cachedHasSubprojects,
                 config = config ?: ConnectionConfig(projectDirectory = canonical.path),
             )
     }
