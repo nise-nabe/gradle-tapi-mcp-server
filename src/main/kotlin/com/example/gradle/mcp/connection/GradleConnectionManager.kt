@@ -129,13 +129,19 @@ class GradleConnectionManager {
         return snapshot
     }
 
-    fun status(projectDirectory: File? = null): Map<String, Any?> {
+    fun refreshEnvironmentIfMissing(
+        projectDirectory: File,
+        connection: ProjectConnection,
+    ): BuildEnvironmentSnapshot? =
+        loadEnvironmentSnapshot(connection)?.also { cacheEnvironmentSnapshot(projectDirectory, it) }
+
+    fun status(projectDirectory: File? = null, refresh: Boolean = false): Map<String, Any?> {
         if (projectDirectory != null) {
-            return connectionStatus(projectDirectory).toResponseMap()
+            return connectionStatus(projectDirectory, refresh).toResponseMap()
         }
         val default = defaultProjectDirectory()
         val connections = pool.values
-            .map { pooled -> connectionStatus(pooled.projectDirectory) }
+            .map { pooled -> connectionStatus(pooled.projectDirectory, refresh) }
             .sortedBy { it.projectDirectory }
         return MultiConnectionStatus(
             defaultProjectDirectory = default?.path,
@@ -202,10 +208,15 @@ class GradleConnectionManager {
         return ConnectionInfo(projectDir.path, "connected")
     }
 
-    private fun connectionStatus(projectDirectory: File): ConnectionStatus {
+    private fun connectionStatus(projectDirectory: File, refresh: Boolean): ConnectionStatus {
         val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
         val pooled = pool[key]
-        val env = pooled?.cachedEnvironment ?: pooled?.let { refreshCachedEnvironment(it) }
+        val env = pooled?.cachedEnvironment
+            ?: if (refresh) {
+                pooled?.let { refreshEnvironmentIfMissing(it.projectDirectory, it.connection) }
+            } else {
+                null
+            }
         return ConnectionStatus(
             connected = pooled != null,
             projectDirectory = projectDirectory.path,
@@ -215,12 +226,6 @@ class GradleConnectionManager {
             javaVersion = env?.javaVersion,
             runtimeStackAvailable = env != null,
         )
-    }
-
-    private fun refreshCachedEnvironment(pooled: PooledConnection): BuildEnvironmentSnapshot? {
-        val snapshot = loadEnvironmentSnapshot(pooled.connection) ?: return null
-        cacheEnvironmentSnapshot(pooled.projectDirectory, snapshot)
-        return snapshot
     }
 
     private fun borrowConnection(projectDirectory: File): ProjectConnection {

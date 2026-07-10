@@ -91,11 +91,11 @@ class GradleConnectionManagerTest {
         status.statusStr("javaHome").shouldBeNull()
         status.statusStr("javaVersion").shouldBeNull()
         status.statusBool("runtimeStackAvailable").shouldBeFalse()
-        getModelCalls.get() shouldBe 1
+        getModelCalls.get() shouldBe 0
     }
 
     @Test
-    fun `status lazily refreshes missing cached environment`(@TempDir javaHome: File) {
+    fun `status refreshes missing cached environment when refresh is true`(@TempDir javaHome: File) {
         File(javaHome, "release").writeText("JAVA_VERSION=\"21.0.2\"\n")
         val getModelCalls = AtomicInteger(0)
         val connection = com.example.gradle.mcp.connection.support.projectConnectionProxy(
@@ -111,12 +111,21 @@ class GradleConnectionManagerTest {
         )
         manager.seedConnectionForTests(connection, environment = null)
 
-        val status = manager.status()
+        val status = manager.status(refresh = true)
 
         status.statusBool("runtimeStackAvailable").shouldBeTrue()
         status.statusStr("gradleVersion") shouldBe "9.6.1"
         getModelCalls.get() shouldBe 1
         manager.cachedEnvironment(File("."))?.gradleVersion shouldBe "9.6.1"
+    }
+
+    @Test
+    fun `status does not refresh missing cached environment by default`() {
+        val getModelCalls = AtomicInteger(0)
+        manager.seedConnectionForTests(getModelCountingConnection(getModelCalls), environment = null)
+
+        manager.status(refresh = false).statusBool("runtimeStackAvailable").shouldBeFalse()
+        getModelCalls.get() shouldBe 0
     }
 
     @Test

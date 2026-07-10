@@ -5,7 +5,8 @@ internal object McpToolDescriptions {
         "Connect to a Gradle project via Tooling API. Keeps other connections; rejects if a build is running for the same project."
 
     const val CONNECTION_STATUS =
-        "Tooling API connection status for one project or all connections. Omit projectDirectory for the full list."
+        "Tooling API connection status for one project or all connections. Omit projectDirectory for the full list. " +
+            "Set refresh=true to fetch BuildEnvironment when the cached runtime stack is missing."
 
     const val DISCONNECT =
         "Close one or all Tooling API connections. Running builds for disconnected projects are cancelled."
