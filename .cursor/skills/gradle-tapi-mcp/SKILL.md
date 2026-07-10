@@ -9,7 +9,7 @@ description: >-
 
 The `gradle` MCP server (release v0.4.1) is configured in `.cursor/mcp.json`. `.cursor/install.sh`
 downloads the release JAR to `~/.local/share/gradle-tapi-mcp-server/`, verifies its SHA-256, and
-exposes it via a stable `gradle-tapi-mcp-server.jar` symlink **before** `./gradlew build` runs.
+exposes it via a stable `gradle-tapi-mcp-server.jar` symlink.
 `GRADLE_PROJECT_DIR` is set to the workspace root.
 
 Do not point MCP at a JAR built from this workspace during Cloud Agent bootstrap — the Gradle build
