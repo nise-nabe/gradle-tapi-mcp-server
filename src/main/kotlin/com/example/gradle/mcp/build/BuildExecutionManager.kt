@@ -130,11 +130,15 @@ class BuildExecutionManager(
         }
         val status = record.progressTracker.snapshot().status
         if (status != BuildProgressTracker.STATUS_RUNNING) {
-            return mapOf(
-                "buildId" to buildId,
-                "status" to status,
-                "message" to "Build is not running.",
-            )
+            return buildMap {
+                put("buildId", buildId)
+                put("status", BuildProgressTracker.STATUS_NOT_RUNNING)
+                put("terminalStatus", status)
+                put("cancelled", false)
+                put("outcome", BuildOutputParser.outcomeFromStatus(status))
+                record.finishedAt?.toString()?.let { put("finishedAt", it) }
+                put("message", "Build already finished; nothing to cancel.")
+            }
         }
         record.cancellationTokenSource.cancel()
         return mapOf(

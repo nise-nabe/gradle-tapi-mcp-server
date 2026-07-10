@@ -42,7 +42,7 @@ internal object McpToolDescriptions {
         "Recent MCP builds from memory and .gradle/mcp-builds/ on disk. No Tooling API connection required."
 
     const val CANCEL_BUILD =
-        "Cancel a background build by buildId. Poll gradle_get_build_status until no longer running."
+        "Cancel a build by buildId. Finished builds return not_running. Poll gradle_get_build_status."
 
     const val BUILD_STATUS =
         "Poll a background build by buildId. Outcome/summary by default; set includeOutput/includeProgress/includeProblems/includeDownloads/includeTestDetails as needed. See reference for disk vs memory behavior."

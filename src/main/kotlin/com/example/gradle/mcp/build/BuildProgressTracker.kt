@@ -365,6 +365,7 @@ class BuildProgressTracker(
         const val STATUS_SUCCEEDED = "succeeded"
         const val STATUS_FAILED = "failed"
         const val STATUS_CANCELLED = "cancelled"
+        const val STATUS_NOT_RUNNING = "not_running"
 
         const val DOWNLOAD_STATUS_DOWNLOADING = "downloading"
         const val DOWNLOAD_STATUS_SUCCEEDED = "succeeded"
