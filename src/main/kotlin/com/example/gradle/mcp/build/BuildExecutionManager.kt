@@ -191,19 +191,7 @@ class BuildExecutionManager(
             .asSequence()
             .filter { record -> record.matchesProject(projectDirectoryHint) }
             .forEach { record ->
-                val snapshot = record.progressTracker.snapshot()
-                entries[record.id] = BuildListEntry(
-                    buildId = record.id,
-                    status = snapshot.status,
-                    kind = record.kind.name.lowercase(),
-                    tasks = record.tasks,
-                    selection = record.selection,
-                    projectDirectory = record.projectDirectory,
-                    startedAt = record.startedAt.toString(),
-                    finishedAt = record.finishedAt?.toString(),
-                    outcome = BuildOutputParser.outcomeFromStatus(snapshot.status),
-                    recordSource = "memory",
-                )
+                entries[record.id] = listEntryFromRecord(record, diskProjectDirectory)
             }
 
         val totalAvailable = if (diskProjectDirectory != null) {
@@ -251,6 +239,42 @@ class BuildExecutionManager(
         hint
             ?: connectionManager.defaultProjectDirectory()
             ?: ProjectDirectoryResolver.workspaceFromEnvironment()
+
+    private fun listEntryFromRecord(record: BuildRecord, projectDirectory: File?): BuildListEntry {
+        val snapshot = record.progressTracker.snapshot()
+        var status = snapshot.status
+        var outcome = BuildOutputParser.outcomeFromStatus(status)
+        var recordSource = "memory"
+        var statusSource: String? = null
+        val memoryStatus = status
+        if (projectDirectory != null && status != BuildProgressTracker.STATUS_RUNNING) {
+            buildRecordStore.loadArtifacts(projectDirectory, record.id)?.let { artifacts ->
+                val merged = BuildStatusMerger.merge(
+                    BuildStatusView.fromRecord(record),
+                    PersistedBuildViewFactory.fromArtifacts(record.id, artifacts),
+                )
+                status = merged.status
+                outcome = merged.outcome ?: BuildOutputParser.outcomeFromStatus(status)
+                if (merged.status != memoryStatus) {
+                    recordSource = "merged"
+                    statusSource = merged.statusSource
+                }
+            }
+        }
+        return BuildListEntry(
+            buildId = record.id,
+            status = status,
+            kind = record.kind.name.lowercase(),
+            tasks = record.tasks,
+            selection = record.selection,
+            projectDirectory = record.projectDirectory,
+            startedAt = record.startedAt.toString(),
+            finishedAt = record.finishedAt?.toString(),
+            outcome = outcome,
+            recordSource = recordSource,
+            statusSource = statusSource,
+        )
+    }
 
     fun hasActiveBuild(projectDirectory: File? = null): Boolean =
         builds.values.any { record ->

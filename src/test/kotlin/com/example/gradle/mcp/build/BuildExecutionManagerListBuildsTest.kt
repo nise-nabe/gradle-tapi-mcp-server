@@ -3,12 +3,14 @@ package com.example.gradle.mcp.build
 import com.example.gradle.mcp.build.persistence.McpBuildRecordPaths
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.support.failedTracker
+import com.example.gradle.mcp.support.gradleBuildResult
 import com.example.gradle.mcp.support.mcpBuildResult
 import com.example.gradle.mcp.support.persistedBuildManager
 import com.example.gradle.mcp.support.runningTracker
 import com.example.gradle.mcp.support.seedNoopConnection
 import com.example.gradle.mcp.support.succeededTracker
 import com.example.gradle.mcp.support.testBuildRecord
+import com.example.gradle.mcp.support.writeGradleResultToDisk
 import com.example.gradle.mcp.support.writeMcpResultToDisk
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
@@ -57,26 +59,43 @@ class BuildExecutionManagerListBuildsTest {
     }
 
     @Test
-    fun `listBuilds prefers memory record over disk for same buildId`(@TempDir projectDir: File) {
+    fun `listBuilds merges disk gradle status when memory failed on connection error`(@TempDir projectDir: File) {
         val buildId = "shared-build"
         val (manager, store) = persistedBuildManager(projectDir)
         manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = buildId,
                 startedAt = Instant.parse("2026-06-14T10:00:00Z"),
-                tracker = failedTracker(message = "still running in memory view"),
+                tracker = failedTracker(message = "Could not execute build using connection"),
                 projectDirectory = projectDir.absolutePath,
-            ),
+            ) {
+                finishedAt = Instant.parse("2026-06-14T10:01:00Z")
+            },
         )
         store.writeMcpResultToDisk(
             projectDir,
-            mcpBuildResult(buildId = buildId, projectDirectory = projectDir.absolutePath),
+            mcpBuildResult(
+                buildId = buildId,
+                projectDirectory = projectDir.absolutePath,
+                status = "failed",
+                outcome = "FAILED",
+            ),
+        )
+        store.writeGradleResultToDisk(
+            projectDir,
+            buildId,
+            gradleBuildResult(
+                buildId = buildId,
+                status = "succeeded",
+                finishedAt = "2026-06-14T10:01:00Z",
+            ),
         )
 
         val builds = (manager.listBuilds(projectDir, limit = 10)["builds"] as List<Map<*, *>>)
 
-        builds.single()["status"] shouldBe "failed"
-        builds.single()["recordSource"] shouldBe "memory"
+        builds.single()["status"] shouldBe "succeeded"
+        builds.single()["recordSource"] shouldBe "merged"
+        builds.single()["statusSource"] shouldBe "disk"
     }
 
     @Test

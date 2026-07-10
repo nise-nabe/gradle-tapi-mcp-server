@@ -9,7 +9,9 @@ import com.example.gradle.mcp.support.TEST_ISO_FINISH
 import com.example.gradle.mcp.support.gradleBuildResult
 import com.example.gradle.mcp.support.loadAssembledStatus
 import com.example.gradle.mcp.support.mcpBuildResult
+import com.example.gradle.mcp.support.failedTracker
 import com.example.gradle.mcp.support.succeededBuildRecord
+import com.example.gradle.mcp.support.testBuildRecord
 import com.example.gradle.mcp.support.writeDiskFile
 import com.example.gradle.mcp.support.writeGradleResultToDisk
 import com.example.gradle.mcp.support.writeMcpResultToDisk
@@ -100,6 +102,42 @@ class BuildRecordStoreTest {
         }
         File(recordDir, McpBuildRecordPaths.STDOUT_LOG).readText(StandardCharsets.UTF_8) shouldBe
             "BUILD SUCCESSFUL in 1s\n"
+    }
+
+    @Test
+    fun `writeMcpResult prefers gradle succeeded when memory failed without task failures`(@TempDir projectDir: File) {
+        store.writeGradleResultToDisk(
+            projectDir,
+            "recorder-failure",
+            gradleBuildResult(
+                buildId = "recorder-failure",
+                status = BuildProgressTracker.STATUS_SUCCEEDED,
+                finishedAt = TEST_ISO_FINISH,
+            ),
+        )
+        val record = testBuildRecord(
+            id = "recorder-failure",
+            tracker = failedTracker(message = "Could not execute build using connection"),
+            streams = CapturingStreams().also {
+                it.appendStdoutForTests(
+                    "BUILD SUCCESSFUL in 1s\n67 actionable tasks: 46 executed, 21 up-to-date\n",
+                )
+            },
+            projectDirectory = projectDir.absolutePath,
+        ) {
+            finishedAt = Instant.parse(TEST_ISO_FINISH)
+            errorMessage = "Could not execute build using connection"
+        }
+
+        store.writeMcpResult(record, record.progressTracker.snapshot())
+
+        store.readMcpResult(
+            store.recordDirectory(projectDir, "recorder-failure").shouldNotBeNull(),
+        ).shouldNotBeNull().apply {
+            status shouldBe BuildProgressTracker.STATUS_SUCCEEDED
+            outcome shouldBe "SUCCESS"
+            error.shouldBeNull()
+        }
     }
 
     @Test

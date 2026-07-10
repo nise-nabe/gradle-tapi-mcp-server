@@ -57,7 +57,10 @@ class BuildRecordStore {
         val stdout = record.streams.stdoutSnapshot()
         val stderr = record.streams.stderrSnapshot()
         val buildSummary = BuildOutputParser.parse(stdout.text)
-        val result = McpBuildResult(
+        var status = progress.status
+        var error = record.errorMessage
+        val gradleResult = readGradleResult(recordDir)
+        val provisionalResult = McpBuildResult(
             buildId = record.id,
             kind = record.kind.name.lowercase(),
             tasks = record.tasks,
@@ -68,15 +71,33 @@ class BuildRecordStore {
             projectDirectory = projectDirectory,
             startedAt = record.startedAt.toString(),
             finishedAt = (record.finishedAt ?: Instant.now()).toString(),
-            status = progress.status,
-            outcome = BuildOutputParser.outcomeFromStatus(progress.status),
-            error = record.errorMessage,
+            status = status,
+            outcome = BuildOutputParser.outcomeFromStatus(status),
+            error = error,
             buildSummary = BuildOutputParser.toResponseMap(buildSummary),
             failedTaskCount = progress.failedTaskCount,
             failedTasks = progress.failedTasks,
             problems = progress.problems,
             stdoutTotalChars = stdout.totalChars,
             stderrTotalChars = stderr.totalChars,
+        )
+        val resolved = BuildPersistenceContract.resolve(
+            gradleResult,
+            provisionalResult,
+            readEvents(recordDir),
+        )
+        if (status != resolved.status &&
+            resolved.terminalSource == BuildPersistenceContract.TerminalStatusSource.GRADLE
+        ) {
+            status = resolved.status
+            if (status == BuildProgressTracker.STATUS_SUCCEEDED) {
+                error = null
+            }
+        }
+        val result = provisionalResult.copy(
+            status = status,
+            outcome = BuildOutputParser.outcomeFromStatus(status),
+            error = error,
         )
         writeMcpResultFiles(recordDir, result, stdout, stderr)
     }
