@@ -26,6 +26,7 @@ class TaskProgressKeyTest {
             Arguments.of("Task :app:compile SKIPPED", ":app:compile"),
             Arguments.of("Task :app:compile NO-SOURCE", ":app:compile"),
             Arguments.of("Task :app:compile failed", ":app:compile"),
+            Arguments.of("Test com.example.FooTest.testBar", "com.example.FooTest.testBar"),
             Arguments.of(":app:compile", ":app:compile"),
         )
     }

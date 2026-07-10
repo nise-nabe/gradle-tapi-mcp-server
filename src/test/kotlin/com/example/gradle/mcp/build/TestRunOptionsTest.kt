@@ -5,7 +5,6 @@ import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.support.assertInvalidArgument
-import com.example.gradle.mcp.support.gradleProjectConnectionProxy
 import com.example.gradle.mcp.support.gradleProjectProxy
 import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.assertions.throwables.shouldThrow
@@ -495,16 +494,17 @@ class TestRunOptionsTest {
 
     @Test
     fun `validateProjectScope rejects unscoped classes in multi-project builds`() {
-        val connection = gradleProjectConnectionProxy(
-            gradleProjectProxy(
-                children = listOf(gradleProjectProxy(name = "app", path = ":app")),
-            ),
+        val project = gradleProjectProxy(
+            children = listOf(gradleProjectProxy(name = "app", path = ":app")),
         )
 
         val error = shouldThrow<McpException> {
-            TestRunOptions(
-                selection = TestRunSelection.Classes(listOf("com.example.FooTest")),
-            ).validateProjectScope(connection)
+            TestRunPreflight.validateProjectScope(
+                TestRunOptions(
+                    selection = TestRunSelection.Classes(listOf("com.example.FooTest")),
+                ),
+                project,
+            )
         }
 
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
@@ -513,10 +513,11 @@ class TestRunOptionsTest {
 
     @Test
     fun `validateProjectScope allows unscoped classes for single-project builds`() {
-        val connection = gradleProjectConnectionProxy(gradleProjectProxy())
-
-        TestRunOptions(
-            selection = TestRunSelection.Classes(listOf("com.example.FooTest")),
-        ).validateProjectScope(connection)
+        TestRunPreflight.validateProjectScope(
+            TestRunOptions(
+                selection = TestRunSelection.Classes(listOf("com.example.FooTest")),
+            ),
+            gradleProjectProxy(),
+        )
     }
 }
