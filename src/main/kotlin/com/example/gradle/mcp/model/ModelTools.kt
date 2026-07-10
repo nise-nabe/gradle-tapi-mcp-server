@@ -50,7 +50,7 @@ internal fun modelQueryProperties(): Map<String, Any> =
         "includeTaskDetails" to booleanProperty("Include task description and displayName. Default false."),
         "taskGroup" to stringProperty("Filter by Gradle task group"),
         "taskNamePrefix" to stringProperty("Filter by task name prefix"),
-        "maxTasks" to integerProperty("Max tasks after filtering"),
+        "maxTasks" to integerProperty("Global tree cap (root first); adds tasksTruncated."),
     )
 
 internal fun modelQuerySchema(): Map<String, Any> =
