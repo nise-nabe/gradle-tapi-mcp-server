@@ -13,6 +13,7 @@ import com.example.gradle.mcp.support.interruptedOnRunProjectConnection
 import com.example.gradle.mcp.support.noopProjectConnection
 import com.example.gradle.mcp.support.seedNoopConnection
 import com.example.gradle.mcp.support.runningTracker
+import com.example.gradle.mcp.support.succeededTracker
 import com.example.gradle.mcp.support.testBuildRecord
 import com.example.gradle.mcp.support.testCompletedSnapshot
 import com.example.gradle.mcp.support.testExecutor
@@ -56,18 +57,43 @@ class BuildExecutionManagerCancelTest {
     }
 
     @Test
-    fun `cancelBuild returns current status for terminal build`() {
+    fun `cancelBuild returns not_running for terminal build`() {
         manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "done-build",
                 tracker = cancelledTracker(),
-            ),
+            ) {
+                finishedAt = Instant.parse("2026-06-14T10:01:00Z")
+            },
         )
 
         val result = manager.cancelBuild("done-build")
 
-        result["status"] shouldBe "cancelled"
-        result["message"] shouldBe "Build is not running."
+        result["status"] shouldBe "not_running"
+        result["terminalStatus"] shouldBe "cancelled"
+        result["cancelled"] shouldBe false
+        result["outcome"] shouldBe "CANCELLED"
+        result["finishedAt"] shouldBe "2026-06-14T10:01:00Z"
+        result["message"] shouldBe "Build already finished; nothing to cancel."
+    }
+
+    @Test
+    fun `cancelBuild returns not_running with terminal succeeded for finished build`() {
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "succeeded-build",
+                tracker = succeededTracker(),
+            ) {
+                finishedAt = Instant.parse("2026-06-14T10:02:00Z")
+            },
+        )
+
+        val result = manager.cancelBuild("succeeded-build")
+
+        result["status"] shouldBe "not_running"
+        result["terminalStatus"] shouldBe "succeeded"
+        result["cancelled"] shouldBe false
+        result["outcome"] shouldBe "SUCCESS"
     }
 
     @Test
