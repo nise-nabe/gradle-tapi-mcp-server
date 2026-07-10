@@ -1,12 +1,13 @@
 package com.example.gradle.mcp.connection
 
 import com.example.gradle.mcp.GradleMcpRuntime
-import com.example.gradle.mcp.model.ModelSerializers
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpToolDescriptions
+import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
+import com.example.gradle.mcp.protocol.optionalBoolean
 import com.example.gradle.mcp.protocol.optionalProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
@@ -15,7 +16,6 @@ import com.example.gradle.mcp.protocol.stringProperty
 import com.example.gradle.mcp.protocol.registerTool
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import kotlinx.coroutines.CoroutineScope
-import org.gradle.tooling.model.build.BuildEnvironment
 import java.io.File
 
 internal fun connectProject(
@@ -92,6 +92,10 @@ internal fun connectionStatusSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
             "projectDirectory" to optionalProjectDirectoryProperty(),
+            "refresh" to booleanProperty(
+                "When true, fetches BuildEnvironment for connected projects missing cached runtime stack. " +
+                    "Default false (cache-only).",
+            ),
         ),
     )
 
@@ -137,7 +141,8 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
     ) { args ->
         val projectDirectory = args.optionalString("projectDirectory")
             ?.let(ProjectDirectoryResolver::bestEffortDirectory)
-        jsonResult(runtime.connectionManager.status(projectDirectory))
+        val refresh = args.optionalBoolean("refresh", default = false)
+        jsonResult(runtime.connectionManager.status(projectDirectory, refresh))
     }
     registerTool(
         scope,
@@ -155,8 +160,8 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
     ) { args ->
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
         runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-            val environment = connection.getModel(BuildEnvironment::class.java)
-            jsonResult(ModelSerializers.buildEnvironment(environment))
+            val snapshot = runtime.connectionManager.fetchAndCacheEnvironment(projectDirectory, connection)
+            jsonResult(snapshot.toMap())
         }
     }
 }

@@ -79,7 +79,7 @@ class JavaRuntimeToolsTest {
         val snapshot = JavaRuntimesCollector.collect(
             projectDirectory = File("/workspace"),
             connection = connection,
-            cachedEnvironment = BuildEnvironmentSnapshot(
+            environment = BuildEnvironmentSnapshot(
                 gradleVersion = "9.6.0",
                 gradleUserHome = "/gradle/home",
                 javaHome = "/usr/lib/jvm/java-17-openjdk-amd64",
@@ -119,7 +119,7 @@ class JavaRuntimeToolsTest {
         val snapshot = JavaRuntimesCollector.collect(
             projectDirectory = File("/workspace"),
             connection = connection,
-            cachedEnvironment = BuildEnvironmentSnapshot(
+            environment = BuildEnvironmentSnapshot(
                 gradleVersion = "9.6.0",
                 gradleUserHome = "/gradle/home",
                 javaHome = "/usr/lib/jvm/java-17-openjdk-amd64",
@@ -158,16 +158,20 @@ class JavaRuntimeToolsTest {
             launcher = launcher.launcher,
         )
 
+        val manager = GradleConnectionManager()
+        manager.seedConnectionForTests(connection, projectDirectory = File("/workspace"))
+        val environment = manager.fetchAndCacheEnvironment(File("/workspace"), connection)
         val snapshot = JavaRuntimesCollector.collect(
             projectDirectory = File("/workspace"),
             connection = connection,
-            cachedEnvironment = null,
+            environment = environment,
         )
 
         snapshot.daemon shouldBe DaemonJavaRuntime(
             javaHome = javaHome.path,
             javaVersion = "21.0.10",
         )
+        manager.cachedEnvironment(File("/workspace"))?.javaVersion shouldBe "21.0.10"
         snapshot.detectedJdks shouldContainExactly listOf(
             DetectedJdk(
                 javaHome = javaHome.path,
@@ -191,7 +195,7 @@ class JavaRuntimeToolsTest {
             JavaRuntimesCollector.collect(
                 projectDirectory = File("/workspace"),
                 connection = connection,
-                cachedEnvironment = BuildEnvironmentSnapshot(
+                environment = BuildEnvironmentSnapshot(
                     gradleVersion = "9.6.0",
                     gradleUserHome = null,
                     javaHome = "/usr/lib/jvm/java-17-openjdk-amd64",

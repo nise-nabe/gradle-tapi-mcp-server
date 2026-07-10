@@ -5,7 +5,7 @@ internal object McpToolDescriptions {
         "Connect to a Gradle project via Tooling API. Keeps other connections; rejects if a build is running for the same project."
 
     const val CONNECTION_STATUS =
-        "Tooling API connection status for one project or all connections. Omit projectDirectory for the full list."
+        "Connection status for one or all projects. refresh=true fetches missing BuildEnvironment (per project when listing all)."
 
     const val DISCONNECT =
         "Close one or all Tooling API connections. Running builds for disconnected projects are cancelled."
@@ -26,10 +26,11 @@ internal object McpToolDescriptions {
         "GradleBuild structure: projects, included builds, editable builds. Prefer for composite/includeBuild repos."
 
     const val PROJECT_MODEL =
-        "GradleProject model. Tasks omitted by default; set includeTasks=true only when needed."
+        "GradleProject model. includeTasks=true for tasks. maxTasks is a global tree cap (root first); " +
+            "root adds tasksTruncated when capped."
 
     const val BUILD_INVOCATIONS =
-        "Runnable Gradle tasks. Task selectors omitted by default unless includeTaskSelectors=true."
+        "Runnable Gradle tasks; global maxTasks cap adds tasksTruncated. Task selectors omitted unless includeTaskSelectors=true."
 
     const val PROJECT_PUBLICATIONS =
         "Publications declared by the build."
@@ -50,5 +51,5 @@ internal object McpToolDescriptions {
         "Run Gradle task paths. Outcome/summary by default; background=true returns buildId. One MCP build per projectDirectory (BUILD_ALREADY_RUNNING on overlap)."
 
     const val RUN_TESTS =
-        "Run JVM tests by class, method, or pattern. One MCP build per projectDirectory (BUILD_ALREADY_RUNNING on overlap). Class.method in testClasses -> testMethods. Provide testMethods, testClasses, or includePattern."
+        "Run JVM tests by class, method, or pattern. Multi-project builds require taskPath or tasks with testClasses/testMethods to avoid cross-module fan-out."
 }

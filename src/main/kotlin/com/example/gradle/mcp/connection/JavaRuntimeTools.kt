@@ -137,11 +137,9 @@ internal object JavaRuntimesCollector {
     fun collect(
         projectDirectory: File,
         connection: ProjectConnection,
-        cachedEnvironment: BuildEnvironmentSnapshot?,
+        environment: BuildEnvironmentSnapshot,
         includeToolchains: Boolean = true,
     ): JavaRuntimesSnapshot {
-        val environment = cachedEnvironment
-            ?: requireBuildEnvironmentSnapshot(connection, projectDirectory)
         val detectedJdks = if (includeToolchains) {
             detectInstalledJdks(connection, projectDirectory)
         } else {
@@ -240,10 +238,12 @@ fun Server.registerJavaRuntimeTools(scope: CoroutineScope) {
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
         if (!includeToolchains) {
             return@registerTool runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+                val environment = runtime.connectionManager.cachedEnvironment(projectDirectory)
+                    ?: runtime.connectionManager.fetchAndCacheEnvironment(projectDirectory, connection)
                 val runtimes = JavaRuntimesCollector.collect(
                     projectDirectory = projectDirectory,
                     connection = connection,
-                    cachedEnvironment = runtime.connectionManager.cachedEnvironment(projectDirectory),
+                    environment = environment,
                     includeToolchains = false,
                 )
                 jsonResult(runtimes.toMap(projectDirectory.path))
@@ -255,10 +255,12 @@ fun Server.registerJavaRuntimeTools(scope: CoroutineScope) {
             message = ::toolchainDetectionBlockedMessage,
         ) {
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+                val environment = runtime.connectionManager.cachedEnvironment(projectDirectory)
+                    ?: runtime.connectionManager.fetchAndCacheEnvironment(projectDirectory, connection)
                 val runtimes = JavaRuntimesCollector.collect(
                     projectDirectory = projectDirectory,
                     connection = connection,
-                    cachedEnvironment = runtime.connectionManager.cachedEnvironment(projectDirectory),
+                    environment = environment,
                     includeToolchains = true,
                 )
                 jsonResult(runtimes.toMap(projectDirectory.path))

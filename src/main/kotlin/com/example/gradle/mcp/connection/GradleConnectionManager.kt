@@ -13,6 +13,7 @@ class GradleConnectionManager {
         val projectDirectory: File,
         val connection: ProjectConnection,
         val cachedEnvironment: BuildEnvironmentSnapshot?,
+        val cachedHasSubprojects: Boolean? = null,
         val config: ConnectionConfig,
     )
 
@@ -34,7 +35,12 @@ class GradleConnectionManager {
 
         val newConnection = connector.connect()
         val snapshot = loadEnvironmentSnapshot(newConnection)
-        val newPooled = PooledConnection(projectDir, newConnection, snapshot, normalizedConfig)
+        val newPooled = PooledConnection(
+            projectDirectory = projectDir,
+            connection = newConnection,
+            cachedEnvironment = snapshot,
+            config = normalizedConfig,
+        )
 
         synchronized(pool) {
             pool.putIfAbsent(key, newPooled)?.let { existing ->
@@ -112,13 +118,50 @@ class GradleConnectionManager {
     fun cachedEnvironment(projectDirectory: File): BuildEnvironmentSnapshot? =
         pool[ProjectDirectoryResolver.canonicalKey(projectDirectory)]?.cachedEnvironment
 
-    fun status(projectDirectory: File? = null): Map<String, Any?> {
+    fun cachedHasSubprojects(projectDirectory: File): Boolean? =
+        pool[ProjectDirectoryResolver.canonicalKey(projectDirectory)]?.cachedHasSubprojects
+
+    fun cacheHasSubprojects(projectDirectory: File, hasSubprojects: Boolean) {
+        if (!hasSubprojects) {
+            return
+        }
+        val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
+        synchronized(pool) {
+            val existing = pool[key] ?: return
+            pool[key] = existing.copy(cachedHasSubprojects = true)
+        }
+    }
+
+    fun cacheEnvironmentSnapshot(projectDirectory: File, snapshot: BuildEnvironmentSnapshot) {
+        val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
+        synchronized(pool) {
+            val existing = pool[key] ?: return
+            pool[key] = existing.copy(cachedEnvironment = snapshot)
+        }
+    }
+
+    fun fetchAndCacheEnvironment(
+        projectDirectory: File,
+        connection: ProjectConnection,
+    ): BuildEnvironmentSnapshot {
+        val snapshot = requireBuildEnvironmentSnapshot(connection, projectDirectory)
+        cacheEnvironmentSnapshot(projectDirectory, snapshot)
+        return snapshot
+    }
+
+    fun refreshEnvironmentIfMissing(
+        projectDirectory: File,
+        connection: ProjectConnection,
+    ): BuildEnvironmentSnapshot? =
+        loadEnvironmentSnapshot(connection)?.also { cacheEnvironmentSnapshot(projectDirectory, it) }
+
+    fun status(projectDirectory: File? = null, refresh: Boolean = false): Map<String, Any?> {
         if (projectDirectory != null) {
-            return connectionStatus(projectDirectory).toResponseMap()
+            return connectionStatus(projectDirectory, refresh).toResponseMap()
         }
         val default = defaultProjectDirectory()
         val connections = pool.values
-            .map { pooled -> connectionStatus(pooled.projectDirectory) }
+            .map { pooled -> connectionStatus(pooled.projectDirectory, refresh) }
             .sortedBy { it.projectDirectory }
         return MultiConnectionStatus(
             defaultProjectDirectory = default?.path,
@@ -157,6 +200,7 @@ class GradleConnectionManager {
         connection: ProjectConnection,
         projectDirectory: File = File("."),
         environment: BuildEnvironmentSnapshot? = null,
+        cachedHasSubprojects: Boolean? = null,
         config: ConnectionConfig? = null,
     ) {
         val canonical = projectDirectory.canonicalFile
@@ -165,6 +209,7 @@ class GradleConnectionManager {
                 projectDirectory = canonical,
                 connection = connection,
                 cachedEnvironment = environment,
+                cachedHasSubprojects = cachedHasSubprojects,
                 config = config ?: ConnectionConfig(projectDirectory = canonical.path),
             )
     }
@@ -185,10 +230,15 @@ class GradleConnectionManager {
         return ConnectionInfo(projectDir.path, "connected")
     }
 
-    private fun connectionStatus(projectDirectory: File): ConnectionStatus {
+    private fun connectionStatus(projectDirectory: File, refresh: Boolean): ConnectionStatus {
         val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
         val pooled = pool[key]
         val env = pooled?.cachedEnvironment
+            ?: if (refresh) {
+                pooled?.let { refreshEnvironmentIfMissing(it.projectDirectory, it.connection) }
+            } else {
+                null
+            }
         return ConnectionStatus(
             connected = pooled != null,
             projectDirectory = projectDirectory.path,

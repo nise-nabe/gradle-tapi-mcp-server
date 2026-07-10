@@ -6,21 +6,22 @@ internal class ProgressEventAccumulator {
     private val failedTasks = LinkedHashSet<String>()
 
     fun apply(eventType: String, displayName: String) {
+        val key = TaskProgressKey.fromDisplayName(displayName)
         when (eventType) {
             ProgressEventTypes.TASK_START, ProgressEventTypes.TEST_START -> {
-                runningTasks.add(displayName)
+                runningTasks.add(key)
             }
             ProgressEventTypes.TASK_SUCCESS,
             ProgressEventTypes.TASK_SKIP,
             ProgressEventTypes.TEST_SUCCESS,
             ProgressEventTypes.TEST_SKIP,
             -> {
-                runningTasks.remove(displayName)
-                completedTasks.add(displayName)
+                runningTasks.remove(key)
+                completedTasks.add(key)
             }
             ProgressEventTypes.TASK_FAIL, ProgressEventTypes.TEST_FAIL -> {
-                runningTasks.remove(displayName)
-                failedTasks.add(displayName)
+                runningTasks.remove(key)
+                failedTasks.add(key)
             }
         }
     }
@@ -57,4 +58,14 @@ internal class ProgressEventAccumulator {
             activeDownloadCount = activeDownloadCount,
             failedTests = failedTests,
         )
+}
+
+internal object TaskProgressKey {
+    private val taskDisplayPattern = Regex("^Task (\\S+)")
+    private val testDisplayPattern = Regex("^Test (.+)$")
+
+    fun fromDisplayName(displayName: String): String =
+        taskDisplayPattern.find(displayName)?.groupValues?.get(1)
+            ?: testDisplayPattern.find(displayName)?.groupValues?.get(1)
+            ?: displayName
 }

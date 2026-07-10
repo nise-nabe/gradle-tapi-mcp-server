@@ -1,6 +1,8 @@
 package com.example.gradle.mcp.model
 
 import com.example.gradle.mcp.support.defaultProxyReturn
+import com.example.gradle.mcp.support.gradleProjectProxy
+import com.example.gradle.mcp.support.toolingDomainObjectSet
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -8,10 +10,9 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldStartWith
 import org.gradle.tooling.model.BuildIdentifier
-import org.gradle.tooling.model.DomainObjectSet
-import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.Task
 import org.gradle.tooling.model.gradle.BasicGradleProject
 import org.gradle.tooling.model.gradle.GradleBuild
@@ -19,7 +20,6 @@ import org.gradle.tooling.model.build.Help
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.lang.reflect.Proxy
-import java.util.AbstractSet
 
 class ModelSerializersTest {
     private val tasks = listOf(
@@ -104,6 +104,104 @@ class ModelSerializersTest {
         limited.totalChars shouldBe text.length
         limited.text.length shouldBeLessThanOrEqual 40
         limited.text shouldStartWith "... [truncated "
+    }
+
+    @Test
+    fun `output limiter places truncation marker after head excerpt`() {
+        val text = "USAGE: gradle [option...]\n" + "x".repeat(10_000)
+        val limited = OutputLimiter.limit(
+            text,
+            OutputLimitOptions(maxOutputChars = 2000, tailOutput = false),
+        )
+
+        limited.truncated.shouldBeTrue()
+        limited.text shouldStartWith "USAGE:"
+        limited.text shouldContain "... [truncated "
+    }
+
+    @Test
+    fun `gradleProject applies maxTasks globally across subprojects`() {
+        fun compileTasks(prefix: String, count: Int): List<org.gradle.tooling.model.Task> =
+            (1..count).map { index ->
+                mockTask("compile$index", "$prefix:compile$index", "build")
+            }
+
+        val root = gradleProjectProxy(
+            name = "root",
+            path = ":",
+            directory = File("/root"),
+            tasks = emptyList(),
+            children = listOf(
+                gradleProjectProxy(
+                    name = "plugin",
+                    path = ":plugin",
+                    directory = File("/root/plugin"),
+                    tasks = compileTasks(":plugin", 6),
+                ),
+                gradleProjectProxy(
+                    name = "route-analysis",
+                    path = ":plugin-route-analysis",
+                    directory = File("/root/route-analysis"),
+                    tasks = compileTasks(":plugin-route-analysis", 8),
+                ),
+                gradleProjectProxy(
+                    name = "shared",
+                    path = ":plugin-shared",
+                    directory = File("/root/shared"),
+                    tasks = compileTasks(":plugin-shared", 6),
+                ),
+                gradleProjectProxy(
+                    name = "wizard",
+                    path = ":plugin-wizard",
+                    directory = File("/root/wizard"),
+                    tasks = compileTasks(":plugin-wizard", 6),
+                ),
+            ),
+        )
+
+        val result = ModelSerializers.gradleProject(
+            root,
+            ModelQueryOptions(includeTasks = true, taskNamePrefix = "compile", maxTasks = 20),
+        )
+
+        fun tasksInNode(node: Map<*, *>): List<Map<*, *>> {
+            val direct = node["tasks"] as List<*>
+            val childTasks = (node["children"] as List<*>).flatMap { child ->
+                tasksInNode(child as Map<*, *>)
+            }
+            return direct.map { it as Map<*, *> } + childTasks
+        }
+
+        tasksInNode(result) shouldHaveSize 20
+        result["tasksTruncated"] shouldBe true
+        result["tasksTotalMatched"] shouldBe 26
+    }
+
+    @Test
+    fun `gradleProject applies maxTasks to root tasks before subprojects`() {
+        val root = gradleProjectProxy(
+            directory = File("/root"),
+            tasks = listOf(mockTask("compileRoot", ":compileRoot", "build")),
+            children = listOf(
+                gradleProjectProxy(
+                    name = "child",
+                    path = ":child",
+                    directory = File("/root/child"),
+                    tasks = (1..5).map { index ->
+                        mockTask("compile$index", ":child:compile$index", "build")
+                    },
+                ),
+            ),
+        )
+
+        val result = ModelSerializers.gradleProject(
+            root,
+            ModelQueryOptions(includeTasks = true, taskNamePrefix = "compile", maxTasks = 3),
+        )
+
+        (result["tasks"] as List<*>) shouldHaveSize 1
+        val child = (result["children"] as List<*>).single() as Map<*, *>
+        (child["tasks"] as List<*>) shouldHaveSize 2
     }
 
     @Test
@@ -307,13 +405,13 @@ class ModelSerializersTest {
 
     @Test
     fun `buildInvocations aggregates tasks from child projects`() {
-        val root = gradleProject(
+        val root = gradleProjectProxy(
             name = "root",
             path = ":",
             directory = File("/root"),
             tasks = emptyList(),
             children = listOf(
-                gradleProject(
+                gradleProjectProxy(
                     name = "plugin",
                     path = ":plugin",
                     directory = File("/root/plugin"),
@@ -335,14 +433,48 @@ class ModelSerializersTest {
     }
 
     @Test
+    fun `buildInvocations applies maxTasks globally with truncation metadata`() {
+        fun compileTasks(prefix: String, count: Int): List<org.gradle.tooling.model.Task> =
+            (1..count).map { index ->
+                mockTask("compile$index", "$prefix:compile$index", "build")
+            }
+
+        val root = gradleProjectProxy(
+            name = "root",
+            path = ":",
+            directory = File("/root"),
+            tasks = compileTasks(":", 2),
+            children = listOf(
+                gradleProjectProxy(
+                    name = "plugin",
+                    path = ":plugin",
+                    directory = File("/root/plugin"),
+                    tasks = compileTasks(":plugin", 4),
+                ),
+            ),
+        )
+        val invocations = mockBuildInvocations(emptyList())
+
+        val result = ModelSerializers.buildInvocations(
+            invocations,
+            root,
+            ModelQueryOptions(includeTasks = true, taskNamePrefix = "compile", maxTasks = 3),
+        )
+
+        (result["tasks"] as List<*>) shouldHaveSize 3
+        result["tasksTruncated"] shouldBe true
+        result["tasksTotalMatched"] shouldBe 6
+    }
+
+    @Test
     fun `buildInvocations respects maxDepth when collecting tasks`() {
-        val root = gradleProject(
+        val root = gradleProjectProxy(
             name = "root",
             path = ":",
             directory = File("/root"),
             tasks = listOf(mockTask("rootTask", ":rootTask", "build")),
             children = listOf(
-                gradleProject(
+                gradleProjectProxy(
                     name = "child",
                     path = ":child",
                     directory = File("/root/child"),
@@ -392,39 +524,14 @@ class ModelSerializersTest {
             }
         } as Task
 
-    private fun gradleProject(
-        name: String,
-        path: String,
-        directory: File,
-        tasks: List<Task> = emptyList(),
-        children: List<GradleProject> = emptyList(),
-    ): GradleProject =
-        Proxy.newProxyInstance(
-            GradleProject::class.java.classLoader,
-            arrayOf(GradleProject::class.java),
-        ) { _, method, _ ->
-            when (method.name) {
-                "getName" -> name
-                "getPath" -> path
-                "getProjectDirectory" -> directory
-                "getDescription" -> null
-                "getBuildDirectory" -> null
-                "getParent" -> null
-                "getChildren" -> domainObjectSet(children)
-                "getTasks" -> domainObjectSet(tasks)
-                "getProjectIdentifier" -> null
-                else -> defaultProxyReturn(method)
-            }
-        } as GradleProject
-
     private fun mockBuildInvocations(tasks: List<Task>): org.gradle.tooling.model.gradle.BuildInvocations =
         Proxy.newProxyInstance(
             org.gradle.tooling.model.gradle.BuildInvocations::class.java.classLoader,
             arrayOf(org.gradle.tooling.model.gradle.BuildInvocations::class.java),
         ) { _, method, _ ->
             when (method.name) {
-                "getTasks" -> domainObjectSet(tasks)
-                "getTaskSelectors" -> domainObjectSet(emptyList<Any>())
+                "getTasks" -> toolingDomainObjectSet(tasks)
+                "getTaskSelectors" -> toolingDomainObjectSet(emptyList<Any>())
                 else -> defaultProxyReturn(method)
             }
         } as org.gradle.tooling.model.gradle.BuildInvocations
@@ -457,7 +564,7 @@ class ModelSerializersTest {
                 "getProjectDirectory" -> directory
                 "getBuildTreePath" -> buildTreePath
                 "getParent" -> null
-                "getChildren" -> domainObjectSet(children)
+                "getChildren" -> toolingDomainObjectSet(children)
                 "getProjectIdentifier" -> null
                 else -> defaultProxyReturn(method)
             }
@@ -477,9 +584,9 @@ class ModelSerializersTest {
             when (method.name) {
                 "getBuildIdentifier" -> buildIdentifier(rootDir)
                 "getRootProject" -> rootProject
-                "getProjects" -> domainObjectSet(projects)
-                "getIncludedBuilds" -> domainObjectSet(includedBuilds)
-                "getEditableBuilds" -> domainObjectSet(editableBuilds)
+                "getProjects" -> toolingDomainObjectSet(projects)
+                "getIncludedBuilds" -> toolingDomainObjectSet(includedBuilds)
+                "getEditableBuilds" -> toolingDomainObjectSet(editableBuilds)
                 else -> defaultProxyReturn(method)
             }
         } as GradleBuild
@@ -494,16 +601,4 @@ class ModelSerializersTest {
                 else -> defaultProxyReturn(method)
             }
         } as BuildIdentifier
-
-    @Suppress("UNCHECKED_CAST")
-    private fun <T> domainObjectSet(items: List<T>): DomainObjectSet<T> =
-        object : AbstractSet<T>(), DomainObjectSet<T> {
-            override fun iterator(): MutableIterator<T> = items.toMutableList().iterator()
-
-            override val size: Int get() = items.size
-
-            override fun getAll(): List<T> = items
-
-            override fun getAt(index: Int): T = items[index]
-        }
 }

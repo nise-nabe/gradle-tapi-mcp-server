@@ -206,6 +206,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
             outputLimit = OutputLimitOptions.fromArgs(args),
             progressOptions = ProgressResponseOptions.fromArgs(args),
         )
+        preflightRunTests(projectDirectory, testOptions)
         val background = args.optionalBoolean("background", default = false)
         val response = if (background) {
             runtime.buildExecutionManager.startBackground(request, notifier)

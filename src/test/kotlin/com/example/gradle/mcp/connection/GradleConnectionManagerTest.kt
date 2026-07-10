@@ -80,7 +80,8 @@ class GradleConnectionManagerTest {
 
     @Test
     fun `status reports connected without runtime stack when cache is missing`() {
-        manager.seedConnectionForTests(getModelCountingConnection())
+        val getModelCalls = AtomicInteger(0)
+        manager.seedConnectionForTests(getModelCountingConnection(getModelCalls))
 
         val status = manager.status()
 
@@ -90,6 +91,72 @@ class GradleConnectionManagerTest {
         status.statusStr("javaHome").shouldBeNull()
         status.statusStr("javaVersion").shouldBeNull()
         status.statusBool("runtimeStackAvailable").shouldBeFalse()
+        getModelCalls.get() shouldBe 0
+    }
+
+    @Test
+    fun `status refreshes missing cached environment when refresh is true`(@TempDir javaHome: File) {
+        File(javaHome, "release").writeText("JAVA_VERSION=\"21.0.2\"\n")
+        val getModelCalls = AtomicInteger(0)
+        val connection = com.example.gradle.mcp.connection.support.projectConnectionProxy(
+            getModelCalls = getModelCalls,
+            buildEnvironment = com.example.gradle.mcp.connection.support.buildEnvironmentProxy(
+                com.example.gradle.mcp.connection.support.BuildEnvironmentProxyOptions(
+                    javaHome = javaHome.path,
+                    gradleVersion = "9.6.1",
+                    versionInfo = "Gradle 9.6.1",
+                ),
+            ),
+            launcher = com.example.gradle.mcp.connection.support.recordingBuildLauncher().launcher,
+        )
+        manager.seedConnectionForTests(connection, environment = null)
+
+        val status = manager.status(refresh = true)
+
+        status.statusBool("runtimeStackAvailable").shouldBeTrue()
+        status.statusStr("gradleVersion") shouldBe "9.6.1"
+        getModelCalls.get() shouldBe 1
+        manager.cachedEnvironment(File("."))?.gradleVersion shouldBe "9.6.1"
+    }
+
+    @Test
+    fun `cacheHasSubprojects only caches true`() {
+        manager.seedConnectionForTests(getModelCountingConnection(), environment = null)
+
+        manager.cachedHasSubprojects(File(".")).shouldBeNull()
+        manager.cacheHasSubprojects(File("."), hasSubprojects = false)
+        manager.cachedHasSubprojects(File(".")).shouldBeNull()
+        manager.cacheHasSubprojects(File("."), hasSubprojects = true)
+        manager.cachedHasSubprojects(File(".")).shouldBeTrue()
+    }
+
+    @Test
+    fun `status does not refresh missing cached environment by default`() {
+        val getModelCalls = AtomicInteger(0)
+        manager.seedConnectionForTests(getModelCountingConnection(getModelCalls), environment = null)
+
+        manager.status(refresh = false).statusBool("runtimeStackAvailable").shouldBeFalse()
+        getModelCalls.get() shouldBe 0
+    }
+
+    @Test
+    fun `cacheEnvironmentSnapshot updates status without reconnecting`() {
+        manager.seedConnectionForTests(getModelCountingConnection(), environment = null)
+
+        manager.cacheEnvironmentSnapshot(
+            File("."),
+            BuildEnvironmentSnapshot(
+                gradleVersion = "9.6.1",
+                gradleUserHome = null,
+                javaHome = "/jdk/home",
+                javaVersion = "21.0.2",
+                jvmArguments = emptyList(),
+            ),
+        )
+
+        val status = manager.status()
+        status.statusBool("runtimeStackAvailable").shouldBeTrue()
+        status.statusStr("gradleVersion") shouldBe "9.6.1"
     }
 
     @Test

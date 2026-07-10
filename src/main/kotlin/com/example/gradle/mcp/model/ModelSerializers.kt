@@ -23,7 +23,13 @@ object ModelSerializers {
         options: ProjectTreeOptions = ProjectTreeOptions(),
         depth: Int = 0,
     ): Map<String, Any?> =
-        projectNode(project, options, ModelQueryOptions(), depth, includeTasks = false)
+        walkGradleProjectTree(
+            project = project,
+            treeOptions = options,
+            depth = depth,
+            enrichNode = { _, _ -> },
+            recurseChild = { child, childDepth -> projectOverview(child, options, childDepth) },
+        )
 
     fun gradleProject(
         project: GradleProject,
@@ -31,8 +37,21 @@ object ModelSerializers {
         treeOptions: ProjectTreeOptions = ProjectTreeOptions(),
         depth: Int = 0,
     ): Map<String, Any?> {
-        val node = projectNode(project, treeOptions, options, depth, includeTasks = true)
-        return node + mapOf("tasks" to serializeTasks(project.tasks.map(::taskSnapshot), options))
+        val taskBudget = TaskFilterBudget(options.maxTasks)
+        fun walk(p: GradleProject, d: Int): Map<String, Any?> =
+            walkGradleProjectTree(
+                project = p,
+                treeOptions = treeOptions,
+                depth = d,
+                enrichNode = { node, result ->
+                    result["tasks"] = taskBudget.takeAndSerialize(
+                        filterTasksWithoutLimit(node.tasks.map(::taskSnapshot), options),
+                    ) { serializeTask(it, options.includeTaskDetails) }
+                },
+                recurseChild = { child, childDepth -> walk(child, childDepth) },
+                rootMetadata = { taskBudget.rootMetadata() },
+            )
+        return walk(project, depth)
     }
 
     fun buildInvocations(
@@ -40,15 +59,12 @@ object ModelSerializers {
         project: GradleProject,
         options: ModelQueryOptions = ModelQueryOptions(),
         treeOptions: ProjectTreeOptions = ProjectTreeOptions(),
-    ): Map<String, Any?> =
-        buildMap {
-            put(
-                "tasks",
-                serializeTasks(
-                    collectTasksFromProjectTree(project, treeOptions),
-                    options.copy(includeTasks = true),
-                ),
-            )
+    ): Map<String, Any?> {
+        val taskBudget = TaskFilterBudget(options.maxTasks)
+        val tasks = collectSerializedTasksWithGlobalBudget(project, treeOptions, options, taskBudget)
+        return buildMap {
+            put("tasks", tasks)
+            putAll(taskBudget.rootMetadata())
             if (options.includeTaskSelectors) {
                 put(
                     "taskSelectors",
@@ -62,6 +78,7 @@ object ModelSerializers {
                 )
             }
         }
+    }
 
     fun gradleBuild(
         build: GradleBuild,
@@ -171,6 +188,15 @@ object ModelSerializers {
         if (!options.includeTasks) {
             return emptyList()
         }
+        return filterTasksWithoutLimit(tasks, options).let { filtered ->
+            options.maxTasks?.let { max -> filtered.take(max) } ?: filtered
+        }
+    }
+
+    internal fun filterTasksWithoutLimit(tasks: List<TaskSnapshot>, options: ModelQueryOptions): List<TaskSnapshot> {
+        if (!options.includeTasks) {
+            return emptyList()
+        }
 
         var filtered = tasks.asSequence()
         options.taskGroup?.let { group ->
@@ -179,21 +205,46 @@ object ModelSerializers {
         options.taskNamePrefix?.let { prefix ->
             filtered = filtered.filter { it.name.startsWith(prefix) }
         }
-        options.maxTasks?.let { max ->
-            filtered = filtered.take(max)
-        }
         return filtered.toList()
     }
 
     fun serializeTasks(tasks: List<TaskSnapshot>, options: ModelQueryOptions): List<Map<String, Any?>> =
         filterTasks(tasks, options).map { serializeTask(it, options.includeTaskDetails) }
 
-    private fun projectNode(
+    private fun collectSerializedTasksWithGlobalBudget(
         project: GradleProject,
         treeOptions: ProjectTreeOptions,
-        modelOptions: ModelQueryOptions,
+        options: ModelQueryOptions,
+        budget: TaskFilterBudget,
+        depth: Int = 0,
+    ): List<Map<String, Any?>> {
+        val result = mutableListOf<Map<String, Any?>>()
+        result.addAll(
+            budget.takeAndSerialize(
+                filterTasksWithoutLimit(project.tasks.map(::taskSnapshot), options),
+            ) { serializeTask(it, options.includeTaskDetails) },
+        )
+
+        val depthLimit = ProjectTreeLimits.applyDepthLimit(depth, treeOptions.maxDepth, project.children.size)
+        if (depthLimit.omitChildren) {
+            return result
+        }
+
+        val allChildren = project.children.toList()
+        val childLimit = ProjectTreeLimits.applyChildLimit(allChildren.size, treeOptions.maxChildren)
+        allChildren.take(childLimit.visibleChildCount).forEach { child ->
+            result.addAll(collectSerializedTasksWithGlobalBudget(child, treeOptions, options, budget, depth + 1))
+        }
+        return result
+    }
+
+    private fun walkGradleProjectTree(
+        project: GradleProject,
+        treeOptions: ProjectTreeOptions,
         depth: Int,
-        includeTasks: Boolean,
+        enrichNode: (GradleProject, MutableMap<String, Any?>) -> Unit,
+        recurseChild: (GradleProject, Int) -> Map<String, Any?>,
+        rootMetadata: () -> Map<String, Any?> = { emptyMap() },
     ): Map<String, Any?> {
         val result = mutableMapOf<String, Any?>(
             "name" to project.name,
@@ -203,6 +254,7 @@ object ModelSerializers {
             "projectDirectory" to project.projectDirectory.absolutePath,
             "taskCount" to project.tasks.size,
         )
+        enrichNode(project, result)
 
         val depthLimit = ProjectTreeLimits.applyDepthLimit(depth, treeOptions.maxDepth, project.children.size)
         if (depthLimit.omitChildren) {
@@ -211,7 +263,11 @@ object ModelSerializers {
                 result["totalChildCount"] = depthLimit.totalChildCount
             }
             result["children"] = emptyList<Map<String, Any?>>()
-            return result
+            return if (depth == 0) {
+                result + rootMetadata()
+            } else {
+                result
+            }
         }
 
         val allChildren = project.children.toList()
@@ -219,11 +275,7 @@ object ModelSerializers {
         val childrenToSerialize = allChildren.take(childLimit.visibleChildCount)
 
         result["children"] = childrenToSerialize.map { child ->
-            if (includeTasks) {
-                gradleProject(child, modelOptions, treeOptions, depth + 1)
-            } else {
-                projectOverview(child, treeOptions, depth + 1)
-            }
+            recurseChild(child, depth + 1)
         }
 
         if (childLimit.truncated) {
@@ -231,7 +283,11 @@ object ModelSerializers {
             result["totalChildCount"] = childLimit.totalChildCount
         }
 
-        return result
+        return if (depth == 0) {
+            result + rootMetadata()
+        } else {
+            result
+        }
     }
 
     private fun serializeTask(task: TaskSnapshot, includeDetails: Boolean): Map<String, Any?> =
@@ -267,4 +323,33 @@ object ModelSerializers {
             group = task.group,
             displayName = task.displayName,
         )
+
+    private class TaskFilterBudget(private val maxTasks: Int?) {
+        private var remaining: Int? = maxTasks
+        private var totalMatched: Int = 0
+        private var totalEmitted: Int = 0
+
+        fun <T> takeAndSerialize(items: List<T>, serialize: (T) -> Map<String, Any?>): List<Map<String, Any?>> {
+            totalMatched += items.size
+            val max = remaining
+            val taken = when {
+                max == null -> items
+                max <= 0 -> emptyList()
+                else -> items.take(max).also { remaining = max - it.size }
+            }
+            val serialized = taken.map(serialize)
+            totalEmitted += serialized.size
+            return serialized
+        }
+
+        fun rootMetadata(): Map<String, Any?> =
+            if (maxTasks != null && totalMatched > totalEmitted) {
+                mapOf(
+                    "tasksTruncated" to true,
+                    "tasksTotalMatched" to totalMatched,
+                )
+            } else {
+                emptyMap()
+            }
+    }
 }

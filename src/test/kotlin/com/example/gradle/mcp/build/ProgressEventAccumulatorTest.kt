@@ -35,4 +35,58 @@ class ProgressEventAccumulatorTest {
         diskSnapshot.failedTaskCount shouldBe 1
         diskSnapshot.failedTasks shouldBe listOf(":app:broken")
     }
+
+    @Test
+    fun `running tasks clear when Gradle start and finish display names differ`() {
+        val accumulator = ProgressEventAccumulator()
+        accumulator.apply(ProgressEventTypes.TASK_START, "Task :app:compile started")
+        accumulator.apply(ProgressEventTypes.TASK_SUCCESS, "Task :app:compile UP-TO-DATE")
+
+        val snapshot = accumulator.snapshot(
+            status = BuildProgressTracker.STATUS_RUNNING,
+            currentOperation = null,
+            recentEvents = emptyList(),
+            totalEventCount = 2,
+        )
+
+        snapshot.runningTasks shouldBe emptyList()
+        snapshot.completedTasks shouldBe listOf(":app:compile")
+        snapshot.runningTaskCount shouldBe 0
+        snapshot.completedTaskCount shouldBe 1
+    }
+
+    @Test
+    fun `running tasks clear for failed task finish display names`() {
+        val accumulator = ProgressEventAccumulator()
+        accumulator.apply(ProgressEventTypes.TASK_START, "Task :app:broken started")
+        accumulator.apply(ProgressEventTypes.TASK_FAIL, "Task :app:broken failed")
+
+        val snapshot = accumulator.snapshot(
+            status = BuildProgressTracker.STATUS_FAILED,
+            currentOperation = null,
+            recentEvents = emptyList(),
+            totalEventCount = 2,
+        )
+
+        snapshot.runningTasks shouldBe emptyList()
+        snapshot.failedTasks shouldBe listOf(":app:broken")
+        snapshot.failedTaskCount shouldBe 1
+    }
+
+    @Test
+    fun `running tests clear when Gradle test display names include spaces`() {
+        val accumulator = ProgressEventAccumulator()
+        accumulator.apply(ProgressEventTypes.TEST_START, "Test com.example.FooTest.my method name")
+        accumulator.apply(ProgressEventTypes.TEST_SUCCESS, "Test com.example.FooTest.my method name")
+
+        val snapshot = accumulator.snapshot(
+            status = BuildProgressTracker.STATUS_RUNNING,
+            currentOperation = null,
+            recentEvents = emptyList(),
+            totalEventCount = 2,
+        )
+
+        snapshot.runningTasks shouldBe emptyList()
+        snapshot.completedTasks shouldBe listOf("com.example.FooTest.my method name")
+    }
 }

@@ -14,6 +14,9 @@ import org.gradle.tooling.events.task.TaskFinishEvent
 import org.gradle.tooling.events.task.TaskSkippedResult
 
 class McpBuildRecorderSupport {
+
+    private static final java.util.concurrent.ConcurrentHashMap<String, Object> APPEND_EVENT_LOCKS =
+        new java.util.concurrent.ConcurrentHashMap<>()
     static String resolveBuildId(String preferred, Map existing) {
         def id = preferred?.trim()
         if (id) {
@@ -51,10 +54,17 @@ class McpBuildRecorderSupport {
 
     static void appendEvent(String dirPath, Map event) {
         def line = groovy.json.JsonOutput.toJson(event) + "\n"
-        def events = new File(dirPath, "events.ndjson")
-        events.withWriterAppend('UTF-8') { writer ->
-            writer.write(line)
+        def lock = APPEND_EVENT_LOCKS.computeIfAbsent(dirPath, { new Object() })
+        synchronized(lock) {
+            def events = new File(dirPath, "events.ndjson")
+            events.withWriterAppend('UTF-8') { writer ->
+                writer.write(line)
+            }
         }
+    }
+
+    static void releaseAppendEventLock(String dirPath) {
+        APPEND_EVENT_LOCKS.remove(dirPath)
     }
 
     /** First Tooling API failure message; mirrors Kotlin BuildProgressTracker.firstOrNull fallback. */
@@ -94,6 +104,14 @@ class McpBuildRecorderSupport {
             return "succeeded"
         }
         return terminalStatusFromFailure(failureClassName, failureMessage)
+    }
+
+    static void appendHeartbeatEvent(String dirPath) {
+        appendEvent(dirPath, [
+            ts          : java.time.Instant.now().toString(),
+            type        : "HEARTBEAT",
+            displayName : "Gradle build active",
+        ])
     }
 
     static String terminalStatusFromFailure(String failureClassName, String failureMessage) {
@@ -151,7 +169,6 @@ abstract class McpConfigurationCacheRecorderService
 
     private static final long HEARTBEAT_INTERVAL_MS = 15_000L
 
-    private final Object writeLock = new Object()
     private java.util.Timer heartbeatTimer
 
     private Map launcherContext() {
@@ -163,32 +180,17 @@ abstract class McpConfigurationCacheRecorderService
     }
 
     private void appendEvent(Map event) {
-        def context = launcherContext()
-        def line = groovy.json.JsonOutput.toJson(event) + "\n"
-        synchronized(writeLock) {
-            def events = new File(context.recordDirPath, "events.ndjson")
-            events.withWriterAppend('UTF-8') { writer ->
-                writer.write(line)
-            }
-        }
-    }
-
-    private void appendHeartbeatEvent() {
-        appendEvent([
-            ts          : java.time.Instant.now().toString(),
-            type        : "HEARTBEAT",
-            displayName : "Gradle build active",
-        ])
+        appendEvent(launcherContext().recordDirPath, event)
     }
 
     void startHeartbeatIfNeeded() {
         if (heartbeatTimer != null) {
             return
         }
-        launcherContext()
+        def recordDirPath = launcherContext().recordDirPath
         heartbeatTimer = new java.util.Timer(true)
         heartbeatTimer.scheduleAtFixedRate(
-            this.&appendHeartbeatEvent as java.util.TimerTask,
+            { -> McpBuildRecorderSupport.appendHeartbeatEvent(recordDirPath) } as java.util.TimerTask,
             HEARTBEAT_INTERVAL_MS,
             HEARTBEAT_INTERVAL_MS,
         )
@@ -221,9 +223,17 @@ abstract class McpConfigurationCacheRecorderService
 
     @Override
     void close() {
+        def recordDirPath = null
+        try {
+            recordDirPath = launcherContext().recordDirPath
+        } catch (Exception ignored) {
+        }
         if (heartbeatTimer != null) {
             heartbeatTimer.cancel()
             heartbeatTimer = null
+        }
+        if (recordDirPath != null) {
+            McpBuildRecorderSupport.releaseAppendEventLock(recordDirPath)
         }
     }
 }
@@ -266,6 +276,7 @@ abstract class McpBuildFinalizeFlowAction implements FlowAction<McpBuildFinalize
             status,
             failureMessage,
         )
+        McpBuildRecorderSupport.releaseAppendEventLock(context.recordDirPath)
     }
 }
 

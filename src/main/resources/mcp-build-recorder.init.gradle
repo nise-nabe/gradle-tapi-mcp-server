@@ -14,6 +14,9 @@ import org.gradle.api.tasks.testing.TestResult
 gradle.ext.mcpLauncherMetadataPath = file(launcherMetadataPath).absolutePath
 
 class McpBuildRecorderSupport {
+    private static final java.util.concurrent.ConcurrentHashMap<String, Object> APPEND_EVENT_LOCKS =
+        new java.util.concurrent.ConcurrentHashMap<>()
+
     static String resolveBuildId(String preferred, Map existing) {
         def id = preferred?.trim()
         if (id) {
@@ -51,10 +54,17 @@ class McpBuildRecorderSupport {
 
     static void appendEvent(String dirPath, Map event) {
         def line = groovy.json.JsonOutput.toJson(event) + "\n"
-        def events = new File(dirPath, "events.ndjson")
-        events.withWriterAppend('UTF-8') { writer ->
-            writer.write(line)
+        def lock = APPEND_EVENT_LOCKS.computeIfAbsent(dirPath, { new Object() })
+        synchronized(lock) {
+            def events = new File(dirPath, "events.ndjson")
+            events.withWriterAppend('UTF-8') { writer ->
+                writer.write(line)
+            }
         }
+    }
+
+    static void releaseAppendEventLock(String dirPath) {
+        APPEND_EVENT_LOCKS.remove(dirPath)
     }
 
     static void writeTerminalGradleResult(
@@ -139,7 +149,6 @@ class McpBuildRecorderSupport {
 // Defer metadata content reads to execution phase so configuration cache can reuse entries.
 gradle.ext.mcpRecordDirPath = null
 gradle.ext.mcpBuildId = null
-gradle.ext.mcpEventWriteLock = new Object()
 gradle.ext.mcpHeartbeatIntervalMs = 15_000L
 gradle.ext.mcpHeartbeatTimer = null
 
@@ -166,9 +175,7 @@ gradle.ext.mcpWriteGradleResult = { Map data ->
 
 gradle.ext.mcpAppendEvent = { Map event ->
     gradle.ext.mcpEnsureLauncherContext()
-    synchronized(gradle.ext.mcpEventWriteLock) {
-        McpBuildRecorderSupport.appendEvent(gradle.ext.mcpRecordDirPath, event)
-    }
+    McpBuildRecorderSupport.appendEvent(gradle.ext.mcpRecordDirPath, event)
 }
 
 gradle.ext.mcpStartHeartbeat = { ->
@@ -196,6 +203,7 @@ gradle.ext.mcpFinalizeBuild = { String status, String failureMessage = null ->
         status,
         failureMessage,
     )
+    McpBuildRecorderSupport.releaseAppendEventLock(gradle.ext.mcpRecordDirPath)
 }
 
 def configurationCacheRequested = false

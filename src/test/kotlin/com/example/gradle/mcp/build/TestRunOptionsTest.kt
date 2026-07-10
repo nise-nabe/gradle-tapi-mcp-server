@@ -1,10 +1,15 @@
 package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.model.OutputLimitOptions
+import com.example.gradle.mcp.protocol.McpErrorCode
+import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.support.assertInvalidArgument
+import com.example.gradle.mcp.support.gradleProjectProxy
 import com.example.gradle.mcp.support.testProjectDirectory
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -485,5 +490,55 @@ class TestRunOptionsTest {
                     "includePattern/includePatterns requires tasks for test task scoping",
                 ),
             )
+    }
+
+    @Test
+    fun `validateProjectScope rejects unscoped classes in multi-project builds`() {
+        val project = gradleProjectProxy(
+            children = listOf(gradleProjectProxy(name = "app", path = ":app")),
+        )
+
+        val error = shouldThrow<McpException> {
+            TestRunPreflight.validateProjectScope(
+                TestRunOptions(
+                    selection = TestRunSelection.Classes(listOf("com.example.FooTest")),
+                ),
+                project,
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "taskPath"
+    }
+
+    @Test
+    fun `validateProjectScope allows unscoped classes for single-project builds`() {
+        TestRunPreflight.validateProjectScope(
+            TestRunOptions(
+                selection = TestRunSelection.Classes(listOf("com.example.FooTest")),
+            ),
+            gradleProjectProxy(),
+        )
+    }
+
+    @Test
+    fun `validateProjectScope rejects unscoped methods in multi-project builds`() {
+        val project = gradleProjectProxy(
+            children = listOf(gradleProjectProxy(name = "app", path = ":app")),
+        )
+
+        val error = shouldThrow<McpException> {
+            TestRunPreflight.validateProjectScope(
+                TestRunOptions(
+                    selection = TestRunSelection.Methods(
+                        mapOf("com.example.FooTest" to listOf("bar")),
+                    ),
+                ),
+                project,
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "taskPath"
     }
 }
