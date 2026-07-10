@@ -16,8 +16,9 @@
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `projectDirectory` | no | Inspect or disconnect one project. Omit to list/disconnect all. |
+| `refresh` | no | When `true`, fetches `BuildEnvironment` for connected projects missing cached runtime stack. Default `false` (cache-only). |
 
-`gradle_connection_status` without `projectDirectory` returns `defaultProjectDirectory`, `connections[]`, and legacy flat fields for the default project. With `projectDirectory`, returns status for that project only.
+`gradle_connection_status` without `projectDirectory` returns `defaultProjectDirectory`, `connections[]`, and legacy flat fields for the default project. With `projectDirectory`, returns status for that project only. When `runtimeStackAvailable` is `false`, call `gradle_get_build_environment` or pass `refresh: true` to populate `gradleVersion` / `javaHome` / `javaVersion`.
 
 `gradle_disconnect` without `projectDirectory` disconnects **all** projects. With `projectDirectory`, disconnects one project and cancels only its running builds.
 

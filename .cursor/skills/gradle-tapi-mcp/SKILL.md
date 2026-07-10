@@ -20,7 +20,7 @@ JAR only after you need to test server changes (not during `./gradlew build` of 
 
 ## Workflow (token-efficient)
 
-1. `gradle_connection_status` — confirm connected
+1. `gradle_connection_status` — confirm connected (`runtimeStackAvailable=true` shows `gradleVersion` / `javaHome`; when false, call with `refresh: true` or use `gradle_get_build_environment`)
 2. `gradle_get_build_environment` — resolved Gradle/Java versions
 3. `gradle_get_project_overview` — project name and task counts (single-module repo)
 4. `gradle_run_tasks` with `["build"]` or `gradle_run_tests` when verification is needed
