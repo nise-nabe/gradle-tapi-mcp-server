@@ -77,17 +77,21 @@ class JavaRuntimeToolsTest {
         )
 
         val manager = GradleConnectionManager()
-        val snapshot = JavaRuntimesCollector.collect(
+        manager.seedConnectionForTests(
+            connection,
             projectDirectory = File("/workspace"),
-            connection = connection,
-            connectionManager = manager,
-            cachedEnvironment = BuildEnvironmentSnapshot(
+            environment = BuildEnvironmentSnapshot(
                 gradleVersion = "9.6.0",
                 gradleUserHome = "/gradle/home",
                 javaHome = "/usr/lib/jvm/java-17-openjdk-amd64",
                 javaVersion = "17.0.19",
                 jvmArguments = emptyList(),
             ),
+        )
+        val snapshot = JavaRuntimesCollector.collect(
+            projectDirectory = File("/workspace"),
+            connection = connection,
+            connectionManager = manager,
         )
 
         snapshot.toMap("/workspace") shouldBe linkedMapOf(
@@ -119,17 +123,21 @@ class JavaRuntimeToolsTest {
         )
 
         val manager = GradleConnectionManager()
-        val snapshot = JavaRuntimesCollector.collect(
+        manager.seedConnectionForTests(
+            connection,
             projectDirectory = File("/workspace"),
-            connection = connection,
-            connectionManager = manager,
-            cachedEnvironment = BuildEnvironmentSnapshot(
+            environment = BuildEnvironmentSnapshot(
                 gradleVersion = "9.6.0",
                 gradleUserHome = "/gradle/home",
                 javaHome = "/usr/lib/jvm/java-17-openjdk-amd64",
                 javaVersion = "17.0.19",
                 jvmArguments = emptyList(),
             ),
+        )
+        val snapshot = JavaRuntimesCollector.collect(
+            projectDirectory = File("/workspace"),
+            connection = connection,
+            connectionManager = manager,
             includeToolchains = false,
         )
 
@@ -168,7 +176,6 @@ class JavaRuntimeToolsTest {
             projectDirectory = File("/workspace"),
             connection = connection,
             connectionManager = manager,
-            cachedEnvironment = null,
         )
 
         snapshot.daemon shouldBe DaemonJavaRuntime(
@@ -195,18 +202,23 @@ class JavaRuntimeToolsTest {
             ).launcher,
         )
 
+        val manager = GradleConnectionManager()
+        manager.seedConnectionForTests(
+            connection,
+            projectDirectory = File("/workspace"),
+            environment = BuildEnvironmentSnapshot(
+                gradleVersion = "9.6.0",
+                gradleUserHome = null,
+                javaHome = "/usr/lib/jvm/java-17-openjdk-amd64",
+                javaVersion = "17.0.19",
+                jvmArguments = emptyList(),
+            ),
+        )
         val error = shouldThrow<McpException> {
             JavaRuntimesCollector.collect(
                 projectDirectory = File("/workspace"),
                 connection = connection,
-                connectionManager = GradleConnectionManager(),
-                cachedEnvironment = BuildEnvironmentSnapshot(
-                    gradleVersion = "9.6.0",
-                    gradleUserHome = null,
-                    javaHome = "/usr/lib/jvm/java-17-openjdk-amd64",
-                    javaVersion = "17.0.19",
-                    jvmArguments = emptyList(),
-                ),
+                connectionManager = manager,
             )
         }
 

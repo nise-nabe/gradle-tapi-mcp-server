@@ -66,11 +66,7 @@ internal fun TestRunOptions.validate(inputTaskPath: String? = null): TestRunOpti
     return this
 }
 
-internal fun validateJvmTestProjectScope(
-    connection: ProjectConnection,
-    selection: TestRunSelection?,
-    tasks: List<String>,
-) {
+internal fun TestRunOptions.validateProjectScope(connection: ProjectConnection) {
     val unscoped = when (selection) {
         is TestRunSelection.Classes -> selection.taskPath.isNullOrBlank()
         is TestRunSelection.Methods -> selection.taskPath.isNullOrBlank()
@@ -90,17 +86,8 @@ internal fun validateJvmTestProjectScope(
     }
 }
 
-private fun countGradleSubprojects(project: GradleProject): Int {
-    var count = 0
-    fun visit(node: GradleProject) {
-        for (child in node.children) {
-            count++
-            visit(child)
-        }
-    }
-    visit(project)
-    return count
-}
+private fun countGradleSubprojects(project: GradleProject): Int =
+    project.children.sumOf { child -> 1 + countGradleSubprojects(child) }
 
 internal fun TestRunOptions.toBuildRunRequest(
     projectDirectory: File,

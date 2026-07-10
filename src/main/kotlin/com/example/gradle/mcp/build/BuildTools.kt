@@ -3,6 +3,7 @@ package com.example.gradle.mcp.build
 import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.connection.ProjectDirectoryScope
+import com.example.gradle.mcp.connection.ProjectLifecycleGuard
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
@@ -199,9 +200,6 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
         val parsed = parseTestRunOptions(args)
         val testOptions = parsed.options.validate(args.optionalString("taskPath"))
-        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-            validateJvmTestProjectScope(connection, testOptions.selection, testOptions.tasks)
-        }
         val request = testOptions.toBuildRunRequest(
             projectDirectory = projectDirectory,
             arguments = args.optionalStringList("arguments").orEmpty(),
@@ -209,6 +207,19 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
             outputLimit = OutputLimitOptions.fromArgs(args),
             progressOptions = ProgressResponseOptions.fromArgs(args),
         )
+        ProjectLifecycleGuard.withNoActiveBuild(
+            projectDirectory = projectDirectory,
+            buildExecutionManager = runtime.buildExecutionManager,
+            message = { dir ->
+                "A Gradle build is already running for ${dir.path}. " +
+                    "Poll gradle_get_build_status with the active buildId, call gradle_cancel_build to stop it, " +
+                    "or wait for it to finish."
+            },
+        ) {
+            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+                testOptions.validateProjectScope(connection)
+            }
+        }
         val background = args.optionalBoolean("background", default = false)
         val response = if (background) {
             runtime.buildExecutionManager.startBackground(request, notifier)

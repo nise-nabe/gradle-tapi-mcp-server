@@ -14,6 +14,8 @@ import org.gradle.tooling.events.task.TaskFinishEvent
 import org.gradle.tooling.events.task.TaskSkippedResult
 
 class McpBuildRecorderSupport {
+
+    private static final Object APPEND_EVENT_LOCK = new Object()
     static String resolveBuildId(String preferred, Map existing) {
         def id = preferred?.trim()
         if (id) {
@@ -51,9 +53,11 @@ class McpBuildRecorderSupport {
 
     static void appendEvent(String dirPath, Map event) {
         def line = groovy.json.JsonOutput.toJson(event) + "\n"
-        def events = new File(dirPath, "events.ndjson")
-        events.withWriterAppend('UTF-8') { writer ->
-            writer.write(line)
+        synchronized(APPEND_EVENT_LOCK) {
+            def events = new File(dirPath, "events.ndjson")
+            events.withWriterAppend('UTF-8') { writer ->
+                writer.write(line)
+            }
         }
     }
 
@@ -159,7 +163,6 @@ abstract class McpConfigurationCacheRecorderService
 
     private static final long HEARTBEAT_INTERVAL_MS = 15_000L
 
-    private final Object writeLock = new Object()
     private java.util.Timer heartbeatTimer
 
     private Map launcherContext() {
@@ -171,14 +174,7 @@ abstract class McpConfigurationCacheRecorderService
     }
 
     private void appendEvent(Map event) {
-        def context = launcherContext()
-        def line = groovy.json.JsonOutput.toJson(event) + "\n"
-        synchronized(writeLock) {
-            def events = new File(context.recordDirPath, "events.ndjson")
-            events.withWriterAppend('UTF-8') { writer ->
-                writer.write(line)
-            }
-        }
+        appendEvent(launcherContext().recordDirPath, event)
     }
 
     void startHeartbeatIfNeeded() {

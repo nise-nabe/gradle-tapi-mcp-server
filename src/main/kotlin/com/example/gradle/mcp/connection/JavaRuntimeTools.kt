@@ -138,10 +138,9 @@ internal object JavaRuntimesCollector {
         projectDirectory: File,
         connection: ProjectConnection,
         connectionManager: GradleConnectionManager,
-        cachedEnvironment: BuildEnvironmentSnapshot?,
         includeToolchains: Boolean = true,
     ): JavaRuntimesSnapshot {
-        val environment = cachedEnvironment
+        val environment = connectionManager.cachedEnvironment(projectDirectory)
             ?: connectionManager.fetchAndCacheEnvironment(projectDirectory, connection)
         val detectedJdks = if (includeToolchains) {
             detectInstalledJdks(connection, projectDirectory)
@@ -245,7 +244,6 @@ fun Server.registerJavaRuntimeTools(scope: CoroutineScope) {
                     projectDirectory = projectDirectory,
                     connection = connection,
                     connectionManager = runtime.connectionManager,
-                    cachedEnvironment = runtime.connectionManager.cachedEnvironment(projectDirectory),
                     includeToolchains = false,
                 )
                 jsonResult(runtimes.toMap(projectDirectory.path))
@@ -261,7 +259,6 @@ fun Server.registerJavaRuntimeTools(scope: CoroutineScope) {
                     projectDirectory = projectDirectory,
                     connection = connection,
                     connectionManager = runtime.connectionManager,
-                    cachedEnvironment = runtime.connectionManager.cachedEnvironment(projectDirectory),
                     includeToolchains = true,
                 )
                 jsonResult(runtimes.toMap(projectDirectory.path))

@@ -3,14 +3,22 @@ package com.example.gradle.mcp.model
 import com.example.gradle.mcp.protocol.OutputNormalizer
 
 object OutputLimiter {
+    private const val TRUNCATION_MARKER_TEMPLATE = "... [truncated %s chars] ..."
+
+    private fun truncationMarker(omittedChars: Int): String =
+        TRUNCATION_MARKER_TEMPLATE.format(omittedChars)
+
+    private fun reservedMarkerLength(): Int =
+        truncationMarker(999_999_999).length + 1
+
     fun limit(text: String, options: OutputLimitOptions): LimitedText {
         val normalized = OutputNormalizer.normalizeNewlines(text)
         if (normalized.length <= options.maxOutputChars) {
             return LimitedText(text = normalized, truncated = false, totalChars = normalized.length)
         }
 
-        val maxPrefixLength = "... [truncated 999999999 chars] ...\n".length
-        if (options.maxOutputChars <= maxPrefixLength) {
+        val reservedLength = reservedMarkerLength()
+        if (options.maxOutputChars <= reservedLength) {
             val excerpt = if (options.tailOutput) {
                 normalized.takeLast(options.maxOutputChars)
             } else {
@@ -23,14 +31,14 @@ object OutputLimiter {
             )
         }
 
-        val excerptBudget = options.maxOutputChars - maxPrefixLength
+        val excerptBudget = options.maxOutputChars - reservedLength
         var excerpt = if (options.tailOutput) {
             normalized.takeLast(excerptBudget)
         } else {
             normalized.take(excerptBudget)
         }
         var omittedChars = normalized.length - excerpt.length
-        var marker = "... [truncated $omittedChars chars] ..."
+        var marker = truncationMarker(omittedChars)
         if (marker.length + 1 + excerpt.length > options.maxOutputChars) {
             val adjustedBudget = (options.maxOutputChars - marker.length - 1).coerceAtLeast(0)
             excerpt = if (adjustedBudget == 0) {
@@ -41,7 +49,7 @@ object OutputLimiter {
                 normalized.take(adjustedBudget)
             }
             omittedChars = normalized.length - excerpt.length
-            marker = "... [truncated $omittedChars chars] ..."
+            marker = truncationMarker(omittedChars)
         }
         val text = if (marker.length + 1 + excerpt.length <= options.maxOutputChars) {
             if (options.tailOutput) {
