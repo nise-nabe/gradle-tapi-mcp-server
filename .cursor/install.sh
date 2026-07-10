@@ -2,7 +2,6 @@
 set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly GRADLE_TAPI_MCP_VERSION="0.4.1"
 readonly GRADLE_TAPI_MCP_SHA256="d1a9114ae4f35b41f8bb0e74600d054011ab04066b442006af22da028f2aea1c"
 readonly INSTALL_DIR="${HOME}/.local/share/gradle-tapi-mcp-server"
@@ -152,10 +151,7 @@ ensure_jdks() {
   export PATH="${JAVA_HOME}/bin:${jdk21_home}/bin:${PATH}"
 }
 
-# Download the release JAR before ./gradlew so the MCP server can drive this repo's build.
+# Download the release JAR so the MCP server can drive this repo's build when needed.
 ensure_jar
 setup_gh_cli
 ensure_jdks
-
-cd "${REPO_ROOT}"
-./gradlew --no-daemon build
