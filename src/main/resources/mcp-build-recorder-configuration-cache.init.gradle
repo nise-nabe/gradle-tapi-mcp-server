@@ -223,9 +223,17 @@ abstract class McpConfigurationCacheRecorderService
 
     @Override
     void close() {
+        def recordDirPath = null
+        try {
+            recordDirPath = launcherContext().recordDirPath
+        } catch (Exception ignored) {
+        }
         if (heartbeatTimer != null) {
             heartbeatTimer.cancel()
             heartbeatTimer = null
+        }
+        if (recordDirPath != null) {
+            McpBuildRecorderSupport.releaseAppendEventLock(recordDirPath)
         }
     }
 }
