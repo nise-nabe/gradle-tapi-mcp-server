@@ -66,9 +66,13 @@ internal object BuildStatusMerger {
                     completedTaskCount = maxOf(memory.completedTaskCount, disk.completedTaskCount),
                     runningTaskCount = maxOf(memory.runningTaskCount, disk.runningTaskCount),
                     failedTaskCount = memory.failedTaskCount,
+                    failedGradleTaskCount = memory.failedGradleTaskCount,
+                    failedTestCount = memory.failedTestCount,
                     completedTasks = pickRicherTaskList(memory.completedTasks, disk.completedTasks),
                     runningTasks = pickRicherTaskList(memory.runningTasks, disk.runningTasks),
                     failedTasks = memory.failedTasks,
+                    failedGradleTasks = memory.failedGradleTasks,
+                    failedTestNames = memory.failedTestNames,
                     recentEvents = mergedRecentEvents,
                     totalEventCount = maxOf(
                         memory.totalEventCount,
@@ -85,7 +89,11 @@ internal object BuildStatusMerger {
         copy(
             status = BuildProgressTracker.STATUS_RUNNING,
             failedTaskCount = 0,
+            failedGradleTaskCount = 0,
+            failedTestCount = 0,
             failedTasks = emptyList(),
+            failedGradleTasks = emptyList(),
+            failedTestNames = emptyList(),
             problems = emptyList(),
             failedTests = emptyList(),
         )
@@ -150,12 +158,19 @@ internal object BuildStatusMerger {
                 val mergedProblems = base.problems.toMutableList()
                 ProblemsSerializer.mergeDistinct(mergedProblems, other.problems)
                 val mergedFailedTests = FailedTestSnapshots.mergeDistinct(base.failedTests, other.failedTests)
-                if (mergedProblems == base.problems && mergedFailedTests == base.failedTests) {
+                val mergedFailedTestNames = FailedTestSnapshots.methodLevelNames(mergedFailedTests)
+                if (
+                    mergedProblems == base.problems &&
+                    mergedFailedTests == base.failedTests &&
+                    mergedFailedTestNames == base.failedTestNames
+                ) {
                     base
                 } else {
                     base.copy(
                         problems = mergedProblems,
                         failedTests = mergedFailedTests,
+                        failedTestCount = FailedTestSnapshots.methodLevelCount(mergedFailedTests),
+                        failedTestNames = mergedFailedTestNames,
                     )
                 }
             }

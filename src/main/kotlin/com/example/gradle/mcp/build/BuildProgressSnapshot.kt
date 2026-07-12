@@ -17,6 +17,14 @@ data class FailedTestSnapshot(
     val failureMessage: String? = null,
 ) {
     fun stableKey(): String = "${className.orEmpty()}|${methodName.orEmpty()}|$displayName"
+
+    fun qualifiedName(): String? =
+        when {
+            className != null && methodName != null -> "$className.$methodName"
+            className != null -> className
+            methodName != null -> methodName
+            else -> null
+        }
 }
 
 data class ProgressEventSnapshot(
@@ -47,9 +55,13 @@ data class BuildProgressSnapshot(
     val completedTaskCount: Int,
     val runningTaskCount: Int,
     val failedTaskCount: Int,
+    val failedGradleTaskCount: Int = failedTaskCount,
+    val failedTestCount: Int = 0,
     val completedTasks: List<String>,
     val runningTasks: List<String>,
     val failedTasks: List<String>,
+    val failedGradleTasks: List<String> = failedTasks,
+    val failedTestNames: List<String> = emptyList(),
     val recentEvents: List<ProgressEventSnapshot>,
     val totalEventCount: Int,
     val problems: List<BuildProblemSnapshot> = emptyList(),

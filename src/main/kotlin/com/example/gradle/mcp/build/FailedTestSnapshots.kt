@@ -3,6 +3,15 @@ package com.example.gradle.mcp.build
 internal object FailedTestSnapshots {
     const val MAX_TRACKED_FAILED_TESTS = 10
 
+    fun methodLevelFailures(tests: List<FailedTestSnapshot>): List<FailedTestSnapshot> =
+        tests.filter { it.methodName != null }
+
+    fun methodLevelCount(tests: List<FailedTestSnapshot>): Int =
+        methodLevelFailures(tests).size
+
+    fun methodLevelNames(tests: List<FailedTestSnapshot>): List<String> =
+        methodLevelFailures(tests).mapNotNull { it.qualifiedName() }
+
     fun mergeDistinct(vararg lists: List<FailedTestSnapshot>): List<FailedTestSnapshot> {
         val merged = LinkedHashMap<String, FailedTestSnapshot>()
         for (list in lists) {
