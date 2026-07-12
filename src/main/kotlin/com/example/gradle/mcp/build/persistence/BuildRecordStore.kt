@@ -4,6 +4,7 @@ import com.example.gradle.mcp.build.BuildListEntry
 import com.example.gradle.mcp.build.BuildOutputParser
 import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
+import com.example.gradle.mcp.build.BuildFailureClassifier
 import com.example.gradle.mcp.build.ProgressEventTypes
 import com.example.gradle.mcp.build.CapturedStreamSnapshot
 import com.example.gradle.mcp.build.TestProgressDetailsExtractor
@@ -59,7 +60,17 @@ class BuildRecordStore {
         val buildSummary = BuildOutputParser.parse(stdout.text)
         var status = progress.status
         var error = record.errorMessage
+        var failureKind = record.failureKind?.name
         val gradleResult = readGradleResult(recordDir)
+        val classified = BuildFailureClassifier.classify(
+            status = status,
+            kind = record.kind.name.lowercase(),
+            error = error,
+            progress = progress,
+            stdout = stdout.text,
+        )
+        failureKind = classified.failureKind?.name
+        error = classified.error
         val provisionalResult = McpBuildResult(
             buildId = record.id,
             kind = record.kind.name.lowercase(),
@@ -74,6 +85,7 @@ class BuildRecordStore {
             status = status,
             outcome = BuildOutputParser.outcomeFromStatus(status),
             error = error,
+            failureKind = failureKind,
             buildSummary = BuildOutputParser.toResponseMap(buildSummary),
             failedTaskCount = progress.failedTaskCount,
             failedTasks = progress.failedTasks,
@@ -90,16 +102,26 @@ class BuildRecordStore {
             resolved.terminalSource == BuildPersistenceContract.TerminalStatusSource.GRADLE
         ) {
             status = resolved.status
-            error = BuildPersistenceContract.resolveError(
+            val resolvedError = BuildPersistenceContract.resolveError(
                 gradleResult,
                 provisionalResult,
                 resolved.terminalSource,
             )
+            val reclassified = BuildFailureClassifier.classify(
+                status = status,
+                kind = record.kind.name.lowercase(),
+                error = resolvedError,
+                progress = progress,
+                stdout = stdout.text,
+            )
+            error = reclassified.error
+            failureKind = reclassified.failureKind?.name
         }
         val result = provisionalResult.copy(
             status = status,
             outcome = BuildOutputParser.outcomeFromStatus(status),
             error = error,
+            failureKind = failureKind,
         )
         writeMcpResultFiles(recordDir, result, stdout, stderr)
     }

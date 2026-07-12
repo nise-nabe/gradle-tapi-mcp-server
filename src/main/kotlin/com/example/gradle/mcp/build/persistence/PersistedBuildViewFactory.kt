@@ -3,7 +3,9 @@ package com.example.gradle.mcp.build.persistence
 import com.example.gradle.mcp.build.BuildOutputParser
 import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
+import com.example.gradle.mcp.build.BuildFailureClassifier
 import com.example.gradle.mcp.build.BuildStatusView
+import com.example.gradle.mcp.build.FailureKind
 import com.example.gradle.mcp.protocol.ProblemsSerializer
 
 internal object PersistedBuildViewFactory {
@@ -61,6 +63,18 @@ internal object PersistedBuildViewFactory {
             isRunning = isRunning,
         )
         val progressAvailable = progress != null
+        val rawError = BuildPersistenceContract.resolveError(
+            artifacts.gradleResult,
+            artifacts.mcpResult,
+            terminalSource,
+        )
+        val classified = BuildFailureClassifier.classify(
+            status = status,
+            kind = artifacts.mcpResult?.kind,
+            error = rawError,
+            progress = progress,
+            stdout = artifacts.stdout.text,
+        )
 
         return BuildStatusView(
             buildId = buildId,
@@ -75,11 +89,9 @@ internal object PersistedBuildViewFactory {
             tasks = artifacts.mcpResult?.tasks?.takeIf { it.isNotEmpty() }
                 ?: artifacts.gradleResult?.taskNames.orEmpty(),
             selection = artifacts.mcpResult?.selection,
-            error = BuildPersistenceContract.resolveError(
-                artifacts.gradleResult,
-                artifacts.mcpResult,
-                terminalSource,
-            ),
+            error = classified.error,
+            failureKind = classified.failureKind
+                ?: artifacts.mcpResult?.failureKind?.let { runCatching { FailureKind.valueOf(it) }.getOrNull() },
             outcome = BuildOutputParser.outcomeFromStatus(status),
             buildSummary = if (!isRunning) {
                 BuildPersistenceContract.terminalBuildSummary(artifacts, terminalSource)
