@@ -68,24 +68,40 @@ class BuildExecutionManagerRunTest {
     fun `startBackground allows concurrent builds for different projects`(@TempDir otherProject: File) {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnection()
-        connectionManager.seedNoopConnection(otherProject)
+        val buildEntered = CountDownLatch(1)
+        val releaseBuild = CountDownLatch(1)
+        connectionManager.seedConnectionForTests(
+            connection = blockingProjectConnection(buildEntered, releaseBuild),
+            projectDirectory = otherProject,
+        )
         val concurrentManager = BuildExecutionManager(connectionManager)
-        concurrentManager.seedRunningBuildForTests(
-            testBuildRecord(
-                id = "running-build",
-                tracker = runningTracker(),
-                projectDirectory = testProjectDirectory.absolutePath,
-            ),
-        )
+        try {
+            concurrentManager.seedRunningBuildForTests(
+                testBuildRecord(
+                    id = "running-build",
+                    tracker = runningTracker(),
+                    projectDirectory = testProjectDirectory.absolutePath,
+                ),
+            )
 
-        val result = concurrentManager.startBackground(
-            request = BuildRunRequest(projectDirectory = otherProject, kind = BuildKind.TASKS, tasks = listOf("test")),
-            notifier = null,
-        )
+            val result = concurrentManager.startBackground(
+                request = BuildRunRequest(projectDirectory = otherProject, kind = BuildKind.TASKS, tasks = listOf("test")),
+                notifier = null,
+            )
 
-        result["buildId"] shouldNotBe "running-build"
-        result["status"] shouldBe "running"
-        concurrentManager.cancelBuild(result["buildId"] as String, otherProject)
+            result["buildId"] shouldNotBe "running-build"
+            result["status"] shouldBe "running"
+            buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
+            releaseBuild.countDown()
+            var waitedMs = 0
+            while (concurrentManager.hasActiveBuild(otherProject) && waitedMs < 5_000) {
+                Thread.sleep(50)
+                waitedMs += 50
+            }
+            concurrentManager.hasActiveBuild(otherProject).shouldBeFalse()
+        } finally {
+            concurrentManager.shutdown()
+        }
     }
 
     @Test
@@ -394,6 +410,52 @@ class BuildExecutionManagerRunTest {
         )
 
         (result["stdout"] as String) shouldContain "UP-TO-DATE"
+    }
+
+    @Test
+    fun `waitUntilComplete returns immediately for terminal build`() {
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "completed-wait-build",
+                tracker = succeededTracker(),
+            ) {
+                finishedAt = Instant.now()
+            },
+        )
+
+        val result = manager.status(
+            "completed-wait-build",
+            OutputLimitOptions(),
+            ProgressResponseOptions(),
+            waitOptions = BuildStatusWaitOptions(waitUntilComplete = true),
+        )
+
+        result["status"] shouldBe "succeeded"
+        result.containsKey("waitTimedOut") shouldBe false
+    }
+
+    @Test
+    fun `waitUntilComplete times out while build is still running`() {
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "running-wait-build",
+                tracker = runningTracker(),
+            ),
+        )
+
+        val result = manager.status(
+            "running-wait-build",
+            OutputLimitOptions(),
+            ProgressResponseOptions(),
+            waitOptions = BuildStatusWaitOptions(
+                waitUntilComplete = true,
+                waitTimeoutMs = 50,
+                pollIntervalMs = 10,
+            ),
+        )
+
+        result["status"] shouldBe "running"
+        result["waitTimedOut"] shouldBe true
     }
 
     @Test
