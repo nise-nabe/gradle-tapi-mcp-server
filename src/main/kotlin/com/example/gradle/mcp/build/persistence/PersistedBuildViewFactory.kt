@@ -42,9 +42,13 @@ internal object PersistedBuildViewFactory {
                     completedTaskCount = 0,
                     runningTaskCount = 0,
                     failedTaskCount = mcp.failedTaskCount,
+                    failedGradleTaskCount = mcp.failedGradleTaskCount,
+                    failedTestCount = mcp.failedTestCount,
                     completedTasks = emptyList(),
                     runningTasks = emptyList(),
                     failedTasks = mcp.failedTasks,
+                    failedGradleTasks = mcp.failedGradleTasks,
+                    failedTestNames = mcp.failedTestNames,
                     recentEvents = emptyList(),
                     totalEventCount = 0,
                     problems = mcp.problems,
@@ -124,9 +128,13 @@ internal object PersistedBuildViewFactory {
                 completedTaskCount = 0,
                 runningTaskCount = 0,
                 failedTaskCount = mcp.failedTaskCount,
+                failedGradleTaskCount = mcp.failedGradleTaskCount,
+                failedTestCount = mcp.failedTestCount,
                 completedTasks = emptyList(),
                 runningTasks = emptyList(),
                 failedTasks = mcp.failedTasks,
+                failedGradleTasks = mcp.failedGradleTasks,
+                failedTestNames = mcp.failedTestNames,
                 recentEvents = emptyList(),
                 totalEventCount = 0,
                 problems = persistedProblems,
@@ -164,9 +172,21 @@ internal object PersistedBuildViewFactory {
             completedTaskCount = maxOf(base.completedTaskCount, fromEvents.completedTaskCount),
             runningTaskCount = fromEvents.runningTaskCount,
             failedTaskCount = maxOf(base.failedTaskCount, fromEvents.failedTaskCount),
+            failedGradleTaskCount = maxOf(base.failedGradleTaskCount, fromEvents.failedGradleTaskCount),
+            failedTestCount = maxOf(base.failedTestCount, fromEvents.failedTestCount),
             completedTasks = fromEvents.completedTasks.ifEmpty { base.completedTasks },
             runningTasks = fromEvents.runningTasks,
             failedTasks = if (base.failedTasks.isNotEmpty()) base.failedTasks else fromEvents.failedTasks,
+            failedGradleTasks = if (base.failedGradleTasks.isNotEmpty()) {
+                base.failedGradleTasks
+            } else {
+                fromEvents.failedGradleTasks
+            },
+            failedTestNames = if (base.failedTestNames.isNotEmpty()) {
+                base.failedTestNames
+            } else {
+                fromEvents.failedTestNames
+            },
             recentEvents = fromEvents.recentEvents,
             totalEventCount = maxOf(base.totalEventCount, fromEvents.totalEventCount),
             failedTests = fromEvents.failedTests,

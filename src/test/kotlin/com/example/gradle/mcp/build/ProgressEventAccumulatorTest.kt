@@ -74,6 +74,35 @@ class ProgressEventAccumulatorTest {
     }
 
     @Test
+    fun `test failures are tracked separately from Gradle task failures`() {
+        val events = listOf(
+            DiskBuildEvent("2026-06-14T10:00:00Z", ProgressEventTypes.TEST_FAIL, "Test com.example.FooTest.bar failed",
+                outcome = "assertion failed",
+                testDetails = TestProgressDetailsSnapshot(
+                    className = "com.example.FooTest",
+                    methodName = "bar",
+                ),
+            ),
+            DiskBuildEvent("2026-06-14T10:00:30Z", ProgressEventTypes.TEST_FAIL, "Test class com.example.FooTest failed"),
+            DiskBuildEvent("2026-06-14T10:01:00Z", ProgressEventTypes.TEST_FAIL, "Test Gradle Test Executor 1 failed"),
+            DiskBuildEvent("2026-06-14T10:01:30Z", ProgressEventTypes.TEST_FAIL, "Test Gradle Test Run :plugin:test failed"),
+            DiskBuildEvent("2026-06-14T10:02:00Z", ProgressEventTypes.TASK_FAIL, "Task :plugin:test failed"),
+        )
+
+        val snapshot = DiskBuildProgress.snapshotFromEvents(
+            events = events,
+            status = BuildProgressTracker.STATUS_FAILED,
+            currentOperation = "Gradle tasks: test",
+        )
+
+        snapshot.failedTaskCount shouldBe 5
+        snapshot.failedGradleTaskCount shouldBe 1
+        snapshot.failedGradleTasks shouldBe listOf(":plugin:test")
+        snapshot.failedTestCount shouldBe 1
+        snapshot.failedTestNames shouldBe listOf("com.example.FooTest.bar")
+    }
+
+    @Test
     fun `running tests clear when Gradle test display names include spaces`() {
         val accumulator = ProgressEventAccumulator()
         accumulator.apply(ProgressEventTypes.TEST_START, "Test com.example.FooTest.my method name")

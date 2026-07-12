@@ -51,6 +51,12 @@ internal fun terminalFailureFields(
         buildMap {
             put("failedTaskCount", snapshot.failedTaskCount)
             put("failedTasks", snapshot.failedTasks)
+            put("failedGradleTaskCount", snapshot.failedGradleTaskCount)
+            put("failedGradleTasks", snapshot.failedGradleTasks)
+            if (snapshot.failedTestCount > 0) {
+                put("failedTestCount", snapshot.failedTestCount)
+                put("failedTestNames", snapshot.failedTestNames)
+            }
             val problems = if (progressOptions.includeProblems) {
                 ProblemsSerializer.mergedDistinct(snapshot.problems, snapshot.liveProblems)
             } else {

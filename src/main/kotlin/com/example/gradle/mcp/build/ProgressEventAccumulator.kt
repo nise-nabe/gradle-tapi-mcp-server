@@ -4,6 +4,7 @@ internal class ProgressEventAccumulator {
     private val completedTasks = LinkedHashSet<String>()
     private val runningTasks = LinkedHashSet<String>()
     private val failedTasks = LinkedHashSet<String>()
+    private val failedGradleTasks = LinkedHashSet<String>()
 
     fun apply(eventType: String, displayName: String) {
         val key = TaskProgressKey.fromDisplayName(displayName)
@@ -19,7 +20,12 @@ internal class ProgressEventAccumulator {
                 runningTasks.remove(key)
                 completedTasks.add(key)
             }
-            ProgressEventTypes.TASK_FAIL, ProgressEventTypes.TEST_FAIL -> {
+            ProgressEventTypes.TASK_FAIL -> {
+                runningTasks.remove(key)
+                failedTasks.add(key)
+                failedGradleTasks.add(key)
+            }
+            ProgressEventTypes.TEST_FAIL -> {
                 runningTasks.remove(key)
                 failedTasks.add(key)
             }
@@ -47,9 +53,13 @@ internal class ProgressEventAccumulator {
             completedTaskCount = completedTasks.size,
             runningTaskCount = runningTasks.size,
             failedTaskCount = failedTasks.size,
+            failedGradleTaskCount = failedGradleTasks.size,
+            failedTestCount = FailedTestSnapshots.methodLevelCount(failedTests),
             completedTasks = completedTasks.toList(),
             runningTasks = runningTasks.toList(),
             failedTasks = failedTasks.toList(),
+            failedGradleTasks = failedGradleTasks.toList(),
+            failedTestNames = FailedTestSnapshots.methodLevelNames(failedTests),
             recentEvents = recentEvents,
             totalEventCount = totalEventCount,
             problems = problems,
