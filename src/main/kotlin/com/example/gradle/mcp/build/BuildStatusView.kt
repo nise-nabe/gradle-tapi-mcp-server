@@ -9,6 +9,7 @@ data class BuildStatusView(
     val tasks: List<String>,
     val selection: TestRunSelection? = null,
     val error: String?,
+    val failureKind: FailureKind? = null,
     val outcome: String?,
     val buildSummary: Map<String, Any?>?,
     val progress: BuildProgressSnapshot?,
@@ -41,6 +42,7 @@ data class BuildStatusView(
                 tasks = record.tasks,
                 selection = record.selection,
                 error = record.errorMessage,
+                failureKind = record.failureKind,
                 outcome = if (isTerminal) {
                     BuildOutputParser.outcomeFromStatus(progress.status)
                 } else {

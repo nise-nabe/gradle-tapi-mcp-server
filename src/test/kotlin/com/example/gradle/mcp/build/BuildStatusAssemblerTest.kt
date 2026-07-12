@@ -268,6 +268,56 @@ class BuildStatusAssemblerTest {
     }
 
     @Test
+    fun `assemble exposes failureKind for test failures without misleading error`() {
+        val response = BuildStatusAssembler.assemble(
+            view = BuildStatusView(
+                buildId = "test-failure-build",
+                kind = "tests",
+                status = BuildProgressTracker.STATUS_FAILED,
+                startedAt = TEST_ISO_START,
+                finishedAt = TEST_ISO_FINISH,
+                tasks = listOf("test"),
+                selection = null,
+                error = null,
+                failureKind = FailureKind.TEST_FAILURE,
+                outcome = "FAILED",
+                buildSummary = mapOf("failureSummary" to listOf(":plugin:test")),
+                progress = BuildProgressSnapshot(
+                    status = BuildProgressTracker.STATUS_FAILED,
+                    currentOperation = null,
+                    completedTaskCount = 1,
+                    runningTaskCount = 0,
+                    failedTaskCount = 1,
+                    completedTasks = emptyList(),
+                    runningTasks = emptyList(),
+                    failedTasks = listOf(":plugin:test"),
+                    recentEvents = emptyList(),
+                    totalEventCount = 1,
+                    failedTests = listOf(
+                        failedTestSnapshot(
+                            className = "com.example.FooTest",
+                            methodName = "bar",
+                            failureMessage = "assertion failed",
+                        ),
+                    ),
+                ),
+                progressAvailable = true,
+                stdout = CapturedStreamSnapshot(
+                    text = "8 tests completed, 1 failed\nBUILD FAILED in 27s\n",
+                    totalChars = 40,
+                ),
+                stderr = CapturedStreamSnapshot(text = "", totalChars = 0),
+                statusSource = BuildStatusView.SOURCE_MEMORY,
+            ),
+            outputLimit = OutputLimitOptions(),
+            progressOptions = ProgressResponseOptions(),
+        )
+
+        response["failureKind"] shouldBe "TEST_FAILURE"
+        response.containsKey("error") shouldBe false
+    }
+
+    @Test
     fun `assemble includes failedTests summary when requested`() {
         val response = BuildStatusAssembler.assemble(
             view = BuildStatusView(

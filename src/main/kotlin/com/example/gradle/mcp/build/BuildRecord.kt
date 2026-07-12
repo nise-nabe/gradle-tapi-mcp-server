@@ -28,6 +28,9 @@ data class BuildRecord(
     @Volatile
     var errorMessage: String? = null
 
+    @Volatile
+    var failureKind: FailureKind? = null
+
     fun matchesProject(projectDirectory: File?): Boolean =
         projectDirectory == null ||
             ProjectDirectoryResolver.sameProject(this.projectDirectory, projectDirectory)

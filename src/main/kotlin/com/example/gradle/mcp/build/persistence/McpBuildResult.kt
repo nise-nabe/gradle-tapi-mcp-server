@@ -21,6 +21,7 @@ data class McpBuildResult(
     val status: String,
     val outcome: String? = null,
     val error: String? = null,
+    val failureKind: String? = null,
     @Serializable(with = DynamicMapSerializer::class)
     val buildSummary: Map<String, Any?>? = null,
     val failedTaskCount: Int = 0,
