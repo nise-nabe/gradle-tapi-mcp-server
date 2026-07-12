@@ -42,6 +42,8 @@ internal fun outputProperties(): Map<String, Any> =
             "Max chars per stream when includeOutput=true (default ${OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS})",
         ),
         "tailOutput" to booleanProperty("Keep tail when truncating output. Default true."),
+        "sinceStdoutOffset" to integerProperty("Delta stdout from char offset (with includeOutput)."),
+        "sinceStderrOffset" to integerProperty("Delta stderr from char offset (with includeOutput)."),
     )
 
 internal fun listBuildsSchema(): Map<String, Any> =
@@ -69,6 +71,9 @@ internal fun buildStatusSchema(): Map<String, Any> =
         properties = progressProperties() + outputProperties() + mapOf(
             "buildId" to stringProperty("Build ID from background gradle_run_tasks or gradle_run_tests"),
             "projectDirectory" to optionalProjectDirectoryProperty(),
+            "waitUntilComplete" to booleanProperty("Block until terminal status or timeout. Default false."),
+            "waitTimeoutMs" to integerProperty("Max wait ms (default 120000, max 300000)."),
+            "pollIntervalMs" to integerProperty("Poll interval ms while waiting (default 2000)."),
         ),
     )
 
@@ -153,6 +158,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
     ) { args ->
         val outputLimit = OutputLimitOptions.fromArgs(args)
         val progressOptions = ProgressResponseOptions.fromArgs(args)
+        val waitOptions = BuildStatusWaitOptions.fromArgs(args)
         val projectScope = ProjectDirectoryScope(runtime.connectionManager)
         val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
             args,
@@ -164,6 +170,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
                 outputLimit,
                 progressOptions,
                 projectDirectory,
+                waitOptions,
             ),
         )
     }

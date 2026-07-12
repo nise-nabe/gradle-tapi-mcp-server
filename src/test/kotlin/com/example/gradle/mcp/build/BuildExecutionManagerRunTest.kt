@@ -397,6 +397,52 @@ class BuildExecutionManagerRunTest {
     }
 
     @Test
+    fun `waitUntilComplete returns immediately for terminal build`() {
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "completed-wait-build",
+                tracker = succeededTracker(),
+            ) {
+                finishedAt = Instant.now()
+            },
+        )
+
+        val result = manager.status(
+            "completed-wait-build",
+            OutputLimitOptions(),
+            ProgressResponseOptions(),
+            waitOptions = BuildStatusWaitOptions(waitUntilComplete = true),
+        )
+
+        result["status"] shouldBe "succeeded"
+        result.containsKey("waitTimedOut") shouldBe false
+    }
+
+    @Test
+    fun `waitUntilComplete times out while build is still running`() {
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "running-wait-build",
+                tracker = runningTracker(),
+            ),
+        )
+
+        val result = manager.status(
+            "running-wait-build",
+            OutputLimitOptions(),
+            ProgressResponseOptions(),
+            waitOptions = BuildStatusWaitOptions(
+                waitUntilComplete = true,
+                waitTimeoutMs = 50,
+                pollIntervalMs = 10,
+            ),
+        )
+
+        result["status"] shouldBe "running"
+        result["waitTimedOut"] shouldBe true
+    }
+
+    @Test
     fun `completed failed build status includes failure fields without includeProgress`() {
         val streams = CapturingStreams().also {
             it.appendStdoutForTests(

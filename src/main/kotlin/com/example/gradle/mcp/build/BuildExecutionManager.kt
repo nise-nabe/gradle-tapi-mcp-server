@@ -166,6 +166,28 @@ class BuildExecutionManager(
         outputLimit: OutputLimitOptions,
         progressOptions: ProgressResponseOptions,
         projectDirectoryHint: File? = null,
+        waitOptions: BuildStatusWaitOptions = BuildStatusWaitOptions(),
+    ): Map<String, Any?> {
+        if (!waitOptions.waitUntilComplete) {
+            return statusOnce(buildId, outputLimit, progressOptions, projectDirectoryHint)
+        }
+        val deadline = System.currentTimeMillis() + waitOptions.waitTimeoutMs
+        var latest = statusOnce(buildId, outputLimit, progressOptions, projectDirectoryHint)
+        while (latest["status"] == BuildProgressTracker.STATUS_RUNNING) {
+            if (System.currentTimeMillis() >= deadline) {
+                return latest + mapOf("waitTimedOut" to true)
+            }
+            Thread.sleep(waitOptions.pollIntervalMs)
+            latest = statusOnce(buildId, outputLimit, progressOptions, projectDirectoryHint)
+        }
+        return latest
+    }
+
+    private fun statusOnce(
+        buildId: String,
+        outputLimit: OutputLimitOptions,
+        progressOptions: ProgressResponseOptions,
+        projectDirectoryHint: File? = null,
     ): Map<String, Any?> {
         val record = builds[buildId]
         projectDirectoryHint?.let { hint ->

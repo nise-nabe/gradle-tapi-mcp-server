@@ -40,4 +40,18 @@ class OutputLimitOptionsTest {
 
         negativeLimit.maxOutputChars shouldBe OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS
     }
+
+    @Test
+    fun `fromArgs parses since offsets for delta output`() {
+        val options = OutputLimitOptions.fromArgs(
+            mapOf(
+                "includeOutput" to true,
+                "sinceStdoutOffset" to 120,
+                "sinceStderrOffset" to 0,
+            ),
+        )
+
+        options.sinceStdoutOffset shouldBe 120
+        options.sinceStderrOffset shouldBe 0
+    }
 }
