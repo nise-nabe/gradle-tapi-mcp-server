@@ -6,6 +6,7 @@ import com.example.gradle.mcp.build.BuildProblemSnapshot
 import com.example.gradle.mcp.build.BuildStatusView
 import com.example.gradle.mcp.build.DownloadProgressSnapshot
 import com.example.gradle.mcp.build.FailedTestSnapshot
+import com.example.gradle.mcp.build.FailedTestSnapshots
 import com.example.gradle.mcp.build.ProgressEventSnapshot
 import com.example.gradle.mcp.build.ProgressEventTypes
 import com.example.gradle.mcp.build.TestProgressDetailsSnapshot
@@ -312,6 +313,7 @@ class ProgressResponseOptionsTest {
             completedTaskCount = 1,
             runningTaskCount = 0,
             failedTaskCount = 1,
+            failedTestCount = 1,
             completedTasks = emptyList(),
             runningTasks = emptyList(),
             failedTasks = listOf(":plugin:test"),
@@ -339,6 +341,38 @@ class ProgressResponseOptionsTest {
         (testFailures.single() as Map<*, *>)["methodName"] shouldBe "bar"
         (testFailures.single() as Map<*, *>)["exceptionType"] shouldBe "junit.framework.AssertionFailedError"
         (testFailures.single() as Map<*, *>)["line"] shouldBe 208
+    }
+
+    @Test
+    fun `terminalFailureFields keeps failedTestCount when testFailures list is capped`() {
+        val failedTests = (1..FailedTestSnapshots.MAX_TRACKED_FAILED_TESTS).map { index ->
+            FailedTestSnapshot(
+                className = "com.example.Test$index",
+                methodName = "fails$index",
+                displayName = "com.example.Test$index.fails$index",
+                failureMessage = "failure $index",
+            )
+        }
+        val snapshot = BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_FAILED,
+            currentOperation = null,
+            completedTaskCount = 1,
+            runningTaskCount = 0,
+            failedTaskCount = 1,
+            failedTestCount = 11,
+            completedTasks = emptyList(),
+            runningTasks = emptyList(),
+            failedTasks = listOf(":plugin:test"),
+            recentEvents = emptyList(),
+            totalEventCount = 11,
+            failedTests = failedTests,
+        )
+
+        val fields = terminalFailureFields(snapshot, ProgressResponseOptions())
+
+        fields["failedTestCount"] shouldBe 11
+        val testFailures = fields["testFailures"] as List<*>
+        testFailures.size shouldBe FailedTestSnapshots.MAX_TRACKED_FAILED_TESTS
     }
 
     @Test

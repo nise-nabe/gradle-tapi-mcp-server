@@ -77,7 +77,6 @@ internal fun terminalFailureFields(
             val testFailures = FailedTestSnapshots.methodLevelTestFailures(snapshot.failedTests)
             if (snapshot.status == BuildProgressTracker.STATUS_FAILED && testFailures.isNotEmpty()) {
                 put("testFailures", testFailures)
-                put("failedTestCount", testFailures.size)
             }
         }
     }
