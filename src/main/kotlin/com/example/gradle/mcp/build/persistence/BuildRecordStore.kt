@@ -5,6 +5,7 @@ import com.example.gradle.mcp.build.BuildOutputParser
 import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildFailureClassifier
+import com.example.gradle.mcp.build.FailedTestSnapshots
 import com.example.gradle.mcp.build.ProgressEventTypes
 import com.example.gradle.mcp.build.CapturedStreamSnapshot
 import com.example.gradle.mcp.build.TestProgressDetailsExtractor
@@ -71,6 +72,7 @@ class BuildRecordStore {
         )
         failureKind = classified.failureKind?.name
         error = classified.error
+        val methodLevelFailures = FailedTestSnapshots.methodLevelFailures(progress.failedTests)
         val provisionalResult = McpBuildResult(
             buildId = record.id,
             kind = record.kind.name.lowercase(),
@@ -91,6 +93,7 @@ class BuildRecordStore {
             failedTasks = progress.failedTasks,
             failedGradleTaskCount = progress.failedGradleTaskCount,
             failedGradleTasks = progress.failedGradleTasks,
+            testFailures = methodLevelFailures,
             failedTestCount = progress.failedTestCount,
             failedTestNames = progress.failedTestNames,
             problems = progress.problems,

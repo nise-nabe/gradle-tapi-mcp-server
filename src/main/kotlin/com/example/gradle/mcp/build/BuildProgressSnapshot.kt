@@ -1,5 +1,7 @@
 package com.example.gradle.mcp.build
 
+import kotlinx.serialization.Serializable
+
 data class TestProgressDetailsSnapshot(
     val className: String? = null,
     val methodName: String? = null,
@@ -8,13 +10,18 @@ data class TestProgressDetailsSnapshot(
     val sourceLine: Int? = null,
     val sourceColumn: Int? = null,
     val failureMessage: String? = null,
+    val exceptionType: String? = null,
 )
 
+@Serializable
 data class FailedTestSnapshot(
     val className: String? = null,
     val methodName: String? = null,
     val displayName: String,
     val failureMessage: String? = null,
+    val exceptionType: String? = null,
+    val sourceFile: String? = null,
+    val line: Int? = null,
 ) {
     fun stableKey(): String = "${className.orEmpty()}|${methodName.orEmpty()}|$displayName"
 
@@ -24,6 +31,16 @@ data class FailedTestSnapshot(
             className != null -> className
             methodName != null -> methodName
             else -> null
+        }
+
+    fun toTestFailureMap(): Map<String, Any?> =
+        buildMap {
+            className?.let { put("className", it) }
+            methodName?.let { put("methodName", it) }
+            exceptionType?.let { put("exceptionType", it) }
+            failureMessage?.let { put("message", it) }
+            sourceFile?.let { put("sourceFile", it) }
+            line?.let { put("line", it) }
         }
 }
 

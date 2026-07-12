@@ -277,6 +277,7 @@ if (!configurationCacheRequested) {
                     ]
                     if (type == "TEST_FAIL") {
                         event.failureMessage = result.exception?.message
+                        event.exceptionType = result.exception?.class?.name
                     }
                     gradle.ext.mcpAppendEvent(event)
                 }

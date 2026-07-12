@@ -15,6 +15,7 @@ internal object TestProgressDetailsExtractor {
     fun fromGradleEvent(
         event: TestProgressEvent,
         failureMessage: String? = null,
+        exceptionType: String? = null,
     ): TestProgressDetailsSnapshot? {
         val descriptor = event.descriptor as? JvmTestOperationDescriptor
         val source = descriptor?.source
@@ -59,6 +60,7 @@ internal object TestProgressDetailsExtractor {
             sourceLine = sourcePosition?.line,
             sourceColumn = sourcePosition?.column,
             failureMessage = failureMessage,
+            exceptionType = exceptionType,
         ).takeUnlessBlank()
     }
 
@@ -82,6 +84,7 @@ internal object TestProgressDetailsExtractor {
             sourceLine = (map["sourceLine"] as? Number)?.toInt(),
             sourceColumn = (map["sourceColumn"] as? Number)?.toInt(),
             failureMessage = failureMessage,
+            exceptionType = map["exceptionType"] as? String,
         ).takeUnlessBlank()
     }
 }
@@ -96,7 +99,8 @@ internal fun TestProgressDetailsSnapshot.takeUnlessBlank(): TestProgressDetailsS
         sourcePath == null &&
         sourceLine == null &&
         sourceColumn == null &&
-        failureMessage == null
+        failureMessage == null &&
+        exceptionType == null
     ) {
         null
     } else {

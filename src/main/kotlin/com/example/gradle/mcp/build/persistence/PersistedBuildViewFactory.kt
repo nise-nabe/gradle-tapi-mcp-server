@@ -54,6 +54,7 @@ internal object PersistedBuildViewFactory {
                     recentEvents = emptyList(),
                     totalEventCount = 0,
                     problems = mcp.problems,
+                    failedTests = mcp.testFailures,
                 )
             }
         } else {
@@ -150,6 +151,7 @@ internal object PersistedBuildViewFactory {
                 recentEvents = emptyList(),
                 totalEventCount = 0,
                 problems = persistedProblems,
+                failedTests = mcp.testFailures,
             )
         }
     }

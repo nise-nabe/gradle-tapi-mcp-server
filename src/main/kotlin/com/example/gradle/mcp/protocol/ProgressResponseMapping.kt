@@ -5,6 +5,7 @@ import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildStatusView
 import com.example.gradle.mcp.build.FailedTestSnapshot
+import com.example.gradle.mcp.build.FailedTestSnapshots
 import com.example.gradle.mcp.build.TestProgressDetailsSnapshot
 
 internal fun optionalProgressFields(
@@ -72,6 +73,10 @@ internal fun terminalFailureFields(
                 if (failedTests.isNotEmpty()) {
                     put("failedTests", failedTests)
                 }
+            }
+            val testFailures = FailedTestSnapshots.methodLevelTestFailures(snapshot.failedTests)
+            if (snapshot.status == BuildProgressTracker.STATUS_FAILED && testFailures.isNotEmpty()) {
+                put("testFailures", testFailures)
             }
         }
     }
