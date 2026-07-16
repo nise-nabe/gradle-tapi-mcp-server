@@ -45,15 +45,13 @@ internal object McpToolDescriptions {
         "Cancel a build by buildId. Finished builds return not_running. Poll gradle_get_build_status."
 
     const val BUILD_STATUS =
-        "Poll background build by buildId (memory/disk; no Tooling API). " +
-            "waitUntilComplete is server-side/capped—prefer short waits or plain polls. " +
-            "Set includeOutput/includeProgress as needed."
+        "Poll build by buildId (memory/disk; no Tooling API). " +
+            "waitUntilComplete is capped—prefer short polls. Optional output/progress."
 
     const val RUN_TASKS =
         "Run Gradle tasks. background returns buildId; queueIfBusy enqueues when busy."
 
     const val RUN_TESTS =
-        "Run JVM tests by class, method, or pattern. taskPath scopes one Test task; " +
-            "tasks+includePatterns can batch suites (e.g. :test and :fastTest). " +
-            "Multi-project needs taskPath/tasks. queueIfBusy enqueues when busy."
+        "Run JVM tests by class, method, or pattern. taskPath/tasks scope Test suites; " +
+            "queueIfBusy enqueues when busy."
 }
