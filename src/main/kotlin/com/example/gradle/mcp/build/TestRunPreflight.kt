@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.GradleMcpRuntime
+import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.connection.ProjectLifecycleGuard
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
@@ -41,12 +42,19 @@ internal object TestRunPreflight {
 }
 
 context(runtime: GradleMcpRuntime)
-internal fun preflightRunTests(projectDirectory: File, options: TestRunOptions) {
+internal fun preflightRunTests(
+    projectDirectory: File,
+    options: TestRunOptions,
+    deferScopeModelCheck: Boolean = false,
+) {
     if (!TestRunPreflight.requiresProjectScopeCheck(options)) {
         return
     }
     if (runtime.connectionManager.cachedHasSubprojects(projectDirectory) == true) {
         TestRunPreflight.rejectUnscopedMultiProject()
+    }
+    if (deferScopeModelCheck) {
+        return
     }
     ProjectLifecycleGuard.withNoActiveBuild(
         projectDirectory = projectDirectory,
@@ -57,13 +65,27 @@ internal fun preflightRunTests(projectDirectory: File, options: TestRunOptions) 
                 "or wait for it to finish."
         },
     ) {
-        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-            val project = connection.getModel(GradleProject::class.java)
-            if (project.children.isEmpty()) {
-                return@withConnectionResult
-            }
-            runtime.connectionManager.cacheHasSubprojects(projectDirectory, hasSubprojects = true)
-            TestRunPreflight.validateProjectScope(options, project)
+        ensureTestRunProjectScope(runtime.connectionManager, projectDirectory, options)
+    }
+}
+
+internal fun ensureTestRunProjectScope(
+    connectionManager: GradleConnectionManager,
+    projectDirectory: File,
+    options: TestRunOptions,
+) {
+    if (!TestRunPreflight.requiresProjectScopeCheck(options)) {
+        return
+    }
+    if (connectionManager.cachedHasSubprojects(projectDirectory) == true) {
+        TestRunPreflight.rejectUnscopedMultiProject()
+    }
+    connectionManager.withConnectionResult(projectDirectory) { connection ->
+        val project = connection.getModel(GradleProject::class.java)
+        if (project.children.isEmpty()) {
+            return@withConnectionResult
         }
+        connectionManager.cacheHasSubprojects(projectDirectory, hasSubprojects = true)
+        TestRunPreflight.validateProjectScope(options, project)
     }
 }

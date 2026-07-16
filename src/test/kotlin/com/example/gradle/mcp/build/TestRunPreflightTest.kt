@@ -87,6 +87,29 @@ class TestRunPreflightTest {
     }
 
     @Test
+    fun `preflightRunTests skips active build guard when deferScopeModelCheck is true`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            connection = gradleProjectConnectionProxy(gradleProjectProxy()),
+            projectDirectory = projectDirectory,
+        )
+        val buildManager = BuildExecutionManager(connectionManager)
+        buildManager.seedRunningBuildForTests(
+            com.example.gradle.mcp.support.testBuildRecord(
+                id = "running-build",
+                tracker = com.example.gradle.mcp.support.runningTracker(),
+                projectDirectory = projectDirectory.absolutePath,
+            ),
+        )
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildManager)
+        val options = TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest")))
+
+        with(runtime) {
+            preflightRunTests(projectDirectory, options, deferScopeModelCheck = true)
+        }
+    }
+
+    @Test
     fun `preflightRunTests detects newly added subprojects when false was never cached`() {
         val getModelCalls = AtomicInteger(0)
         val singleProject = gradleProjectProxy()

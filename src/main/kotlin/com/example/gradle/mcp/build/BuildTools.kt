@@ -221,9 +221,13 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
             outputLimit = OutputLimitOptions.fromArgs(args),
             progressOptions = ProgressResponseOptions.fromArgs(args),
         )
-        preflightRunTests(projectDirectory, testOptions)
         val background = args.optionalBoolean("background", default = false)
         val queueIfBusy = requireQueueIfBusyWithBackground(args)
+        preflightRunTests(
+            projectDirectory,
+            testOptions,
+            deferScopeModelCheck = background && queueIfBusy,
+        )
         val response = if (background) {
             runtime.buildExecutionManager.startBackground(request, notifier, queueIfBusy)
         } else {

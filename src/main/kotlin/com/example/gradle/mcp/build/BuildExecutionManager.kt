@@ -440,6 +440,17 @@ class BuildExecutionManager(
         }
     }
 
+    /**
+     * Promote queued builds after lifecycle reset or disconnect.
+     * Call only after releasing any per-project lifecycle lock held by the caller.
+     */
+    fun wakeQueuedBuilds(projectDirectory: File? = null) {
+        if (projectDirectory != null) {
+            drainProjectQueue(projectDirectory)
+        }
+        drainAllProjectQueues()
+    }
+
     fun onDisconnect(projectDirectory: File? = null) {
         resetBuildState("Gradle connection closed", projectDirectory)
         if (projectDirectory == null) {
@@ -460,6 +471,7 @@ class BuildExecutionManager(
             currentExecutor.shutdown()
             currentExecutor
         }
+        wakeQueuedBuilds()
         try {
             if (!executorToAwait.awaitTermination(5, TimeUnit.SECONDS)) {
                 synchronized(ProjectLifecycleLock.global()) {
@@ -494,7 +506,7 @@ class BuildExecutionManager(
             }
             .forEach { record ->
                 record.cancellationTokenSource.cancel()
-                finalizeBuild(record, BuildTerminalOutcome.Cancelled(reason))
+                finalizeBuild(record, BuildTerminalOutcome.Cancelled(reason), drainOtherProjectQueues = false)
             }
     }
 
@@ -506,7 +518,11 @@ class BuildExecutionManager(
         data class Cancelled(val message: String) : BuildTerminalOutcome
     }
 
-    private fun finalizeBuild(record: BuildRecord, outcome: BuildTerminalOutcome): Boolean {
+    private fun finalizeBuild(
+        record: BuildRecord,
+        outcome: BuildTerminalOutcome,
+        drainOtherProjectQueues: Boolean = true,
+    ): Boolean {
         if (record.progressTracker.snapshot().status != BuildProgressTracker.STATUS_RUNNING) {
             return false
         }
@@ -545,7 +561,7 @@ class BuildExecutionManager(
         }
         rememberCompletedBuild(record, outcome)
         buildRecordStore.writeMcpResult(record, record.progressTracker.snapshot())
-        afterBuildSlotFreed(record)
+        afterBuildSlotFreed(record, drainOtherProjectQueues)
         return true
     }
 
@@ -559,11 +575,13 @@ class BuildExecutionManager(
         return true
     }
 
-    private fun afterBuildSlotFreed(record: BuildRecord) {
+    private fun afterBuildSlotFreed(record: BuildRecord, drainOtherProjectQueues: Boolean) {
         val projectDirectory = record.projectDirectory?.let(::File) ?: return
         drainProjectQueue(projectDirectory)
-        // Global executor may have freed a slot used by another project's requeued head.
-        drainAllProjectQueues()
+        if (drainOtherProjectQueues) {
+            // Global executor may have freed a slot used by another project's requeued head.
+            drainAllProjectQueues()
+        }
     }
 
     internal fun lastCompletedBuildSnapshot(projectDirectory: File): CompletedBuildSnapshot? =
@@ -660,6 +678,11 @@ class BuildExecutionManager(
                     launcher.run()
                 }
                 BuildKind.TESTS -> {
+                    ensureTestRunProjectScope(
+                        connectionManager,
+                        request.projectDirectory,
+                        TestRunOptions(selection = request.selection, tasks = request.tasks),
+                    )
                     val launcher = configureTestLauncher(connection.newTestLauncher(), request)
                     configureLauncher(launcher, record, request, streams, tracker)
                     launcher.run()

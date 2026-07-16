@@ -19,6 +19,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -137,23 +139,24 @@ class BuildExecutionManagerQueueTest {
     }
 
     @Test
-    fun `listBuilds exposes queue fields only for queued builds`() {
+    fun `listBuilds exposes queue fields only for queued builds`(@TempDir projectDirectory: File) {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedConnectionForTests(
             blockingProjectConnection(CountDownLatch(1), CountDownLatch(1)),
+            projectDirectory = projectDirectory,
         )
         val manager = BuildExecutionManager(connectionManager)
         manager.seedRunningBuildForTests(
             testBuildRecord(
                 id = "running-build",
                 tracker = runningTracker(),
-                projectDirectory = testProjectDirectory.absolutePath,
+                projectDirectory = projectDirectory.absolutePath,
             ),
         )
 
         val queued = manager.startBackground(
             request = BuildRunRequest(
-                projectDirectory = testProjectDirectory,
+                projectDirectory = projectDirectory,
                 kind = BuildKind.TASKS,
                 tasks = listOf("queued-task"),
             ),
@@ -161,7 +164,7 @@ class BuildExecutionManagerQueueTest {
             queueIfBusy = true,
         )
 
-        val builds = (manager.listBuilds(testProjectDirectory, limit = 10)["builds"] as List<Map<*, *>>)
+        val builds = (manager.listBuilds(projectDirectory, limit = 10)["builds"] as List<Map<*, *>>)
         val running = builds.single { it["buildId"] == "running-build" }
         val queuedEntry = builds.single { it["buildId"] == queued["buildId"] }
 
@@ -398,6 +401,78 @@ class BuildExecutionManagerQueueTest {
             releaseBuild.countDown()
             manager.shutdown()
         }
+    }
+
+    @Test
+    fun `queueIfBusy enqueues unscoped testClasses when project already running`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            blockingProjectConnection(CountDownLatch(1), CountDownLatch(1)),
+        )
+        val manager = BuildExecutionManager(connectionManager)
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "running-build",
+                tracker = runningTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+            ),
+        )
+
+        val queued = manager.startBackground(
+            request = BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TESTS,
+                selection = TestRunSelection.Classes(listOf("com.example.FooTest")),
+            ),
+            notifier = null,
+            queueIfBusy = true,
+        )
+
+        queued["status"] shouldBe BuildProgressTracker.STATUS_QUEUED
+        queued["queuePosition"] shouldBe 1
+        queued["queuedBehindBuildId"] shouldBe "running-build"
+    }
+
+    @Test
+    fun `wakeQueuedBuilds drains without holding another project lock`() {
+        val projectA = File("/tmp/project-a").absoluteFile
+        val projectB = File("/tmp/project-b").absoluteFile
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            blockingProjectConnection(CountDownLatch(1), CountDownLatch(1)),
+            projectDirectory = projectA,
+        )
+        connectionManager.seedConnectionForTests(
+            blockingProjectConnection(CountDownLatch(1), CountDownLatch(1)),
+            projectDirectory = projectB,
+        )
+        val manager = BuildExecutionManager(connectionManager)
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "running-a",
+                tracker = runningTracker(),
+                projectDirectory = projectA.absolutePath,
+            ),
+        )
+        manager.seedQueuedBuildForTests(
+            testBuildRecord(
+                id = "queued-b",
+                tracker = queuedTracker(),
+                projectDirectory = projectB.absolutePath,
+            ),
+            request = BuildRunRequest(
+                projectDirectory = projectB,
+                kind = BuildKind.TASKS,
+                tasks = listOf("compileKotlin"),
+            ),
+        )
+
+        synchronized(com.example.gradle.mcp.connection.ProjectLifecycleLock.forProject(projectA)) {
+            manager.resetBuildState("simulated disconnect", projectA)
+        }
+        manager.wakeQueuedBuilds(projectA)
+
+        waitUntilStatus(manager, "queued-b", BuildProgressTracker.STATUS_RUNNING)
     }
 
     @Test
