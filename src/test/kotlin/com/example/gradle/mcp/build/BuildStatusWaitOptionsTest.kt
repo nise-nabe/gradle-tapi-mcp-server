@@ -11,6 +11,8 @@ class BuildStatusWaitOptionsTest {
         options.waitUntilComplete shouldBe false
         options.waitTimeoutMs shouldBe BuildStatusWaitOptions.DEFAULT_WAIT_TIMEOUT_MS
         options.pollIntervalMs shouldBe BuildStatusWaitOptions.DEFAULT_POLL_INTERVAL_MS
+        BuildStatusWaitOptions.DEFAULT_WAIT_TIMEOUT_MS shouldBe 30_000L
+        BuildStatusWaitOptions.MAX_WAIT_TIMEOUT_MS shouldBe 60_000L
     }
 
     @Test

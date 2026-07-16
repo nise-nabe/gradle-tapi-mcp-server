@@ -49,7 +49,10 @@ internal object BuildStatusAssembler {
             response["progressAvailable"] = view.progressAvailable
         }
         view.error?.let { response["error"] = it }
-        view.failureKind?.let { response["failureKind"] = it.name }
+        view.failureKind?.let { kind ->
+            response["failureKind"] = kind.name
+            response["failureCategory"] = kind.category
+        }
         view.outcome?.let { response["outcome"] = it }
 
         if (

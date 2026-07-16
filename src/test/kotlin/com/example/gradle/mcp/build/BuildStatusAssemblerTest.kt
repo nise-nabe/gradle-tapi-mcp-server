@@ -314,6 +314,7 @@ class BuildStatusAssemblerTest {
         )
 
         response["failureKind"] shouldBe "TEST_FAILURE"
+        response["failureCategory"] shouldBe "TEST"
         response.containsKey("error") shouldBe false
     }
 

@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.build
 
 import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
@@ -42,6 +43,7 @@ class BuildFailureClassifierTest {
         )
 
         classified.failureKind shouldBe FailureKind.TEST_FAILURE
+        classified.failureKind.shouldNotBeNull().category shouldBe "TEST"
         classified.error.shouldBeNull()
     }
 
@@ -56,6 +58,7 @@ class BuildFailureClassifierTest {
         )
 
         classified.failureKind shouldBe FailureKind.CONNECTION_FAILURE
+        classified.failureKind.shouldNotBeNull().category shouldBe "TOOLING_CONNECTION"
         classified.error shouldBe "Could not execute tests using connection to Gradle distribution 'https://services.gradle.org/distributions/gradle-9.6.1-bin.zip'."
     }
 
@@ -81,6 +84,7 @@ class BuildFailureClassifierTest {
         )
 
         classified.failureKind shouldBe FailureKind.TASK_FAILURE
+        classified.failureKind.shouldNotBeNull().category shouldBe "GRADLE_TASK"
         classified.error shouldBe "Execution failed for task ':app:compileJava'."
     }
 
@@ -95,6 +99,7 @@ class BuildFailureClassifierTest {
         )
 
         classified.failureKind shouldBe FailureKind.CANCELLED
+        classified.failureKind.shouldNotBeNull().category shouldBe "CANCELLED"
         classified.error shouldBe "Build cancelled"
     }
 }

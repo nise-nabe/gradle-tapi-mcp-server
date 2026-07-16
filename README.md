@@ -116,9 +116,23 @@ For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` o
 - `stdout`/`stderr` only when `includeOutput: true` — live partial output while running only when the MCP server still holds the in-memory record; disk-only polls return streams after MCP finalizes logs at build end
 - optional `projectDirectory` when the in-memory record was evicted and the connected project differs (disk-only lookup)
 - `sinceStdoutOffset` / `sinceStderrOffset` with `includeOutput: true` for incremental `stdoutDelta` / `stderrDelta` polling (avoids re-reading prior log prefixes)
-- `waitUntilComplete: true` with optional `waitTimeoutMs` / `pollIntervalMs` to block until the build finishes in one MCP call
+- `waitUntilComplete: true` with optional `waitTimeoutMs` (default `30000`, max `60000`) / `pollIntervalMs` for a **short server-side** wait. This wait is independent of the MCP client/host request timeout: do not rely on one long wait for multi-minute builds. Prefer plain polls (`waitUntilComplete` omitted/false) or short waits; on timeout the response includes `waitTimedOut`, `waitedMs`, and a `hint` to poll again. Non-wait status polls read memory/disk only and never block on the Tooling API.
 
-Build records persist under `.gradle/mcp-builds/<buildId>/`. Terminal status prefers `gradle-result.json` (Gradle init script) over stale MCP memory. When Gradle still reports `running` but MCP already finalized (e.g. disconnect) and `events.ndjson` shows no activity after MCP's `finishedAt`, MCP's terminal status is used instead (daemon likely dead). Terminal `buildSummary` follows the winning terminal authority: when Gradle's `gradle-result.json` is terminal, parse the fullest available stdout (`stdout.log` and any richer in-memory capture); stale `mcp-result.json` summaries are ignored. When MCP finalized the build, use `mcp-result.json`, then parsed `stdout.log` as fallback. Gradle-terminal failed builds include `failedTaskCount` / `failedTasks` from `events.ndjson` when present. Failed test runs also expose structured `testFailures` (class, method, exception, source line) and `failedTestCount` without enabling full stdout.
+Build records persist under `.gradle/mcp-builds/<buildId>/`. Terminal status prefers `gradle-result.json` (Gradle init script) over stale MCP memory. When Gradle still reports `running` but MCP already finalized (e.g. disconnect) and `events.ndjson` shows no activity after MCP's `finishedAt`, MCP's terminal status is used instead (daemon likely dead). Terminal `buildSummary` follows the winning terminal authority: when Gradle's `gradle-result.json` is terminal, parse the fullest available stdout (`stdout.log` and any richer in-memory capture); stale `mcp-result.json` summaries are ignored. When MCP finalized the build, use `mcp-result.json`, then parsed `stdout.log` as fallback. Gradle-terminal failed builds include `failedTaskCount` / `failedTasks` from `events.ndjson` when present. Failed test runs also expose structured `testFailures` (class, method, exception, source line) and `failedTestCount` without enabling full stdout. Terminal failures also include `failureKind` / `failureCategory` (`TEST`, `GRADLE_TASK`, `TOOLING_CONNECTION`, `CANCELLED`) for agent branching.
+
+The single-flight gate (one MCP build per `projectDirectory`) releases as soon as the build reaches a terminal status in memory—there is no grace window. Serialize `gradle_run_tasks` / `gradle_run_tests` across turns after a terminal poll; parallel tool calls against the same project in one agent turn are unsupported and return `BUILD_ALREADY_RUNNING`.
+
+### `gradle_run_tests` selectors
+
+| Goal | Use |
+|------|-----|
+| One Test task + class list | `taskPath` + `testClasses` |
+| One Test task + method map | `taskPath` + `testMethods` |
+| Custom `JvmTestSuite` (e.g. `fastTest`) | Same as above with `taskPath: ":mod:fastTest"`, or `tasks: [":mod:fastTest"]` + `includePatterns` |
+| Several Test tasks in **one** MCP build | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
+| Multi-project without scoping | Avoid unscoped `testClasses`/`testMethods` — returns `INVALID_ARGUMENT` |
+
+Exactly one of `testClasses`, `testMethods`, or `includePattern(s)` is required. Patterns require `tasks`.
 
 When the MCP client supplies a progress token, the server may also emit MCP progress/logging notifications during the run.
 

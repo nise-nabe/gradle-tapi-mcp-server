@@ -171,11 +171,17 @@ class BuildExecutionManager(
         if (!waitOptions.waitUntilComplete) {
             return statusOnce(buildId, outputLimit, progressOptions, projectDirectoryHint)
         }
-        val deadline = System.currentTimeMillis() + waitOptions.waitTimeoutMs
+        val waitStartedAt = System.currentTimeMillis()
+        val deadline = waitStartedAt + waitOptions.waitTimeoutMs
         var latest = statusOnce(buildId, outputLimit, progressOptions, projectDirectoryHint)
         while (latest["status"] == BuildProgressTracker.STATUS_RUNNING) {
-            if (System.currentTimeMillis() >= deadline) {
-                return latest + mapOf("waitTimedOut" to true)
+            val now = System.currentTimeMillis()
+            if (now >= deadline) {
+                return latest + mapOf(
+                    "waitTimedOut" to true,
+                    "waitedMs" to (now - waitStartedAt),
+                    "hint" to BuildStatusWaitOptions.WAIT_TIMEOUT_HINT,
+                )
             }
             Thread.sleep(waitOptions.pollIntervalMs)
             latest = statusOnce(buildId, outputLimit, progressOptions, projectDirectoryHint)

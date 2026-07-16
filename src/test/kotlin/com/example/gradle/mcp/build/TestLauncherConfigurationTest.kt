@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.build
 
+import com.example.gradle.mcp.build.support.RecordedTestSpec
 import com.example.gradle.mcp.build.support.TestLauncherCall
 import com.example.gradle.mcp.build.support.recordingTestLauncher
 import com.example.gradle.mcp.support.testProjectDirectory
@@ -69,5 +70,27 @@ class TestLauncherConfigurationTest {
             ),
         )
         recording.calls.map { it.method } shouldBe listOf("forTasks", "withTestsFor")
+    }
+
+    @Test
+    fun `configureTestLauncher batches multiple Test tasks with includePatterns`() {
+        val recording = recordingTestLauncher()
+        configureTestLauncher(
+            recording.launcher,
+            BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TESTS,
+                tasks = listOf(":mod:test", ":mod:fastTest"),
+                selection = TestRunSelection.Patterns(listOf("com.example.FooTest", "com.example.FooParseTest")),
+            ),
+        )
+        recording.calls shouldContainExactly listOf(
+            TestLauncherCall("forTasks", listOf(":mod:test", ":mod:fastTest")),
+            TestLauncherCall("withTestsFor", emptyList()),
+        )
+        recording.testsForSpecs shouldContainExactly listOf(
+            RecordedTestSpec(":mod:test", listOf("com.example.FooTest", "com.example.FooParseTest")),
+            RecordedTestSpec(":mod:fastTest", listOf("com.example.FooTest", "com.example.FooParseTest")),
+        )
     }
 }

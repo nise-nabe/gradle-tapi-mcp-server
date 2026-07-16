@@ -21,6 +21,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.longs.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.string.shouldContain
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -456,6 +457,8 @@ class BuildExecutionManagerRunTest {
 
         result["status"] shouldBe "running"
         result["waitTimedOut"] shouldBe true
+        (result["waitedMs"] as Number).toLong() shouldBeGreaterThanOrEqual 50
+        result["hint"] shouldBe BuildStatusWaitOptions.WAIT_TIMEOUT_HINT
     }
 
     @Test

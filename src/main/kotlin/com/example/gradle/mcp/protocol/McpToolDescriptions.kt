@@ -45,12 +45,16 @@ internal object McpToolDescriptions {
         "Cancel a build by buildId. Finished builds return not_running. Poll gradle_get_build_status."
 
     const val BUILD_STATUS =
-        "Poll a background build by buildId. Outcome/summary by default; set includeOutput/includeProgress/includeProblems/includeDownloads/includeTestDetails as needed. See reference for disk vs memory behavior."
+        "Poll background build by buildId (memory/disk; no Tooling API). " +
+            "waitUntilComplete is server-side/capped—prefer short waits or plain polls. " +
+            "Set includeOutput/includeProgress as needed."
 
     const val RUN_TASKS =
         "Run Gradle task paths. Outcome/summary by default; background=true returns buildId. " +
             "Foreground >45s returns detached buildId. One build per project."
 
     const val RUN_TESTS =
-        "Run JVM tests by class, method, or pattern. Multi-project builds require taskPath or tasks with testClasses/testMethods to avoid cross-module fan-out."
+        "Run JVM tests by class, method, or pattern. taskPath scopes one Test task; " +
+            "tasks+includePatterns can batch suites (e.g. :test and :fastTest). " +
+            "Multi-project needs taskPath/tasks. One build per project."
 }
