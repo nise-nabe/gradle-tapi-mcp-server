@@ -41,4 +41,4 @@ Full parameter docs: `skills/gradle-tapi-mcp/reference.md`.
 
 See `skills/gradle-tapi-mcp/SKILL.md` and `skills/gradle-tapi-mcp/reference.md` in this repository for the complete tool catalog and advanced workflows (background builds, multiple projects, test concurrency, output limits).
 
-**Test concurrency:** Only one MCP build per `projectDirectory` at a time. Batch multiple tests in a single `gradle_run_tests` call; parallel separate calls for the same project return `BUILD_ALREADY_RUNNING`.
+**Test concurrency:** Only one MCP build per `projectDirectory` at a time; the gate clears on terminal status (no grace). Batch multiple tests or Test tasks (`tasks` + `includePatterns`, including custom `JvmTestSuite` names like `fastTest`) in a single `gradle_run_tests` call; parallel separate calls for the same project return `BUILD_ALREADY_RUNNING`. Prefer short status polls over long `waitUntilComplete` waits (server wait is capped and independent of MCP client transport timeouts).

@@ -151,10 +151,10 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 |----------|----------|---------|-------------|
 | `testClasses` | no* | `[]` | FQCN list (`withJvmTestClasses` / `withTaskAndTestClasses`). `Class.method` entries with a lowercase-leading final segment (e.g. `com.example.FooTest.testBar`) normalize to `testMethods`. Wildcards (`*`, `?`) in either segment and uppercase final segments stay as class names; nested classes use JVM `$` notation (e.g. `com.example.Outer$Inner.testMethod`). Prefer `testMethods` or `includePatterns` when ambiguous. |
 | `testMethods` | no* | — | Preferred API for method selection: map `{"com.example.FooTest": ["method1"]}` or array `[{"class": "...", "methods": ["..."]}]`. `className` and `testClass` are accepted at runtime as aliases for `class`. |
-| `taskPath` | no | — | Test task path for `withTaskAndTest*` (Gradle 6.1+). Requires `testClasses` or `testMethods` |
+| `taskPath` | no | — | **Single** Test task path for `withTaskAndTest*` (Gradle 6.1+), including custom `JvmTestSuite` tasks such as `:mod:fastTest`. Requires `testClasses` or `testMethods` |
 | `includePattern` | no* | — | Single include pattern for `withTestsFor` TestSpec (Gradle 7.6+) |
-| `includePatterns` | no* | `[]` | Include patterns for `withTestsFor` TestSpec (Gradle 7.6+) |
-| `tasks` | no | `[]` | Test task paths for `TestLauncher.forTasks()` (Gradle 7.6+). Required with patterns |
+| `includePatterns` | no* | `[]` | Include patterns for `withTestsFor` TestSpec (Gradle 7.6+). Applied to **every** path in `tasks` |
+| `tasks` | no | `[]` | One or more Test task paths for `TestLauncher.forTasks()` (Gradle 7.6+). Required with patterns. Use multiple paths to batch `:test` and custom suites (e.g. `:fastTest`) in **one** MCP build |
 | `arguments` | no | `[]` | Extra Gradle CLI args (init scripts, `@` arg files, and `mcp.*` control properties are rejected) |
 | `jvmArguments` | no | `[]` | JVM args |
 | `includeOutput` | no | `false` | Include stdout/stderr (task log). Default false returns outcome/buildSummary only |
@@ -165,9 +165,19 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 
 \* Provide exactly one of `testClasses`, `testMethods`, or `includePattern`/`includePatterns` (patterns also require `tasks`). Optional `taskPath` and `tasks` scope the selected tests.
 
-`taskPath` uses `withTaskAndTest*` when combined with classes or methods. `tasks` applies `TestLauncher.forTasks()` when non-empty.
+#### Selector decision table
 
-**Concurrency:** Do not start multiple `gradle_run_tests` calls in parallel for the same `projectDirectory` (including parallel MCP tool invocations with `background: true`); the second call returns `BUILD_ALREADY_RUNNING`. Batch multiple classes or methods in one call via `testMethods`, `testClasses`, or `includePatterns`. Parallel test runs are only supported across **different** `projectDirectory` values, up to the server concurrent-build limit (see Connection section).
+| Goal | Arguments |
+|------|-----------|
+| One default `:test` task, class list | `taskPath: ":mod:test"` + `testClasses` |
+| One task, method map | `taskPath` + `testMethods` |
+| Custom suite only (`fastTest`) | `taskPath: ":mod:fastTest"` + classes/methods, **or** `tasks: [":mod:fastTest"]` + `includePatterns` |
+| Several Test tasks / suites in one build | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
+| Multi-project unscoped classes/methods | Invalid — must scope with `taskPath` or `tasks` |
+
+`taskPath` uses `withTaskAndTest*` when combined with classes or methods (single task). `tasks` applies `TestLauncher.forTasks()` when non-empty; with patterns, each listed task gets the same `includePatterns`.
+
+**Concurrency:** Do not start multiple `gradle_run_tests` calls in parallel for the same `projectDirectory` (including parallel MCP tool invocations with `background: true`); the second call returns `BUILD_ALREADY_RUNNING`. The single-flight gate clears as soon as the build is terminal in memory (no grace window)—serialize `gradle_run_*` across turns after a terminal status. Batch multiple classes, methods, **or Test tasks** in one call via `testMethods` / `testClasses` / `tasks`+`includePatterns`. Parallel test runs are only supported across **different** `projectDirectory` values, up to the server concurrent-build limit (see Connection section).
 
 Same foreground/background response shape as `gradle_run_tasks`. When `testClasses` entries were normalized to `testMethods`, the initial tool response may include `selectionNormalized: true` (not present on `gradle_get_build_status` polls).
 
@@ -200,11 +210,13 @@ Cancels the Gradle daemon build via Tooling API `CancellationToken`. Returns imm
 | `tailOutput` | no | `true` | Keep tail when truncating |
 | `sinceStdoutOffset` | no | — | With `includeOutput=true`, return `stdoutDelta` from this char offset (plus `stdoutOffset` for the next poll) instead of repeating the full tail |
 | `sinceStderrOffset` | no | — | Same as `sinceStdoutOffset` for stderr |
-| `waitUntilComplete` | no | `false` | Block until `succeeded` / `failed` / `cancelled` or `waitTimeoutMs` |
-| `waitTimeoutMs` | no | `120000` | Max wait when `waitUntilComplete=true` (capped at 300000) |
+| `waitUntilComplete` | no | `false` | Server-side wait until terminal status or `waitTimeoutMs` (independent of MCP client transport timeout) |
+| `waitTimeoutMs` | no | `30000` | Max **server-side** wait when `waitUntilComplete=true` (capped at `60000`) |
 | `pollIntervalMs` | no | `2000` | Server-side poll interval while waiting |
 
-Returns `status` (`running`, `succeeded`, `failed`, `cancelled`, or `not_found`), timestamps, `outcome`, and `buildSummary`. Always includes `statusSource` (`memory` or `disk`). Disk-backed responses also include `liveProgress` (`false`), `progressAvailable`, and `recordDirectory`. While memory reports `running`, memory status wins and disk `events.ndjson` task events are merged into `progress`; `recordDirectory` is included when disk artifacts exist. When memory is terminal or absent and memory and disk disagree, Gradle on-disk status wins while Gradle is still active; stale Gradle `running` (MCP terminal, no post-finalize events in `events.ndjson`) falls back to MCP. Completed builds include `failedTaskCount`, `failedTasks`, and `buildSummary.failureSummary` without `includeProgress` when available (in-memory, MCP-terminal disk, or Gradle-terminal failed with `events.ndjson`). Failed test runs also include `testFailures` (structured `className`, `methodName`, `exceptionType`, `message`, `sourceFile`, `line`) and `failedTestCount` without `includeOutput` or `includeTestDetails`. Persisted in `mcp-result.json` under `.gradle/mcp-builds/<buildId>/`. `stdout`/`stderr` are included only when `includeOutput=true`. When `sinceStdoutOffset` / `sinceStderrOffset` are set, responses use `stdoutDelta` / `stderrDelta` and `stdoutOffset` / `stderrOffset` so agents do not re-read prior log prefixes. When `waitUntilComplete=true` and the build is still running when `waitTimeoutMs` elapses, the response includes `waitTimedOut: true`. While running, live output requires an in-memory record; disk-only polls return streams only after MCP finalizes logs at build end. `progress` only when `includeProgress=true`; with an in-memory record, includes `CONFIG_*` events from the live `ProgressListener` (task, test, and project-configuration) merged with disk `events.ndjson` task/test events plus capped lists. Disk-only polls read `events.ndjson` (task and test events only—not project-configuration, which the init script does not write).
+**Client vs server timeout:** `waitTimeoutMs` applies only inside this server. MCP hosts (e.g. Cursor) may kill the tool call earlier with a transport timeout such as `-32001`. For multi-minute builds, prefer plain polls (`waitUntilComplete` false/omitted) or short waits; treat `waitTimedOut` as “still running, poll again”, not server death. Without wait, status reads memory and/or `.gradle/mcp-builds/` only—no Tooling API call.
+
+Returns `status` (`running`, `succeeded`, `failed`, `cancelled`, or `not_found`), timestamps, `outcome`, and `buildSummary`. Always includes `statusSource` (`memory` or `disk`). Disk-backed responses also include `liveProgress` (`false`), `progressAvailable`, and `recordDirectory`. While memory reports `running`, memory status wins and disk `events.ndjson` task events are merged into `progress`; `recordDirectory` is included when disk artifacts exist. When memory is terminal or absent and memory and disk disagree, Gradle on-disk status wins while Gradle is still active; stale Gradle `running` (MCP terminal, no post-finalize events in `events.ndjson`) falls back to MCP. Completed builds include `failedTaskCount`, `failedTasks`, and `buildSummary.failureSummary` without `includeProgress` when available (in-memory, MCP-terminal disk, or Gradle-terminal failed with `events.ndjson`). Failed test runs also include `testFailures` (structured `className`, `methodName`, `exceptionType`, `message`, `sourceFile`, `line`) and `failedTestCount` without `includeOutput` or `includeTestDetails`. Terminal failures include `failureKind` and `failureCategory` (`TEST`, `GRADLE_TASK`, `TOOLING_CONNECTION`, `CANCELLED`). Persisted in `mcp-result.json` under `.gradle/mcp-builds/<buildId>/`. `stdout`/`stderr` are included only when `includeOutput=true`. When `sinceStdoutOffset` / `sinceStderrOffset` are set, responses use `stdoutDelta` / `stderrDelta` and `stdoutOffset` / `stderrOffset` so agents do not re-read prior log prefixes. When `waitUntilComplete=true` and the build is still running when `waitTimeoutMs` elapses, the response includes `waitTimedOut: true`, `waitedMs`, and `hint` (poll again; do not treat as MCP failure). While running, live output requires an in-memory record; disk-only polls return streams only after MCP finalizes logs at build end. `progress` only when `includeProgress=true`; with an in-memory record, includes `CONFIG_*` events from the live `ProgressListener` (task, test, and project-configuration) merged with disk `events.ndjson` task/test events plus capped lists. Disk-only polls read `events.ndjson` (task and test events only—not project-configuration, which the init script does not write).
 
 #### includeProgress / includeProblems / includeDownloads / includeTestDetails
 

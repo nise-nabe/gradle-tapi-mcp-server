@@ -144,9 +144,11 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 { "buildId": "<id>" }
 ```
 
-→ `gradle_get_build_status`（`status`, `outcome`, `buildSummary`；失敗時は `problems` も；`stdout`/`stderr` は `includeOutput=true` 時のみ—ディスクのみポーリングでは完了まで空；`progress` は `includeProgress=true` 時のみ—実行中はメモリと disk の `events.ndjson` をマージ；`recordDirectory` で `.gradle/mcp-builds/<buildId>/` を参照可能；`statusSource` は常に付与）
+→ `gradle_get_build_status`（`status`, `outcome`, `buildSummary`；失敗時は `problems` / `failureKind` / `failureCategory` も；`stdout`/`stderr` は `includeOutput=true` 時のみ—ディスクのみポーリングでは完了まで空；`progress` は `includeProgress=true` 時のみ—実行中はメモリと disk の `events.ndjson` をマージ；`recordDirectory` で `.gradle/mcp-builds/<buildId>/` を参照可能；`statusSource` は常に付与）
 
-`buildId` は必須（並行ビルド時の取り違え防止）。**同一 `projectDirectory` では MCP ビルドは 1 本のみ**（2 本目は `BUILD_ALREADY_RUNNING`）。別プロジェクトへの並行ビルドはサーバー側上限まで可能。同一 checkout で MCP と shell の `./gradlew` を並行しないこと（IntelliJ Platform の `:plugin:test` は sandbox 競合でハングしやすい）。上限到達時も `BUILD_ALREADY_RUNNING` が返る。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` を `running` でなくなるまでポーリングして終端ステータス（`cancelled` / `succeeded` / `failed`）を確認する。
+**待ち方:** 数分かかるビルドで `waitUntilComplete: true` を長時間（例: 3 分）にしない。`waitTimeoutMs` は **サーバー側のみ**（デフォルト 30s / 上限 60s）で、MCP クライアントの transport timeout（Cursor の `-32001` など）とは別物。長い 1 回待ちは「MCP 死亡」に見えやすい。短い待ちか、待ちなしポーリングを繰り返す。タイムアウト時は `waitTimedOut` / `waitedMs` / `hint` が返り、ビルドは継続中のまま。待ちなしの status はメモリ/ディスク読み取りのみで Tooling API をブロックしない。
+
+`buildId` は必須（並行ビルド時の取り違え防止）。**同一 `projectDirectory` では MCP ビルドは 1 本のみ**（2 本目は `BUILD_ALREADY_RUNNING`）。終端ステータスになった瞬間にゲートは解放される（grace なし）。別プロジェクトへの並行ビルドはサーバー側上限まで可能。同一 checkout で MCP と shell の `./gradlew` を並行しないこと（IntelliJ Platform の `:plugin:test` は sandbox 競合でハングしやすい）。上限到達時も `BUILD_ALREADY_RUNNING` が返る。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` を `running` でなくなるまでポーリングして終端ステータス（`cancelled` / `succeeded` / `failed`）を確認する。
 
 `buildId` を失ったときは `gradle_list_builds` で直近の MCP ビルドを探し、見つかった `buildId` で `gradle_get_build_status` をポーリングする。TAPI 接続は不要（メモリ上のビルドは常に含まれる。ディスク走査は `projectDirectory`、接続中プロジェクト、または `GRADLE_PROJECT_DIR` を使用）。`projectDirectory` を明示する場合は、接続中プロジェクトまたは `GRADLE_PROJECT_DIR` で許可境界が定義されている必要がある（未定義だと `INVALID_ARGUMENT`）。
 
@@ -154,12 +156,13 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 
 ## テスト実行と並行性
 
-**同一 `projectDirectory` では、複数の `gradle_run_tests` を別 tool 呼び出しで同時起動できない。** クライアントが並列送信しても、2 本目以降は `BUILD_ALREADY_RUNNING` になる（`background: true` でも同様）。`gradle_run_tasks` も同じ制約。
+**同一 `projectDirectory` では、複数の `gradle_run_tests` を別 tool 呼び出しで同時起動できない。** クライアントが同一ターンで並列送信しても、2 本目以降は `BUILD_ALREADY_RUNNING` になる（`background: true` でも同様）。`gradle_run_tasks` も同じ制約。終端後に次の呼び出しを出す（別ターンで直列化する）。
 
 | やりたいこと | 可否 | やり方 |
 |-------------|------|--------|
 | 同一プロジェクトで複数テストを並列の別呼び出しで起動 | **不可** | 1 回の `gradle_run_tests` にまとめる（下記） |
 | 同一プロジェクトで複数クラス／メソッドを 1 回で実行 | **可** | `testMethods` / `testClasses` / `includePatterns` |
+| 複数 Test タスク（`:test` + カスタム `JvmTestSuite` `fastTest` 等）を 1 回で実行 | **可** | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
 | 別 `projectDirectory` への並列テスト | **可** | 各プロジェクトで `background: true`（サーバー上限まで） |
 | 順次実行 | **可** | 前のビルド完了を待つか `gradle_cancel_build` で停止してから次を起動 |
 
@@ -175,6 +178,15 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 ```
 
 複数クラス全体を走らせる場合は `testClasses` に列挙する。パターン指定なら `includePatterns` + `tasks` を使う。
+
+**セレクタ早見表**
+
+| 目的 | 引数 |
+|------|------|
+| 1 つの Test タスク + クラス | `taskPath` + `testClasses` |
+| 1 つの Test タスク + メソッド | `taskPath` + `testMethods` |
+| カスタム suite（`fastTest`）のみ | `taskPath: ":mod:fastTest"` または `tasks: [":mod:fastTest"]` + `includePatterns` |
+| `:test` と `fastTest` をまとめて 1 MCP ビルド | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
 
 別リポジトリを並列検証する場合のみ、各 `projectDirectory` で `gradle_connect` したうえで `background: true` の `gradle_run_tests` を並列起動する（[複数プロジェクト](#複数プロジェクト) 参照）。
 
@@ -262,6 +274,18 @@ Configuration Cache 互換性まで試す場合:
 ```
 
 → `gradle_run_tests`
+
+**複数 Test タスク／カスタム suite を 1 回で**（`JvmTestSuite` の `fastTest` など）
+
+```json
+{
+  "tasks": [":plugin-route-analysis:test", ":plugin-route-analysis:fastTest"],
+  "includePatterns": ["com.example.FooTest", "com.example.FooParseTest"],
+  "background": true
+}
+```
+
+→ `gradle_run_tests`（1 本の MCP ビルドで両 suite）
 
 **ビルド系タスクだけ列挙**
 

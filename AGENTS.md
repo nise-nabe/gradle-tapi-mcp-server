@@ -23,7 +23,7 @@
 - Agent skill at `skills/release/` (summary in `.cursor/skills/release/SKILL.md`) documents the GitHub release workflow: version bump PR, JAR build, tag, Release asset upload, and `install.sh` SHA-256 follow-up.
 - MCP server holds a **connection pool** keyed by canonical project path; `gradle_connect` ensures a project without disconnecting others. Optional `projectDirectory` on tools defaults to `GRADLE_PROJECT_DIR`.
 - MCP tool errors use structured `McpException` with `McpErrorCode` (`NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`); `mapExceptionToErrorCode` maps legacy `IllegalStateException` messages.
-- Long Gradle builds: set `background=true` on `gradle_run_tasks`/`gradle_run_tests`, then poll `gradle_get_build_status` for progress and partial output; call `gradle_cancel_build` to stop unneeded background runs.
+- Long Gradle builds: set `background=true` on `gradle_run_tasks`/`gradle_run_tests`, then poll `gradle_get_build_status` (prefer plain short polls; `waitUntilComplete` is server-side only and capped—do not rely on one long wait vs MCP client timeouts); call `gradle_cancel_build` to stop unneeded background runs.
 - Cursor MCP config (`.cursor/mcp.json`) launches the JAR from `~/.local/share/gradle-tapi-mcp-server/gradle-tapi-mcp-server.jar` with `GRADLE_PROJECT_DIR=${workspaceFolder}`; global `~/.cursor/mcp.json` works for other Gradle projects using a release JAR.
 - After MCP server code changes, rebuild the JAR (`./gradlew jar` or re-run `.cursor/install.sh`) and restart MCP servers in Cursor.
 - `main` is branch-protected; push feature branches and open PRs instead of pushing directly to `main`.
