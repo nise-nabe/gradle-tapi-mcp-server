@@ -36,7 +36,7 @@ Single-module Kotlin/JVM MCP server (stdio). No web UI, Docker, or dedicated lin
 
 `.cursor/environment.json` runs `.cursor/install.sh` on every Cloud Agent session:
 
-1. Downloads release **v0.5.1** JAR (SHA-256 verified) to `~/.local/share/gradle-tapi-mcp-server/gradle-tapi-mcp-server.jar` so MCP can drive this repo's build when needed
+1. Downloads release **v0.6.0** JAR (SHA-256 verified) to `~/.local/share/gradle-tapi-mcp-server/gradle-tapi-mcp-server.jar` so MCP can drive this repo's build when needed
 2. Configures `gh` from `/exec-daemon/gh` (optional `GH_TOKEN` / `GITHUB_TOKEN` login)
 3. Ensures **JDK 17** for `./gradlew` (toolchain in `build.gradle.kts`; JDK 21+ can run the MCP JAR at runtime)
 
@@ -57,11 +57,11 @@ Do not rely on bare `gh` before install completes. Set `GH_TOKEN` in Cursor Clou
 
 | Goal | Command |
 |------|---------|
-| Build JAR | `./gradlew jar` → `build/libs/gradle-tapi-mcp-server-0.5.1.jar` |
+| Build JAR | `./gradlew jar` → `build/libs/gradle-tapi-mcp-server-0.6.0.jar` |
 | Unit tests | `./gradlew test` (JUnit 5; mocked Tooling API, no Gradle daemon) |
 | Full verify | `./gradlew build` (compile + test + assemble) |
 | Lint | Not configured; use `./gradlew build` as compile/test gate |
-| Run MCP server | `GRADLE_PROJECT_DIR=/workspace java -jar build/libs/gradle-tapi-mcp-server-0.5.1.jar` |
+| Run MCP server | `GRADLE_PROJECT_DIR=/workspace java -jar build/libs/gradle-tapi-mcp-server-0.6.0.jar` |
 
 Logging goes to **stderr** only; **stdout** is reserved for MCP JSON-RPC (newline-delimited JSON).
 
