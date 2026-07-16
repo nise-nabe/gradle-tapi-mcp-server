@@ -370,6 +370,17 @@ class BuildExecutionManager(
                 }
             }
         }
+        val queuePosition: Int?
+        val queuedBehindBuildId: String?
+        if (status == BuildProgressTracker.STATUS_QUEUED) {
+            queuePosition = withProjectLock(artifactProject) { projectQueue.position(it, record.id) }
+            queuedBehindBuildId = withProjectLock(artifactProject) {
+                projectQueue.behindBuildId(it, record.id, runningBuildId(it))
+            }
+        } else {
+            queuePosition = null
+            queuedBehindBuildId = null
+        }
         return BuildListEntry(
             buildId = record.id,
             status = status,
@@ -382,10 +393,8 @@ class BuildExecutionManager(
             outcome = outcome,
             recordSource = recordSource,
             statusSource = statusSource,
-            queuePosition = withProjectLock(artifactProject) { projectQueue.position(it, record.id) },
-            queuedBehindBuildId = withProjectLock(artifactProject) {
-                projectQueue.behindBuildId(it, record.id, runningBuildId(it))
-            },
+            queuePosition = queuePosition,
+            queuedBehindBuildId = queuedBehindBuildId,
         )
     }
 
@@ -551,7 +560,7 @@ class BuildExecutionManager(
     private fun afterBuildSlotFreed(record: BuildRecord) {
         val projectDirectory = record.projectDirectory?.let(::File) ?: return
         drainProjectQueue(projectDirectory)
-        // Global executor may have freed a slot used by another project's remqueued head.
+        // Global executor may have freed a slot used by another project's requeued head.
         drainAllProjectQueues()
     }
 

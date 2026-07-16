@@ -101,7 +101,7 @@ internal class ProjectBuildQueue {
     fun requeueAtFront(projectDirectory: File, queued: QueuedBuild) {
         val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
         check(queued.record.progressTracker.markQueued()) {
-            "Failed to remqueue build ${queued.record.id}"
+            "Failed to requeue build ${queued.record.id}"
         }
         queues.computeIfAbsent(key) { ArrayDeque() }.addFirst(queued)
     }

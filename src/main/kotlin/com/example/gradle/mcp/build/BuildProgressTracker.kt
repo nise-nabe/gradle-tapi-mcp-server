@@ -81,7 +81,7 @@ class BuildProgressTracker(
     }
 
     /**
-     * Park a not-yet-started build as queued, or remqueue after a rejected executor submit.
+     * Park a not-yet-started build as queued, or requeue after a rejected executor submit.
      * Only valid from [STATUS_RUNNING] before Gradle work has begun ([currentOperation] must be null).
      */
     fun markQueued(): Boolean =

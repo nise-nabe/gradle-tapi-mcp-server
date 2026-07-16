@@ -137,6 +137,41 @@ class BuildExecutionManagerQueueTest {
     }
 
     @Test
+    fun `listBuilds exposes queue fields only for queued builds`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            blockingProjectConnection(CountDownLatch(1), CountDownLatch(1)),
+        )
+        val manager = BuildExecutionManager(connectionManager)
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "running-build",
+                tracker = runningTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+            ),
+        )
+
+        val queued = manager.startBackground(
+            request = BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TASKS,
+                tasks = listOf("queued-task"),
+            ),
+            notifier = null,
+            queueIfBusy = true,
+        )
+
+        val builds = (manager.listBuilds(testProjectDirectory, limit = 10)["builds"] as List<Map<*, *>>)
+        val running = builds.single { it["buildId"] == "running-build" }
+        val queuedEntry = builds.single { it["buildId"] == queued["buildId"] }
+
+        running.containsKey("queuePosition").shouldBeFalse()
+        running.containsKey("queuedBehindBuildId").shouldBeFalse()
+        queuedEntry["queuePosition"] shouldBe 1
+        queuedEntry["queuedBehindBuildId"] shouldBe "running-build"
+    }
+
+    @Test
     fun `parallel queueIfBusy calls enqueue instead of rejecting`() {
         val connectionManager = GradleConnectionManager()
         val buildEntered = CountDownLatch(1)
