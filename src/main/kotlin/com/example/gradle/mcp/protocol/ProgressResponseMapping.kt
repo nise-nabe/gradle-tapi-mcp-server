@@ -46,7 +46,9 @@ internal fun terminalFailureFields(
     snapshot: BuildProgressSnapshot,
     progressOptions: ProgressResponseOptions,
 ): Map<String, Any?> =
-    if (snapshot.status == BuildProgressTracker.STATUS_RUNNING) {
+    if (snapshot.status == BuildProgressTracker.STATUS_RUNNING ||
+        snapshot.status == BuildProgressTracker.STATUS_QUEUED
+    ) {
         emptyMap()
     } else {
         buildMap {

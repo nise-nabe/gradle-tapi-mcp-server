@@ -57,6 +57,7 @@ internal fun disconnectProjects(
             runtime.connectionManager.disconnectAll()
         }
     }
+    runtime.buildExecutionManager.wakeQueuedBuilds(projectDirectory)
     return buildMap {
         if (disconnected.isEmpty()) {
             put("state", "not_connected")

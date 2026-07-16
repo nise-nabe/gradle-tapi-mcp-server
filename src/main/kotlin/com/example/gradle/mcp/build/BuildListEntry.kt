@@ -14,6 +14,8 @@ internal data class BuildListEntry(
     val outcome: String?,
     val recordSource: String,
     val statusSource: String? = null,
+    val queuePosition: Int? = null,
+    val queuedBehindBuildId: String? = null,
 ) {
     val testClasses: List<String> get() = selection.testClassesForReporting()
     val testMethods: Map<String, List<String>> get() = selection.testMethodsOrEmpty()
@@ -39,6 +41,8 @@ internal data class BuildListEntry(
             outcome?.let { put("outcome", it) }
             put("recordSource", recordSource)
             statusSource?.let { put("statusSource", it) }
+            queuePosition?.let { put("queuePosition", it) }
+            queuedBehindBuildId?.let { put("queuedBehindBuildId", it) }
         }
 
     private fun parseInstant(value: String?): Instant? =

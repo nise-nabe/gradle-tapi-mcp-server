@@ -22,11 +22,12 @@ import java.time.Instant
 class BuildProgressTracker(
     private val trackDownloads: Boolean = false,
     private val onUpdate: (() -> Unit)? = null,
+    initialStatus: String = STATUS_RUNNING,
 ) {
     private val lock = Any()
     private val taskProgress = ProgressEventAccumulator()
 
-    private var status: String = STATUS_RUNNING
+    private var status: String = initialStatus
     private var currentOperation: String? = null
     private val recentEvents = ArrayDeque<ProgressEventSnapshot>()
     private val problems = mutableListOf<BuildProblemSnapshot>()
@@ -79,10 +80,33 @@ class BuildProgressTracker(
         }
     }
 
+    /**
+     * Park a not-yet-started build as queued, or requeue after a rejected executor submit.
+     * Only valid from [STATUS_RUNNING] before Gradle work has begun ([currentOperation] must be null).
+     */
+    fun markQueued(): Boolean =
+        synchronized(lock) {
+            if (status != STATUS_RUNNING || currentOperation != null) {
+                return@synchronized false
+            }
+            status = STATUS_QUEUED
+            true
+        }
+
+    /** Promote a queued build to running when the project slot is taken. */
+    fun markDequeued(): Boolean =
+        synchronized(lock) {
+            if (status != STATUS_QUEUED) {
+                return@synchronized false
+            }
+            status = STATUS_RUNNING
+            true
+        }
+
     fun markCancelled(message: String) {
         notifyAfter {
             synchronized(lock) {
-                if (status != STATUS_RUNNING) {
+                if (status != STATUS_RUNNING && status != STATUS_QUEUED) {
                     return@notifyAfter false
                 }
                 status = STATUS_CANCELLED
@@ -363,6 +387,7 @@ class BuildProgressTracker(
     }
 
     companion object {
+        const val STATUS_QUEUED = "queued"
         const val STATUS_RUNNING = "running"
         const val STATUS_SUCCEEDED = "succeeded"
         const val STATUS_FAILED = "failed"

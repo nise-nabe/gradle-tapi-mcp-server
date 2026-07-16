@@ -10,6 +10,7 @@ import com.example.gradle.mcp.connection.GradleConnectionManager
 import org.gradle.tooling.CancellationTokenSource
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
+import org.gradle.tooling.model.GradleProject
 import java.io.File
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
@@ -17,6 +18,10 @@ import java.time.Instant
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+
+internal fun queuedTracker(): BuildProgressTracker =
+    BuildProgressTracker(initialStatus = BuildProgressTracker.STATUS_QUEUED)
 
 internal fun runningTracker(label: String = "Gradle tasks: build"): BuildProgressTracker =
     BuildProgressTracker().also { it.markStarting(label) }
@@ -112,6 +117,41 @@ internal fun GradleConnectionManager.seedNoopConnection(projectDirectory: File? 
         projectDirectory = projectDirectory ?: File("."),
     )
 }
+
+/**
+ * ProjectConnection that serves [GradleProject] via getModel (counted) and completes
+ * newBuild / newTestLauncher immediately — for preflight + runBuild call-count tests.
+ */
+internal fun testRunProjectConnection(
+    project: GradleProject,
+    getModelCalls: AtomicInteger,
+): ProjectConnection =
+    Proxy.newProxyInstance(
+        ProjectConnection::class.java.classLoader,
+        arrayOf(ProjectConnection::class.java),
+        InvocationHandler { _, method, args ->
+            when (method.name) {
+                "getModel" -> {
+                    getModelCalls.incrementAndGet()
+                    val modelType = args?.get(0) as Class<*>
+                    if (modelType == GradleProject::class.java) {
+                        project
+                    } else {
+                        null
+                    }
+                }
+                "newBuild" -> chainingProxy(
+                    Class.forName("org.gradle.tooling.BuildLauncher"),
+                    onRun = {},
+                )
+                "newTestLauncher" -> chainingProxy(
+                    Class.forName("org.gradle.tooling.TestLauncher"),
+                    onRun = {},
+                )
+                else -> defaultProxyReturn(method)
+            }
+        },
+    ) as ProjectConnection
 
 internal fun blockingProjectConnection(
     buildEntered: CountDownLatch,

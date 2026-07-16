@@ -4,6 +4,8 @@ import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.connection.ProjectDirectoryScope
 import com.example.gradle.mcp.model.OutputLimitOptions
+import com.example.gradle.mcp.protocol.McpErrorCode
+import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.protocol.booleanProperty
@@ -99,6 +101,7 @@ internal fun runTasksSchema(): Map<String, Any> =
         extraProperties = mapOf(
             "tasks" to stringArrayProperty("Gradle task paths to execute"),
             "background" to booleanProperty("Return buildId immediately. Default false."),
+            "queueIfBusy" to booleanProperty("Enqueue if busy (needs background)."),
         ),
     )
 
@@ -115,6 +118,7 @@ internal fun runTestsSchema(): Map<String, Any> =
             "includePatterns" to stringArrayProperty("Include patterns for every path in tasks (Gradle 7.6+)."),
             "tasks" to stringArrayProperty("Test task paths for TestLauncher.forTasks() (Gradle 7.6+)."),
             "background" to booleanProperty("Return buildId immediately. Default false."),
+            "queueIfBusy" to booleanProperty("Enqueue if busy (needs background)."),
         ),
     )
 
@@ -193,8 +197,10 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
             outputLimit = OutputLimitOptions.fromArgs(args),
             progressOptions = ProgressResponseOptions.fromArgs(args),
         )
-        if (args.optionalBoolean("background", default = false)) {
-            jsonResult(runtime.buildExecutionManager.startBackground(request, notifier))
+        val background = args.optionalBoolean("background", default = false)
+        val queueIfBusy = requireQueueIfBusyWithBackground(args)
+        if (background) {
+            jsonResult(runtime.buildExecutionManager.startBackground(request, notifier, queueIfBusy))
         } else {
             jsonResult(runtime.buildExecutionManager.runForeground(request, notifier))
         }
@@ -215,15 +221,34 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
             outputLimit = OutputLimitOptions.fromArgs(args),
             progressOptions = ProgressResponseOptions.fromArgs(args),
         )
-        preflightRunTests(projectDirectory, testOptions)
         val background = args.optionalBoolean("background", default = false)
+        val queueIfBusy = requireQueueIfBusyWithBackground(args)
+        val deferScopeModelCheck = background && queueIfBusy
+        preflightRunTests(
+            projectDirectory,
+            testOptions,
+            deferScopeModelCheck = deferScopeModelCheck,
+        )
+        val scopedRequest = request.copy(testScopeValidatedAtPreflight = !deferScopeModelCheck)
         val response = if (background) {
-            runtime.buildExecutionManager.startBackground(request, notifier)
+            runtime.buildExecutionManager.startBackground(scopedRequest, notifier, queueIfBusy)
         } else {
-            runtime.buildExecutionManager.runForeground(request, notifier)
+            runtime.buildExecutionManager.runForeground(scopedRequest, notifier)
         }
         jsonResult(withTestRunResponseMetadata(response, parsed.selectionNormalized))
     }
+}
+
+private fun requireQueueIfBusyWithBackground(args: Map<String, Any>): Boolean {
+    val queueIfBusy = args.optionalBoolean("queueIfBusy", default = false)
+    val background = args.optionalBoolean("background", default = false)
+    if (queueIfBusy && !background) {
+        throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "queueIfBusy requires background=true. Pass background=true or omit queueIfBusy.",
+        )
+    }
+    return queueIfBusy
 }
 
 internal fun withTestRunResponseMetadata(
