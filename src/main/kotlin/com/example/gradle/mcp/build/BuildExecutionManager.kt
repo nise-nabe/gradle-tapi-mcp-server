@@ -373,10 +373,12 @@ class BuildExecutionManager(
         val queuePosition: Int?
         val queuedBehindBuildId: String?
         if (status == BuildProgressTracker.STATUS_QUEUED) {
-            queuePosition = withProjectLock(artifactProject) { projectQueue.position(it, record.id) }
-            queuedBehindBuildId = withProjectLock(artifactProject) {
-                projectQueue.behindBuildId(it, record.id, runningBuildId(it))
+            val queueFields = withProjectLock(artifactProject) { dir ->
+                projectQueue.position(dir, record.id) to
+                    projectQueue.behindBuildId(dir, record.id, runningBuildId(dir))
             }
+            queuePosition = queueFields?.first
+            queuedBehindBuildId = queueFields?.second
         } else {
             queuePosition = null
             queuedBehindBuildId = null
