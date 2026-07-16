@@ -7,7 +7,7 @@ description: >-
 
 # Gradle Tooling API MCP
 
-The `gradle` MCP server (release v0.5.0) is configured in `.cursor/mcp.json`. `.cursor/install.sh`
+The `gradle` MCP server (release v0.5.1) is configured in `.cursor/mcp.json`. `.cursor/install.sh`
 downloads the release JAR to `~/.local/share/gradle-tapi-mcp-server/`, verifies its SHA-256, and
 exposes it via a stable `gradle-tapi-mcp-server.jar` symlink.
 `GRADLE_PROJECT_DIR` is set to the workspace root.
