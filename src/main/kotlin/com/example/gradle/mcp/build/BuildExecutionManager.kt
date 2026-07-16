@@ -11,7 +11,6 @@ import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpBuildNotifier
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
-import io.modelcontextprotocol.kotlin.sdk.types.LoggingLevel
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import org.gradle.tooling.BuildCancelledException
@@ -19,7 +18,6 @@ import org.gradle.tooling.ConfigurableLauncher
 import org.gradle.tooling.ProjectConnection
 import java.io.File
 import java.time.Instant
-import java.util.ArrayDeque
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
@@ -37,7 +35,7 @@ class BuildExecutionManager(
     private var executor: ExecutorService = newBuildExecutor()
     private val builds = ConcurrentHashMap<String, BuildRecord>()
     private val lastCompletedBuildSnapshots = ConcurrentHashMap<String, CompletedBuildSnapshot>()
-    private val projectQueues = ConcurrentHashMap<String, ArrayDeque<PendingBuild>>()
+    private val projectQueue = ProjectBuildQueue()
 
     fun startBackground(
         request: BuildRunRequest,
@@ -46,19 +44,20 @@ class BuildExecutionManager(
     ): Map<String, Any?> {
         connectionManager.requireConnection(request.projectDirectory)
 
-        val start = newBuildStart(request, notifier)
         val projectDirectory = request.projectDirectory
 
         synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
             if (!hasRunningBuild(projectDirectory) && !hasQueuedBuild(projectDirectory)) {
+                val start = newBuildStart(request, notifier, queued = false)
                 return startImmediately(start, request, projectDirectory)
             }
             if (!queueIfBusy) {
                 throw buildAlreadyRunningForProjectException(projectDirectory)
             }
-            if (countQueued(projectDirectory) >= MAX_QUEUED_PER_PROJECT) {
+            if (projectQueue.count(projectDirectory) >= MAX_QUEUED_PER_PROJECT) {
                 throw buildQueueFullException(projectDirectory)
             }
+            val start = newBuildStart(request, notifier, queued = true)
             return enqueueBackground(start, request, projectDirectory)
         }
     }
@@ -133,43 +132,86 @@ class BuildExecutionManager(
                 )
             }
         }
+        val projectDirectory = record.projectDirectory?.let(::File)
+        if (projectDirectory != null) {
+            synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+                return cancelBuildUnderLock(buildId, record, projectDirectory)
+            }
+        }
+        return cancelBuildWithoutProjectLock(buildId, record)
+    }
+
+    private fun cancelBuildUnderLock(
+        buildId: String,
+        record: BuildRecord,
+        projectDirectory: File,
+    ): Map<String, Any?> {
         val status = record.progressTracker.snapshot().status
-        when (status) {
+        return when (status) {
             BuildProgressTracker.STATUS_QUEUED -> {
-                synchronized(ProjectLifecycleLock.forProject(File(record.projectDirectory!!))) {
-                    removeFromQueue(record)
-                    finalizeQueuedBuild(record, BuildTerminalOutcome.Cancelled("Build cancelled"))
-                    return buildMap {
-                        put("buildId", buildId)
-                        put("status", BuildProgressTracker.STATUS_NOT_RUNNING)
-                        put("terminalStatus", BuildProgressTracker.STATUS_CANCELLED)
-                        put("cancelled", true)
-                        put("outcome", BuildOutputParser.outcomeFromStatus(BuildProgressTracker.STATUS_CANCELLED))
-                        record.finishedAt?.toString()?.let { put("finishedAt", it) }
-                        put("message", "Queued build cancelled.")
-                    }
+                projectQueue.remove(projectDirectory, buildId)
+                if (!finalizeQueuedBuild(record, BuildTerminalOutcome.Cancelled("Build cancelled"))) {
+                    record.cancellationTokenSource.cancel()
+                    return cancellationRequestedResponse(buildId)
                 }
+                val response = queuedCancelledResponse(buildId, record)
+                drainProjectQueue(projectDirectory)
+                response
             }
             BuildProgressTracker.STATUS_RUNNING -> {
                 record.cancellationTokenSource.cancel()
-                return mapOf(
-                    "buildId" to buildId,
-                    "status" to BuildProgressTracker.STATUS_RUNNING,
-                    "message" to
-                        "Cancellation requested. Poll gradle_get_build_status until status is no longer running.",
-                )
+                cancellationRequestedResponse(buildId)
             }
-            else -> return buildMap {
-                put("buildId", buildId)
-                put("status", BuildProgressTracker.STATUS_NOT_RUNNING)
-                put("terminalStatus", status)
-                put("cancelled", false)
-                put("outcome", BuildOutputParser.outcomeFromStatus(status))
-                record.finishedAt?.toString()?.let { put("finishedAt", it) }
-                put("message", "Build already finished; nothing to cancel.")
-            }
+            else -> alreadyFinishedCancelResponse(buildId, record, status)
         }
     }
+
+    private fun cancelBuildWithoutProjectLock(buildId: String, record: BuildRecord): Map<String, Any?> {
+        val status = record.progressTracker.snapshot().status
+        return when (status) {
+            BuildProgressTracker.STATUS_QUEUED ->
+                throw McpException(McpErrorCode.INTERNAL_ERROR, "Build $buildId missing projectDirectory")
+            BuildProgressTracker.STATUS_RUNNING -> {
+                record.cancellationTokenSource.cancel()
+                cancellationRequestedResponse(buildId)
+            }
+            else -> alreadyFinishedCancelResponse(buildId, record, status)
+        }
+    }
+
+    private fun cancellationRequestedResponse(buildId: String): Map<String, Any?> =
+        mapOf(
+            "buildId" to buildId,
+            "status" to BuildProgressTracker.STATUS_RUNNING,
+            "message" to
+                "Cancellation requested. Poll gradle_get_build_status until status is no longer running.",
+        )
+
+    private fun queuedCancelledResponse(buildId: String, record: BuildRecord): Map<String, Any?> =
+        buildMap {
+            put("buildId", buildId)
+            put("status", BuildProgressTracker.STATUS_NOT_RUNNING)
+            put("terminalStatus", BuildProgressTracker.STATUS_CANCELLED)
+            put("cancelled", true)
+            put("outcome", BuildOutputParser.outcomeFromStatus(BuildProgressTracker.STATUS_CANCELLED))
+            record.finishedAt?.toString()?.let { put("finishedAt", it) }
+            put("message", "Queued build cancelled.")
+        }
+
+    private fun alreadyFinishedCancelResponse(
+        buildId: String,
+        record: BuildRecord,
+        status: String,
+    ): Map<String, Any?> =
+        buildMap {
+            put("buildId", buildId)
+            put("status", BuildProgressTracker.STATUS_NOT_RUNNING)
+            put("terminalStatus", status)
+            put("cancelled", false)
+            put("outcome", BuildOutputParser.outcomeFromStatus(status))
+            record.finishedAt?.toString()?.let { put("finishedAt", it) }
+            put("message", "Build already finished; nothing to cancel.")
+        }
 
     fun status(
         buildId: String,
@@ -311,7 +353,10 @@ class BuildExecutionManager(
         var statusSource: String? = null
         val memoryStatus = status
         val artifactProject = record.projectDirectory?.let(::File) ?: projectDirectory
-        if (artifactProject != null && status != BuildProgressTracker.STATUS_RUNNING) {
+        if (artifactProject != null &&
+            status != BuildProgressTracker.STATUS_RUNNING &&
+            status != BuildProgressTracker.STATUS_QUEUED
+        ) {
             buildRecordStore.loadArtifacts(artifactProject, record.id)?.let { artifacts ->
                 val merged = BuildStatusMerger.merge(
                     BuildStatusView.fromRecord(record),
@@ -337,10 +382,27 @@ class BuildExecutionManager(
             outcome = outcome,
             recordSource = recordSource,
             statusSource = statusSource,
-            queuePosition = queuePosition(record.id, artifactProject),
-            queuedBehindBuildId = queuedBehindBuildId(record.id, artifactProject),
+            queuePosition = withProjectLock(artifactProject) { projectQueue.position(it, record.id) },
+            queuedBehindBuildId = withProjectLock(artifactProject) {
+                projectQueue.behindBuildId(it, record.id, runningBuildId(it))
+            },
         )
     }
+
+    private fun <T> withProjectLock(projectDirectory: File?, block: (File) -> T?): T? {
+        if (projectDirectory == null) {
+            return null
+        }
+        return synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+            block(projectDirectory)
+        }
+    }
+
+    private fun runningBuildId(projectDirectory: File): String? =
+        builds.values.firstOrNull { record ->
+            record.matchesProject(projectDirectory) &&
+                record.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING
+        }?.id
 
     fun hasActiveBuild(projectDirectory: File? = null): Boolean =
         hasRunningBuild(projectDirectory) || hasQueuedBuild(projectDirectory)
@@ -405,7 +467,10 @@ class BuildExecutionManager(
                     record.matchesProject(projectDirectory)
             }
             .forEach { record ->
-                removeFromQueue(record)
+                val dir = record.projectDirectory?.let(::File)
+                if (dir != null) {
+                    projectQueue.remove(dir, record.id)
+                }
                 finalizeQueuedBuild(record, BuildTerminalOutcome.Cancelled(reason))
             }
     }
@@ -486,6 +551,7 @@ class BuildExecutionManager(
     private fun afterBuildSlotFreed(record: BuildRecord) {
         val projectDirectory = record.projectDirectory?.let(::File) ?: return
         drainProjectQueue(projectDirectory)
+        // Global executor may have freed a slot used by another project's remqueued head.
         drainAllProjectQueues()
     }
 
@@ -515,6 +581,7 @@ class BuildExecutionManager(
     private fun newBuildStart(
         request: BuildRunRequest,
         notifier: McpBuildNotifier?,
+        queued: Boolean = false,
     ): BuildStart {
         val streams = CapturingStreams()
         val progressNotifier = BuildProgressNotifier(notifier)
@@ -522,6 +589,11 @@ class BuildExecutionManager(
         tracker = BuildProgressTracker(
             trackDownloads = request.progressOptions.includeDownloads,
             onUpdate = { progressNotifier.notifyIfNeeded(tracker) },
+            initialStatus = if (queued) {
+                BuildProgressTracker.STATUS_QUEUED
+            } else {
+                BuildProgressTracker.STATUS_RUNNING
+            },
         )
         val record = BuildRecord(
             id = UUID.randomUUID().toString(),
@@ -663,71 +735,9 @@ class BuildExecutionManager(
         completed.drop(MAX_RETAINED_BUILDS).forEach { builds.remove(it.id) }
     }
 
-    private class BuildProgressNotifier(
-        private val delegate: McpBuildNotifier?,
-    ) {
-        fun notifyIfNeeded(tracker: BuildProgressTracker) {
-            val active = delegate ?: return
-            if (!tracker.shouldNotifyProgress()) {
-                return
-            }
-            sendProgress(active, tracker, final = false)
-            sendLog(active, tracker)
-        }
-
-        fun notifyFinal(tracker: BuildProgressTracker) {
-            val active = delegate ?: return
-            sendProgress(active, tracker, final = true)
-            sendLog(active, tracker)
-        }
-
-        private fun sendProgress(
-            delegate: McpBuildNotifier,
-            tracker: BuildProgressTracker,
-            final: Boolean,
-        ) {
-            val snapshot = tracker.snapshot()
-            val completed = snapshot.completedTaskCount
-            val total = (completed + snapshot.runningTaskCount + snapshot.failedTaskCount).coerceAtLeast(1)
-            val message = buildString {
-                append(snapshot.currentOperation ?: "Gradle build")
-                append(" — completed ")
-                append(completed)
-                if (snapshot.failedTaskCount > 0) {
-                    append(", failed ")
-                    append(snapshot.failedTaskCount)
-                }
-            }
-            delegate.notifyProgress(
-                progress = if (final) total.toDouble() else completed.toDouble(),
-                total = total.toDouble(),
-                message = message,
-            )
-        }
-
-        private fun sendLog(delegate: McpBuildNotifier, tracker: BuildProgressTracker) {
-            val snapshot = tracker.snapshot()
-            val latest = snapshot.recentEvents.lastOrNull() ?: return
-            val level = when (latest.eventType) {
-                "TASK_FAIL", "TEST_FAIL", "CONFIG_FAIL", "FAIL" -> LoggingLevel.Error
-                "TASK_SKIP", "TEST_SKIP" -> LoggingLevel.Warning
-                else -> LoggingLevel.Info
-            }
-            delegate.notifyLog(
-                message = "${latest.eventType}: ${latest.displayName}",
-                level = level,
-            )
-        }
-    }
-
     private data class BuildStart(
         val record: BuildRecord,
         val notifier: BuildProgressNotifier,
-    )
-
-    private data class PendingBuild(
-        val start: BuildStart,
-        val request: BuildRunRequest,
     )
 
     private fun startImmediately(
@@ -754,12 +764,18 @@ class BuildExecutionManager(
         request: BuildRunRequest,
         projectDirectory: File,
     ): Map<String, Any?> {
-        check(start.record.progressTracker.markQueued()) {
-            "Failed to mark build ${start.record.id} as queued"
+        check(start.record.progressTracker.snapshot().status == BuildProgressTracker.STATUS_QUEUED) {
+            "Queued build ${start.record.id} must start in queued status"
         }
         builds[start.record.id] = start.record
-        val projectKey = ProjectDirectoryResolver.canonicalKey(projectDirectory)
-        projectQueues.computeIfAbsent(projectKey) { ArrayDeque() }.addLast(PendingBuild(start, request))
+        projectQueue.enqueue(
+            projectDirectory,
+            ProjectBuildQueue.QueuedBuild(
+                record = start.record,
+                request = request,
+                work = { runBuild(start.record, request, start.notifier) },
+            ),
+        )
         pruneCompletedBuilds()
         return queuedBackgroundResponse(start.record.id, request, projectDirectory)
     }
@@ -790,44 +806,14 @@ class BuildExecutionManager(
             put("tasks", request.tasks)
             put("testClasses", request.testClasses)
             putTestRunSelection(request.selection)
-            queuePosition(buildId, projectDirectory)?.let { put("queuePosition", it) }
-            queuedBehindBuildId(buildId, projectDirectory)?.let { put("queuedBehindBuildId", it) }
+            projectQueue.position(projectDirectory, buildId)?.let { put("queuePosition", it) }
+            projectQueue.behindBuildId(projectDirectory, buildId, runningBuildId(projectDirectory))
+                ?.let { put("queuedBehindBuildId", it) }
             put(
                 "message",
                 "Build queued. Poll gradle_get_build_status with this buildId until status is running or terminal.",
             )
         }
-
-    private fun countQueued(projectDirectory: File): Int =
-        projectQueues[ProjectDirectoryResolver.canonicalKey(projectDirectory)]?.size ?: 0
-
-    private fun queuePosition(buildId: String, projectDirectory: File?): Int? {
-        if (projectDirectory == null) {
-            return null
-        }
-        val queue = projectQueues[ProjectDirectoryResolver.canonicalKey(projectDirectory)] ?: return null
-        val index = queue.indexOfFirst { it.start.record.id == buildId }
-        return if (index >= 0) index + 1 else null
-    }
-
-    private fun queuedBehindBuildId(buildId: String, projectDirectory: File?): String? {
-        if (projectDirectory == null) {
-            return null
-        }
-        val runningBuildId = builds.values.firstOrNull { record ->
-            record.matchesProject(projectDirectory) &&
-                record.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING
-        }?.id
-        val queue = projectQueues[ProjectDirectoryResolver.canonicalKey(projectDirectory)] ?: return runningBuildId
-        val index = queue.indexOfFirst { it.start.record.id == buildId }
-        if (index < 0) {
-            return runningBuildId
-        }
-        if (index == 0) {
-            return runningBuildId
-        }
-        return queue.toList()[index - 1].start.record.id
-    }
 
     private fun withQueueFields(
         response: Map<String, Any?>,
@@ -838,64 +824,48 @@ class BuildExecutionManager(
         if (status != BuildProgressTracker.STATUS_QUEUED || projectDirectory == null) {
             return response
         }
-        return response + buildMap {
-            queuePosition(buildId, projectDirectory)?.let { put("queuePosition", it) }
-            queuedBehindBuildId(buildId, projectDirectory)?.let { put("queuedBehindBuildId", it) }
-        }
-    }
-
-    private fun removeFromQueue(record: BuildRecord) {
-        val projectDirectory = record.projectDirectory?.let(::File) ?: return
-        val projectKey = ProjectDirectoryResolver.canonicalKey(projectDirectory)
-        projectQueues[projectKey]?.removeIf { it.start.record.id == record.id }
-        if (projectQueues[projectKey]?.isEmpty() == true) {
-            projectQueues.remove(projectKey)
+        return synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+            response + buildMap {
+                projectQueue.position(projectDirectory, buildId)?.let { put("queuePosition", it) }
+                projectQueue.behindBuildId(projectDirectory, buildId, runningBuildId(projectDirectory))
+                    ?.let { put("queuedBehindBuildId", it) }
+            }
         }
     }
 
     private fun drainAllProjectQueues() {
-        projectQueues.keys.toList().forEach { projectKey ->
+        projectQueue.projectKeys().forEach { projectKey ->
             drainProjectQueue(File(projectKey))
         }
     }
 
     private fun drainProjectQueue(projectDirectory: File) {
-        val projectKey = ProjectDirectoryResolver.canonicalKey(projectDirectory)
         while (true) {
-            val pending = synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
-                if (hasRunningBuild(projectDirectory)) {
-                    return
-                }
-                val queue = projectQueues[projectKey] ?: return
-                queue.peekFirst() ?: run {
-                    projectQueues.remove(projectKey)
-                    return
+            val queued = synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+                when (
+                    val result = projectQueue.takeNextIfIdle(
+                        projectDirectory,
+                        hasRunningBuild = hasRunningBuild(projectDirectory),
+                    )
+                ) {
+                    is ProjectBuildQueue.TakeResult.Ready -> result.queued
+                    ProjectBuildQueue.TakeResult.StaleRetry -> null // continue outer loop
+                    ProjectBuildQueue.TakeResult.Empty,
+                    ProjectBuildQueue.TakeResult.IdleOccupied,
+                    -> return
                 }
             }
-            if (!tryStartPending(pending, projectDirectory)) {
+            if (queued == null) {
+                continue
+            }
+            try {
+                executor.execute { queued.work() }
+            } catch (_: RejectedExecutionException) {
+                synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+                    projectQueue.requeueAtFront(projectDirectory, queued)
+                }
                 return
             }
-            synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
-                projectQueues[projectKey]?.pollFirst()
-                if (projectQueues[projectKey]?.isEmpty() == true) {
-                    projectQueues.remove(projectKey)
-                }
-            }
-        }
-    }
-
-    private fun tryStartPending(pending: PendingBuild, projectDirectory: File): Boolean {
-        if (!pending.start.record.progressTracker.markDequeued()) {
-            return false
-        }
-        return try {
-            executor.execute {
-                runBuild(pending.start.record, pending.request, pending.start.notifier)
-            }
-            true
-        } catch (_: RejectedExecutionException) {
-            pending.start.record.progressTracker.markQueued()
-            false
         }
     }
 
@@ -906,9 +876,16 @@ class BuildExecutionManager(
     internal fun seedQueuedBuildForTests(record: BuildRecord, request: BuildRunRequest) {
         builds[record.id] = record
         val projectDirectory = record.projectDirectory?.let(::File) ?: return
-        val projectKey = ProjectDirectoryResolver.canonicalKey(projectDirectory)
-        projectQueues.computeIfAbsent(projectKey) { ArrayDeque() }
-            .addLast(PendingBuild(BuildStart(record, BuildProgressNotifier(null)), request))
+        synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+            projectQueue.enqueue(
+                projectDirectory,
+                ProjectBuildQueue.QueuedBuild(
+                    record = record,
+                    request = request,
+                    work = { runBuild(record, request, BuildProgressNotifier(null)) },
+                ),
+            )
+        }
     }
 
     internal fun completeBuildForTests(buildId: String, succeeded: Boolean = true): Boolean {

@@ -198,13 +198,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
             progressOptions = ProgressResponseOptions.fromArgs(args),
         )
         val background = args.optionalBoolean("background", default = false)
-        val queueIfBusy = args.optionalBoolean("queueIfBusy", default = false)
-        if (queueIfBusy && !background) {
-            throw McpException(
-                McpErrorCode.INVALID_ARGUMENT,
-                "queueIfBusy requires background=true. Pass background=true or omit queueIfBusy.",
-            )
-        }
+        val queueIfBusy = requireQueueIfBusyWithBackground(args)
         if (background) {
             jsonResult(runtime.buildExecutionManager.startBackground(request, notifier, queueIfBusy))
         } else {
@@ -229,13 +223,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         )
         preflightRunTests(projectDirectory, testOptions)
         val background = args.optionalBoolean("background", default = false)
-        val queueIfBusy = args.optionalBoolean("queueIfBusy", default = false)
-        if (queueIfBusy && !background) {
-            throw McpException(
-                McpErrorCode.INVALID_ARGUMENT,
-                "queueIfBusy requires background=true. Pass background=true or omit queueIfBusy.",
-            )
-        }
+        val queueIfBusy = requireQueueIfBusyWithBackground(args)
         val response = if (background) {
             runtime.buildExecutionManager.startBackground(request, notifier, queueIfBusy)
         } else {
@@ -243,6 +231,18 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         }
         jsonResult(withTestRunResponseMetadata(response, parsed.selectionNormalized))
     }
+}
+
+private fun requireQueueIfBusyWithBackground(args: Map<String, Any>): Boolean {
+    val queueIfBusy = args.optionalBoolean("queueIfBusy", default = false)
+    val background = args.optionalBoolean("background", default = false)
+    if (queueIfBusy && !background) {
+        throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "queueIfBusy requires background=true. Pass background=true or omit queueIfBusy.",
+        )
+    }
+    return queueIfBusy
 }
 
 internal fun withTestRunResponseMetadata(

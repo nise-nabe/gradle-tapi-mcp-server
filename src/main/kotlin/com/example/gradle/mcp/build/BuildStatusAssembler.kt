@@ -18,7 +18,8 @@ internal object BuildStatusAssembler {
         progressOptions: ProgressResponseOptions,
         style: BuildStatusResponseStyle = BuildStatusResponseStyle.STATUS_POLL,
     ): Map<String, Any?> {
-        val isRunning = view.status == BuildProgressTracker.STATUS_RUNNING
+        val isActive = view.status == BuildProgressTracker.STATUS_RUNNING ||
+            view.status == BuildProgressTracker.STATUS_QUEUED
         val response = mutableMapOf<String, Any?>()
 
         if (style == BuildStatusResponseStyle.FOREGROUND) {
@@ -67,7 +68,7 @@ internal object BuildStatusAssembler {
             response.putAll(optionalDownloadFields(progressOptions, progress, view.statusSource))
         }
 
-        if (!isRunning) {
+        if (!isActive) {
             view.buildSummary?.let { response["buildSummary"] = it }
             view.progress?.let { response.putAll(terminalFailureFields(it, progressOptions)) }
         }

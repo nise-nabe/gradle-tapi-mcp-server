@@ -13,7 +13,6 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -281,6 +280,89 @@ class BuildExecutionManagerQueueTest {
 
         manager.hasActiveBuild(testProjectDirectory).shouldBeTrue()
         manager.hasRunningBuild(testProjectDirectory).shouldBeFalse()
+    }
+
+    @Test
+    fun `cancel queued build drains remaining queue when no running build`() {
+        val releaseImmediately = CountDownLatch(1).also { it.countDown() }
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            blockingProjectConnection(CountDownLatch(1), releaseImmediately),
+        )
+        val manager = BuildExecutionManager(connectionManager)
+        manager.seedQueuedBuildForTests(
+            testBuildRecord(
+                id = "queued-head",
+                tracker = queuedTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+            ),
+            request = BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TASKS,
+                tasks = listOf("head"),
+            ),
+        )
+        val remaining = manager.startBackground(
+            request = BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TASKS,
+                tasks = listOf("remaining"),
+            ),
+            notifier = null,
+            queueIfBusy = true,
+        )
+        remaining["status"] shouldBe BuildProgressTracker.STATUS_QUEUED
+        remaining["queuePosition"] shouldBe 2
+
+        manager.cancelBuild("queued-head")
+
+        waitUntilStatus(
+            manager,
+            remaining["buildId"] as String,
+            BuildProgressTracker.STATUS_RUNNING,
+        )
+        manager.hasQueuedBuild(testProjectDirectory).shouldBeFalse()
+    }
+
+    @Test
+    fun `cancel after dequeue promotes to running cancellation path`() {
+        val connectionManager = GradleConnectionManager()
+        val buildEntered = CountDownLatch(1)
+        val releaseBuild = CountDownLatch(1)
+        connectionManager.seedConnectionForTests(
+            blockingProjectConnection(buildEntered, releaseBuild),
+        )
+        val manager = BuildExecutionManager(connectionManager)
+        try {
+            manager.seedRunningBuildForTests(
+                testBuildRecord(
+                    id = "running-build",
+                    tracker = runningTracker(),
+                    projectDirectory = testProjectDirectory.absolutePath,
+                ),
+            )
+            val queued = manager.startBackground(
+                request = BuildRunRequest(
+                    projectDirectory = testProjectDirectory,
+                    kind = BuildKind.TASKS,
+                    tasks = listOf("next"),
+                ),
+                notifier = null,
+                queueIfBusy = true,
+            )
+            val queuedId = queued["buildId"] as String
+            manager.completeBuildForTests("running-build").shouldBeTrue()
+            waitUntilStatus(manager, queuedId, BuildProgressTracker.STATUS_RUNNING)
+            buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
+
+            val response = manager.cancelBuild(queuedId)
+            response["status"] shouldBe BuildProgressTracker.STATUS_RUNNING
+            response["cancelled"] shouldBe null
+            response["message"].toString().shouldContain("Cancellation requested")
+        } finally {
+            releaseBuild.countDown()
+            manager.shutdown()
+        }
     }
 
     @Test

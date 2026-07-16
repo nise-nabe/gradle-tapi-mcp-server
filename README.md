@@ -108,7 +108,7 @@ Example:
 
 For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` or `gradle_run_tests`. The tool returns immediately with a `buildId`. Only one MCP build may run per `projectDirectory` at a time; pass `queueIfBusy: true` (with `background: true`) to enqueue the next run (`status: queued`, max 3 queued per project). Concurrent builds across different projects are allowed up to a server-side limit. Do not run shell `./gradlew` on the same checkout while an MCP build is active (IntelliJ Platform `:plugin:test` sandboxes are especially sensitive). Call `gradle_cancel_build` with that `buildId` to stop an unneeded background run. Poll `gradle_get_build_status` with that `buildId` (required) to read:
 
-- `status`: `running`, `succeeded`, `failed`, or `cancelled`
+- `status`: `queued`, `running`, `succeeded`, `failed`, or `cancelled`
 - `statusSource`: `memory` (in-process record) or `disk` (`.gradle/mcp-builds/<buildId>/`)
 - `outcome` and `buildSummary` when the build has finished
 - `progress` (only when `includeProgress: true`): capped task lists and recent events; running polls merge in-memory progress with disk `events.ndjson` when available
