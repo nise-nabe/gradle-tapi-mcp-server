@@ -223,15 +223,17 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         )
         val background = args.optionalBoolean("background", default = false)
         val queueIfBusy = requireQueueIfBusyWithBackground(args)
+        val deferScopeModelCheck = background && queueIfBusy
         preflightRunTests(
             projectDirectory,
             testOptions,
-            deferScopeModelCheck = background && queueIfBusy,
+            deferScopeModelCheck = deferScopeModelCheck,
         )
+        val scopedRequest = request.copy(testScopeValidatedAtPreflight = !deferScopeModelCheck)
         val response = if (background) {
-            runtime.buildExecutionManager.startBackground(request, notifier, queueIfBusy)
+            runtime.buildExecutionManager.startBackground(scopedRequest, notifier, queueIfBusy)
         } else {
-            runtime.buildExecutionManager.runForeground(request, notifier)
+            runtime.buildExecutionManager.runForeground(scopedRequest, notifier)
         }
         jsonResult(withTestRunResponseMetadata(response, parsed.selectionNormalized))
     }

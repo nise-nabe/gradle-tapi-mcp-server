@@ -6,9 +6,11 @@ import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.support.gradleProjectConnectionProxy
 import com.example.gradle.mcp.support.gradleProjectProxy
+import com.example.gradle.mcp.support.testRunProjectConnection
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
@@ -140,5 +142,69 @@ class TestRunPreflightTest {
 
         getModelCalls.get() shouldBe 2
         connectionManager.cachedHasSubprojects(projectDirectory) shouldBe true
+    }
+
+    @Test
+    fun `non-deferred unscoped test run queries GradleProject once across preflight and execution`() {
+        val getModelCalls = AtomicInteger(0)
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            connection = testRunProjectConnection(gradleProjectProxy(), getModelCalls),
+            projectDirectory = projectDirectory,
+        )
+        val manager = BuildExecutionManager(connectionManager)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, manager)
+        val options = TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest")))
+
+        with(runtime) {
+            preflightRunTests(projectDirectory, options, deferScopeModelCheck = false)
+        }
+        getModelCalls.get() shouldBe 1
+
+        runBlocking {
+            manager.runForeground(
+                request = BuildRunRequest(
+                    projectDirectory = projectDirectory,
+                    kind = BuildKind.TESTS,
+                    selection = options.selection,
+                    testScopeValidatedAtPreflight = true,
+                ),
+                notifier = null,
+            )
+        }
+
+        getModelCalls.get() shouldBe 1
+    }
+
+    @Test
+    fun `deferred unscoped test run queries GradleProject at execution time`() {
+        val getModelCalls = AtomicInteger(0)
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            connection = testRunProjectConnection(gradleProjectProxy(), getModelCalls),
+            projectDirectory = projectDirectory,
+        )
+        val manager = BuildExecutionManager(connectionManager)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, manager)
+        val options = TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest")))
+
+        with(runtime) {
+            preflightRunTests(projectDirectory, options, deferScopeModelCheck = true)
+        }
+        getModelCalls.get() shouldBe 0
+
+        runBlocking {
+            manager.runForeground(
+                request = BuildRunRequest(
+                    projectDirectory = projectDirectory,
+                    kind = BuildKind.TESTS,
+                    selection = options.selection,
+                    testScopeValidatedAtPreflight = false,
+                ),
+                notifier = null,
+            )
+        }
+
+        getModelCalls.get() shouldBe 1
     }
 }

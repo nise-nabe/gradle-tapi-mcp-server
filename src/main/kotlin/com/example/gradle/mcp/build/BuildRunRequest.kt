@@ -13,6 +13,13 @@ data class BuildRunRequest(
     val jvmArguments: List<String> = emptyList(),
     val outputLimit: OutputLimitOptions = OutputLimitOptions(),
     val progressOptions: ProgressResponseOptions = ProgressResponseOptions(),
+    /**
+     * When true, [com.example.gradle.mcp.build.ensureTestRunProjectScope] already ran in
+     * preflight, so [com.example.gradle.mcp.build.BuildExecutionManager] skips the execution-time
+     * model query. Remains false when preflight deferred the check (`queueIfBusy`) or when the
+     * request bypasses MCP tool preflight — then execution still validates scope.
+     */
+    val testScopeValidatedAtPreflight: Boolean = false,
 ) {
     val testClasses: List<String> get() = selection.testClassesForReporting()
     val testMethods: Map<String, List<String>> get() = selection.testMethodsOrEmpty()

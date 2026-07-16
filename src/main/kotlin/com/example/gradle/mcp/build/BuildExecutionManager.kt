@@ -678,11 +678,13 @@ class BuildExecutionManager(
                     launcher.run()
                 }
                 BuildKind.TESTS -> {
-                    ensureTestRunProjectScope(
-                        connectionManager,
-                        request.projectDirectory,
-                        TestRunOptions(selection = request.selection, tasks = request.tasks),
-                    )
+                    if (!request.testScopeValidatedAtPreflight) {
+                        ensureTestRunProjectScope(
+                            connectionManager,
+                            request.projectDirectory,
+                            TestRunOptions(selection = request.selection, tasks = request.tasks),
+                        )
+                    }
                     val launcher = configureTestLauncher(connection.newTestLauncher(), request)
                     configureLauncher(launcher, record, request, streams, tracker)
                     launcher.run()
