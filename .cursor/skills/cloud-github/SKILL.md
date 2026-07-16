@@ -12,6 +12,11 @@ Cursor Cloud Agents in this repository must not fail because `gh` is missing fro
 `/usr/local/bin` is writable, into `/usr/local/bin/gh`. When `gh auth status` is unauthenticated,
 it logs in with `GH_TOKEN` or `GITHUB_TOKEN` if set.
 
+## Language
+
+Write GitHub issues, pull requests, and PR/issue comments in **English** (titles and bodies).
+Reserve Japanese for direct user chat when the user prefers it.
+
 ## PR create / update (preferred)
 
 Use the built-in **ManagePullRequest** tool. Do not run `gh pr create` or `gh pr edit`
