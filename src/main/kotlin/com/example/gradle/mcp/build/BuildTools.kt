@@ -72,11 +72,10 @@ internal fun buildStatusSchema(): Map<String, Any> =
             "buildId" to stringProperty("Build ID from background gradle_run_tasks or gradle_run_tests"),
             "projectDirectory" to optionalProjectDirectoryProperty(),
             "waitUntilComplete" to booleanProperty(
-                "Server-side wait until terminal status or waitTimeoutMs. Default false. " +
-                    "May exceed MCP client transport timeout; prefer short waits or plain polls for multi-minute builds.",
+                "Server-side wait until terminal/timeout (default false). Prefer short waits.",
             ),
-            "waitTimeoutMs" to integerProperty("Max server-side wait ms (default 30000, max 60000)."),
-            "pollIntervalMs" to integerProperty("Poll interval ms while waiting (default 2000)."),
+            "waitTimeoutMs" to integerProperty("Max server wait ms (default 30000, max 60000)."),
+            "pollIntervalMs" to integerProperty("Poll interval while waiting (default 2000)."),
         ),
     )
 
@@ -108,22 +107,13 @@ internal fun runTestsSchema(): Map<String, Any> =
         required = emptyList(),
         extraProperties = mapOf(
             "testClasses" to stringArrayProperty(
-                "Fully qualified JVM test class names (one Test task via taskPath, or all matching tasks). " +
-                    "Class.method entries (e.g. com.example.FooTest.testBar) are normalized to testMethods.",
+                "Fully qualified JVM test class names. Class.method entries (e.g. com.example.FooTest.testBar) are normalized to testMethods.",
             ),
             "testMethods" to testMethodsProperty(),
-            "taskPath" to stringProperty(
-                "Single Test task path for withTaskAndTest* (e.g. :mod:test or custom suite :mod:fastTest). " +
-                    "Requires testClasses or testMethods.",
-            ),
+            "taskPath" to stringProperty("Single Test task (:mod:test or :mod:fastTest). Requires testClasses or testMethods."),
             "includePattern" to stringProperty("Single test include pattern (Gradle 7.6+). Requires tasks."),
-            "includePatterns" to stringArrayProperty(
-                "Test include patterns (Gradle 7.6+). Requires tasks; applies to every listed Test task " +
-                    "(use to batch :test and custom JvmTestSuite tasks like :fastTest in one MCP build).",
-            ),
-            "tasks" to stringArrayProperty(
-                "One or more Test task paths for TestLauncher.forTasks() (Gradle 7.6+). Required with patterns.",
-            ),
+            "includePatterns" to stringArrayProperty("Include patterns for every path in tasks (Gradle 7.6+)."),
+            "tasks" to stringArrayProperty("Test task paths for TestLauncher.forTasks() (Gradle 7.6+)."),
             "background" to booleanProperty("Return buildId immediately. Default false."),
         ),
     )
