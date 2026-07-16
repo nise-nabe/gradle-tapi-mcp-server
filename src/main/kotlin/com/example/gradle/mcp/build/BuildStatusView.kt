@@ -32,7 +32,8 @@ data class BuildStatusView(
             val progress = record.progressTracker.snapshot()
             val stdout = record.streams.stdoutSnapshot()
             val stderr = record.streams.stderrSnapshot()
-            val isTerminal = progress.status != BuildProgressTracker.STATUS_RUNNING
+            val isTerminal = progress.status != BuildProgressTracker.STATUS_RUNNING &&
+                progress.status != BuildProgressTracker.STATUS_QUEUED
             return BuildStatusView(
                 buildId = record.id,
                 kind = record.kind.name.lowercase(),

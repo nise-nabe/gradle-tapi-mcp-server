@@ -18,6 +18,9 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
+internal fun queuedTracker(): BuildProgressTracker =
+    BuildProgressTracker().also { it.markQueued() }
+
 internal fun runningTracker(label: String = "Gradle tasks: build"): BuildProgressTracker =
     BuildProgressTracker().also { it.markStarting(label) }
 

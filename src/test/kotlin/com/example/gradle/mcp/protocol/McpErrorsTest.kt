@@ -29,6 +29,13 @@ class McpErrorsTest {
     }
 
     @Test
+    fun `maps build queue full message`() {
+        mapExceptionToErrorCode(
+            IllegalStateException("Build queue is full for /tmp (max 3 queued builds)."),
+        ) shouldBe McpErrorCode.BUILD_QUEUE_FULL
+    }
+
+    @Test
     fun `maps mcp exception directly`() {
         mapExceptionToErrorCode(
             McpException(McpErrorCode.BUILD_ALREADY_RUNNING, "A Gradle build is already running for /tmp."),

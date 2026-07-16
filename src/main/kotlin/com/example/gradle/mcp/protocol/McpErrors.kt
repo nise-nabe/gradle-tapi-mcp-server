@@ -6,6 +6,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 enum class McpErrorCode {
     NOT_CONNECTED,
     BUILD_ALREADY_RUNNING,
+    BUILD_QUEUE_FULL,
     INVALID_ARGUMENT,
     PROJECT_NOT_FOUND,
     BUILD_FAILED,
@@ -49,6 +50,8 @@ fun mapExceptionToErrorCode(exception: Exception): McpErrorCode =
                     exception.message?.startsWith("Cannot run prepareTasks while a Gradle build is running") == true ||
                     exception.message?.startsWith("Maximum concurrent builds") == true ->
                     McpErrorCode.BUILD_ALREADY_RUNNING
+                exception.message?.startsWith("Build queue is full") == true ->
+                    McpErrorCode.BUILD_QUEUE_FULL
                 exception.message?.startsWith("Project directory does not exist:") == true ->
                     McpErrorCode.PROJECT_NOT_FOUND
                 exception.message?.startsWith("Not connected to Gradle project:") == true ->

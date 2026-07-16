@@ -261,6 +261,6 @@ Issue §2 also asked to run `:test` and `:fastTest` in one invocation. That is *
 
 ## 9. Recommendation
 
-Implement **Option C (`queueIfBusy`, default false, background-only in v1)** after PR #175 lands. Do **not** ship blocking `waitForSlot` as the main fix — it collides with MCP client timeouts that §1 is already fixing.
+**Implemented (v0.6+):** Option C — `queueIfBusy` (default `false`, `background` required) with `status: queued`, FIFO drain, `BUILD_QUEUE_FULL` at depth 3.
 
-Until then, agents should: serialize `gradle_run_*`, batch multi-suite tests in one call, and poll with short `waitUntilComplete` windows.
+Until clients adopt queueing, agents should still batch multi-suite tests in one call and poll with short `waitUntilComplete` windows.

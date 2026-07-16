@@ -50,11 +50,10 @@ internal object McpToolDescriptions {
             "Set includeOutput/includeProgress as needed."
 
     const val RUN_TASKS =
-        "Run Gradle task paths. Outcome/summary by default; background=true returns buildId. " +
-            "Foreground >45s returns detached buildId. One build per project."
+        "Run Gradle tasks. background returns buildId; queueIfBusy enqueues when busy."
 
     const val RUN_TESTS =
         "Run JVM tests by class, method, or pattern. taskPath scopes one Test task; " +
             "tasks+includePatterns can batch suites (e.g. :test and :fastTest). " +
-            "Multi-project needs taskPath/tasks. One build per project."
+            "Multi-project needs taskPath/tasks. queueIfBusy enqueues when busy."
 }

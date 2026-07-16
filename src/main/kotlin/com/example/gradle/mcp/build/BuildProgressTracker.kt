@@ -79,10 +79,28 @@ class BuildProgressTracker(
         }
     }
 
+    fun markQueued(): Boolean =
+        synchronized(lock) {
+            if (status != STATUS_RUNNING) {
+                return@synchronized false
+            }
+            status = STATUS_QUEUED
+            true
+        }
+
+    fun markDequeued(): Boolean =
+        synchronized(lock) {
+            if (status != STATUS_QUEUED) {
+                return@synchronized false
+            }
+            status = STATUS_RUNNING
+            true
+        }
+
     fun markCancelled(message: String) {
         notifyAfter {
             synchronized(lock) {
-                if (status != STATUS_RUNNING) {
+                if (status != STATUS_RUNNING && status != STATUS_QUEUED) {
                     return@notifyAfter false
                 }
                 status = STATUS_CANCELLED
@@ -363,6 +381,7 @@ class BuildProgressTracker(
     }
 
     companion object {
+        const val STATUS_QUEUED = "queued"
         const val STATUS_RUNNING = "running"
         const val STATUS_SUCCEEDED = "succeeded"
         const val STATUS_FAILED = "failed"

@@ -24,13 +24,13 @@
 
 `gradle_connect` keeps existing connections open. It rejects the call while a build is running for the same `projectDirectory`.
 
-Multiple `background=true` builds may run concurrently across **different** connected projects (bounded by a server-side pool). Only one MCP build may run per `projectDirectory` at a time; a second `gradle_run_tasks` / `gradle_run_tests` for the same project returns `BUILD_ALREADY_RUNNING`. When the global pool is full, new background starts also return `BUILD_ALREADY_RUNNING`.
+Multiple `background=true` builds may run concurrently across **different** connected projects (bounded by a server-side pool). Only one MCP build may run per `projectDirectory` at a time; a second `gradle_run_tasks` / `gradle_run_tests` for the same project returns `BUILD_ALREADY_RUNNING` unless `queueIfBusy=true` with `background=true` (enqueues with `status: queued`, max 3 queued per project; saturated queue returns `BUILD_QUEUE_FULL`). When the global pool is full, new background starts also return `BUILD_ALREADY_RUNNING`.
 
 Do not run shell `./gradlew` in parallel on the same checkout while an MCP build is active. IntelliJ Platform `:plugin:test` runs compete for the same IDE test sandbox and can appear hung for many minutes or corrupt sandbox state.
 
 Most query/build tools accept optional `projectDirectory` (defaults to `GRADLE_PROJECT_DIR`).
 
-Model and overview tools also accept optional `prepareTasks` (string array): Gradle tasks to run before fetching the Tooling API model (for example `:app:compileJava` to ensure sources exist). Empty or omitted means no pre-tasks. **While an MCP build is running for the same `projectDirectory`, model queries are rejected** with `BUILD_ALREADY_RUNNING` (Tooling API connection is not shared with active builds). Non-empty `prepareTasks` execute Gradle work and can be slow—use only when needed.
+Model and overview tools also accept optional `prepareTasks` (string array): Gradle tasks to run before fetching the Tooling API model (for example `:app:compileJava` to ensure sources exist). Empty or omitted means no pre-tasks. **While a build is `running` or `queued` for the same `projectDirectory`, model queries are rejected** with `BUILD_ALREADY_RUNNING`. Non-empty `prepareTasks` execute Gradle work and can be slow—use only when needed.
 
 ## Query (read-only)
 
@@ -138,8 +138,9 @@ No arguments.
 | `tailOutput` | no | `true` | Keep tail when truncating |
 | `includeProgress` | no | `false` | Include detailed `progress` object |
 | `background` | no | `false` | Return `buildId` immediately; poll with `gradle_get_build_status` (multiple concurrent background builds allowed) |
+| `queueIfBusy` | no | `false` | Enqueue when the project already has a running or queued build. Requires `background=true`. |
 
-Response when `background=true`: `buildId`, `status`, `kind`, `message`.
+Response when `background=true`: `buildId`, `status` (`running` or `queued`), `kind`, `message`. Queued responses may include `queuePosition` and `queuedBehindBuildId`.
 
 Foreground responses include `outcome` (`SUCCESS` / `FAILED`), `buildSummary` (`resultLine`, `taskSummaryLine`), `failedTaskCount`, `failedTasks`, and `buildSummary.failureSummary` on failure. `stdout`/`stderr` are omitted unless `includeOutput=true` (truncated per `maxOutputChars`; CRLF normalized to LF). `progress` only when `includeProgress=true`.
 
@@ -162,6 +163,7 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 | `tailOutput` | no | `true` | Keep tail when truncating |
 | `includeProgress` | no | `false` | Include detailed `progress` object |
 | `background` | no | `false` | Return `buildId` immediately; poll with `gradle_get_build_status` |
+| `queueIfBusy` | no | `false` | Enqueue when the project already has a running or queued build. Requires `background=true`. |
 
 \* Provide exactly one of `testClasses`, `testMethods`, or `includePattern`/`includePatterns` (patterns also require `tasks`). Optional `taskPath` and `tasks` scope the selected tests.
 
@@ -177,7 +179,7 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 
 `taskPath` uses `withTaskAndTest*` when combined with classes or methods (single task). `tasks` applies `TestLauncher.forTasks()` when non-empty; with patterns, each listed task gets the same `includePatterns`.
 
-**Concurrency:** Do not start multiple `gradle_run_tests` calls in parallel for the same `projectDirectory` (including parallel MCP tool invocations with `background: true`); the second call returns `BUILD_ALREADY_RUNNING`. The single-flight gate clears as soon as the build is terminal in memory (no grace window)—serialize `gradle_run_*` across turns after a terminal status. Batch multiple classes, methods, **or Test tasks** in one call via `testMethods` / `testClasses` / `tasks`+`includePatterns`. Parallel test runs are only supported across **different** `projectDirectory` values, up to the server concurrent-build limit (see Connection section).
+**Concurrency:** Do not start multiple `gradle_run_tests` calls in parallel for the same `projectDirectory` unless `queueIfBusy=true` with `background=true` (otherwise the second call returns `BUILD_ALREADY_RUNNING`). The single-flight gate clears as soon as the build is terminal in memory (no grace window)—serialize `gradle_run_*` across turns after a terminal status. Batch multiple classes, methods, **or Test tasks** in one call via `testMethods` / `testClasses` / `tasks`+`includePatterns`. Parallel test runs are only supported across **different** `projectDirectory` values, up to the server concurrent-build limit (see Connection section).
 
 Same foreground/background response shape as `gradle_run_tasks`. When `testClasses` entries were normalized to `testMethods`, the initial tool response may include `selectionNormalized: true` (not present on `gradle_get_build_status` polls).
 
@@ -256,7 +258,7 @@ Failed tool calls return JSON:
 }
 ```
 
-Codes: `NOT_CONNECTED`, `BUILD_ALREADY_RUNNING` (active build for the same `projectDirectory`, or max concurrent background builds reached), `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`.
+Codes: `NOT_CONNECTED`, `BUILD_ALREADY_RUNNING` (active/queued build for the same `projectDirectory`, or max concurrent background builds reached), `BUILD_QUEUE_FULL` (per-project queue saturated), `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`.
 
 ## Environment variables (server startup)
 
