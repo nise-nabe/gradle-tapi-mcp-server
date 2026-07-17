@@ -14,8 +14,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  # Resolve the Gradle version matrix from .github/gradle-versions.json so adding
+  # a release (stable, RC, or otherwise) is a one-line edit to that file.
+  resolve-matrix:
     runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.read.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: read
+        name: Read Gradle versions
+        run: |
+          versions="$(jq -c . .github/gradle-versions.json)"
+          echo "versions=${versions}" >> "$GITHUB_OUTPUT"
+          echo "CI will run against Gradle versions: ${versions}"
+
+  build:
+    needs: resolve-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gradle-version: ${{ fromJson(needs.resolve-matrix.outputs.versions) }}
+    name: Build (Gradle ${{ matrix.gradle-version }})
     steps:
       - uses: actions/checkout@v7
 
@@ -24,6 +46,9 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
+
+      - name: Use Gradle ${{ matrix.gradle-version }}
+        run: ./gradlew wrapper --gradle-version=${{ matrix.gradle-version }}
 
       - name: Build and test
         run: ./gradlew build
