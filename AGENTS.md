@@ -1,6 +1,7 @@
 ## Learned User Preferences
 
-- Prefer Japanese for technical explanations and discussion.
+- Prefer Japanese for technical explanations and discussion with the user.
+- Write GitHub issues, pull requests, and other repository-facing GitHub text in English (titles, descriptions, comments).
 - Use `com.example` for Maven group and `com.example.gradle.mcp` for Kotlin package names; do not use personal or misleading domains (e.g. `dev.nisenabe`, `org.gradle.mcp`).
 - Do not commit local machine paths or personal identifiers into published files; use generic placeholders in README and examples.
 - If personal info was pushed to GitHub, rewrite git history and force-push to remove it completely rather than only fixing HEAD.

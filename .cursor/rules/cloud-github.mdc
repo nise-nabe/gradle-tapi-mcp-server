@@ -7,6 +7,11 @@ alwaysApply: true
 
 In Cursor Cloud, do **not** assume `gh` is on PATH before `.cursor/install.sh` completes.
 
+## Language
+
+- Write GitHub issues, pull requests, and PR/issue comments in **English** (titles and bodies).
+- User-facing chat in this repo may still be in Japanese when the user prefers it.
+
 ## Pull requests
 
 - Use the built-in **ManagePullRequest** tool for `create_pr` and `update_pr`.
