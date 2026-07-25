@@ -61,8 +61,11 @@ class BuildExecutionManagerRunTest {
         }
 
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
-        error.message.shouldContain("already running")
+        error.message.shouldContain("already active")
         error.message.shouldContain("gradle_get_build_status")
+        error.errorDetails["activeBuildId"] shouldBe "running-build"
+        error.errorDetails["activeKind"] shouldBe "tasks"
+        error.errorDetails["activeTasks"] shouldBe listOf("build")
     }
 
     @Test
@@ -126,9 +129,12 @@ class BuildExecutionManagerRunTest {
         }
 
         outcomes.count { it.isSuccess } shouldBe 1
+        val successBuildId = outcomes.single { it.isSuccess }.getOrThrow()["buildId"] as String
         val failure = outcomes.single { it.isFailure }.exceptionOrNull().shouldNotBeNull()
         (failure as McpException).code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
-        failure.message.shouldContain("already running")
+        failure.message.shouldContain("already active")
+        failure.errorDetails["activeBuildId"] shouldBe successBuildId
+        failure.errorDetails["activeStatus"] shouldBe BuildProgressTracker.STATUS_RUNNING
 
         buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
         releaseBuild.countDown()
@@ -231,6 +237,47 @@ class BuildExecutionManagerRunTest {
     }
 
     @Test
+    fun `max concurrent builds exception exposes activeBuildIds for running builds`(@TempDir tempDir: File) {
+        val connectionManager = GradleConnectionManager()
+        val manager = BuildExecutionManager(connectionManager)
+        val maxBuilds = manager.maxConcurrentBackgroundBuilds()
+        val releaseTasks = CountDownLatch(1)
+        val projects = (0 until maxBuilds).map { index ->
+            File(tempDir, "project-$index").apply { mkdirs() }
+        }
+        projects.forEach { project ->
+            val buildEntered = CountDownLatch(1)
+            connectionManager.seedConnectionForTests(
+                blockingProjectConnection(buildEntered, releaseTasks),
+                projectDirectory = project,
+            )
+            manager.startBackground(
+                request = BuildRunRequest(projectDirectory = project, kind = BuildKind.TASKS, tasks = listOf("build")),
+                notifier = null,
+            )
+            buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        }
+
+        val overflowProject = File(tempDir, "overflow").apply { mkdirs() }
+        connectionManager.seedConnectionForTests(
+            noopProjectConnection(),
+            projectDirectory = overflowProject,
+        )
+
+        val error = shouldThrow<McpException> {
+            manager.startBackground(
+                request = BuildRunRequest(projectDirectory = overflowProject, kind = BuildKind.TASKS, tasks = listOf("other")),
+                notifier = null,
+            )
+        }
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        (error.errorDetails["activeBuildIds"] as List<*>).size shouldBe maxBuilds
+
+        releaseTasks.countDown()
+        manager.shutdown()
+    }
+
+    @Test
     fun `runForeground rejects when another build is running for same project`() {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnection()
@@ -253,7 +300,7 @@ class BuildExecutionManagerRunTest {
         }
 
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
-        error.message.shouldContain("already running")
+        error.message.shouldContain("already active")
         manager.hasActiveBuild().shouldBeTrue()
     }
 
@@ -282,7 +329,7 @@ class BuildExecutionManagerRunTest {
             manager.startBackground(request, notifier = null)
         }
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
-        error.message.shouldContain("already running")
+        error.message.shouldContain("already active")
 
         releaseBuild.countDown()
         foregroundThread.join(5_000)

@@ -49,7 +49,12 @@ fun Server.registerTool(
             throw exception
         } catch (exception: Exception) {
             val code = mapExceptionToErrorCode(exception)
-            structuredErrorResult(code, exception.message ?: exception.toString())
+            val errorDetails = if (exception is McpException) {
+                exception.errorDetails
+            } else {
+                emptyMap()
+            }
+            structuredErrorResult(code, exception.message ?: exception.toString(), errorDetails)
         }
     }
 }

@@ -237,6 +237,8 @@ class JavaRuntimeToolsTest {
 
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
         error.message shouldContain "includeToolchains=false"
+        error.errorDetails["activeBuildId"] shouldBe "running-build"
+        error.errorDetails["activeStatus"] shouldBe com.example.gradle.mcp.build.BuildProgressTracker.STATUS_RUNNING
     }
 }
 

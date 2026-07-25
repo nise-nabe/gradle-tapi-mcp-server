@@ -2,7 +2,8 @@ package com.example.gradle.mcp.protocol
 
 internal object McpToolDescriptions {
     const val CONNECT =
-        "Connect to a Gradle project via Tooling API. Keeps other connections; rejects if a build is running for the same project."
+        "Connect to a Gradle project via Tooling API. Keeps other connections; rejects if a build is active " +
+            "for the same project (error includes activeBuildId)."
 
     const val CONNECTION_STATUS =
         "Connection status for one or all projects. refresh=true fetches missing BuildEnvironment (per project when listing all)."

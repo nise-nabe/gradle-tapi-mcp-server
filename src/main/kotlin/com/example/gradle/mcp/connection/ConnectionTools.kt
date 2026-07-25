@@ -23,11 +23,13 @@ internal fun connectProject(
     projectDirectory: File,
     config: ConnectionConfig,
 ): Map<String, Any?> = synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
-    if (runtime.buildExecutionManager.hasActiveBuild(projectDirectory)) {
+    val activeBuild = runtime.buildExecutionManager.activeBuildSnapshot(projectDirectory)
+    if (activeBuild != null) {
         throw McpException(
             McpErrorCode.BUILD_ALREADY_RUNNING,
-            "Cannot connect while a Gradle build is running for ${projectDirectory.path}. " +
+            "Cannot connect while a Gradle build is active for ${projectDirectory.path}. " +
                 "Wait for the build to finish, call gradle_cancel_build, or call gradle_disconnect.",
+            errorDetails = activeBuild.toErrorFields(),
         )
     }
     runtime.connectionManager.connect(config).toResponseMap()

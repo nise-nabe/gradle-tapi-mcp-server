@@ -60,7 +60,7 @@ internal fun preflightRunTests(
         projectDirectory = projectDirectory,
         buildExecutionManager = runtime.buildExecutionManager,
         message = { dir ->
-            "A Gradle build is already running for ${dir.path}. " +
+            "A Gradle build is already active for ${dir.path}. " +
                 "Poll gradle_get_build_status with the active buildId, call gradle_cancel_build to stop it, " +
                 "or wait for it to finish."
         },

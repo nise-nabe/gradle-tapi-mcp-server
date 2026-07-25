@@ -82,15 +82,43 @@ class McpErrorsTest {
         payload["error"] shouldBe mapOf("code" to "NOT_CONNECTED", "message" to "Not connected")
     }
 
+    @Test
+    fun `structured error result merges error details into error object`() {
+        val result = structuredErrorResult(
+            McpErrorCode.BUILD_ALREADY_RUNNING,
+            "Busy",
+            errorDetails = mapOf(
+                "activeBuildId" to "abc-123",
+                "activeKind" to "tasks",
+            ),
+        )
+
+        val payload = decodeMcpJsonMap((result.content.single() as TextContent).text)
+        payload["error"] shouldBe mapOf(
+            "code" to "BUILD_ALREADY_RUNNING",
+            "message" to "Busy",
+            "activeBuildId" to "abc-123",
+            "activeKind" to "tasks",
+        )
+    }
+
     companion object {
         @JvmStatic
         fun buildAlreadyRunningMessages(): Stream<Arguments> =
             Stream.of(
+                Arguments.of("A Gradle build is already active for /tmp."),
                 Arguments.of("A Gradle build is already running for /tmp."),
+                Arguments.of("Cannot connect while a Gradle build is active for /tmp."),
                 Arguments.of("Cannot connect while a Gradle build is running for /tmp."),
+                Arguments.of("Cannot query Gradle models while a build is active for /tmp."),
                 Arguments.of("Cannot query Gradle models while a build is running for /tmp."),
+                Arguments.of("Cannot run prepareTasks while a Gradle build is active for /tmp."),
                 Arguments.of("Cannot run prepareTasks while a Gradle build is running for /tmp."),
-                Arguments.of("Maximum concurrent builds (4) reached. Poll gradle_get_build_status."),
+                Arguments.of("Cannot inspect build cache while a Gradle build is active for /tmp."),
+                Arguments.of("Cannot inspect build cache while a Gradle build is running for /tmp."),
+                Arguments.of("Cannot detect installed JDKs while a Gradle build is active for /tmp."),
+                Arguments.of("Cannot detect installed JDKs while a Gradle build is running for /tmp."),
+                Arguments.of("Maximum concurrent builds (4) reached. Poll gradle_get_build_status with activeBuildIds."),
             )
     }
 }

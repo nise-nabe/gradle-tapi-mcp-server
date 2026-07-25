@@ -37,7 +37,7 @@ fun Server.registerCacheTools(scope: CoroutineScope) {
             projectDirectory = projectDirectory,
             buildExecutionManager = runtime.buildExecutionManager,
             message = { directory ->
-                "Cannot inspect build cache while a Gradle build is running for ${directory.path}. " +
+                "Cannot inspect build cache while a Gradle build is active for ${directory.path}. " +
                     "Wait for the build to finish or call gradle_get_build_status."
             },
         ) {

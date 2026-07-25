@@ -5,6 +5,7 @@ import com.example.gradle.mcp.build.BuildKind
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildRecord
 import com.example.gradle.mcp.build.CapturingStreams
+import com.example.gradle.mcp.build.TestRunSelection
 import com.example.gradle.mcp.cache.CompletedBuildSnapshot
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import org.gradle.tooling.CancellationTokenSource
@@ -45,6 +46,7 @@ internal fun testBuildRecord(
     id: String,
     kind: BuildKind = BuildKind.TASKS,
     tasks: List<String> = listOf("build"),
+    selection: TestRunSelection? = null,
     startedAt: Instant = TEST_INSTANT_START,
     tracker: BuildProgressTracker = runningTracker(),
     streams: CapturingStreams = CapturingStreams(),
@@ -56,6 +58,7 @@ internal fun testBuildRecord(
         id = id,
         kind = kind,
         tasks = tasks,
+        selection = selection,
         startedAt = startedAt,
         progressTracker = tracker,
         streams = streams,

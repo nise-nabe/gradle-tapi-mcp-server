@@ -297,6 +297,35 @@ class BuildExecutionManagerQueueTest {
         }
         error.code shouldBe McpErrorCode.BUILD_QUEUE_FULL
         error.message.shouldContain("Build queue is full")
+        error.errorDetails["activeBuildId"] shouldBe "running-build"
+        error.errorDetails["activeKind"] shouldBe "tasks"
+        error.errorDetails["activeTasks"] shouldBe listOf("build")
+    }
+
+    @Test
+    fun `queued head behindBuildId is null when no build is running for project`() {
+        val connectionManager = GradleConnectionManager()
+        val manager = BuildExecutionManager(connectionManager)
+        manager.seedQueuedBuildForTests(
+            testBuildRecord(
+                id = "queued-only",
+                tracker = queuedTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+            ),
+            request = BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TASKS,
+                tasks = listOf("compileKotlin"),
+            ),
+        )
+
+        val status = manager.status(
+            buildId = "queued-only",
+            outputLimit = com.example.gradle.mcp.model.OutputLimitOptions(),
+            progressOptions = com.example.gradle.mcp.protocol.ProgressResponseOptions(),
+        )
+        status["status"] shouldBe BuildProgressTracker.STATUS_QUEUED
+        status["queuedBehindBuildId"] shouldBe null
     }
 
     @Test
@@ -500,6 +529,41 @@ class BuildExecutionManagerQueueTest {
             )
         }
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.errorDetails["activeBuildId"] shouldBe "running-build"
+    }
+
+    @Test
+    fun `activeBuildSnapshot prefers queue head when only queued builds exist`() {
+        val connectionManager = GradleConnectionManager()
+        val manager = BuildExecutionManager(connectionManager)
+        manager.seedQueuedBuildForTests(
+            testBuildRecord(
+                id = "queued-first",
+                tracker = queuedTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+                tasks = listOf("first"),
+            ),
+            request = BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TASKS,
+                tasks = listOf("first"),
+            ),
+        )
+        manager.seedQueuedBuildForTests(
+            testBuildRecord(
+                id = "queued-second",
+                tracker = queuedTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+                tasks = listOf("second"),
+            ),
+            request = BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TASKS,
+                tasks = listOf("second"),
+            ),
+        )
+
+        manager.activeBuildSnapshot(testProjectDirectory)?.activeBuildId shouldBe "queued-first"
     }
 
     private fun waitUntilStatus(

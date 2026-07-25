@@ -45,6 +45,8 @@ class ModelToolsTest {
 
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
         error.message shouldContain "Cannot query Gradle models"
+        error.errorDetails["activeBuildId"] shouldBe "running-build"
+        error.errorDetails["activeStatus"] shouldBe "running"
     }
 
     @Test
@@ -62,6 +64,7 @@ class ModelToolsTest {
 
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
         error.message shouldContain "prepareTasks"
+        error.errorDetails["activeBuildId"] shouldBe "running-build"
     }
 }
 
