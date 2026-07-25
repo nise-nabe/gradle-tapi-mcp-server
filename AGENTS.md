@@ -9,7 +9,7 @@
 - Use `project-context-ingestion` for declared build constraints; reserve Gradle MCP for resolved runtime Gradle/Java, build verification, and task execution.
 - When asked to commit (and push), split changes into semantic commits by meaningful concern (build / feat / test / docs); use the `semantic-commits` skill when appropriate, or `rework-commits` when rewriting existing branch history (publish with `git push --force-with-lease`).
 - Prefer Kotest for list and nullable collection assertions in tests; avoid `!!` combined with `assertTrue`/`assertFalse`/`isEmpty()`.
-- When splitting sources into feature subpackages, keep `GradleTapiMcpServer` (entry point) in the root `com.example.gradle.mcp` package; move tool handlers and schemas into feature packages.
+- When splitting sources into feature subpackages, keep `GradleTapiMcpServer`, `GradleTapiMcpServerLauncher`, and `GradleMcpRuntime` in the root `com.example.gradle.mcp` package; move tool handlers and schemas into feature packages.
 - Read `workflow-router` first for `/thermos`, PR review comments, or issue-driven work — then only the matching on-demand skill; do not load unrelated skills in full.
 
 ## Learned Workspace Facts

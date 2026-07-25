@@ -26,6 +26,9 @@ unless ManagePullRequest fails and `gh auth status` succeeds.
 |------|----------------|
 | Open a PR | `ManagePullRequest` with `action: create_pr` |
 | Update PR title/body | `ManagePullRequest` with `action: update_pr` |
+| Post PR comment or reply | `ManagePullRequest` with `action: post_comment` — `body` required; `in_reply_to` = numeric review-comment `databaseId` from GraphQL for thread replies |
+| Resolve review thread | `ManagePullRequest` with `action: resolve_comment` — `comment_id` = numeric review-comment `databaseId` (any comment in the thread) |
+| PR CI status | `ManagePullRequest` with `action: get_ci_status` — optional `pr_url` or `branch_name` |
 | Edit labels | `EditPullRequestLabels` |
 
 Branch naming for agent work: `cursor/<descriptive-name>-<suffix>` (suffix is assigned per agent session).

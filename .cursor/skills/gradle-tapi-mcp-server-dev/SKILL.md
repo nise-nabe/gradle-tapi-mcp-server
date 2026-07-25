@@ -21,7 +21,7 @@ Apply during implementation — not only before opening a PR.
 |---------|------|
 | `com.example.gradle.mcp` (root) | `GradleTapiMcpServer`, `GradleTapiMcpServerLauncher`, `GradleMcpRuntime` only |
 | `build/` | `BuildExecutionManager`, run/cancel/status tools, output parsing, persistence, test runners |
-| `connection/` | Connection pool, `gradle_connect` / disconnect, build environment snapshots |
+| `connection/` | Connection pool, `gradle_connect` / disconnect, build environment snapshots, `gradle_get_java_runtimes` |
 | `protocol/` | `McpToolSchemas`, `McpToolDescriptions`, `McpErrors`, JSON mapping, progress notifications |
 | `model/` | Project model queries (`gradle_get_project_overview`, publications, invocations) |
 | `cache/` | Build cache status and local cache inspection tools |

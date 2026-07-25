@@ -35,7 +35,7 @@ Before any `gh` call:
 
 1. Resolve: `command -v gh` or `/exec-daemon/gh`
 2. Verify: `gh auth status`
-3. If either step fails, stop — use **ManagePullRequest** for create/update/post/resolve/CI.
+3. If either step fails, **stop review-thread triage** — GraphQL thread fetch is unavailable. **ManagePullRequest** can still create/update PRs, post top-level comments, resolve threads when the user supplies `comment_id`, and fetch CI status — but it cannot replace GraphQL for listing unresolved threads.
 
 **Do not** call `gh api repos/.../pulls/{n}/comments` — the REST endpoint always
 includes `diff_hunk` per comment (~50 KB for a typical Copilot review).
@@ -79,7 +79,8 @@ Extract:
 
 | Field | Use |
 |-------|-----|
-| `databaseId` | `ManagePullRequest` `resolve_comment` `comment_id`; `post_comment` `in_reply_to` |
+| `databaseId` | `ManagePullRequest` `resolve_comment` `comment_id` and `post_comment` `in_reply_to` — numeric GitHub review-comment id, **not** the thread node `id` |
+| `id` (thread node) | Ignore for ManagePullRequest — do not pass to `resolve_comment` |
 | `isResolved` | Skip already resolved |
 | `body` + `path` + line fields | Triage and locate code |
 | `headRefName` | Checkout branch |

@@ -19,7 +19,7 @@ For PR work (`/thermos`, review fixes), **fetch and checkout the PR head branch 
 
 | Change | Verify with |
 |--------|-------------|
-| `src/main/**`, `src/test/**`, `build.gradle.kts`, `gradle/**` | Shell `./gradlew` (see `gradle-mcp.mdc`) |
+| `src/main/**`, `src/test/**`, `build.gradle.kts`, `settings.gradle.kts`, `gradle/**` | Shell `./gradlew` (see `gradle-mcp.mdc`) |
 | `.cursor/`, `skills/`, `AGENTS.md`, `README.md` only | MCP release JAR or shell — MCP preferred when connected |
 
 ## Package layout

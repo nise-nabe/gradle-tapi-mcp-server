@@ -14,7 +14,7 @@ In Cursor Cloud, do **not** assume `gh` is on PATH before `.cursor/install.sh` c
 
 ## Pull requests
 
-- Use the built-in **ManagePullRequest** tool for `create_pr` and `update_pr`.
+- Use the built-in **ManagePullRequest** tool for `create_pr`, `update_pr`, `post_comment`, `resolve_comment`, and `get_ci_status`.
 - Use **EditPullRequestLabels** for label changes.
 - Do not run `gh pr create` / `gh pr edit` unless ManagePullRequest fails and `gh auth status` succeeds.
 

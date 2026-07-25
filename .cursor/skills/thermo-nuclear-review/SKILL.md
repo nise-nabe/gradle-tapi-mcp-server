@@ -24,6 +24,8 @@ git checkout -B <headRefName> origin/<headRefName>
 git diff origin/<baseRefName>...HEAD > /tmp/pr-diff.txt
 ```
 
+Before any `gh` call: resolve `command -v gh` or `/exec-daemon/gh`, then `gh auth status`. If either fails, use **ManagePullRequest** for PR metadata/CI only — you cannot run this audit without a local diff checkout.
+
 - **ManagePullRequest** `get_ci_status` once when merge-readiness matters.
 - Record `BASE_SHA=$(git merge-base origin/<baseRefName> HEAD)` and `START_HEAD=$(git rev-parse HEAD)`.
 
@@ -46,9 +48,11 @@ Output a **findings table** (id, source, path, priority, action). Sources: `dete
 
 | Tier | When | Subagent |
 |------|------|----------|
-| **A** | Docs / scripts / ≤2 files and ≤30 net lines | **Skip** — Phase 1 table is the audit |
-| **B** | Typical code PR | **One** audit subagent |
-| **C** | Large diff or many files | **One** audit subagent + **one** post-fix closure subagent (Phase 5 only) |
+| **A** | ≤2 changed files **and** ≤30 net lines | **Skip** — Phase 1 table is the audit |
+| **B** | Typical code PR (not Tier A or C) | **One** audit subagent |
+| **C** | >5 files **or** >200 net lines **or** `src/main/**` / `src/test/**` touched | **One** audit subagent + **one** post-fix closure subagent (Phase 5 only) |
+
+When multiple tiers match, use the **highest** tier (C > B > A).
 
 ### Subagent input (mandatory — simulates a new session)
 

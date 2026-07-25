@@ -31,8 +31,10 @@ Then: `gh issue view N` once.
 
 ```bash
 git checkout main && git pull origin main
-git checkout -b cursor/issue-<N>-<short-slug>-3cc6
+git checkout -b cursor/issue-<N>-<short-slug>-<suffix>
 ```
+
+Use `cursor/<descriptive-name>-<suffix>` per `cloud-github` (`<suffix>` is assigned per agent session — do not hardcode).
 
 Use plan mode only for non-trivial refactors; hygiene/docs fixes go straight to code.
 
