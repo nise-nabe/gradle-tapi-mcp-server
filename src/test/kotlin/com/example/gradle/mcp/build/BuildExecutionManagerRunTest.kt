@@ -129,9 +129,12 @@ class BuildExecutionManagerRunTest {
         }
 
         outcomes.count { it.isSuccess } shouldBe 1
+        val successBuildId = outcomes.single { it.isSuccess }.getOrThrow()["buildId"] as String
         val failure = outcomes.single { it.isFailure }.exceptionOrNull().shouldNotBeNull()
         (failure as McpException).code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
         failure.message.shouldContain("already running")
+        failure.errorDetails["activeBuildId"] shouldBe successBuildId
+        failure.errorDetails["activeStatus"] shouldBe BuildProgressTracker.STATUS_RUNNING
 
         buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
         releaseBuild.countDown()

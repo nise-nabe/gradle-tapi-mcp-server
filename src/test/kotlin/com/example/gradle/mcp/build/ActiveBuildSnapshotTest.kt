@@ -35,6 +35,32 @@ class ActiveBuildSnapshotTest {
     }
 
     @Test
+    fun `forProject prefers preferred queued build when no running build`() {
+        val head = testBuildRecord(
+            id = "queued-head",
+            tracker = queuedTracker(),
+            projectDirectory = testProjectDirectory.absolutePath,
+            tasks = listOf("head"),
+        )
+        val tail = testBuildRecord(
+            id = "queued-tail",
+            tracker = queuedTracker(),
+            projectDirectory = testProjectDirectory.absolutePath,
+            tasks = listOf("tail"),
+        )
+
+        val snapshot = ActiveBuildSnapshot.forProject(
+            builds = listOf(tail, head),
+            projectDirectory = testProjectDirectory,
+            preferredQueuedBuildId = "queued-head",
+        )
+
+        snapshot?.activeBuildId shouldBe "queued-head"
+        snapshot?.activeStatus shouldBe BuildProgressTracker.STATUS_QUEUED
+        snapshot?.activeTasks shouldBe listOf("head")
+    }
+
+    @Test
     fun `toErrorFields includes test selection`() {
         val snapshot = ActiveBuildSnapshot.fromRecord(
             testBuildRecord(

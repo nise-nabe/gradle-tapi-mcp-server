@@ -148,7 +148,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 
 **待ち方:** 数分かかるビルドで `waitUntilComplete: true` を長時間（例: 3 分）にしない。`waitTimeoutMs` は **サーバー側のみ**（デフォルト 30s / 上限 60s）で、MCP クライアントの transport timeout（Cursor の `-32001` など）とは別物。長い 1 回待ちは「MCP 死亡」に見えやすい。短い待ちか、待ちなしポーリングを繰り返す。タイムアウト時は `waitTimedOut` / `waitedMs` / `hint` が返り、ビルドは継続中のまま。待ちなしの status はメモリ/ディスク読み取りのみで Tooling API をブロックしない。
 
-`buildId` は必須（並行ビルド時の取り違え防止）。**同一 `projectDirectory` では MCP ビルドは 1 本のみ**（2 本目は `BUILD_ALREADY_RUNNING`）。終端ステータスになった瞬間にゲートは解放される（grace なし）。別プロジェクトへの並行ビルドはサーバー側上限まで可能。同一 checkout で MCP と shell の `./gradlew` を並行しないこと（IntelliJ Platform の `:plugin:test` は sandbox 競合でハングしやすい）。上限到達時も `BUILD_ALREADY_RUNNING` が返る。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` を `running` でなくなるまでポーリングして終端ステータス（`cancelled` / `succeeded` / `failed`）を確認する。
+`buildId` は必須（並行ビルド時の取り違え防止）。**同一 `projectDirectory` では MCP ビルドは 1 本のみ**（2 本目は `BUILD_ALREADY_RUNNING` で `error.activeBuildId` 等が付く場合あり）。終端ステータスになった瞬間にゲートは解放される（grace なし）。別プロジェクトへの並行ビルドはサーバー側上限まで可能。同一 checkout で MCP と shell の `./gradlew` を並行しないこと（IntelliJ Platform の `:plugin:test` は sandbox 競合でハングしやすい）。上限到達時も `BUILD_ALREADY_RUNNING` が返り、`activeBuildIds`（単一時は `activeBuildId` も）で占有ビルドを特定できる。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` を `running` でなくなるまでポーリングして終端ステータス（`cancelled` / `succeeded` / `failed`）を確認する。
 
 `buildId` を失ったときは `gradle_list_builds` で直近の MCP ビルドを探し、見つかった `buildId` で `gradle_get_build_status` をポーリングする。TAPI 接続は不要（メモリ上のビルドは常に含まれる。ディスク走査は `projectDirectory`、接続中プロジェクト、または `GRADLE_PROJECT_DIR` を使用）。`projectDirectory` を明示する場合は、接続中プロジェクトまたは `GRADLE_PROJECT_DIR` で許可境界が定義されている必要がある（未定義だと `INVALID_ARGUMENT`）。
 
@@ -156,7 +156,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 
 ## テスト実行と並行性
 
-**同一 `projectDirectory` では、複数の `gradle_run_tests` を別 tool 呼び出しで同時起動できない。** クライアントが同一ターンで並列送信しても、2 本目以降は `BUILD_ALREADY_RUNNING` になる（`background: true` でも同様）。`gradle_run_tasks` も同じ制約。終端後に次の呼び出しを出す（別ターンで直列化する）。
+**同一 `projectDirectory` では、複数の `gradle_run_tests` を別 tool 呼び出しで同時起動できない。** クライアントが同一ターンで並列送信しても、2 本目以降は `BUILD_ALREADY_RUNNING` になる（`background: true` でも同様。`error.activeBuildId` 等で占有ビルドを特定可能）。`gradle_run_tasks` も同じ制約。終端後に次の呼び出しを出す（別ターンで直列化する）。
 
 | やりたいこと | 可否 | やり方 |
 |-------------|------|--------|

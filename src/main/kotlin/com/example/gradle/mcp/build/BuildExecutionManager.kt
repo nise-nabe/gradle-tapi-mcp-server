@@ -416,7 +416,14 @@ class BuildExecutionManager(
         }?.id
 
     internal fun activeBuildSnapshot(projectDirectory: File): ActiveBuildSnapshot? =
-        ActiveBuildSnapshot.forProject(builds.values, projectDirectory)
+        synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+            val preferredQueuedBuildId = projectQueue.headBuildId(projectDirectory)
+            ActiveBuildSnapshot.forProject(
+                builds = builds.values,
+                projectDirectory = projectDirectory,
+                preferredQueuedBuildId = preferredQueuedBuildId,
+            )
+        }
 
     fun activeBuildErrorDetails(projectDirectory: File): Map<String, Any?> =
         activeBuildSnapshot(projectDirectory)?.toErrorFields().orEmpty()
@@ -1020,17 +1027,23 @@ class BuildExecutionManager(
         )
 
     private fun maxConcurrentBuildsException(): McpException {
-        val running = builds.values.filter { record ->
-            record.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING
-        }
-        val errorDetails = when (running.size) {
-            1 -> ActiveBuildSnapshot.fromRecord(running.single()).toErrorFields()
-            else -> mapOf("activeBuildIds" to running.map { it.id })
+        val errorDetails = synchronized(ProjectLifecycleLock.global()) {
+            val running = builds.values.filter { record ->
+                record.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING
+            }
+            buildMap {
+                if (running.isNotEmpty()) {
+                    put("activeBuildIds", running.map { it.id })
+                    if (running.size == 1) {
+                        putAll(ActiveBuildSnapshot.fromRecord(running.single()).toErrorFields())
+                    }
+                }
+            }
         }
         return McpException(
             McpErrorCode.BUILD_ALREADY_RUNNING,
             "Maximum concurrent builds ($MAX_CONCURRENT_BUILDS) reached. " +
-                "Poll gradle_get_build_status or wait for a build to finish.",
+                "Poll gradle_get_build_status with activeBuildIds, or wait for a build to finish.",
             errorDetails = errorDetails,
         )
     }

@@ -50,6 +50,7 @@ internal data class ActiveBuildSnapshot(
         fun forProject(
             builds: Collection<BuildRecord>,
             projectDirectory: File,
+            preferredQueuedBuildId: String? = null,
         ): ActiveBuildSnapshot? {
             val active = builds.filter { record ->
                 record.matchesProject(projectDirectory) &&
@@ -57,6 +58,8 @@ internal data class ActiveBuildSnapshot(
             }
             val record = active.firstOrNull {
                 it.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING
+            } ?: preferredQueuedBuildId?.let { buildId ->
+                active.firstOrNull { it.id == buildId }
             } ?: active.firstOrNull()
             return record?.let(::fromRecord)
         }

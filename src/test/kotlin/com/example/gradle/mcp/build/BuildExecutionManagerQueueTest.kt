@@ -529,6 +529,41 @@ class BuildExecutionManagerQueueTest {
             )
         }
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.errorDetails["activeBuildId"] shouldBe "running-build"
+    }
+
+    @Test
+    fun `activeBuildSnapshot prefers queue head when only queued builds exist`() {
+        val connectionManager = GradleConnectionManager()
+        val manager = BuildExecutionManager(connectionManager)
+        manager.seedQueuedBuildForTests(
+            testBuildRecord(
+                id = "queued-first",
+                tracker = queuedTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+                tasks = listOf("first"),
+            ),
+            request = BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TASKS,
+                tasks = listOf("first"),
+            ),
+        )
+        manager.seedQueuedBuildForTests(
+            testBuildRecord(
+                id = "queued-second",
+                tracker = queuedTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+                tasks = listOf("second"),
+            ),
+            request = BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TASKS,
+                tasks = listOf("second"),
+            ),
+        )
+
+        manager.activeBuildSnapshot(testProjectDirectory)?.activeBuildId shouldBe "queued-first"
     }
 
     private fun waitUntilStatus(

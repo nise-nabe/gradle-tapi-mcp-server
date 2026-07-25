@@ -42,6 +42,10 @@ internal class ProjectBuildQueue {
     }
 
     /** Caller must hold the project lifecycle lock. */
+    fun headBuildId(projectDirectory: File): String? =
+        queues[ProjectDirectoryResolver.canonicalKey(projectDirectory)]?.peekFirst()?.record?.id
+
+    /** Caller must hold the project lifecycle lock. */
     fun position(projectDirectory: File, buildId: String): Int? {
         val queue = queues[ProjectDirectoryResolver.canonicalKey(projectDirectory)] ?: return null
         val index = queue.indexOfFirst { it.record.id == buildId }
