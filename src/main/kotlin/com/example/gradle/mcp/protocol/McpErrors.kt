@@ -58,6 +58,8 @@ fun mapExceptionToErrorCode(exception: Exception): McpErrorCode =
                     exception.message?.startsWith("Cannot query Gradle models while a build is running") == true ||
                     exception.message?.startsWith("Cannot run prepareTasks while a Gradle build is active") == true ||
                     exception.message?.startsWith("Cannot run prepareTasks while a Gradle build is running") == true ||
+                    exception.message?.startsWith("Cannot inspect build cache while a Gradle build is active") == true ||
+                    exception.message?.startsWith("Cannot detect installed JDKs while a Gradle build is active") == true ||
                     exception.message?.startsWith("Maximum concurrent builds") == true ->
                     McpErrorCode.BUILD_ALREADY_RUNNING
                 exception.message?.startsWith("Build queue is full") == true ->

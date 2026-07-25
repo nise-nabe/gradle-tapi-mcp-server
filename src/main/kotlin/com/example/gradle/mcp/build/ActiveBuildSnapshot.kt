@@ -67,7 +67,7 @@ internal data class ActiveBuildSnapshot(
         fun maxConcurrentBuildErrorDetails(running: Collection<BuildRecord>): Map<String, Any?> =
             buildMap {
                 if (running.isNotEmpty()) {
-                    put("activeBuildIds", running.map { it.id })
+                    put("activeBuildIds", running.map { it.id }.sorted())
                     if (running.size == 1) {
                         putAll(fromRecord(running.single()).toErrorFields())
                     }

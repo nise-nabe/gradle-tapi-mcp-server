@@ -94,6 +94,33 @@ class ProjectLifecycleLockTest {
         error.errorDetails["activeBuildId"] shouldBe "running-build"
         error.errorDetails["activeTasks"] shouldBe listOf("build")
     }
+
+    @Test
+    fun `cache guard rejects active build with errorDetails`() {
+        val connectionManager = GradleConnectionManager()
+        val buildManager = BuildExecutionManager(connectionManager)
+        buildManager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "running-build",
+                tracker = runningTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+                tasks = listOf("compileKotlin"),
+            ),
+        )
+
+        val error = shouldThrow<com.example.gradle.mcp.protocol.McpException> {
+            ProjectLifecycleGuard.withNoActiveBuild(
+                projectDirectory = testProjectDirectory,
+                buildExecutionManager = buildManager,
+                message = { directory ->
+                    "Cannot inspect build cache while a Gradle build is active for ${directory.path}."
+                },
+            ) { }
+        }
+        error.code shouldBe com.example.gradle.mcp.protocol.McpErrorCode.BUILD_ALREADY_RUNNING
+        error.errorDetails["activeBuildId"] shouldBe "running-build"
+        error.errorDetails["activeTasks"] shouldBe listOf("compileKotlin")
+    }
 }
 
 class McpToolRegistrationCatalogTest {

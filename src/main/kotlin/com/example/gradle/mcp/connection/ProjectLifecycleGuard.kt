@@ -12,11 +12,12 @@ internal object ProjectLifecycleGuard {
         message: (File) -> String,
         block: () -> T,
     ): T = synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
-        if (buildExecutionManager.hasActiveBuild(projectDirectory)) {
+        val activeBuild = buildExecutionManager.activeBuildSnapshot(projectDirectory)
+        if (activeBuild != null) {
             throw McpException(
                 McpErrorCode.BUILD_ALREADY_RUNNING,
                 message(projectDirectory),
-                errorDetails = buildExecutionManager.activeBuildErrorDetails(projectDirectory),
+                errorDetails = activeBuild.toErrorFields(),
             )
         }
         block()

@@ -417,16 +417,17 @@ class BuildExecutionManager(
 
     internal fun activeBuildSnapshot(projectDirectory: File): ActiveBuildSnapshot? =
         synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
-            val preferredQueuedBuildId = projectQueue.headBuildId(projectDirectory)
-            ActiveBuildSnapshot.forProject(
-                builds = builds.values,
-                projectDirectory = projectDirectory,
-                preferredQueuedBuildId = preferredQueuedBuildId,
-            )
+            activeBuildSnapshotUnderProjectLock(projectDirectory)
         }
 
-    fun activeBuildErrorDetails(projectDirectory: File): Map<String, Any?> =
-        activeBuildSnapshot(projectDirectory)?.toErrorFields().orEmpty()
+    private fun activeBuildSnapshotUnderProjectLock(projectDirectory: File): ActiveBuildSnapshot? {
+        val preferredQueuedBuildId = projectQueue.headBuildId(projectDirectory)
+        return ActiveBuildSnapshot.forProject(
+            builds = builds.values,
+            projectDirectory = projectDirectory,
+            preferredQueuedBuildId = preferredQueuedBuildId,
+        )
+        }
 
     fun hasActiveBuild(projectDirectory: File? = null): Boolean =
         hasRunningBuild(projectDirectory) || hasQueuedBuild(projectDirectory)
@@ -1014,7 +1015,7 @@ class BuildExecutionManager(
             "A Gradle build is already active for ${projectDirectory.path}. " +
                 "Poll gradle_get_build_status with the active buildId, call gradle_cancel_build to stop it, " +
                 "wait for it to finish, or pass queueIfBusy=true with background=true to enqueue.",
-            errorDetails = activeBuildErrorDetails(projectDirectory),
+            errorDetails = activeBuildSnapshotUnderProjectLock(projectDirectory)?.toErrorFields().orEmpty(),
         )
 
     private fun buildQueueFullException(projectDirectory: File): McpException =
@@ -1023,7 +1024,7 @@ class BuildExecutionManager(
             "Build queue is full for ${projectDirectory.path} " +
                 "(max $MAX_QUEUED_PER_PROJECT queued builds). " +
                 "Poll or cancel queued builds with gradle_get_build_status / gradle_cancel_build.",
-            errorDetails = activeBuildErrorDetails(projectDirectory),
+            errorDetails = activeBuildSnapshotUnderProjectLock(projectDirectory)?.toErrorFields().orEmpty(),
         )
 
     private fun maxConcurrentBuildsException(): McpException {

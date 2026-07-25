@@ -89,6 +89,16 @@ class ActiveBuildSnapshotTest {
     }
 
     @Test
+    fun `maxConcurrentBuildErrorDetails sorts activeBuildIds`() {
+        val zebra = testBuildRecord(id = "build-z", tracker = runningTracker())
+        val alpha = testBuildRecord(id = "build-a", tracker = runningTracker())
+
+        val fields = ActiveBuildSnapshot.maxConcurrentBuildErrorDetails(listOf(zebra, alpha))
+
+        fields shouldContain ("activeBuildIds" to listOf("build-a", "build-z"))
+    }
+
+    @Test
     fun `toErrorFields includes test selection`() {
         val snapshot = ActiveBuildSnapshot.fromRecord(
             testBuildRecord(

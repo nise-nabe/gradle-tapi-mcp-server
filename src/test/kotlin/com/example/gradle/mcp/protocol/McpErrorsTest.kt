@@ -114,6 +114,8 @@ class McpErrorsTest {
                 Arguments.of("Cannot query Gradle models while a build is running for /tmp."),
                 Arguments.of("Cannot run prepareTasks while a Gradle build is active for /tmp."),
                 Arguments.of("Cannot run prepareTasks while a Gradle build is running for /tmp."),
+                Arguments.of("Cannot inspect build cache while a Gradle build is active for /tmp."),
+                Arguments.of("Cannot detect installed JDKs while a Gradle build is active for /tmp."),
                 Arguments.of("Maximum concurrent builds (4) reached. Poll gradle_get_build_status with activeBuildIds."),
             )
     }
