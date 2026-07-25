@@ -60,6 +60,8 @@ class ProjectLifecycleLockTest {
             )
         }
         error.code shouldBe com.example.gradle.mcp.protocol.McpErrorCode.BUILD_ALREADY_RUNNING
+        error.errorDetails["activeBuildId"] shouldBe "running-build"
+        error.errorDetails["activeKind"] shouldBe "tasks"
     }
 
     @Test
@@ -89,6 +91,8 @@ class ProjectLifecycleLockTest {
             )
         }
         error.code shouldBe com.example.gradle.mcp.protocol.McpErrorCode.BUILD_ALREADY_RUNNING
+        error.errorDetails["activeBuildId"] shouldBe "running-build"
+        error.errorDetails["activeTasks"] shouldBe listOf("build")
     }
 }
 

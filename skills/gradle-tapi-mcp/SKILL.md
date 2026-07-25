@@ -334,8 +334,8 @@ MCP だけでなくファイルも読んだうえで、次の形式で要約す�
 | 症状 | 対処 |
 |------|------|
 | `error.code: NOT_CONNECTED` | `gradle_connect` または MCP 再起動 |
-| `error.code: BUILD_ALREADY_RUNNING` | 同一 `projectDirectory` で既に MCP ビルド実行中、またはモデル照会とビルドの競合。`error.activeBuildId` で `gradle_get_build_status` に直行可能。完了待ち、`gradle_cancel_build` で停止、複数テストを 1 回の `gradle_run_tests` にまとめる、または `queueIfBusy: true` で enqueue（[テスト実行と並行性](#テスト実行と並行性)） |
-| `error.code: BUILD_QUEUE_FULL` | 同一プロジェクトのキューが飽和（queued 上限 3）。`gradle_cancel_build` で不要な `buildId` を止めるか、完了を待つ |
+| `error.code: BUILD_ALREADY_RUNNING` | 同一 `projectDirectory` で既に MCP ビルド実行中、またはモデル照会とビルドの競合。`error.activeBuildId` で `gradle_get_build_status` に直行可能（`activeStatus` は occupying レコードの `running`/`queued`）。グローバル上限時は `activeBuildIds` 配列の場合あり。完了待ち、`gradle_cancel_build` で停止、複数テストを 1 回の `gradle_run_tests` にまとめる、または `queueIfBusy: true` で enqueue（[テスト実行と並行性](#テスト実行と並行性)） |
+| `error.code: BUILD_QUEUE_FULL` | 同一プロジェクトのキューが飽和（queued 上限 3）。`error.activeBuildId` 等で占有ビルドを特定可能。`gradle_cancel_build` で不要な `buildId` を止めるか、完了を待つ |
 | `gradle_disconnect` で MCP が cancelled 確定 | ディスクの `gradle-result.json` を優先して再ポーリング；Gradle がまだ走っていれば `running` に戻る |
 | 応答が巨大 | `includeTasks` / `includeTaskSelectors` を false のままにする |
 | ファイルと Java バージョン不一致 | toolchain 宣言（ファイル）と daemon の Java（MCP）を両方記載 |

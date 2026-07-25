@@ -243,7 +243,7 @@ Detailed parameter semantics live in this reference (Layer 3). Tool `description
 
 ### Tool errors vs build outcomes
 
-- **Tool errors** (`isError=true`): structured `{ "error": { "code", "message", ... } }` for preflight failures (`NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, …). `BUILD_ALREADY_RUNNING` and `BUILD_QUEUE_FULL` include `activeBuildId`, `activeKind`, `activeStatus`, and task/test fields (`activeTasks`, `activeTestClasses`, …) when the occupying build is known.
+- **Tool errors** (`isError=true`): structured `{ "error": { "code", "message", ... } }` for preflight failures (`NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, …). `BUILD_ALREADY_RUNNING` and `BUILD_QUEUE_FULL` include `activeBuildId`, `activeKind`, `activeStatus`, and task/test fields (`activeTasks`, `activeTestClasses`, …) when the occupying build is known. `activeStatus` reflects the occupying record (`running` or `queued`), not the error code name. Global pool saturation returns `activeBuildIds` when multiple builds are running.
 - **Build outcomes** (`isError=false`): `gradle_run_tasks` / `gradle_run_tests` foreground responses and `gradle_get_build_status` terminal polls return `status: "failed"` / `outcome: "FAILED"` with `buildSummary`—not `error.code: BUILD_FAILED`.
 - **`BUILD_FAILED`**: reserved for tooling/setup failures where Gradle could not be invoked meaningfully (for example `gradle_get_java_runtimes` when `javaToolchains` probing fails).
 
@@ -258,7 +258,7 @@ Failed tool calls return JSON:
 }
 ```
 
-Codes: `NOT_CONNECTED`, `BUILD_ALREADY_RUNNING` (active/queued build for the same `projectDirectory`, or max concurrent background builds reached), `BUILD_QUEUE_FULL` (per-project queue saturated), `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`.
+Codes: `NOT_CONNECTED`, `BUILD_ALREADY_RUNNING` (active/queued build for the same `projectDirectory`, or max concurrent background builds reached), `BUILD_QUEUE_FULL` (per-project queue saturated), `INVALID_ARGUMENT`, `PROJECT_NOT_FOUND`, `BUILD_FAILED`, `INTERNAL_ERROR`. `BUILD_ALREADY_RUNNING` / `BUILD_QUEUE_FULL` add `activeBuildId`, `activeKind`, `activeStatus`, and task/test fields when known; global pool saturation may return `activeBuildIds` (array) instead of a single `activeBuildId`.
 
 ## Environment variables (server startup)
 
