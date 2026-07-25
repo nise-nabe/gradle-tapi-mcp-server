@@ -17,18 +17,24 @@ class McpException(
     val code: McpErrorCode,
     override val message: String,
     cause: Throwable? = null,
+    val errorDetails: Map<String, Any?> = emptyMap(),
 ) : Exception(message, cause)
 
-fun structuredErrorResult(code: McpErrorCode, message: String): CallToolResult =
+fun structuredErrorResult(
+    code: McpErrorCode,
+    message: String,
+    errorDetails: Map<String, Any?> = emptyMap(),
+): CallToolResult =
     CallToolResult(
         content = listOf(
             TextContent(
                 text = encodeMcpJsonDynamic(
                     mapOf(
-                        "error" to mapOf(
-                            "code" to code.name,
-                            "message" to message,
-                        ),
+                        "error" to buildMap {
+                            put("code", code.name)
+                            put("message", message)
+                            putAll(errorDetails)
+                        },
                     ),
                 ),
             ),

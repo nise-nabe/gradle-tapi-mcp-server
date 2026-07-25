@@ -13,7 +13,11 @@ internal object ProjectLifecycleGuard {
         block: () -> T,
     ): T = synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
         if (buildExecutionManager.hasActiveBuild(projectDirectory)) {
-            throw McpException(McpErrorCode.BUILD_ALREADY_RUNNING, message(projectDirectory))
+            throw McpException(
+                McpErrorCode.BUILD_ALREADY_RUNNING,
+                message(projectDirectory),
+                errorDetails = buildExecutionManager.activeBuildErrorDetails(projectDirectory),
+            )
         }
         block()
     }

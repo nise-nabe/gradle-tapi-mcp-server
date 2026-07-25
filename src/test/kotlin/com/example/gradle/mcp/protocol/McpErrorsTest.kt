@@ -82,6 +82,26 @@ class McpErrorsTest {
         payload["error"] shouldBe mapOf("code" to "NOT_CONNECTED", "message" to "Not connected")
     }
 
+    @Test
+    fun `structured error result merges error details into error object`() {
+        val result = structuredErrorResult(
+            McpErrorCode.BUILD_ALREADY_RUNNING,
+            "Busy",
+            errorDetails = mapOf(
+                "activeBuildId" to "abc-123",
+                "activeKind" to "tasks",
+            ),
+        )
+
+        val payload = decodeMcpJsonMap((result.content.single() as TextContent).text)
+        payload["error"] shouldBe mapOf(
+            "code" to "BUILD_ALREADY_RUNNING",
+            "message" to "Busy",
+            "activeBuildId" to "abc-123",
+            "activeKind" to "tasks",
+        )
+    }
+
     companion object {
         @JvmStatic
         fun buildAlreadyRunningMessages(): Stream<Arguments> =

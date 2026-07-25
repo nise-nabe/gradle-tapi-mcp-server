@@ -410,10 +410,13 @@ class BuildExecutionManager(
     }
 
     private fun runningBuildId(projectDirectory: File): String? =
-        builds.values.firstOrNull { record ->
-            record.matchesProject(projectDirectory) &&
-                record.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING
-        }?.id
+        activeBuildSnapshot(projectDirectory)?.activeBuildId
+
+    internal fun activeBuildSnapshot(projectDirectory: File): ActiveBuildSnapshot? =
+        ActiveBuildSnapshot.forProject(builds.values, projectDirectory)
+
+    fun activeBuildErrorDetails(projectDirectory: File): Map<String, Any?> =
+        activeBuildSnapshot(projectDirectory)?.toErrorFields().orEmpty()
 
     fun hasActiveBuild(projectDirectory: File? = null): Boolean =
         hasRunningBuild(projectDirectory) || hasQueuedBuild(projectDirectory)
@@ -1001,6 +1004,7 @@ class BuildExecutionManager(
             "A Gradle build is already running for ${projectDirectory.path}. " +
                 "Poll gradle_get_build_status with the active buildId, call gradle_cancel_build to stop it, " +
                 "wait for it to finish, or pass queueIfBusy=true with background=true to enqueue.",
+            errorDetails = activeBuildErrorDetails(projectDirectory),
         )
 
     private fun buildQueueFullException(projectDirectory: File): McpException =
@@ -1009,14 +1013,24 @@ class BuildExecutionManager(
             "Build queue is full for ${projectDirectory.path} " +
                 "(max $MAX_QUEUED_PER_PROJECT queued builds). " +
                 "Poll or cancel queued builds with gradle_get_build_status / gradle_cancel_build.",
+            errorDetails = activeBuildErrorDetails(projectDirectory),
         )
 
-    private fun maxConcurrentBuildsException(): McpException =
-        McpException(
+    private fun maxConcurrentBuildsException(): McpException {
+        val running = builds.values.filter { record ->
+            record.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING
+        }
+        val errorDetails = when (running.size) {
+            1 -> ActiveBuildSnapshot.fromRecord(running.single()).toErrorFields()
+            else -> mapOf("activeBuildIds" to running.map { it.id })
+        }
+        return McpException(
             McpErrorCode.BUILD_ALREADY_RUNNING,
             "Maximum concurrent builds ($MAX_CONCURRENT_BUILDS) reached. " +
                 "Poll gradle_get_build_status or wait for a build to finish.",
+            errorDetails = errorDetails,
         )
+    }
 
     companion object {
         private val MAX_CONCURRENT_BUILDS = maxOf(4, Runtime.getRuntime().availableProcessors())

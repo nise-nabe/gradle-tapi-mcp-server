@@ -63,6 +63,9 @@ class BuildExecutionManagerRunTest {
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
         error.message.shouldContain("already running")
         error.message.shouldContain("gradle_get_build_status")
+        error.errorDetails["activeBuildId"] shouldBe "running-build"
+        error.errorDetails["activeKind"] shouldBe "tasks"
+        error.errorDetails["activeTasks"] shouldBe listOf("build")
     }
 
     @Test

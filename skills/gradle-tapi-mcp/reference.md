@@ -243,7 +243,7 @@ Detailed parameter semantics live in this reference (Layer 3). Tool `description
 
 ### Tool errors vs build outcomes
 
-- **Tool errors** (`isError=true`): structured `{ "error": { "code", "message" } }` for preflight failures (`NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, …).
+- **Tool errors** (`isError=true`): structured `{ "error": { "code", "message", ... } }` for preflight failures (`NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, …). `BUILD_ALREADY_RUNNING` and `BUILD_QUEUE_FULL` include `activeBuildId`, `activeKind`, `activeStatus`, and task/test fields (`activeTasks`, `activeTestClasses`, …) when the occupying build is known.
 - **Build outcomes** (`isError=false`): `gradle_run_tasks` / `gradle_run_tests` foreground responses and `gradle_get_build_status` terminal polls return `status: "failed"` / `outcome: "FAILED"` with `buildSummary`—not `error.code: BUILD_FAILED`.
 - **`BUILD_FAILED`**: reserved for tooling/setup failures where Gradle could not be invoked meaningfully (for example `gradle_get_java_runtimes` when `javaToolchains` probing fails).
 
