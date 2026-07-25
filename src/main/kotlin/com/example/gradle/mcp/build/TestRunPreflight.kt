@@ -8,6 +8,11 @@ import com.example.gradle.mcp.protocol.McpException
 import org.gradle.tooling.model.GradleProject
 import java.io.File
 
+internal data class TestRunScopeResolution(
+    val options: TestRunOptions,
+    val taskPathInferred: Boolean = false,
+)
+
 internal object TestRunPreflight {
     const val MAX_SUGGESTED_TEST_TASK_PATHS = 20
 
@@ -15,6 +20,7 @@ internal object TestRunPreflight {
         val paths: List<String>,
         val truncated: Boolean,
     )
+
     fun requiresProjectScopeCheck(options: TestRunOptions): Boolean {
         val unscoped = when (options.selection) {
             is TestRunSelection.Classes -> options.selection.taskPath.isNullOrBlank()
@@ -52,14 +58,29 @@ internal object TestRunPreflight {
         )
     }
 
-    fun validateProjectScope(options: TestRunOptions, project: GradleProject) {
+    fun resolveMultiProjectScope(options: TestRunOptions, project: GradleProject): TestRunScopeResolution {
+        val classNames = options.selection.testClassesForReporting()
+        val inferredTaskPath = TestTaskDiscovery.inferTaskPath(project, classNames)
+        if (inferredTaskPath != null) {
+            return TestRunScopeResolution(
+                options = options.withTaskPath(inferredTaskPath),
+                taskPathInferred = true,
+            )
+        }
+        rejectUnscopedMultiProject(
+            subprojectCount = countGradleSubprojects(project),
+            project = project,
+        )
+    }
+
+    fun validateProjectScope(options: TestRunOptions, project: GradleProject): TestRunScopeResolution {
         if (!requiresProjectScopeCheck(options)) {
-            return
+            return TestRunScopeResolution(options)
         }
         if (project.children.isEmpty()) {
-            return
+            return TestRunScopeResolution(options)
         }
-        rejectUnscopedMultiProject(countGradleSubprojects(project), project)
+        return resolveMultiProjectScope(options, project)
     }
 
     fun collectSuggestedTestTaskPaths(
@@ -104,19 +125,28 @@ internal object TestRunPreflight {
         project.children.toList().sumOf { child -> 1 + countGradleSubprojects(child) }
 }
 
+internal fun TestRunOptions.withTaskPath(taskPath: String): TestRunOptions =
+    copy(
+        selection = when (val current = selection) {
+            is TestRunSelection.Classes -> current.copy(taskPath = taskPath)
+            is TestRunSelection.Methods -> current.copy(taskPath = taskPath)
+            is TestRunSelection.Patterns, null -> selection
+        },
+    )
+
 context(runtime: GradleMcpRuntime)
 internal fun preflightRunTests(
     projectDirectory: File,
     options: TestRunOptions,
     deferScopeModelCheck: Boolean = false,
-) {
+): TestRunScopeResolution {
     if (!TestRunPreflight.requiresProjectScopeCheck(options)) {
-        return
+        return TestRunScopeResolution(options)
     }
     if (deferScopeModelCheck) {
-        return
+        return TestRunScopeResolution(options)
     }
-    ProjectLifecycleGuard.withNoActiveBuild(
+    return ProjectLifecycleGuard.withNoActiveBuild(
         projectDirectory = projectDirectory,
         buildExecutionManager = runtime.buildExecutionManager,
         message = { dir ->
@@ -133,14 +163,14 @@ internal fun ensureTestRunProjectScope(
     connectionManager: GradleConnectionManager,
     projectDirectory: File,
     options: TestRunOptions,
-) {
+): TestRunScopeResolution {
     if (!TestRunPreflight.requiresProjectScopeCheck(options)) {
-        return
+        return TestRunScopeResolution(options)
     }
-    connectionManager.withConnectionResult(projectDirectory) { connection ->
+    return connectionManager.withConnectionResult(projectDirectory) { connection ->
         val project = connection.getModel(GradleProject::class.java)
         if (project.children.isEmpty()) {
-            return@withConnectionResult
+            return@withConnectionResult TestRunScopeResolution(options)
         }
         connectionManager.cacheHasSubprojects(projectDirectory, hasSubprojects = true)
         TestRunPreflight.validateProjectScope(options, project)

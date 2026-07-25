@@ -692,15 +692,18 @@ class BuildExecutionManager(
                     launcher.run()
                 }
                 BuildKind.TESTS -> {
-                    if (!request.testScopeValidatedAtPreflight) {
-                        ensureTestRunProjectScope(
+                    val scopedRequest = if (!request.testScopeValidatedAtPreflight) {
+                        val resolved = ensureTestRunProjectScope(
                             connectionManager,
                             request.projectDirectory,
                             TestRunOptions(selection = request.selection, tasks = request.tasks),
                         )
+                        request.copy(selection = resolved.options.selection)
+                    } else {
+                        request
                     }
-                    val launcher = configureTestLauncher(connection.newTestLauncher(), request)
-                    configureLauncher(launcher, record, request, streams, tracker)
+                    val launcher = configureTestLauncher(connection.newTestLauncher(), scopedRequest)
+                    configureLauncher(launcher, record, scopedRequest, streams, tracker)
                     launcher.run()
                 }
             }

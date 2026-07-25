@@ -5,10 +5,12 @@ import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.support.defaultProxyReturn
+import com.example.gradle.mcp.support.gradleJvmTestTaskProxy
 import com.example.gradle.mcp.support.gradleProjectConnectionProxy
 import com.example.gradle.mcp.support.gradleProjectProxy
 import com.example.gradle.mcp.support.testRunProjectConnection
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -55,6 +57,11 @@ class TestRunPreflightTest {
                             path = ":app",
                             tasks = listOf(mockVerificationTask("test", ":app:test")),
                         ),
+                        gradleProjectProxy(
+                            name = "lib",
+                            path = ":lib",
+                            tasks = listOf(mockVerificationTask("test", ":lib:test")),
+                        ),
                     ),
                 ),
                 getModelCalls,
@@ -74,17 +81,28 @@ class TestRunPreflightTest {
         }
 
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test")
+        error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test", ":lib:test")
         getModelCalls.get() shouldBe 1
     }
 
     @Test
-    fun `preflightRunTests rejects unscoped classes in multi-project builds`() {
+    fun `preflightRunTests rejects unscoped classes in multi-project builds with suggestions`() {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedConnectionForTests(
             connection = gradleProjectConnectionProxy(
                 gradleProjectProxy(
-                    children = listOf(gradleProjectProxy(name = "app", path = ":app")),
+                    children = listOf(
+                        gradleProjectProxy(
+                            name = "app",
+                            path = ":app",
+                            tasks = listOf(mockVerificationTask("test", ":app:test")),
+                        ),
+                        gradleProjectProxy(
+                            name = "lib",
+                            path = ":lib",
+                            tasks = listOf(mockVerificationTask("test", ":lib:test")),
+                        ),
+                    ),
                 ),
             ),
             projectDirectory = projectDirectory,
@@ -101,7 +119,40 @@ class TestRunPreflightTest {
         }
 
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        (error.errorDetails["suggestedTaskPaths"] as List<*>) shouldContain ":app:test"
+        (error.errorDetails["suggestedTaskPaths"] as List<*>) shouldContain ":lib:test"
         connectionManager.cachedHasSubprojects(projectDirectory) shouldBe true
+    }
+
+    @Test
+    fun `preflightRunTests infers taskPath when only one test task exists`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            connection = gradleProjectConnectionProxy(
+                gradleProjectProxy(
+                    children = listOf(
+                        gradleProjectProxy(
+                            name = "app",
+                            path = ":app",
+                            tasks = listOf(gradleJvmTestTaskProxy(projectPath = ":app")),
+                        ),
+                        gradleProjectProxy(name = "lib", path = ":lib"),
+                    ),
+                ),
+            ),
+            projectDirectory = projectDirectory,
+        )
+        val runtime = DefaultGradleMcpRuntime(connectionManager, BuildExecutionManager(connectionManager))
+
+        val resolution = with(runtime) {
+            preflightRunTests(
+                projectDirectory,
+                TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest"))),
+            )
+        }
+
+        resolution.taskPathInferred shouldBe true
+        resolution.options.taskPath shouldBe ":app:test"
     }
 
     @Test
@@ -205,6 +256,11 @@ class TestRunPreflightTest {
                             path = ":app",
                             tasks = listOf(mockVerificationTask("test", ":app:test")),
                         ),
+                        gradleProjectProxy(
+                            name = "lib",
+                            path = ":lib",
+                            tasks = listOf(mockVerificationTask("test", ":lib:test")),
+                        ),
                     ),
                 ),
             ),
@@ -220,7 +276,7 @@ class TestRunPreflightTest {
         }
 
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test")
+        error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test", ":lib:test")
     }
 
     @Test
@@ -254,6 +310,11 @@ class TestRunPreflightTest {
                             path = ":app",
                             tasks = listOf(mockVerificationTask("test", ":app:test")),
                         ),
+                        gradleProjectProxy(
+                            name = "lib",
+                            path = ":lib",
+                            tasks = listOf(mockVerificationTask("test", ":lib:test")),
+                        ),
                     ),
                 ),
             ),
@@ -271,7 +332,7 @@ class TestRunPreflightTest {
         }
 
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test")
+        error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test", ":lib:test")
     }
 
     @Test

@@ -5,9 +5,11 @@ import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.support.assertInvalidArgument
+import com.example.gradle.mcp.support.gradleJvmTestTaskProxy
 import com.example.gradle.mcp.support.gradleProjectProxy
 import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
@@ -493,9 +495,20 @@ class TestRunOptionsTest {
     }
 
     @Test
-    fun `validateProjectScope rejects unscoped classes in multi-project builds`() {
+    fun `validateProjectScope rejects unscoped classes in multi-project builds with suggestions`() {
         val project = gradleProjectProxy(
-            children = listOf(gradleProjectProxy(name = "app", path = ":app")),
+            children = listOf(
+                gradleProjectProxy(
+                    name = "app",
+                    path = ":app",
+                    tasks = listOf(gradleJvmTestTaskProxy(projectPath = ":app")),
+                ),
+                gradleProjectProxy(
+                    name = "lib",
+                    path = ":lib",
+                    tasks = listOf(gradleJvmTestTaskProxy(projectPath = ":lib")),
+                ),
+            ),
         )
 
         val error = shouldThrow<McpException> {
@@ -509,6 +522,11 @@ class TestRunOptionsTest {
 
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
         error.message shouldContain "taskPath"
+        error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test", ":lib:test")
+        error.errorDetails["hint"] shouldBe
+            "Pass taskPath (e.g. \":module:test\") or use tasks for custom JvmTestSuite names " +
+            "(e.g. \":mod:fastTest\"). suggestedTaskPaths lists JVM Test task paths (name test or *Test). " +
+            "When truncated, use gradle_get_project_model with includeTasks=true for the full list."
     }
 
     @Test

@@ -214,20 +214,20 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
         val parsed = parseTestRunOptions(args)
         val testOptions = parsed.options.validate(args.optionalString("taskPath"))
-        val request = testOptions.toBuildRunRequest(
+        val background = args.optionalBoolean("background", default = false)
+        val queueIfBusy = requireQueueIfBusyWithBackground(args)
+        val deferScopeModelCheck = background && queueIfBusy
+        val scopeResolution = preflightRunTests(
+            projectDirectory,
+            testOptions,
+            deferScopeModelCheck = deferScopeModelCheck,
+        )
+        val request = scopeResolution.options.toBuildRunRequest(
             projectDirectory = projectDirectory,
             arguments = args.optionalStringList("arguments").orEmpty(),
             jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
             outputLimit = OutputLimitOptions.fromArgs(args),
             progressOptions = ProgressResponseOptions.fromArgs(args),
-        )
-        val background = args.optionalBoolean("background", default = false)
-        val queueIfBusy = requireQueueIfBusyWithBackground(args)
-        val deferScopeModelCheck = background && queueIfBusy
-        preflightRunTests(
-            projectDirectory,
-            testOptions,
-            deferScopeModelCheck = deferScopeModelCheck,
         )
         val scopedRequest = request.copy(testScopeValidatedAtPreflight = !deferScopeModelCheck)
         val response = if (background) {
@@ -235,7 +235,13 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         } else {
             runtime.buildExecutionManager.runForeground(scopedRequest, notifier)
         }
-        jsonResult(withTestRunResponseMetadata(response, parsed.selectionNormalized))
+        jsonResult(
+            withTestRunResponseMetadata(
+                response,
+                selectionNormalized = parsed.selectionNormalized,
+                taskPathInferred = scopeResolution.taskPathInferred,
+            ),
+        )
     }
 }
 
@@ -254,9 +260,14 @@ private fun requireQueueIfBusyWithBackground(args: Map<String, Any>): Boolean {
 internal fun withTestRunResponseMetadata(
     response: Map<String, Any?>,
     selectionNormalized: Boolean,
-): Map<String, Any?> =
+    taskPathInferred: Boolean = false,
+): Map<String, Any?> {
+    var result = response
     if (selectionNormalized) {
-        response + ("selectionNormalized" to true)
-    } else {
-        response
+        result = result + ("selectionNormalized" to true)
     }
+    if (taskPathInferred) {
+        result = result + ("taskPathInferred" to true)
+    }
+    return result
+}
