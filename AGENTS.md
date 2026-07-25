@@ -10,6 +10,7 @@
 - When asked to commit (and push), split changes into semantic commits by meaningful concern (build / feat / test / docs); use the `semantic-commits` skill when appropriate, or `rework-commits` when rewriting existing branch history (publish with `git push --force-with-lease`).
 - Prefer Kotest for list and nullable collection assertions in tests; avoid `!!` combined with `assertTrue`/`assertFalse`/`isEmpty()`.
 - When splitting sources into feature subpackages, keep `GradleTapiMcpServer` (entry point) in the root `com.example.gradle.mcp` package; move tool handlers and schemas into feature packages.
+- Read `workflow-router` first for `/thermos`, PR review comments, or issue-driven work — then only the matching on-demand skill; do not load unrelated skills in full.
 
 ## Learned Workspace Facts
 
@@ -42,6 +43,17 @@ Single-module Kotlin/JVM MCP server (stdio). No web UI, Docker, or dedicated lin
 3. Ensures **JDK 17** for `./gradlew` (toolchain in `build.gradle.kts`; JDK 21+ can run the MCP JAR at runtime)
 
 The `gradle` MCP server is defined in `.cursor/mcp.json`. Token-efficient workflows: `.cursor/skills/gradle-tapi-mcp/SKILL.md` (summary) and `skills/gradle-tapi-mcp/` (full reference). Release workflow: `.cursor/skills/release/SKILL.md` (summary) and `skills/release/` (full reference).
+
+### Token-efficient agent workflow
+
+| Layer | Location | Purpose |
+|-------|----------|---------|
+| Always-apply rules | `.cursor/rules/gradle-mcp.mdc`, `agent-workflow.mdc`, `pr-description-format.mdc` | MCP vs shell verify, checkout-first PR work, PR body format |
+| Skill router | `.cursor/skills/workflow-router/SKILL.md` | Pick one on-demand skill — avoid loading the wrong playbook |
+| On-demand skills | `issue-to-pr`, `pr-review-response`, `thermo-nuclear-review`, `copilot-review-preflight` | Issue/PR/Thermo workflows with explicit token budgets |
+| Domain skill | `.cursor/skills/gradle-tapi-mcp-server-dev/SKILL.md` | Package placement, MCP tool patterns, test conventions |
+
+**Server code changes:** verify with shell `./gradlew` (release JAR from bootstrap cannot compile the server you are editing). **Docs-only changes:** MCP `gradle_run_tasks` `["build"]` when connected.
 
 ### GitHub and pull requests (Cursor Cloud)
 

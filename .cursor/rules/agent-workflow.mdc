@@ -1,0 +1,31 @@
+---
+description: Token-efficient Cloud Agent workflow — checkout first, no duplicate audits, skill routing
+alwaysApply: true
+---
+
+# Agent workflow (token-efficient)
+
+## Checkout before explore
+
+For PR work (`/thermos`, review fixes), **fetch and checkout the PR head branch first**. Do not grep or read production code on `main` when a PR branch exists.
+
+## No duplicate work
+
+- **`/thermos`:** one invocation runs the full pipeline in `thermo-nuclear-review` (deterministic scan → blind audit → fix → **closure pass** → SHIP). Do not ask for a second session for a fresh look — closure pass is the second check.
+- **Resume** IDLE sessions only for continuations (push, issue comment, PR polish) — not to skip Thermo phases on a new `/thermos` request.
+- Push-only / link-only follow-ups: create issues or push — **do not** re-run audit or tests.
+
+## Server code vs docs
+
+| Change | Verify with |
+|--------|-------------|
+| `src/main/**`, `src/test/**`, `build.gradle.kts`, `gradle/**` | Shell `./gradlew` (see `gradle-mcp.mdc`) |
+| `.cursor/`, `skills/`, `AGENTS.md`, `README.md` only | MCP release JAR or shell — MCP preferred when connected |
+
+## Package layout
+
+Keep `GradleTapiMcpServer`, `GradleTapiMcpServerLauncher`, and `GradleMcpRuntime` in the root `com.example.gradle.mcp` package. Tool handlers, schemas, and feature logic belong in subpackages (`build`, `cache`, `connection`, `model`, `protocol`, `server`). See `gradle-tapi-mcp-server-dev` skill.
+
+## Skill routing
+
+Read `workflow-router` first for `/thermos`, PR comment triage, or issue fixes — then only the matching on-demand skill (`thermo-nuclear-review`, `pr-review-response`, or `issue-to-pr`).
