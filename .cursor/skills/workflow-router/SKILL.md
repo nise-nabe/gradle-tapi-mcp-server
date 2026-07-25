@@ -44,6 +44,6 @@ Pick **one** path below. Do **not** read unrelated skills in full.
 
 | Need | One call |
 |------|----------|
-| PR branch + files | `gh pr view N --json headRefName,baseRefName,title,files` or **ManagePullRequest** |
+| PR branch + files | `gh pr view N --json headRefName,baseRefName,title,files` — or `branch_name` / PR link from the user or Cloud Agent task when `gh` is unavailable |
 | Diff after checkout | `git diff origin/<base>...HEAD` — not `gh pr diff` |
 | Review threads | GraphQL once (`pr-review-response`); if empty, do not re-fetch |

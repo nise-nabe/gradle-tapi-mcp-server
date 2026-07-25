@@ -75,6 +75,8 @@ gh api graphql -f query='
 }'
 ```
 
+When `pageInfo.hasNextPage` is true, re-run with `after: "<endCursor>"` on `reviewThreads` or nested `comments`.
+
 Extract:
 
 | Field | Use |

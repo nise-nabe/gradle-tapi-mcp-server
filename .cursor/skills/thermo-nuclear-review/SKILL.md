@@ -17,6 +17,8 @@ Read `workflow-router` only if you have not already routed here.
 
 ## Phase 0 — Setup (once)
 
+Before any `gh` call: resolve `command -v gh` or `/exec-daemon/gh`, then `gh auth status`.
+
 ```bash
 gh pr view N --json headRefName,baseRefName,title,files
 git fetch origin <headRefName>
@@ -24,10 +26,10 @@ git checkout -B <headRefName> origin/<headRefName>
 git diff origin/<baseRefName>...HEAD > /tmp/pr-diff.txt
 ```
 
-Before any `gh` call: resolve `command -v gh` or `/exec-daemon/gh`, then `gh auth status`. If either fails, use **ManagePullRequest** for PR metadata/CI only — you cannot run this audit without a local diff checkout.
+If `gh` is unavailable, use `headRefName` / `baseRefName` from the user prompt, Cloud Agent task context, or PR URL — then run the `git fetch` / `checkout` / `diff` commands above without `gh pr view`.
 
-- **ManagePullRequest** `get_ci_status` once when merge-readiness matters.
-- Record `BASE_SHA=$(git merge-base origin/<baseRefName> HEAD)` and `START_HEAD=$(git rev-parse HEAD)`.
+- **ManagePullRequest** `get_ci_status` once when merge-readiness matters (does not return branch names).
+- Record `BASE_SHA=$(git merge-base origin/<baseRefName> HEAD)` optionally for audit notes.
 
 Do not explore on `main`. Do not pass prior session conclusions into later phases.
 
@@ -95,7 +97,7 @@ Run **after** fixes are committed (before push). Mandatory for Tier B/C; Tier A 
 4. **Tests:** rerun only if fix commit touched production or test code.
 5. Tier C only: **one** closure subagent with **post-fix diff only**.
 
-**SHIP blocked** if any P0–P2 row is open or closure finds new P0–P1.
+**SHIP blocked** if any P0–P2 row is open or closure finds new P0–P2.
 
 ## Phase 6 — Ship
 
