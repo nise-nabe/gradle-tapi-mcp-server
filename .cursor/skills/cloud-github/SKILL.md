@@ -49,10 +49,12 @@ Do not install `gh` via apt, brew, or curl in agent sessions.
 ## CI verification in this repo
 
 GitHub Actions runs `./gradlew build` (see `.github/workflows/ci.yml`).
-For agent-side verification, prefer:
+For agent-side verification, follow `gradle-mcp.mdc`:
 
-1. `gradle_run_tasks` with `["build"]` or `["test"]` (see `gradle-tapi-mcp` skill)
-2. `./gradlew --no-daemon build` or `./gradlew --no-daemon test`
+| Change type | Verify |
+|-------------|--------|
+| Server Kotlin / tests / build scripts | Shell `./gradlew build` or `./gradlew test` |
+| Docs / `.cursor/` / `AGENTS.md` only | Canonical MCP verify in `gradle-mcp.mdc`, or `./gradlew build --no-daemon` for CI parity |
 
 Use `gh pr checks` only when you need GitHub-attached check status and `gh auth status` succeeds.
 

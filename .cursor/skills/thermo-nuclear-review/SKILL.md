@@ -75,27 +75,34 @@ Merge subagent rows into the findings table (`source: audit`). Deduplicate by pa
 
 | Priority | Rule |
 |----------|------|
-| P0–P1 | Fix on branch before SHIP |
-| P2 | Fix on branch or block SHIP |
-| P3 | Fix now **or** `gh issue create` — **every P3 row resolved before Phase 4** |
+| P0–P1 | Fix on branch in Phase 4 before SHIP |
+| P2 | Fix on branch in Phase 4 or block SHIP |
+| P3 | Decide in Phase 3: fix in Phase 4 **or** `gh issue create` — **every P3 row has a terminal plan before Phase 4** |
 
-No SHIP with open P3 rows marked "later".
+Phase 3 is triage/plan only — no code changes. Phase 4 implements all "fix now" rows (P0–P3).
+
+No SHIP with open P3 rows marked "later" without an issue link.
 
 ## Phase 4 — Fix + verify
 
 1. Batch fixes per file; prefer one commit.
-2. Server code: **one** `./gradlew test` (targeted `--tests` when possible) or `./gradlew build`.
+2. Verify by change type:
+   - **Server code** (`src/main/**`, `src/test/**`, build scripts): shell `./gradlew test` (targeted `--tests` when possible) or `./gradlew build`.
+   - **Docs / `.cursor/` / `AGENTS.md` only**: canonical verify in `gradle-mcp.mdc` (MCP `gradle_run_tasks` `["build"]` with `background: true` + poll, or `./gradlew build`).
 3. Update findings table: `fixed` / `issue #NNN` / `wontfix` (with reason).
 
 ## Phase 5 — Closure pass (replaces a second session)
 
-Run **after** fixes are committed (before push). Mandatory for Tier B/C; Tier A when code changed.
+Run **after** fixes are committed (before push). Mandatory when **any fix commit** was made (Tier A/B/C).
 
 1. `git diff origin/<baseRefName>...HEAD` — post-fix diff only.
 2. **Findings closure:** every row from Phases 1–2 has a terminal status.
 3. **Deterministic re-scan:** re-run Phase 1 checklist on **newly changed hunks** only.
 4. **Tests:** rerun only if fix commit touched production or test code.
-5. Tier C only: **one** closure subagent with **post-fix diff only**.
+5. **Closure subagent** (blind, post-fix diff only):
+   - **Tier C:** mandatory
+   - **Tier B:** when >3 files or >100 net lines in the PR
+   - **Tier A:** skip subagent — deterministic re-scan is sufficient
 
 **SHIP blocked** if any P0–P2 row is open or closure finds new P0–P2.
 

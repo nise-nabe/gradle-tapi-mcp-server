@@ -53,6 +53,7 @@ Use as a final pass before requesting review on `nise-nabe/gradle-tapi-mcp-serve
 
 - [ ] `install.sh` version and SHA-256 match the release being documented
 - [ ] `.cursor/skills/gradle-tapi-mcp/SKILL.md` and `skills/gradle-tapi-mcp/SKILL.md` stay in sync when editing MCP workflow docs
+- [ ] New agent workflow skills (`workflow-router`, `thermo-nuclear-review`, etc.) live under `.cursor/skills/` only — no `skills/` mirror unless the skill is user-installable (like `gradle-tapi-mcp`)
 - [ ] MCP config uses stdio transport; `GRADLE_PROJECT_DIR` documented correctly
 - [ ] Invoke shell scripts via `bash path/to/script.sh` in docs when executable bit may vary
 - [ ] PR description is a feature summary (not a "review fixes" changelog) per `pr-description-format.mdc`
@@ -72,7 +73,7 @@ Use as a final pass before requesting review on `nise-nabe/gradle-tapi-mcp-serve
 
 1. Read the specialized skill for your change area.
 2. Server code: `./gradlew test` or `./gradlew build` (shell — not MCP for self-build).
-3. Docs-only: MCP `gradle_run_tasks` `["build"]` or `./gradlew build`.
+3. Docs-only: canonical verify in `gradle-mcp.mdc` (MCP `gradle_run_tasks` `["build"]` with `background: true` + poll, or `./gradlew build`).
 4. Scan the diff for hard-coded versions, `IllegalStateException` in tool paths, and missing structured error fields.
 
 ## Test plan template

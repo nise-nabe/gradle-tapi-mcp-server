@@ -50,7 +50,7 @@ Use plan mode only for non-trivial refactors; hygiene/docs fixes go straight to 
 | Change type | Verify |
 |-------------|--------|
 | Server Kotlin / tests | `./gradlew test` or `./gradlew build` (targeted `--tests` when possible) |
-| Docs / `.cursor/` only | MCP `gradle_run_tasks` `["build"]` if connected, else `./gradlew build` |
+| Docs / `.cursor/` only | Canonical verify in `gradle-mcp.mdc` (MCP `gradle_run_tasks` `["build"]` with `background: true` + poll, or `./gradlew build`) |
 
 Do not run full `build` for one-class fixes — use `--tests "FullyQualifiedClassName"`.
 

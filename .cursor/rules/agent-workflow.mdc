@@ -24,7 +24,7 @@ For PR work (`/thermos`, review fixes), **fetch and checkout the PR head branch 
 
 ## Package layout
 
-Keep `GradleTapiMcpServer`, `GradleTapiMcpServerLauncher`, and `GradleMcpRuntime` in the root `com.example.gradle.mcp` package. Tool handlers, schemas, and feature logic belong in subpackages (`build`, `cache`, `connection`, `model`, `protocol`, `server`). See `gradle-tapi-mcp-server-dev` skill.
+See `gradle-tapi-mcp-server-dev` for entry-point classes and feature subpackage ownership. Do not add tool handlers to the root `com.example.gradle.mcp` package.
 
 ## Skill routing
 

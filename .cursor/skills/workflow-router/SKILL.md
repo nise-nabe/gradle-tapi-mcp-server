@@ -16,7 +16,7 @@ Pick **one** path below. Do **not** read unrelated skills in full.
 | Address PR review comments / resolve threads | `pr-review-response` | `thermo-nuclear-review` |
 | Fix an issue → open PR | `issue-to-pr` | `pr-review-response` |
 | Release (version bump, tag, GitHub Release) | `release` | `gradle-tapi-mcp` (full) |
-| Docs / `.cursor/` / `AGENTS.md` only | `gradle-mcp.mdc` (verify subsection) + `cloud-github` + target files via Grep | `gradle-tapi-mcp` (full) |
+| Docs / `.cursor/` / `AGENTS.md` only | `gradle-mcp.mdc` (canonical verify) + `copilot-review-preflight` (checklist) + `cloud-github` + target files via Grep | `gradle-tapi-mcp` (full) |
 | MCP server code (implementation) | Area skill from table below | Full `AGENTS.md` |
 
 ## Area skills (implementation only)

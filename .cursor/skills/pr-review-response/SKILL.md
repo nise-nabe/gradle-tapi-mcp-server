@@ -160,7 +160,7 @@ Server code changes: **shell `./gradlew`** (see `gradle-mcp.mdc`).
 
 2. If multiple classes changed, batch in one `--tests` invocation or run `./gradlew test` once.
 3. On failure, rerun **only** the failing method(s) — not the full suite.
-4. Docs-only fixes: MCP `gradle_run_tasks` `["build"]` if connected, else `./gradlew build`.
+4. Docs-only fixes: canonical verify in `gradle-mcp.mdc` (MCP `gradle_run_tasks` `["build"]` with `background: true` + poll `gradle_get_build_status`, or `./gradlew build`).
 
 Do **not** run full `build` for review-fix verification unless the PR touched build logic or CI parity is required.
 

@@ -9,7 +9,7 @@
 - Use `project-context-ingestion` for declared build constraints; reserve Gradle MCP for resolved runtime Gradle/Java, build verification, and task execution.
 - When asked to commit (and push), split changes into semantic commits by meaningful concern (build / feat / test / docs); use the `semantic-commits` skill when appropriate, or `rework-commits` when rewriting existing branch history (publish with `git push --force-with-lease`).
 - Prefer Kotest for list and nullable collection assertions in tests; avoid `!!` combined with `assertTrue`/`assertFalse`/`isEmpty()`.
-- When splitting sources into feature subpackages, keep `GradleTapiMcpServer`, `GradleTapiMcpServerLauncher`, and `GradleMcpRuntime` in the root `com.example.gradle.mcp` package; move tool handlers and schemas into feature packages.
+- When splitting sources into feature subpackages, keep entry-point classes in the root `com.example.gradle.mcp` package; see `gradle-tapi-mcp-server-dev` for the canonical list and subpackage ownership.
 - Read `workflow-router` first for `/thermos`, PR review comments, or issue-driven work — then only the matching on-demand skill; do not load unrelated skills in full.
 
 ## Learned Workspace Facts
@@ -38,7 +38,7 @@ Single-module Kotlin/JVM MCP server (stdio). No web UI, Docker, or dedicated lin
 
 `.cursor/environment.json` runs `.cursor/install.sh` on every Cloud Agent session:
 
-1. Downloads release **v0.6.0** JAR (SHA-256 verified) to `~/.local/share/gradle-tapi-mcp-server/gradle-tapi-mcp-server.jar` so MCP can drive this repo's build when needed
+1. Downloads release JAR (version in `.cursor/install.sh` `GRADLE_TAPI_MCP_VERSION`, currently **0.6.0**) with SHA-256 verification to `~/.local/share/gradle-tapi-mcp-server/gradle-tapi-mcp-server.jar` so MCP can drive this repo's build when needed
 2. Configures `gh` from `/exec-daemon/gh` (optional `GH_TOKEN` / `GITHUB_TOKEN` login)
 3. Ensures **JDK 17** for `./gradlew` (toolchain in `build.gradle.kts`; JDK 21+ can run the MCP JAR at runtime)
 
@@ -48,21 +48,22 @@ The `gradle` MCP server is defined in `.cursor/mcp.json`. Token-efficient workfl
 
 | Layer | Location | Purpose |
 |-------|----------|---------|
-| Always-apply rules | `.cursor/rules/gradle-mcp.mdc`, `agent-workflow.mdc`, `pr-description-format.mdc` | MCP vs shell verify, checkout-first PR work, PR body format |
+| Always-apply rules | `.cursor/rules/gradle-mcp.mdc`, `agent-workflow.mdc`, `pr-description-format.mdc`, `cloud-github.mdc` | MCP vs shell verify, checkout-first PR work, PR body format, GitHub tooling |
 | Skill router | `.cursor/skills/workflow-router/SKILL.md` | Pick one on-demand skill — avoid loading the wrong playbook |
 | On-demand skills | `issue-to-pr`, `pr-review-response`, `thermo-nuclear-review`, `copilot-review-preflight` | Issue/PR/Thermo workflows with explicit token budgets |
 | Domain skill | `.cursor/skills/gradle-tapi-mcp-server-dev/SKILL.md` | Package placement, MCP tool patterns, test conventions |
 
-**Server code changes:** verify with shell `./gradlew` (release JAR from bootstrap cannot compile the server you are editing). **Docs-only changes:** MCP `gradle_run_tasks` `["build"]` when connected.
+**Server code changes:** verify with shell `./gradlew` (release JAR from bootstrap cannot compile the server you are editing). **Docs-only changes:** canonical verify in `gradle-mcp.mdc` (MCP `gradle_run_tasks` with `background: true` + poll, or `./gradlew build`).
 
 ### GitHub and pull requests (Cursor Cloud)
 
 | Goal | Preferred approach |
 |------|-------------------|
 | Create or update a PR | Built-in **ManagePullRequest** tool (`create_pr` / `update_pr`) |
+| Post PR comment or resolve thread | **ManagePullRequest** (`post_comment`, `resolve_comment`) |
+| PR CI status | **ManagePullRequest** (`get_ci_status`) or `gh pr checks` when auth works |
 | Edit PR labels | **EditPullRequestLabels** tool |
-| Verify changes locally | `./gradlew build` or Gradle MCP `gradle_run_tasks` with `["build"]` |
-| PR check status / CI logs | `gh` only after `gh auth status` succeeds (see `.cursor/skills/cloud-github/SKILL.md`) |
+| Verify changes locally | `./gradlew build` or canonical MCP verify in `gradle-mcp.mdc` |
 
 Do not rely on bare `gh` before install completes. Set `GH_TOKEN` in Cursor Cloud Secrets when the GitHub App token lacks required scopes.
 

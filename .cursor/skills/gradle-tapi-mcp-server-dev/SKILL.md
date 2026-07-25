@@ -23,7 +23,7 @@ Apply during implementation — not only before opening a PR.
 | `build/` | `BuildExecutionManager`, run/cancel/status tools, output parsing, persistence, test runners |
 | `connection/` | Connection pool, `gradle_connect` / disconnect, build environment snapshots, `gradle_get_java_runtimes` |
 | `protocol/` | `McpToolSchemas`, `McpToolDescriptions`, `McpErrors`, JSON mapping, progress notifications |
-| `model/` | Project model queries (`gradle_get_project_overview`, publications, invocations) |
+| `model/` | `gradle_get_project_overview`, `gradle_get_project_publications`, `gradle_get_build_invocations` |
 | `cache/` | Build cache status and local cache inspection tools |
 | `server/` | Stdio transport helpers (e.g. `EofSignalingInputStream`) |
 

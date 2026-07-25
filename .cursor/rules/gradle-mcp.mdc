@@ -25,12 +25,15 @@ For long shell builds, run `./gradlew` in a **background shell session** when th
 
 ## Docs / `.cursor/` / `AGENTS.md` only (no server code)
 
-Prefer the `gradle` MCP server (release v0.6.0 via `.cursor/mcp.json`) over shell when verifying that the project still builds:
+Prefer the `gradle` MCP server (release JAR from `.cursor/install.sh` via `.cursor/mcp.json`) over shell when verifying that the project still builds.
 
-1. `gradle_connection_status` — confirm `connectedAny: true` (or per-connection `connected: true` when a single project is listed)
-2. If not connected, `gradle_connect` with `projectDirectory` (defaults to `GRADLE_PROJECT_DIR`) and re-check status
-3. `gradle_get_build_environment` or `gradle_get_project_overview` for light context
-4. `gradle_run_tasks` with `["build"]`, `background: true` + poll `gradle_get_build_status`
+**Canonical docs-only verify** (reference from other skills):
+
+1. `gradle_connection_status` — confirm `connectedAny: true` and `runtimeStackAvailable=true` (shows `gradleVersion` / `javaHome`). When false, call with `refresh: true` or use `gradle_get_build_environment` before running tasks.
+2. If not connected, `gradle_connect` with `projectDirectory` (defaults to `GRADLE_PROJECT_DIR`) and re-check status.
+3. Optional: `gradle_get_build_environment` or `gradle_get_project_overview` for light context.
+4. `gradle_run_tasks` with `["build"]`, `background: true` — poll `gradle_get_build_status` until terminal. On stuck builds, check `gradle_list_builds` or `gradle_cancel_build`.
+5. Shell fallback: `./gradlew build --no-daemon` (CI parity or when MCP is unavailable).
 
 Read `.cursor/skills/gradle-tapi-mcp/SKILL.md` for token-efficient MCP defaults (`includeOutput=false`, batch tests, short polls).
 
@@ -38,9 +41,9 @@ Read `.cursor/skills/gradle-tapi-mcp/SKILL.md` for token-efficient MCP defaults 
 
 When using Cursor **GetMcpTools** (some clients expose this as `mcp_get_tools`):
 
-1. Call with **no arguments** first (catalog only)
-2. Fetch full schema with `server` + `toolName` for tools you will call
-3. Avoid `server` without `toolName` unless you need every schema
+1. Prefer `server` + `toolName` for tools you will call, or `pattern` when the server id is unknown
+2. Use **no arguments** (full catalog) only as a last resort — it is token-heavy
+3. Avoid `server` without `toolName` unless you need every schema on that server
 
 ## Shell fallback when MCP is appropriate but unavailable
 
