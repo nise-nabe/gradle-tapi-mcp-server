@@ -50,9 +50,13 @@ fun mapExceptionToErrorCode(exception: Exception): McpErrorCode =
             "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR." ->
                 McpErrorCode.NOT_CONNECTED
             else -> when {
-                exception.message?.startsWith("A Gradle build is already running") == true ||
+                exception.message?.startsWith("A Gradle build is already active") == true ||
+                    exception.message?.startsWith("A Gradle build is already running") == true ||
+                    exception.message?.startsWith("Cannot connect while a Gradle build is active") == true ||
                     exception.message?.startsWith("Cannot connect while a Gradle build is running") == true ||
+                    exception.message?.startsWith("Cannot query Gradle models while a build is active") == true ||
                     exception.message?.startsWith("Cannot query Gradle models while a build is running") == true ||
+                    exception.message?.startsWith("Cannot run prepareTasks while a Gradle build is active") == true ||
                     exception.message?.startsWith("Cannot run prepareTasks while a Gradle build is running") == true ||
                     exception.message?.startsWith("Maximum concurrent builds") == true ->
                     McpErrorCode.BUILD_ALREADY_RUNNING

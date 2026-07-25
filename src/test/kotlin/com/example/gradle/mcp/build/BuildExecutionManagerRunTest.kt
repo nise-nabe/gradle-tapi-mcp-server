@@ -61,7 +61,7 @@ class BuildExecutionManagerRunTest {
         }
 
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
-        error.message.shouldContain("already running")
+        error.message.shouldContain("already active")
         error.message.shouldContain("gradle_get_build_status")
         error.errorDetails["activeBuildId"] shouldBe "running-build"
         error.errorDetails["activeKind"] shouldBe "tasks"
@@ -132,7 +132,7 @@ class BuildExecutionManagerRunTest {
         val successBuildId = outcomes.single { it.isSuccess }.getOrThrow()["buildId"] as String
         val failure = outcomes.single { it.isFailure }.exceptionOrNull().shouldNotBeNull()
         (failure as McpException).code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
-        failure.message.shouldContain("already running")
+        failure.message.shouldContain("already active")
         failure.errorDetails["activeBuildId"] shouldBe successBuildId
         failure.errorDetails["activeStatus"] shouldBe BuildProgressTracker.STATUS_RUNNING
 
@@ -300,7 +300,7 @@ class BuildExecutionManagerRunTest {
         }
 
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
-        error.message.shouldContain("already running")
+        error.message.shouldContain("already active")
         manager.hasActiveBuild().shouldBeTrue()
     }
 
@@ -329,7 +329,7 @@ class BuildExecutionManagerRunTest {
             manager.startBackground(request, notifier = null)
         }
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
-        error.message.shouldContain("already running")
+        error.message.shouldContain("already active")
 
         releaseBuild.countDown()
         foregroundThread.join(5_000)

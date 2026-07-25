@@ -208,7 +208,7 @@ internal object JavaRuntimesCollector {
 }
 
 private fun toolchainDetectionBlockedMessage(projectDirectory: File): String =
-    "Cannot detect installed JDKs while a Gradle build is running for ${projectDirectory.path}. " +
+    "Cannot detect installed JDKs while a Gradle build is active for ${projectDirectory.path}. " +
         "Wait for the build to finish, call gradle_get_build_status, or set includeToolchains=false."
 
 internal fun requireNoActiveBuildForToolchainDetection(

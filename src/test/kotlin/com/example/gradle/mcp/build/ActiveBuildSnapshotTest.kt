@@ -61,6 +61,34 @@ class ActiveBuildSnapshotTest {
     }
 
     @Test
+    fun `maxConcurrentBuildErrorDetails includes single-build fields when one build is running`() {
+        val record = testBuildRecord(
+            id = "solo-build",
+            tracker = runningTracker(),
+            projectDirectory = testProjectDirectory.absolutePath,
+            tasks = listOf("compileKotlin"),
+        )
+
+        val fields = ActiveBuildSnapshot.maxConcurrentBuildErrorDetails(listOf(record))
+
+        fields shouldContain ("activeBuildIds" to listOf("solo-build"))
+        fields shouldContain ("activeBuildId" to "solo-build")
+        fields shouldContain ("activeStatus" to BuildProgressTracker.STATUS_RUNNING)
+        fields shouldContain ("activeTasks" to listOf("compileKotlin"))
+    }
+
+    @Test
+    fun `maxConcurrentBuildErrorDetails returns only activeBuildIds for multiple running builds`() {
+        val first = testBuildRecord(id = "build-a", tracker = runningTracker())
+        val second = testBuildRecord(id = "build-b", tracker = runningTracker())
+
+        val fields = ActiveBuildSnapshot.maxConcurrentBuildErrorDetails(listOf(first, second))
+
+        fields shouldContain ("activeBuildIds" to listOf("build-a", "build-b"))
+        fields.containsKey("activeBuildId") shouldBe false
+    }
+
+    @Test
     fun `toErrorFields includes test selection`() {
         val snapshot = ActiveBuildSnapshot.fromRecord(
             testBuildRecord(

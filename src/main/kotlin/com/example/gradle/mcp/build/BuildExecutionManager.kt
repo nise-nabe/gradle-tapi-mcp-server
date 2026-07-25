@@ -1011,7 +1011,7 @@ class BuildExecutionManager(
     private fun buildAlreadyRunningForProjectException(projectDirectory: File): McpException =
         McpException(
             McpErrorCode.BUILD_ALREADY_RUNNING,
-            "A Gradle build is already running for ${projectDirectory.path}. " +
+            "A Gradle build is already active for ${projectDirectory.path}. " +
                 "Poll gradle_get_build_status with the active buildId, call gradle_cancel_build to stop it, " +
                 "wait for it to finish, or pass queueIfBusy=true with background=true to enqueue.",
             errorDetails = activeBuildErrorDetails(projectDirectory),
@@ -1031,14 +1031,7 @@ class BuildExecutionManager(
             val running = builds.values.filter { record ->
                 record.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING
             }
-            buildMap {
-                if (running.isNotEmpty()) {
-                    put("activeBuildIds", running.map { it.id })
-                    if (running.size == 1) {
-                        putAll(ActiveBuildSnapshot.fromRecord(running.single()).toErrorFields())
-                    }
-                }
-            }
+            ActiveBuildSnapshot.maxConcurrentBuildErrorDetails(running)
         }
         return McpException(
             McpErrorCode.BUILD_ALREADY_RUNNING,

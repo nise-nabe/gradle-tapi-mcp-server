@@ -64,6 +64,16 @@ internal data class ActiveBuildSnapshot(
             return record?.let(::fromRecord)
         }
 
+        fun maxConcurrentBuildErrorDetails(running: Collection<BuildRecord>): Map<String, Any?> =
+            buildMap {
+                if (running.isNotEmpty()) {
+                    put("activeBuildIds", running.map { it.id })
+                    if (running.size == 1) {
+                        putAll(fromRecord(running.single()).toErrorFields())
+                    }
+                }
+            }
+
         private val ACTIVE_STATUSES = setOf(
             BuildProgressTracker.STATUS_RUNNING,
             BuildProgressTracker.STATUS_QUEUED,

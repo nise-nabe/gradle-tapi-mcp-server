@@ -106,11 +106,15 @@ class McpErrorsTest {
         @JvmStatic
         fun buildAlreadyRunningMessages(): Stream<Arguments> =
             Stream.of(
+                Arguments.of("A Gradle build is already active for /tmp."),
                 Arguments.of("A Gradle build is already running for /tmp."),
+                Arguments.of("Cannot connect while a Gradle build is active for /tmp."),
                 Arguments.of("Cannot connect while a Gradle build is running for /tmp."),
+                Arguments.of("Cannot query Gradle models while a build is active for /tmp."),
                 Arguments.of("Cannot query Gradle models while a build is running for /tmp."),
+                Arguments.of("Cannot run prepareTasks while a Gradle build is active for /tmp."),
                 Arguments.of("Cannot run prepareTasks while a Gradle build is running for /tmp."),
-                Arguments.of("Maximum concurrent builds (4) reached. Poll gradle_get_build_status."),
+                Arguments.of("Maximum concurrent builds (4) reached. Poll gradle_get_build_status with activeBuildIds."),
             )
     }
 }
