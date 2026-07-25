@@ -410,7 +410,10 @@ class BuildExecutionManager(
     }
 
     private fun runningBuildId(projectDirectory: File): String? =
-        activeBuildSnapshot(projectDirectory)?.activeBuildId
+        builds.values.firstOrNull { record ->
+            record.matchesProject(projectDirectory) &&
+                record.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING
+        }?.id
 
     internal fun activeBuildSnapshot(projectDirectory: File): ActiveBuildSnapshot? =
         ActiveBuildSnapshot.forProject(builds.values, projectDirectory)
