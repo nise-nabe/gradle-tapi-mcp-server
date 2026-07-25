@@ -427,7 +427,7 @@ class BuildExecutionManager(
             projectDirectory = projectDirectory,
             preferredQueuedBuildId = preferredQueuedBuildId,
         )
-        }
+    }
 
     fun hasActiveBuild(projectDirectory: File? = null): Boolean =
         hasRunningBuild(projectDirectory) || hasQueuedBuild(projectDirectory)
