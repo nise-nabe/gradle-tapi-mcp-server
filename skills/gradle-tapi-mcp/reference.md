@@ -81,6 +81,7 @@ Returns:
 
 | Argument | Default | Description |
 |----------|---------|-------------|
+| `projectPath` | — | Scope results to a subproject path (e.g. `:plugin`); includes its children |
 | `maxDepth` | unlimited | Maximum project tree depth |
 | `maxChildren` | unlimited | Maximum child projects per node |
 | `prepareTasks` | `[]` | Optional tasks to run before fetching the model |
@@ -100,6 +101,7 @@ Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`
 
 | Argument | Default | Description |
 |----------|---------|-------------|
+| `projectPath` | — | Scope results to a subproject path (e.g. `:plugin`); includes its children |
 | `maxDepth` | unlimited | Maximum project tree depth |
 | `maxChildren` | unlimited | Maximum child projects per node |
 | `includeTasks` | `false` | Include task arrays |
@@ -112,7 +114,7 @@ Slim task shape (default): `{ name, path, group }`.
 
 ### gradle_get_build_invocations
 
-Same task query options as `gradle_get_project_model` (including global `maxTasks`, `maxDepth` / `maxChildren`). When `maxTasks` caps the result, the response includes `tasksTruncated` and `tasksTotalMatched`. Plus:
+Same task query options as `gradle_get_project_model` (including `projectPath`, global `maxTasks`, `maxDepth` / `maxChildren`). When `maxTasks` caps the result, the response includes `tasksTruncated` and `tasksTotalMatched`. Plus:
 
 | Argument | Default | Description |
 |----------|---------|-------------|

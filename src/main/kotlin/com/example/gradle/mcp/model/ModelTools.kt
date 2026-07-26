@@ -37,6 +37,7 @@ private fun modelDirectoryProperties(): Map<String, Any> =
 
 internal fun projectTreeProperties(): Map<String, Any> =
     mapOf(
+        "projectPath" to stringProperty("Scope results to a subproject path (e.g. ':plugin'); includes its children"),
         "maxDepth" to integerProperty("Max project tree depth (root=0)"),
         "maxChildren" to integerProperty("Max child projects per node"),
     ) + modelDirectoryProperties()
@@ -150,7 +151,12 @@ fun Server.registerModelTools(scope: CoroutineScope) {
             fetch = { connection, prepareTasks ->
                 connection.fetchModel(GradleProject::class.java, prepareTasks)
             },
-            serialize = { project -> ModelSerializers.projectOverview(project, treeOptions) },
+            serialize = { project ->
+                ModelSerializers.projectOverview(
+                    ProjectTreeScope.requireProject(project, treeOptions.projectPath),
+                    treeOptions,
+                )
+            },
         )
     }
     registerTool(
@@ -181,7 +187,13 @@ fun Server.registerModelTools(scope: CoroutineScope) {
             fetch = { connection, prepareTasks ->
                 connection.fetchModel(GradleProject::class.java, prepareTasks)
             },
-            serialize = { project -> ModelSerializers.gradleProject(project, options, treeOptions) },
+            serialize = { project ->
+                ModelSerializers.gradleProject(
+                    ProjectTreeScope.requireProject(project, treeOptions.projectPath),
+                    options,
+                    treeOptions,
+                )
+            },
         )
     }
     registerTool(
@@ -200,7 +212,12 @@ fun Server.registerModelTools(scope: CoroutineScope) {
                 invocations to project
             },
             serialize = { (invocations, project) ->
-                ModelSerializers.buildInvocations(invocations, project, options, treeOptions)
+                ModelSerializers.buildInvocations(
+                    invocations,
+                    ProjectTreeScope.requireProject(project, treeOptions.projectPath),
+                    options,
+                    treeOptions,
+                )
             },
         )
     }

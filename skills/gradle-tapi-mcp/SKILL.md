@@ -33,7 +33,7 @@ Gradle プロジェクトの**実行時状態**を MCP 経由で取得・実行�
 ```
 1. gradle_connection_status              # runtimeStackAvailable=true 時は gradleVersion / javaHome / javaVersion。false なら refresh=true または gradle_get_build_environment。全接続一覧 + refresh=true は接続ごとに 1 回 fetch
 2. gradle_get_build_environment          # 解決済み Gradle/Java + javaVersion + versionInfo（Gradle 9.4+、軽量）
-3. gradle_get_project_overview           # モジュール階層 + taskCount（軽量、maxDepth/maxChildren 可）
+3. gradle_get_project_overview           # モジュール階層 + taskCount（軽量、projectPath / maxDepth / maxChildren 可）
 4. [必要時] gradle_run_tasks ["build"]   # ビルド検証
 5. [必要時] gradle_run_tests [...]       # クラス / メソッド / パターン指定
 ```
@@ -44,11 +44,11 @@ Gradle プロジェクトの**実行時状態**を MCP 経由で取得・実行�
 |------|--------|-----------|
 | タスク一覧 | `gradle_get_project_model` | `includeTasks=true` |
 | タスク説明付き | 同上 | `+ includeTaskDetails=true` |
-| 絞り込み | 同上 / `gradle_get_build_invocations` | `taskGroup`, `taskNamePrefix`, `maxTasks` |
+| 絞り込み | 同上 / `gradle_get_build_invocations` | `projectPath`, `taskGroup`, `taskNamePrefix`, `maxTasks` |
 | セレクタ | `gradle_get_build_invocations` | `includeTaskSelectors=true` |
 | Publications | `gradle_get_project_publications` | — |
 
-`gradle_get_project_model` と `gradle_get_build_invocations` を引数なしで連続呼び出ししない。大規模プロジェクトでトークンが爆発する。
+`gradle_get_project_model` と `gradle_get_build_invocations` を引数なしで連続呼び出ししない。大規模プロジェクトでは `projectPath`（例: `:plugin`）でサブツリーに絞る。
 
 ## MCP ツール発見（トークン節約）
 

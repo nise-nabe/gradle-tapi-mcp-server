@@ -25,7 +25,7 @@ JAR only after you need to test server changes (not during `./gradlew build` of 
 3. `gradle_get_project_overview` — project name and task counts (single-module repo)
 4. `gradle_run_tasks` with `["build"]` or `gradle_run_tests` when verification is needed
 
-Avoid `includeTasks=true` and heavy model queries unless necessary. `gradle_run_tasks` omits stdout/stderr by default (`includeOutput=false`).
+Avoid `includeTasks=true` and heavy model queries unless necessary. On multi-module projects, pass `projectPath` (e.g. `:plugin`) to scope overview/model/invocation queries to a subproject subtree. `gradle_run_tasks` omits stdout/stderr by default (`includeOutput=false`).
 
 ## MCP tool discovery (token-efficient)
 

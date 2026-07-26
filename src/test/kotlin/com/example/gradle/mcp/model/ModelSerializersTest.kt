@@ -497,6 +497,40 @@ class ModelSerializersTest {
     }
 
     @Test
+    fun `gradleProject scoped to projectPath omits sibling subprojects`() {
+        val root = multiModuleRootForScoping()
+
+        val scoped = ProjectTreeScope.requireProject(root, ":plugin")
+        val result = ModelSerializers.gradleProject(
+            scoped,
+            ModelQueryOptions(includeTasks = true, taskNamePrefix = "compile"),
+        )
+
+        result["path"] shouldBe ":plugin"
+        result["children"] shouldBe emptyList<Map<String, Any?>>()
+        val tasks = result["tasks"] as List<*>
+        tasks shouldHaveSize 1
+        (tasks.first() as Map<*, *>)["path"] shouldBe ":plugin:compileJava"
+    }
+
+    @Test
+    fun `buildInvocations scoped to projectPath omits sibling tasks`() {
+        val root = multiModuleRootForScoping()
+        val invocations = mockBuildInvocations(emptyList())
+
+        val scoped = ProjectTreeScope.requireProject(root, ":plugin")
+        val result = ModelSerializers.buildInvocations(
+            invocations,
+            scoped,
+            ModelQueryOptions(includeTasks = true, taskNamePrefix = "compile"),
+        )
+
+        val tasks = result["tasks"] as List<*>
+        tasks shouldHaveSize 1
+        (tasks.first() as Map<*, *>)["path"] shouldBe ":plugin:compileJava"
+    }
+
+    @Test
     fun `help limit options parse maxChars and tailOutput from args`() {
         val options = HelpLimitOptions.fromArgs(
             mapOf(
@@ -508,6 +542,28 @@ class ModelSerializersTest {
         options.maxChars shouldBe 4_000
         options.tailOutput.shouldBeFalse()
     }
+
+    private fun multiModuleRootForScoping() =
+        gradleProjectProxy(
+            name = "root",
+            path = ":",
+            directory = File("/root"),
+            tasks = listOf(mockTask("compileRoot", ":compileRoot", "build")),
+            children = listOf(
+                gradleProjectProxy(
+                    name = "plugin",
+                    path = ":plugin",
+                    directory = File("/root/plugin"),
+                    tasks = listOf(mockTask("compileJava", ":plugin:compileJava", "build")),
+                ),
+                gradleProjectProxy(
+                    name = "shared",
+                    path = ":plugin-shared",
+                    directory = File("/root/shared"),
+                    tasks = listOf(mockTask("compileJava", ":plugin-shared:compileJava", "build")),
+                ),
+            ),
+        )
 
     private fun mockTask(name: String, path: String, group: String): Task =
         Proxy.newProxyInstance(

@@ -19,6 +19,13 @@ class ProjectTreeOptionsTest {
     }
 
     @Test
+    fun `fromArgs parses projectPath`() {
+        val options = ProjectTreeOptions.fromArgs(mapOf("projectPath" to ":plugin"))
+
+        options.projectPath shouldBe ":plugin"
+    }
+
+    @Test
     fun `fromArgs accepts root-only maxDepth and rejects invalid children limits`() {
         val options = ProjectTreeOptions.fromArgs(mapOf("maxDepth" to 0, "maxChildren" to -1))
 
