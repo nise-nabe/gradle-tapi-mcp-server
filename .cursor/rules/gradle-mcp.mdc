@@ -1,0 +1,54 @@
+---
+description: Gradle verification for this repo — shell ./gradlew when changing server code; MCP release JAR otherwise
+alwaysApply: true
+---
+
+# Gradle tasks in this repository
+
+This repo **is** the `gradle-tapi-mcp-server` MCP provider. Verification strategy depends on what you change.
+
+## Server Kotlin / build script changes
+
+Use **shell `./gradlew`** — not the `gradle` MCP server — while compiling or testing code you are editing:
+
+- Cloud bootstrap runs the **release** JAR from `.cursor/install.sh`; it cannot drive a build of the server you are rewriting in the same session.
+- After `./gradlew jar`, restart MCP and point at the local JAR only when you need to **exercise new server behavior** (not for routine compile/test of server changes).
+
+| Goal | Command |
+|------|---------|
+| Compile + unit tests | `./gradlew build` |
+| Tests only | `./gradlew test` |
+| Assemble JAR | `./gradlew jar` |
+| Single test class | `./gradlew test --tests "com.example.gradle.mcp.build.BuildExecutionManagerRunTest"` |
+
+For long shell builds, run `./gradlew` in a **background shell session** when the client supports it; otherwise one `./gradlew` invocation per verify round. This is separate from MCP `gradle_run_tasks` `background: true` below.
+
+## Docs / `.cursor/` / `AGENTS.md` only (no server code)
+
+Prefer the `gradle` MCP server (release JAR from `.cursor/install.sh` via `.cursor/mcp.json`) over shell when verifying that the project still builds.
+
+**Canonical docs-only verify** (reference from other skills):
+
+1. `gradle_connection_status` — confirm `connectedAny: true` and `runtimeStackAvailable=true` (shows `gradleVersion` / `javaHome`). When false, call with `refresh: true` or use `gradle_get_build_environment` before running tasks.
+2. If not connected, `gradle_connect` with `projectDirectory` (defaults to `GRADLE_PROJECT_DIR`) and re-check status.
+3. Optional: `gradle_get_build_environment` or `gradle_get_project_overview` for light context.
+4. `gradle_run_tasks` with `["build"]`, `background: true` — poll `gradle_get_build_status` until terminal. On stuck builds, check `gradle_list_builds` or `gradle_cancel_build`.
+5. Shell fallback: `./gradlew build --no-daemon` (CI parity or when MCP is unavailable).
+
+Read `.cursor/skills/gradle-tapi-mcp/SKILL.md` for token-efficient MCP defaults (`includeOutput=false`, batch tests, short polls).
+
+## MCP tool discovery (token-efficient)
+
+When using Cursor **GetMcpTools** (some clients expose this as `mcp_get_tools`):
+
+1. Prefer `server` + `toolName` for tools you will call, or `pattern` when the server id is unknown
+2. Use **no arguments** (full catalog) only as a last resort — it is token-heavy
+3. Avoid `server` without `toolName` unless you need every schema on that server
+
+## Shell fallback when MCP is appropriate but unavailable
+
+- MCP tools time out or the server is unresponsive (poll `gradle_list_builds` / `gradle_get_build_status` first)
+- `BUILD_ALREADY_RUNNING` and you cannot cancel the in-flight MCP build
+- PR / CI parity requires `./gradlew build` after MCP verification passes
+
+Do **not** run MCP `gradle_run_tests` and shell `./gradlew test` on the same checkout concurrently.

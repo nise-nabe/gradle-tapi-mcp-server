@@ -54,9 +54,9 @@ Gradle プロジェクトの**実行時状態**を MCP 経由で取得・実行�
 
 Cursor の `mcp_get_tools` 利用時:
 
-1. **引数なし**でカタログ取得（名前 + 短い description）
-2. 呼ぶ直前に `server` + `toolName` でフルスキーマ取得
-3. `server` のみ（全スキーマ一括）は避ける（軽量化後 ~3.5k トークン、以前 ~7k）
+1. 呼ぶ直前に `server` + `toolName` でフルスキーマ取得（サーバー ID が不明なら `pattern`）
+2. **引数なし**のカタログ取得は最後の手段（トークン消費が大きい）
+3. `server` のみ（全スキーマ一括）は避ける
 
 詳細パラメータは [reference.md](reference.md)（Layer 3）。ツール `description` はサマリ（Layer 1）。
 

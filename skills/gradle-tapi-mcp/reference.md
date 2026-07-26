@@ -233,8 +233,8 @@ Returns `status` (`queued`, `running`, `succeeded`, `failed`, `cancelled`, or `n
 
 `tools/list` returns every tool name, description, and `inputSchema`. For Cursor agents, prefer lazy discovery:
 
-1. `mcp_get_tools` with no arguments — catalog only (names + short descriptions)
-2. `mcp_get_tools` with `server` + `toolName` — full schema for the tool you are about to call
+1. Prefer `server` + `toolName` for tools you will call, or `pattern` when the server id is unknown
+2. Use **no arguments** (full catalog) only as a last resort — it is token-heavy
 3. Avoid `mcp_get_tools` with `server` only unless you need every schema at once
 
 Detailed parameter semantics live in this reference (Layer 3). Tool `description` fields are summaries (Layer 1).

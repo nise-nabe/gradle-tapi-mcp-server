@@ -29,11 +29,11 @@ Avoid `includeTasks=true` and heavy model queries unless necessary. `gradle_run_
 
 ## MCP tool discovery (token-efficient)
 
-When using Cursor `mcp_get_tools`:
+When using Cursor **GetMcpTools** (some clients expose this as `mcp_get_tools`):
 
-1. Call with **no arguments** first (catalog: names + short descriptions)
-2. Fetch full schema with `server` + `toolName` only for tools you will call
-3. Avoid `server` without `toolName` unless you need every schema (~3.5k tokens after slimming, was ~7k)
+1. Prefer `server` + `toolName` for tools you will call, or `pattern` when the server id is unknown
+2. Use **no arguments** (full catalog) only as a last resort — it is token-heavy
+3. Avoid `server` without `toolName` unless you need every schema on that server
 
 Full parameter docs: `skills/gradle-tapi-mcp/reference.md`.
 

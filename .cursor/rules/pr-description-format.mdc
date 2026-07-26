@@ -1,0 +1,61 @@
+---
+description: PR descriptions must read like feature PRs, not review-response documents
+alwaysApply: true
+---
+
+# Pull request description format
+
+Write PR bodies as **normal feature pull requests**. Do not frame the description as a response to code review.
+
+## Required structure
+
+Use these sections only:
+
+1. **Summary** — what the PR does and why (1–3 short paragraphs or bullets)
+2. **Changes** — concrete behavior, files, or capabilities added/changed
+3. **Depends on** — optional, only when there is a real dependency
+4. **Test plan** — verification checklist
+
+## Do not use review-response framing
+
+Never add sections or prose such as:
+
+- "Thermos review fixes" / "Thermo-nuclear review fixes"
+- "Copilot review fixes" / "Review feedback addressed"
+- "Fixes in this update" / "Follow-up fixes" / "Latest review fixes"
+- "Addresses review findings" / "This revision addresses …"
+- "P1 (addressed in …)" / "P2 (addressed in …)"
+- "Rebase notes" as a standalone review section
+- Verdicts like "Ship — no remaining P0/P1 findings"
+
+Also avoid opening lines like "After thermo-nuclear review, this PR addresses …".
+
+## After review-driven code changes
+
+When fixing review comments, **update the existing Summary and Changes** so the PR reads as one coherent feature description.
+
+- Fold review-driven edits into **Changes** as ordinary bullets (what changed, not who asked)
+- Do not append a new section that lists review items or commit SHAs for each finding
+- Put review thread replies in **PR comments**, not in the PR body
+
+## Good vs bad
+
+**Bad**
+
+```markdown
+## Thermos review fixes
+- Fixed BUILD_ALREADY_RUNNING payload (was missing activeBuildId)
+- Added regression tests per review
+```
+
+**Good**
+
+```markdown
+## Changes
+- `BUILD_ALREADY_RUNNING` errors include `activeBuildId` and related active-build fields
+- Regression tests for concurrent build rejection
+```
+
+## When updating an existing PR
+
+Use `ManagePullRequest` `update_pr` to refresh Summary/Changes/Test plan as a whole. Do not grow the body with stacked "review fix" sections across iterations.
