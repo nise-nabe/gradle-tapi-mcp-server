@@ -37,13 +37,20 @@ private fun modelDirectoryProperties(): Map<String, Any> =
 
 internal fun projectTreeProperties(): Map<String, Any> =
     mapOf(
-        "projectPath" to stringProperty("Scope results to a subproject path (e.g. ':plugin'); includes its children"),
         "maxDepth" to integerProperty("Max project tree depth (root=0)"),
         "maxChildren" to integerProperty("Max child projects per node"),
     ) + modelDirectoryProperties()
 
+internal fun scopedProjectTreeProperties(): Map<String, Any> =
+    mapOf(
+        "projectPath" to stringProperty("plugin scope"),
+    ) + projectTreeProperties()
+
 internal fun projectTreeSchema(): Map<String, Any> =
     objectSchema(properties = projectTreeProperties())
+
+internal fun scopedProjectTreeSchema(): Map<String, Any> =
+    objectSchema(properties = scopedProjectTreeProperties())
 
 internal fun modelQueryProperties(): Map<String, Any> =
     mapOf(
@@ -55,11 +62,11 @@ internal fun modelQueryProperties(): Map<String, Any> =
     )
 
 internal fun modelQuerySchema(): Map<String, Any> =
-    objectSchema(properties = projectTreeProperties() + modelQueryProperties())
+    objectSchema(properties = scopedProjectTreeProperties() + modelQueryProperties())
 
 internal fun buildInvocationsQuerySchema(): Map<String, Any> =
     objectSchema(
-        properties = projectTreeProperties() + modelQueryProperties() + mapOf(
+        properties = scopedProjectTreeProperties() + modelQueryProperties() + mapOf(
             "includeTaskSelectors" to booleanProperty("Include task selectors. Default false."),
         ),
     )
@@ -143,7 +150,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         scope,
         name = "gradle_get_project_overview",
         description = McpToolDescriptions.PROJECT_OVERVIEW,
-        schema = projectTreeSchema(),
+        schema = scopedProjectTreeSchema(),
     ) { args ->
         val treeOptions = ProjectTreeOptions.fromArgs(args)
         fetchModelJson(

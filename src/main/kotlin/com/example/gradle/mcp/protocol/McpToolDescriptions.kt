@@ -21,18 +21,17 @@ internal object McpToolDescriptions {
         "Build and configuration cache settings without a full build. Set probeConfigurationCache=true for a compatibility probe."
 
     const val PROJECT_OVERVIEW =
-        "Project hierarchy and task counts without task lists. Optional projectPath scopes to a subproject subtree."
+        "Project hierarchy and task counts without task lists. Token-efficient default for project context."
 
     const val GRADLE_BUILD =
         "GradleBuild structure: projects, included builds, editable builds. Prefer for composite/includeBuild repos."
 
     const val PROJECT_MODEL =
-        "GradleProject model. includeTasks=true for tasks. Optional projectPath scopes to a subproject subtree. " +
-            "maxTasks is a global tree cap (root first); root adds tasksTruncated when capped."
+        "GradleProject model. includeTasks=true for tasks. maxTasks is a global tree cap (root first); " +
+            "root adds tasksTruncated when capped."
 
     const val BUILD_INVOCATIONS =
-        "Runnable Gradle tasks; optional projectPath scopes task collection to a subproject subtree. " +
-            "Global maxTasks cap adds tasksTruncated. Task selectors omitted unless includeTaskSelectors=true."
+        "Runnable Gradle tasks; global maxTasks cap adds tasksTruncated. Task selectors omitted unless includeTaskSelectors=true."
 
     const val PROJECT_PUBLICATIONS =
         "Publications declared by the build."
