@@ -95,7 +95,7 @@ Returns hierarchy with `taskCount` per project; no task lists. When truncated: `
 | `maxDepth` | unlimited | Maximum project tree depth |
 | `maxChildren` | unlimited | Maximum child projects per node |
 
-Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`BasicGradleProject`), flat `projects`, `projectCount`, `includedBuilds`, and `editableBuilds`. No tasks. Nested composite builds reuse the same shape; already-visited builds return `{ buildRootDir, cycleReference: true }`.
+`projectPath` is not supported on this tool. Use `gradle_get_project_overview`, `gradle_get_project_model`, or `gradle_get_build_invocations` to scope a subproject within the connected build. Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`BasicGradleProject`), flat `projects`, `projectCount`, `includedBuilds`, and `editableBuilds`. No tasks. Nested composite builds reuse the same shape; already-visited builds return `{ buildRootDir, cycleReference: true }`.
 
 ### gradle_get_project_model
 

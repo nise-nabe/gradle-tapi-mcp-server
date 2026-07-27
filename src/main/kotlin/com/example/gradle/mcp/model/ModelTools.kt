@@ -11,6 +11,7 @@ import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.integerProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
+import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.optionalStringList
 import com.example.gradle.mcp.protocol.prepareTasksProperty
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
@@ -87,6 +88,20 @@ internal fun helpSchema(): Map<String, Any> =
 private fun prepareTasksFromArgs(args: Map<String, Any>): List<String> =
     args.optionalStringList("prepareTasks").orEmpty().filter { it.isNotBlank() }.distinct()
 
+internal fun rejectUnsupportedProjectPath(args: Map<String, Any>, toolName: String) {
+    val projectPath = args.optionalString("projectPath")
+    if (!projectPath.isNullOrBlank()) {
+        throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "projectPath is not supported on $toolName. " +
+                "Use gradle_get_project_overview, gradle_get_project_model, or gradle_get_build_invocations instead.",
+        )
+    }
+}
+
+internal fun scopedGradleProject(root: GradleProject, treeOptions: ProjectTreeOptions): GradleProject =
+    ProjectTreeScope.requireProject(root, treeOptions.projectPath)
+
 internal fun requireNoActiveBuildForPrepareTasks(
     prepareTasks: List<String>,
     projectDirectory: File,
@@ -160,7 +175,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
             },
             serialize = { project ->
                 ModelSerializers.projectOverview(
-                    ProjectTreeScope.requireProject(project, treeOptions.projectPath),
+                    scopedGradleProject(project, treeOptions),
                     treeOptions,
                 )
             },
@@ -172,6 +187,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         description = McpToolDescriptions.GRADLE_BUILD,
         schema = projectTreeSchema(),
     ) { args ->
+        rejectUnsupportedProjectPath(args, "gradle_get_gradle_build")
         val treeOptions = ProjectTreeOptions.fromArgs(args)
         fetchModelJson(
             args,
@@ -196,7 +212,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
             },
             serialize = { project ->
                 ModelSerializers.gradleProject(
-                    ProjectTreeScope.requireProject(project, treeOptions.projectPath),
+                    scopedGradleProject(project, treeOptions),
                     options,
                     treeOptions,
                 )
@@ -221,7 +237,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
             serialize = { (invocations, project) ->
                 ModelSerializers.buildInvocations(
                     invocations,
-                    ProjectTreeScope.requireProject(project, treeOptions.projectPath),
+                    scopedGradleProject(project, treeOptions),
                     options,
                     treeOptions,
                 )

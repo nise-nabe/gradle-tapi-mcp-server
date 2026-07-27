@@ -48,7 +48,7 @@ Gradle プロジェクトの**実行時状態**を MCP 経由で取得・実行�
 | セレクタ | `gradle_get_build_invocations` | `includeTaskSelectors=true` |
 | Publications | `gradle_get_project_publications` | — |
 
-`gradle_get_project_model` と `gradle_get_build_invocations` を引数なしで連続呼び出ししない。大規模プロジェクトでは `projectPath`（例: `:plugin`）でサブツリーに絞る。
+`gradle_get_project_model` と `gradle_get_build_invocations` を引数なしで連続呼び出ししない。大規模プロジェクトでは `projectPath`（例: `:plugin`）でサブツリーに絞る（接続ビルド内のみ。composite は `gradle_get_gradle_build`）。
 
 ## MCP ツール発見（トークン節約）
 
@@ -84,10 +84,10 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | `gradle_get_java_runtimes` | デーモン Java + `javaToolchains`（JDK 選定・toolchain 調査向け） |
 | `gradle_get_help` | Gradle CLI ヘルプ（`gradle --help` 相当；Gradle 9.4+） |
 | `gradle_get_build_cache_status` | Build Cache / Configuration Cache 設定とローカルキャッシュ概要 |
-| `gradle_get_project_overview` | 階層 + taskCount（推奨） |
-| `gradle_get_gradle_build` | GradleBuild 全体（composite / includeBuild 向け） |
-| `gradle_get_project_model` | プロジェクトモデル（タスクはデフォルト省略） |
-| `gradle_get_build_invocations` | 実行可能タスク（セレクタはデフォルト省略） |
+| `gradle_get_project_overview` | 階層 + taskCount（`projectPath` 可） |
+| `gradle_get_gradle_build` | GradleBuild 全体（composite / includeBuild 向け、`projectPath` 不可） |
+| `gradle_get_project_model` | プロジェクトモデル（タスクはデフォルト省略、`projectPath` 可） |
+| `gradle_get_build_invocations` | 実行可能タスク（セレクタはデフォルト省略、`projectPath` 可） |
 | `gradle_get_project_publications` | Publications |
 | `gradle_run_tasks` | タスク実行 |
 | `gradle_run_tests` | JVM テスト実行（クラス / メソッド / パターン） |

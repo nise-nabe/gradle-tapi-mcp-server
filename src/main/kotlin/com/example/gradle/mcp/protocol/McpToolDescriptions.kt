@@ -24,11 +24,11 @@ internal object McpToolDescriptions {
         "Project hierarchy and task counts; projectPath scopes subtree."
 
     const val GRADLE_BUILD =
-        "GradleBuild structure: projects, included builds, editable builds. Prefer for composite/includeBuild repos."
+        "GradleBuild: projects, included/editable builds. No projectPath; use overview/model for subtree."
 
     const val PROJECT_MODEL =
         "GradleProject model; projectPath scopes subtree. includeTasks=true for tasks. " +
-            "maxTasks cap adds tasksTruncated."
+            "maxTasks root-first cap adds tasksTruncated."
 
     const val BUILD_INVOCATIONS =
         "Runnable Gradle tasks; projectPath scopes subtree. global maxTasks cap adds tasksTruncated. " +

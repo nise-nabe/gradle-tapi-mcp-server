@@ -567,6 +567,52 @@ class ModelSerializersTest {
     }
 
     @Test
+    fun `buildInvocations scoped to projectPath includes nested descendant selectors`() {
+        val root = multiModuleRootForScoping(withNestedChild = true)
+        val invocations = mockBuildInvocations(
+            tasks = emptyList(),
+            selectors = listOf(
+                mockTaskSelector("childSelector", ":plugin:child"),
+                mockTaskSelector("sharedSelector", ":plugin-shared"),
+            ),
+        )
+
+        val scoped = ProjectTreeScope.requireProject(root, ":plugin")
+        val result = ModelSerializers.buildInvocations(
+            invocations,
+            scoped,
+            ModelQueryOptions(includeTaskSelectors = true),
+        )
+
+        val selectors = result["taskSelectors"] as List<*>
+        selectors shouldHaveSize 1
+        (selectors.first() as Map<*, *>)["name"] shouldBe "childSelector"
+    }
+
+    @Test
+    fun `buildInvocations scoped to subproject excludes root selectors`() {
+        val root = multiModuleRootForScoping()
+        val invocations = mockBuildInvocations(
+            tasks = emptyList(),
+            selectors = listOf(
+                mockTaskSelector("rootSelector", ":"),
+                mockTaskSelector("pluginSelector", ":plugin"),
+            ),
+        )
+
+        val scoped = ProjectTreeScope.requireProject(root, ":plugin")
+        val result = ModelSerializers.buildInvocations(
+            invocations,
+            scoped,
+            ModelQueryOptions(includeTaskSelectors = true),
+        )
+
+        val selectors = result["taskSelectors"] as List<*>
+        selectors shouldHaveSize 1
+        (selectors.first() as Map<*, *>)["name"] shouldBe "pluginSelector"
+    }
+
+    @Test
     fun `help limit options parse maxChars and tailOutput from args`() {
         val options = HelpLimitOptions.fromArgs(
             mapOf(
