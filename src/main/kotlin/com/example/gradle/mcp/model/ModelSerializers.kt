@@ -71,7 +71,8 @@ object ModelSerializers {
                     "taskSelectors",
                     invocations.taskSelectors
                         .filter { selector ->
-                            isProjectPathInSubtree(selector.projectIdentifier.projectPath, scopedPath)
+                            scopedPath == ":" ||
+                                isProjectPathInSubtree(selector.projectIdentifier.projectPath, scopedPath)
                         }
                         .map { selector ->
                             mapOf(

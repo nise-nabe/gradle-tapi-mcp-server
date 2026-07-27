@@ -82,7 +82,7 @@ Returns:
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `projectPath` | — | Scope results to a subproject path (e.g. `:plugin`); includes its children. Resolves within the connected build's `GradleProject` tree only (not included/editable composite builds; use `gradle_get_gradle_build` for those). |
-| `maxDepth` | unlimited | Maximum project tree depth |
+| `maxDepth` | unlimited | Maximum project tree depth (depth 0 = scoped `projectPath` when set, else build root) |
 | `maxChildren` | unlimited | Maximum child projects per node |
 | `prepareTasks` | `[]` | Optional tasks to run before fetching the model |
 
@@ -92,7 +92,7 @@ Returns hierarchy with `taskCount` per project; no task lists. When truncated: `
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `maxDepth` | unlimited | Maximum project tree depth |
+| `maxDepth` | unlimited | Maximum project tree depth (depth 0 = build root) |
 | `maxChildren` | unlimited | Maximum child projects per node |
 
 `projectPath` is not supported on this tool. Use `gradle_get_project_overview`, `gradle_get_project_model`, or `gradle_get_build_invocations` to scope a subproject within the connected build. Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`BasicGradleProject`), flat `projects`, `projectCount`, `includedBuilds`, and `editableBuilds`. No tasks. Nested composite builds reuse the same shape; already-visited builds return `{ buildRootDir, cycleReference: true }`.
@@ -102,7 +102,7 @@ Returns hierarchy with `taskCount` per project; no task lists. When truncated: `
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `projectPath` | — | Scope results to a subproject path (e.g. `:plugin`); includes its children. Resolves within the connected build's `GradleProject` tree only (not included/editable composite builds; use `gradle_get_gradle_build` for those). |
-| `maxDepth` | unlimited | Maximum project tree depth |
+| `maxDepth` | unlimited | Maximum project tree depth (depth 0 = scoped `projectPath` when set, else build root) |
 | `maxChildren` | unlimited | Maximum child projects per node |
 | `includeTasks` | `false` | Include task arrays |
 | `includeTaskDetails` | `false` | Add `description`, `displayName` per task |
@@ -124,7 +124,12 @@ Tasks are always included when this tool is called (`includeTasks` forced true i
 
 ### gradle_get_project_publications
 
-No arguments.
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `projectDirectory` | `GRADLE_PROJECT_DIR` | Gradle project directory to connect |
+| `prepareTasks` | `[]` | Optional tasks to run before fetching the model |
+
+`projectPath` is not supported on this tool.
 
 ## Execute
 

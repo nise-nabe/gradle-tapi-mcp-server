@@ -590,6 +590,25 @@ class ModelSerializersTest {
     }
 
     @Test
+    fun `buildInvocations unscoped does not read taskSelector projectIdentifier`() {
+        val root = multiModuleRootForScoping()
+        val invocations = mockBuildInvocations(
+            tasks = emptyList(),
+            selectors = listOf(mockTaskSelectorWithoutProjectIdentifier("rootSelector")),
+        )
+
+        val result = ModelSerializers.buildInvocations(
+            invocations,
+            root,
+            ModelQueryOptions(includeTaskSelectors = true),
+        )
+
+        val selectors = result["taskSelectors"] as List<*>
+        selectors shouldHaveSize 1
+        (selectors.first() as Map<*, *>)["name"] shouldBe "rootSelector"
+    }
+
+    @Test
     fun `buildInvocations scoped to subproject excludes root selectors`() {
         val root = multiModuleRootForScoping()
         val invocations = mockBuildInvocations(
@@ -687,6 +706,21 @@ class ModelSerializersTest {
                 else -> defaultProxyReturn(method)
             }
         } as org.gradle.tooling.model.gradle.BuildInvocations
+
+    private fun mockTaskSelectorWithoutProjectIdentifier(name: String): org.gradle.tooling.model.TaskSelector =
+        Proxy.newProxyInstance(
+            org.gradle.tooling.model.TaskSelector::class.java.classLoader,
+            arrayOf(org.gradle.tooling.model.TaskSelector::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "getName" -> name
+                "getDescription" -> null
+                "getDisplayName" -> "selector '$name'"
+                "getProjectIdentifier" -> throw UnsupportedOperationException("projectIdentifier unavailable")
+                "isPublic" -> true
+                else -> defaultProxyReturn(method)
+            }
+        } as org.gradle.tooling.model.TaskSelector
 
     private fun mockTaskSelector(name: String, projectPath: String): org.gradle.tooling.model.TaskSelector =
         Proxy.newProxyInstance(

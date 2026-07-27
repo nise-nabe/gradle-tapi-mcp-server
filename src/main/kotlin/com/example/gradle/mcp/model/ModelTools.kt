@@ -250,6 +250,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         description = McpToolDescriptions.PROJECT_PUBLICATIONS,
         schema = publicationsSchema(),
     ) { args ->
+        rejectUnsupportedProjectPath(args, "gradle_get_project_publications")
         fetchModelJson(
             args,
             fetch = { connection, prepareTasks ->
