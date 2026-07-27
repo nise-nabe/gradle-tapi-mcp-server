@@ -503,14 +503,14 @@ class ModelSerializersTest {
         val scoped = ProjectTreeScope.requireProject(root, ":plugin")
         val result = ModelSerializers.gradleProject(
             scoped,
-            ModelQueryOptions(includeTasks = true, taskNamePrefix = "compile"),
+            ModelQueryOptions(includeTasks = true, taskNamePrefix = "plugin"),
         )
 
         result["path"] shouldBe ":plugin"
         result["children"] shouldBe emptyList<Map<String, Any?>>()
         val tasks = result["tasks"] as List<*>
         tasks shouldHaveSize 1
-        (tasks.first() as Map<*, *>)["path"] shouldBe ":plugin:compileJava"
+        (tasks.first() as Map<*, *>)["path"] shouldBe ":plugin:pluginTask"
     }
 
     @Test
@@ -535,22 +535,22 @@ class ModelSerializersTest {
         val result = ModelSerializers.buildInvocations(
             invocations,
             scoped,
-            ModelQueryOptions(includeTasks = true, taskNamePrefix = "compile"),
+            ModelQueryOptions(includeTasks = true, taskNamePrefix = "plugin"),
         )
 
         val tasks = result["tasks"] as List<*>
         tasks shouldHaveSize 1
-        (tasks.first() as Map<*, *>)["path"] shouldBe ":plugin:compileJava"
+        (tasks.first() as Map<*, *>)["path"] shouldBe ":plugin:pluginTask"
     }
 
     @Test
-    fun `buildInvocations scoped to projectPath filters taskSelectors to subtree`() {
+    fun `buildInvocations scoped to projectPath filters taskSelectors by subtree task names`() {
         val root = multiModuleRootForScoping()
         val invocations = mockBuildInvocations(
             tasks = emptyList(),
             selectors = listOf(
-                mockTaskSelector("pluginSelector", ":plugin"),
-                mockTaskSelector("sharedSelector", ":plugin-shared"),
+                mockTaskSelector("pluginTask", ":"),
+                mockTaskSelector("sharedTask", ":"),
             ),
         )
 
@@ -563,7 +563,7 @@ class ModelSerializersTest {
 
         val selectors = result["taskSelectors"] as List<*>
         selectors shouldHaveSize 1
-        (selectors.first() as Map<*, *>)["name"] shouldBe "pluginSelector"
+        (selectors.first() as Map<*, *>)["name"] shouldBe "pluginTask"
     }
 
     @Test
@@ -572,8 +572,8 @@ class ModelSerializersTest {
         val invocations = mockBuildInvocations(
             tasks = emptyList(),
             selectors = listOf(
-                mockTaskSelector("childSelector", ":plugin:child"),
-                mockTaskSelector("sharedSelector", ":plugin-shared"),
+                mockTaskSelector("childTask", ":"),
+                mockTaskSelector("sharedTask", ":"),
             ),
         )
 
@@ -586,7 +586,7 @@ class ModelSerializersTest {
 
         val selectors = result["taskSelectors"] as List<*>
         selectors shouldHaveSize 1
-        (selectors.first() as Map<*, *>)["name"] shouldBe "childSelector"
+        (selectors.first() as Map<*, *>)["name"] shouldBe "childTask"
     }
 
     @Test
@@ -594,7 +594,7 @@ class ModelSerializersTest {
         val root = multiModuleRootForScoping()
         val invocations = mockBuildInvocations(
             tasks = emptyList(),
-            selectors = listOf(mockTaskSelectorWithoutProjectIdentifier("rootSelector")),
+            selectors = listOf(mockTaskSelectorWithoutProjectIdentifier("compileRoot")),
         )
 
         val result = ModelSerializers.buildInvocations(
@@ -605,17 +605,17 @@ class ModelSerializersTest {
 
         val selectors = result["taskSelectors"] as List<*>
         selectors shouldHaveSize 1
-        (selectors.first() as Map<*, *>)["name"] shouldBe "rootSelector"
+        (selectors.first() as Map<*, *>)["name"] shouldBe "compileRoot"
     }
 
     @Test
-    fun `buildInvocations scoped to subproject excludes root selectors`() {
+    fun `buildInvocations scoped to subproject excludes selectors without matching subtree tasks`() {
         val root = multiModuleRootForScoping()
         val invocations = mockBuildInvocations(
             tasks = emptyList(),
             selectors = listOf(
-                mockTaskSelector("rootSelector", ":"),
-                mockTaskSelector("pluginSelector", ":plugin"),
+                mockTaskSelector("compileRoot", ":"),
+                mockTaskSelector("pluginTask", ":"),
             ),
         )
 
@@ -628,7 +628,7 @@ class ModelSerializersTest {
 
         val selectors = result["taskSelectors"] as List<*>
         selectors shouldHaveSize 1
-        (selectors.first() as Map<*, *>)["name"] shouldBe "pluginSelector"
+        (selectors.first() as Map<*, *>)["name"] shouldBe "pluginTask"
     }
 
     @Test
@@ -655,13 +655,14 @@ class ModelSerializersTest {
                     name = "plugin",
                     path = ":plugin",
                     directory = File("/root/plugin"),
-                    tasks = listOf(mockTask("compileJava", ":plugin:compileJava", "build")),
+                    tasks = listOf(mockTask("pluginTask", ":plugin:pluginTask", "build")),
                     children = if (withNestedChild) {
                         listOf(
                             gradleProjectProxy(
                                 name = "child",
                                 path = ":plugin:child",
                                 directory = File("/root/plugin/child"),
+                                tasks = listOf(mockTask("childTask", ":plugin:child:childTask", "build")),
                             ),
                         )
                     } else {
@@ -672,7 +673,7 @@ class ModelSerializersTest {
                     name = "shared",
                     path = ":plugin-shared",
                     directory = File("/root/shared"),
-                    tasks = listOf(mockTask("compileJava", ":plugin-shared:compileJava", "build")),
+                    tasks = listOf(mockTask("sharedTask", ":plugin-shared:sharedTask", "build")),
                 ),
             ),
         )

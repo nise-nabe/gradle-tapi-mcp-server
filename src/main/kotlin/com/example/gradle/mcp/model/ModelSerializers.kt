@@ -4,6 +4,7 @@ import com.example.gradle.mcp.connection.buildEnvironmentSnapshotFrom
 import com.example.gradle.mcp.connection.toMap
 import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.Task
+import org.gradle.tooling.model.TaskSelector
 import org.gradle.tooling.model.build.BuildEnvironment
 import org.gradle.tooling.model.build.Help
 import org.gradle.tooling.model.gradle.BasicGradleProject
@@ -66,14 +67,9 @@ object ModelSerializers {
             put("tasks", tasks)
             putAll(taskBudget.rootMetadata())
             if (options.includeTaskSelectors) {
-                val scopedPath = project.path
                 put(
                     "taskSelectors",
-                    invocations.taskSelectors
-                        .filter { selector ->
-                            scopedPath == ":" ||
-                                isProjectPathInSubtree(selector.projectIdentifier.projectPath, scopedPath)
-                        }
+                    filterTaskSelectors(invocations, project, treeOptions)
                         .map { selector ->
                             mapOf(
                                 "name" to selector.name,
@@ -359,10 +355,18 @@ object ModelSerializers {
             }
     }
 
-    private fun isProjectPathInSubtree(selectorPath: String, scopedRootPath: String): Boolean {
-        if (scopedRootPath == ":") {
-            return true
+    private fun filterTaskSelectors(
+        invocations: BuildInvocations,
+        project: GradleProject,
+        treeOptions: ProjectTreeOptions,
+    ): List<TaskSelector> {
+        val selectors = invocations.taskSelectors.toList()
+        if (project.path == ":") {
+            return selectors
         }
-        return selectorPath == scopedRootPath || selectorPath.startsWith("$scopedRootPath:")
+        val scopedTaskNames = collectTasksFromProjectTree(project, treeOptions)
+            .map { it.name }
+            .toSet()
+        return selectors.filter { it.name in scopedTaskNames }
     }
 }
