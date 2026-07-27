@@ -38,7 +38,7 @@ private fun modelDirectoryProperties(): Map<String, Any> =
 
 internal fun projectTreeProperties(): Map<String, Any> =
     mapOf(
-        "maxDepth" to integerProperty("Max project tree depth (root=0)"),
+        "maxDepth" to integerProperty("Max project tree depth (0=root or scoped path)"),
         "maxChildren" to integerProperty("Max child projects per node"),
     ) + modelDirectoryProperties()
 
@@ -171,7 +171,9 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         fetchModelJson(
             args,
             fetch = { connection, prepareTasks ->
-                connection.fetchModel(GradleProject::class.java, prepareTasks)
+                connection.fetchModel(GradleProject::class.java, prepareTasks).also { project ->
+                    scopedGradleProject(project, treeOptions)
+                }
             },
             serialize = { project ->
                 ModelSerializers.projectOverview(
@@ -208,7 +210,9 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         fetchModelJson(
             args,
             fetch = { connection, prepareTasks ->
-                connection.fetchModel(GradleProject::class.java, prepareTasks)
+                connection.fetchModel(GradleProject::class.java, prepareTasks).also { project ->
+                    scopedGradleProject(project, treeOptions)
+                }
             },
             serialize = { project ->
                 ModelSerializers.gradleProject(
@@ -230,16 +234,19 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         fetchModelJson(
             args,
             fetch = { connection, prepareTasks ->
-                val invocations = connection.fetchModel(BuildInvocations::class.java, prepareTasks)
                 val project = connection.fetchModel(GradleProject::class.java, prepareTasks)
+                scopedGradleProject(project, treeOptions)
+                val invocations = connection.fetchModel(BuildInvocations::class.java, prepareTasks)
                 invocations to project
             },
             serialize = { (invocations, project) ->
+                val scoped = scopedGradleProject(project, treeOptions)
                 ModelSerializers.buildInvocations(
                     invocations,
-                    scopedGradleProject(project, treeOptions),
+                    scoped,
                     options,
                     treeOptions,
+                    rootProject = project,
                 )
             },
         )

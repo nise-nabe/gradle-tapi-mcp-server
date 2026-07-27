@@ -10,7 +10,14 @@ internal object ProjectTreeScope {
         if (trimmed.isEmpty() || trimmed == ":") {
             return ":"
         }
-        return if (trimmed.startsWith(":")) trimmed else ":$trimmed"
+        val normalized = if (trimmed.startsWith(":")) trimmed else ":$trimmed"
+        if (normalized.contains("::") || normalized.endsWith(":")) {
+            throw McpException(
+                McpErrorCode.INVALID_ARGUMENT,
+                "Invalid project path '$input'. Use Gradle paths like :plugin or plugin.",
+            )
+        }
+        return normalized
     }
 
     fun findByPath(root: GradleProject, projectPath: String): GradleProject? {

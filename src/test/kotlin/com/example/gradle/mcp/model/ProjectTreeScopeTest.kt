@@ -47,6 +47,16 @@ class ProjectTreeScopeTest {
     }
 
     @Test
+    fun `normalizeProjectPath rejects malformed paths`() {
+        val error = shouldThrow<McpException> {
+            ProjectTreeScope.normalizeProjectPath("::plugin")
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "::plugin"
+    }
+
+    @Test
     fun `requireProject throws when path is unknown`() {
         val root = multiModuleRoot()
 

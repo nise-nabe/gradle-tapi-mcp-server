@@ -122,6 +122,8 @@ Same task query options as `gradle_get_project_model` (including `projectPath`, 
 
 Tasks are always included when this tool is called (`includeTasks` forced true internally).
 
+When `projectPath` is set, `taskSelectors` include only selectors whose task name is unique within the scoped subtree (names shared with sibling subprojects are omitted). Tooling API selectors are root-attached; prefer scoped `tasks` paths for precise invocation targets. `maxDepth` / `maxChildren` also limit the task names used for selector matching.
+
 ### gradle_get_project_publications
 
 | Argument | Default | Description |

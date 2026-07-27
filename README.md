@@ -75,7 +75,7 @@ Use heavier tools only when required:
 - `gradle_get_project_model` with `includeTasks=true` to list tasks
 - `includeTaskDetails=true` only when descriptions are needed
 - `taskGroup`, `taskNamePrefix`, or `maxTasks` to narrow large builds
-- `projectPath` on overview/model/invocations to scope a subproject subtree (e.g. `:plugin`) instead of the full monorepo. Resolves within the connected build's `GradleProject` tree only; use `gradle_get_gradle_build` for included/editable composite builds.
+- `projectPath` on overview/model/invocations to scope a subproject subtree (e.g. `:plugin`) instead of the full monorepo. Resolves within the connected build's `GradleProject` tree only; use `gradle_get_gradle_build` for included/editable composite builds. Scoped `taskSelectors` omit names shared with sibling subprojects; prefer scoped `tasks` paths for invocation targets.
 - `maxDepth` / `maxChildren` on overview/model queries for large monorepos
 - `gradle_get_build_invocations` with `includeTaskSelectors=true` only when selectors matter
 

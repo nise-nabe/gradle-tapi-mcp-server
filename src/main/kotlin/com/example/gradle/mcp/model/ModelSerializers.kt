@@ -60,6 +60,7 @@ object ModelSerializers {
         project: GradleProject,
         options: ModelQueryOptions = ModelQueryOptions(),
         treeOptions: ProjectTreeOptions = ProjectTreeOptions(),
+        rootProject: GradleProject = project,
     ): Map<String, Any?> {
         val taskBudget = TaskFilterBudget(options.maxTasks)
         val tasks = collectSerializedTasksWithGlobalBudget(project, treeOptions, options, taskBudget)
@@ -69,7 +70,7 @@ object ModelSerializers {
             if (options.includeTaskSelectors) {
                 put(
                     "taskSelectors",
-                    filterTaskSelectors(invocations, project, treeOptions)
+                    filterTaskSelectors(invocations, project, treeOptions, options, rootProject)
                         .map { selector ->
                             mapOf(
                                 "name" to selector.name,
@@ -200,6 +201,10 @@ object ModelSerializers {
             return emptyList()
         }
 
+        return applyTaskQueryFilters(tasks, options)
+    }
+
+    internal fun applyTaskQueryFilters(tasks: List<TaskSnapshot>, options: ModelQueryOptions): List<TaskSnapshot> {
         var filtered = tasks.asSequence()
         options.taskGroup?.let { group ->
             filtered = filtered.filter { it.group == group }
@@ -359,14 +364,34 @@ object ModelSerializers {
         invocations: BuildInvocations,
         project: GradleProject,
         treeOptions: ProjectTreeOptions,
+        options: ModelQueryOptions,
+        rootProject: GradleProject,
     ): List<TaskSelector> {
         val selectors = invocations.taskSelectors.toList()
         if (project.path == ":") {
             return selectors
         }
-        val scopedTaskNames = collectTasksFromProjectTree(project, treeOptions)
+        val scopedTasks = applyTaskQueryFilters(
+            collectTasksFromProjectTree(project, treeOptions),
+            options,
+        )
+        val scopedTaskNames = scopedTasks.map { it.name }.toSet()
+        val outOfScopeTaskNames = applyTaskQueryFilters(
+            collectTasksFromProjectTree(rootProject, treeOptions),
+            options,
+        )
+            .filterNot { isTaskInScopedSubtree(it, project) }
             .map { it.name }
             .toSet()
-        return selectors.filter { it.name in scopedTaskNames }
+        return selectors.filter { selector ->
+            selector.name in scopedTaskNames && selector.name !in outOfScopeTaskNames
+        }
+    }
+
+    private fun isTaskInScopedSubtree(task: TaskSnapshot, scopedProject: GradleProject): Boolean {
+        if (scopedProject.path == ":") {
+            return true
+        }
+        return task.path == scopedProject.path || task.path.startsWith("${scopedProject.path}:")
     }
 }
