@@ -60,8 +60,14 @@ object ModelSerializers {
         project: GradleProject,
         options: ModelQueryOptions = ModelQueryOptions(),
         treeOptions: ProjectTreeOptions = ProjectTreeOptions(),
-        rootProject: GradleProject = project,
+        rootProject: GradleProject? = null,
     ): Map<String, Any?> {
+        if (project.path != ":" && options.includeTaskSelectors && rootProject == null) {
+            throw IllegalArgumentException(
+                "rootProject is required when filtering task selectors for a scoped subproject",
+            )
+        }
+        val effectiveRootProject = rootProject ?: project
         val taskBudget = TaskFilterBudget(options.maxTasks)
         val tasks = collectSerializedTasksWithGlobalBudget(project, treeOptions, options, taskBudget)
         return buildMap {
@@ -70,7 +76,7 @@ object ModelSerializers {
             if (options.includeTaskSelectors) {
                 put(
                     "taskSelectors",
-                    filterTaskSelectors(invocations, project, treeOptions, options, rootProject)
+                    filterTaskSelectors(invocations, project, treeOptions, options, effectiveRootProject)
                         .map { selector ->
                             mapOf(
                                 "name" to selector.name,
@@ -377,7 +383,7 @@ object ModelSerializers {
         )
         val scopedTaskNames = scopedTasks.map { it.name }.toSet()
         val outOfScopeTaskNames = applyTaskQueryFilters(
-            collectTasksFromProjectTree(rootProject, treeOptions),
+            collectTasksFromProjectTree(rootProject, ProjectTreeOptions()),
             options,
         )
             .filterNot { isTaskInScopedSubtree(it, project) }

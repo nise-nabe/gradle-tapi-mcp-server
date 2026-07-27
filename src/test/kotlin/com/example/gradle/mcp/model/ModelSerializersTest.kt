@@ -592,6 +592,44 @@ class ModelSerializersTest {
     }
 
     @Test
+    fun `buildInvocations scoped with maxDepth still excludes sibling-shared selectors`() {
+        val root = gradleProjectProxy(
+            name = "root",
+            path = ":",
+            directory = File("/root"),
+            children = listOf(
+                gradleProjectProxy(
+                    name = "plugin",
+                    path = ":plugin",
+                    directory = File("/root/plugin"),
+                    tasks = listOf(mockTask("build", ":plugin:build", "build")),
+                ),
+                gradleProjectProxy(
+                    name = "shared",
+                    path = ":plugin-shared",
+                    directory = File("/root/shared"),
+                    tasks = listOf(mockTask("build", ":plugin-shared:build", "build")),
+                ),
+            ),
+        )
+        val invocations = mockBuildInvocations(
+            tasks = emptyList(),
+            selectors = listOf(mockTaskSelector("build", ":")),
+        )
+
+        val scoped = ProjectTreeScope.requireProject(root, ":plugin")
+        val result = ModelSerializers.buildInvocations(
+            invocations,
+            scoped,
+            ModelQueryOptions(includeTaskSelectors = true),
+            ProjectTreeOptions(maxDepth = 0),
+            rootProject = root,
+        )
+
+        (result["taskSelectors"] as List<*>) shouldHaveSize 0
+    }
+
+    @Test
     fun `buildInvocations scoped excludes selectors for names shared with sibling subprojects`() {
         val root = gradleProjectProxy(
             name = "root",
