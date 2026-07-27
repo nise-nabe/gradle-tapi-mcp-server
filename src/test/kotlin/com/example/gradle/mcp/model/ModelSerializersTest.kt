@@ -514,6 +514,19 @@ class ModelSerializersTest {
     }
 
     @Test
+    fun `projectOverview scoped to projectPath roots at subproject and includes descendants`() {
+        val root = multiModuleRootForScoping(withNestedChild = true)
+
+        val scoped = ProjectTreeScope.requireProject(root, ":plugin")
+        val result = ModelSerializers.projectOverview(scoped)
+
+        result["path"] shouldBe ":plugin"
+        val children = result["children"] as List<*>
+        children shouldHaveSize 1
+        (children.first() as Map<*, *>)["path"] shouldBe ":plugin:child"
+    }
+
+    @Test
     fun `buildInvocations scoped to projectPath omits sibling tasks`() {
         val root = multiModuleRootForScoping()
         val invocations = mockBuildInvocations(emptyList())
@@ -531,6 +544,29 @@ class ModelSerializersTest {
     }
 
     @Test
+    fun `buildInvocations scoped to projectPath filters taskSelectors to subtree`() {
+        val root = multiModuleRootForScoping()
+        val invocations = mockBuildInvocations(
+            tasks = emptyList(),
+            selectors = listOf(
+                mockTaskSelector("pluginSelector", ":plugin"),
+                mockTaskSelector("sharedSelector", ":plugin-shared"),
+            ),
+        )
+
+        val scoped = ProjectTreeScope.requireProject(root, ":plugin")
+        val result = ModelSerializers.buildInvocations(
+            invocations,
+            scoped,
+            ModelQueryOptions(includeTaskSelectors = true),
+        )
+
+        val selectors = result["taskSelectors"] as List<*>
+        selectors shouldHaveSize 1
+        (selectors.first() as Map<*, *>)["name"] shouldBe "pluginSelector"
+    }
+
+    @Test
     fun `help limit options parse maxChars and tailOutput from args`() {
         val options = HelpLimitOptions.fromArgs(
             mapOf(
@@ -543,7 +579,7 @@ class ModelSerializersTest {
         options.tailOutput.shouldBeFalse()
     }
 
-    private fun multiModuleRootForScoping() =
+    private fun multiModuleRootForScoping(withNestedChild: Boolean = false) =
         gradleProjectProxy(
             name = "root",
             path = ":",
@@ -555,6 +591,17 @@ class ModelSerializersTest {
                     path = ":plugin",
                     directory = File("/root/plugin"),
                     tasks = listOf(mockTask("compileJava", ":plugin:compileJava", "build")),
+                    children = if (withNestedChild) {
+                        listOf(
+                            gradleProjectProxy(
+                                name = "child",
+                                path = ":plugin:child",
+                                directory = File("/root/plugin/child"),
+                            ),
+                        )
+                    } else {
+                        emptyList()
+                    },
                 ),
                 gradleProjectProxy(
                     name = "shared",
@@ -580,17 +627,46 @@ class ModelSerializersTest {
             }
         } as Task
 
-    private fun mockBuildInvocations(tasks: List<Task>): org.gradle.tooling.model.gradle.BuildInvocations =
+    private fun mockBuildInvocations(
+        tasks: List<Task>,
+        selectors: List<org.gradle.tooling.model.TaskSelector> = emptyList(),
+    ): org.gradle.tooling.model.gradle.BuildInvocations =
         Proxy.newProxyInstance(
             org.gradle.tooling.model.gradle.BuildInvocations::class.java.classLoader,
             arrayOf(org.gradle.tooling.model.gradle.BuildInvocations::class.java),
         ) { _, method, _ ->
             when (method.name) {
                 "getTasks" -> toolingDomainObjectSet(tasks)
-                "getTaskSelectors" -> toolingDomainObjectSet(emptyList<Any>())
+                "getTaskSelectors" -> toolingDomainObjectSet(selectors)
                 else -> defaultProxyReturn(method)
             }
         } as org.gradle.tooling.model.gradle.BuildInvocations
+
+    private fun mockTaskSelector(name: String, projectPath: String): org.gradle.tooling.model.TaskSelector =
+        Proxy.newProxyInstance(
+            org.gradle.tooling.model.TaskSelector::class.java.classLoader,
+            arrayOf(org.gradle.tooling.model.TaskSelector::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "getName" -> name
+                "getDescription" -> null
+                "getDisplayName" -> "selector '$name'"
+                "getProjectIdentifier" -> mockProjectIdentifier(projectPath)
+                "isPublic" -> true
+                else -> defaultProxyReturn(method)
+            }
+        } as org.gradle.tooling.model.TaskSelector
+
+    private fun mockProjectIdentifier(projectPath: String): org.gradle.tooling.model.ProjectIdentifier =
+        Proxy.newProxyInstance(
+            org.gradle.tooling.model.ProjectIdentifier::class.java.classLoader,
+            arrayOf(org.gradle.tooling.model.ProjectIdentifier::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "getProjectPath" -> projectPath
+                else -> defaultProxyReturn(method)
+            }
+        } as org.gradle.tooling.model.ProjectIdentifier
 
     private fun mockHelp(renderedText: String): Help =
         Proxy.newProxyInstance(

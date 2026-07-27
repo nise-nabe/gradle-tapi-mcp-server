@@ -17,6 +17,7 @@ class ModelToolsTest {
     fun `model query schemas expose prepareTasks property`() {
         listOf(
             projectTreeSchema(),
+            scopedProjectTreeSchema(),
             modelQuerySchema(),
             buildInvocationsQuerySchema(),
             publicationsSchema(),
@@ -28,6 +29,15 @@ class ModelToolsTest {
             (prepareTasks["items"] as Map<*, *>)["type"] shouldBe "string"
             (prepareTasks["description"] as String) shouldContain ":app:compileJava"
         }
+    }
+
+    @Test
+    fun `scoped project tree schema exposes projectPath`() {
+        val schema = scopedProjectTreeSchema()
+        val properties = schema["properties"] as Map<*, *>
+
+        properties.containsKey("projectPath") shouldBe true
+        (properties["projectPath"] as Map<*, *>)["type"] shouldBe "string"
     }
 
     @Test

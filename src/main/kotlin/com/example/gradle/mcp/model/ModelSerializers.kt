@@ -66,15 +66,20 @@ object ModelSerializers {
             put("tasks", tasks)
             putAll(taskBudget.rootMetadata())
             if (options.includeTaskSelectors) {
+                val scopedPath = project.path
                 put(
                     "taskSelectors",
-                    invocations.taskSelectors.map { selector ->
-                        mapOf(
-                            "name" to selector.name,
-                            "description" to selector.description,
-                            "displayName" to selector.displayName,
-                        )
-                    },
+                    invocations.taskSelectors
+                        .filter { selector ->
+                            isProjectPathInSubtree(selector.projectIdentifier.projectPath, scopedPath)
+                        }
+                        .map { selector ->
+                            mapOf(
+                                "name" to selector.name,
+                                "description" to selector.description,
+                                "displayName" to selector.displayName,
+                            )
+                        },
                 )
             }
         }
@@ -351,5 +356,12 @@ object ModelSerializers {
             } else {
                 emptyMap()
             }
+    }
+
+    private fun isProjectPathInSubtree(selectorPath: String, scopedRootPath: String): Boolean {
+        if (scopedRootPath == ":") {
+            return true
+        }
+        return selectorPath == scopedRootPath || selectorPath.startsWith("$scopedRootPath:")
     }
 }

@@ -43,7 +43,7 @@ internal fun projectTreeProperties(): Map<String, Any> =
 
 internal fun scopedProjectTreeProperties(): Map<String, Any> =
     mapOf(
-        "projectPath" to stringProperty("plugin scope"),
+        "projectPath" to stringProperty("Subproject :plugin"),
     ) + projectTreeProperties()
 
 internal fun projectTreeSchema(): Map<String, Any> =

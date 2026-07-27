@@ -81,7 +81,7 @@ Returns:
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `projectPath` | — | Scope results to a subproject path (e.g. `:plugin`); includes its children |
+| `projectPath` | — | Scope results to a subproject path (e.g. `:plugin`); includes its children. Resolves within the connected build's `GradleProject` tree only (not included/editable composite builds; use `gradle_get_gradle_build` for those). |
 | `maxDepth` | unlimited | Maximum project tree depth |
 | `maxChildren` | unlimited | Maximum child projects per node |
 | `prepareTasks` | `[]` | Optional tasks to run before fetching the model |
@@ -101,7 +101,7 @@ Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `projectPath` | — | Scope results to a subproject path (e.g. `:plugin`); includes its children |
+| `projectPath` | — | Scope results to a subproject path (e.g. `:plugin`); includes its children. Resolves within the connected build's `GradleProject` tree only (not included/editable composite builds; use `gradle_get_gradle_build` for those). |
 | `maxDepth` | unlimited | Maximum project tree depth |
 | `maxChildren` | unlimited | Maximum child projects per node |
 | `includeTasks` | `false` | Include task arrays |

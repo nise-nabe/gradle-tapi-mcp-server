@@ -25,6 +25,16 @@ class ProjectTreeScopeTest {
         ProjectTreeScope.findByPath(root, ":plugin")?.path shouldBe ":plugin"
         ProjectTreeScope.findByPath(root, "plugin-shared")?.path shouldBe ":plugin-shared"
         ProjectTreeScope.findByPath(root, ":")?.path shouldBe ":"
+        ProjectTreeScope.findByPath(root, ":plugin:child")?.path shouldBe ":plugin:child"
+    }
+
+    @Test
+    fun `requireProject scoped to parent includes nested descendants`() {
+        val root = multiModuleRoot()
+
+        val scoped = ProjectTreeScope.requireProject(root, ":plugin")
+        scoped.path shouldBe ":plugin"
+        scoped.children.map { it.path } shouldBe listOf(":plugin:child")
     }
 
     @Test
@@ -58,6 +68,13 @@ class ProjectTreeScopeTest {
                     name = "plugin",
                     path = ":plugin",
                     directory = File("/root/plugin"),
+                    children = listOf(
+                        gradleProjectProxy(
+                            name = "child",
+                            path = ":plugin:child",
+                            directory = File("/root/plugin/child"),
+                        ),
+                    ),
                 ),
                 gradleProjectProxy(
                     name = "shared",
