@@ -11,6 +11,7 @@ import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.integerProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
+import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.optionalStringList
 import com.example.gradle.mcp.protocol.prepareTasksProperty
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
@@ -37,12 +38,20 @@ private fun modelDirectoryProperties(): Map<String, Any> =
 
 internal fun projectTreeProperties(): Map<String, Any> =
     mapOf(
-        "maxDepth" to integerProperty("Max project tree depth (root=0)"),
+        "maxDepth" to integerProperty("Max project tree depth (0=root or scoped path)"),
         "maxChildren" to integerProperty("Max child projects per node"),
     ) + modelDirectoryProperties()
 
+internal fun scopedProjectTreeProperties(): Map<String, Any> =
+    mapOf(
+        "projectPath" to stringProperty("Subproject :plugin"),
+    ) + projectTreeProperties()
+
 internal fun projectTreeSchema(): Map<String, Any> =
     objectSchema(properties = projectTreeProperties())
+
+internal fun scopedProjectTreeSchema(): Map<String, Any> =
+    objectSchema(properties = scopedProjectTreeProperties())
 
 internal fun modelQueryProperties(): Map<String, Any> =
     mapOf(
@@ -54,11 +63,11 @@ internal fun modelQueryProperties(): Map<String, Any> =
     )
 
 internal fun modelQuerySchema(): Map<String, Any> =
-    objectSchema(properties = projectTreeProperties() + modelQueryProperties())
+    objectSchema(properties = scopedProjectTreeProperties() + modelQueryProperties())
 
 internal fun buildInvocationsQuerySchema(): Map<String, Any> =
     objectSchema(
-        properties = projectTreeProperties() + modelQueryProperties() + mapOf(
+        properties = scopedProjectTreeProperties() + modelQueryProperties() + mapOf(
             "includeTaskSelectors" to booleanProperty("Include task selectors. Default false."),
         ),
     )
@@ -78,6 +87,20 @@ internal fun helpSchema(): Map<String, Any> =
 
 private fun prepareTasksFromArgs(args: Map<String, Any>): List<String> =
     args.optionalStringList("prepareTasks").orEmpty().filter { it.isNotBlank() }.distinct()
+
+internal fun rejectUnsupportedProjectPath(args: Map<String, Any>, toolName: String) {
+    val projectPath = args.optionalString("projectPath")
+    if (!projectPath.isNullOrBlank()) {
+        throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "projectPath is not supported on $toolName. " +
+                "Use gradle_get_project_overview, gradle_get_project_model, or gradle_get_build_invocations instead.",
+        )
+    }
+}
+
+internal fun scopedGradleProject(root: GradleProject, treeOptions: ProjectTreeOptions): GradleProject =
+    ProjectTreeScope.requireProject(root, treeOptions.projectPath)
 
 internal fun requireNoActiveBuildForPrepareTasks(
     prepareTasks: List<String>,
@@ -142,15 +165,22 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         scope,
         name = "gradle_get_project_overview",
         description = McpToolDescriptions.PROJECT_OVERVIEW,
-        schema = projectTreeSchema(),
+        schema = scopedProjectTreeSchema(),
     ) { args ->
         val treeOptions = ProjectTreeOptions.fromArgs(args)
         fetchModelJson(
             args,
             fetch = { connection, prepareTasks ->
-                connection.fetchModel(GradleProject::class.java, prepareTasks)
+                connection.fetchModel(GradleProject::class.java, prepareTasks).also { project ->
+                    scopedGradleProject(project, treeOptions)
+                }
             },
-            serialize = { project -> ModelSerializers.projectOverview(project, treeOptions) },
+            serialize = { project ->
+                ModelSerializers.projectOverview(
+                    scopedGradleProject(project, treeOptions),
+                    treeOptions,
+                )
+            },
         )
     }
     registerTool(
@@ -159,6 +189,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         description = McpToolDescriptions.GRADLE_BUILD,
         schema = projectTreeSchema(),
     ) { args ->
+        rejectUnsupportedProjectPath(args, "gradle_get_gradle_build")
         val treeOptions = ProjectTreeOptions.fromArgs(args)
         fetchModelJson(
             args,
@@ -179,9 +210,17 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         fetchModelJson(
             args,
             fetch = { connection, prepareTasks ->
-                connection.fetchModel(GradleProject::class.java, prepareTasks)
+                connection.fetchModel(GradleProject::class.java, prepareTasks).also { project ->
+                    scopedGradleProject(project, treeOptions)
+                }
             },
-            serialize = { project -> ModelSerializers.gradleProject(project, options, treeOptions) },
+            serialize = { project ->
+                ModelSerializers.gradleProject(
+                    scopedGradleProject(project, treeOptions),
+                    options,
+                    treeOptions,
+                )
+            },
         )
     }
     registerTool(
@@ -195,12 +234,20 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         fetchModelJson(
             args,
             fetch = { connection, prepareTasks ->
-                val invocations = connection.fetchModel(BuildInvocations::class.java, prepareTasks)
                 val project = connection.fetchModel(GradleProject::class.java, prepareTasks)
+                scopedGradleProject(project, treeOptions)
+                val invocations = connection.fetchModel(BuildInvocations::class.java, prepareTasks)
                 invocations to project
             },
             serialize = { (invocations, project) ->
-                ModelSerializers.buildInvocations(invocations, project, options, treeOptions)
+                val scoped = scopedGradleProject(project, treeOptions)
+                ModelSerializers.buildInvocations(
+                    invocations,
+                    scoped,
+                    options,
+                    treeOptions,
+                    rootProject = project,
+                )
             },
         )
     }
@@ -210,6 +257,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         description = McpToolDescriptions.PROJECT_PUBLICATIONS,
         schema = publicationsSchema(),
     ) { args ->
+        rejectUnsupportedProjectPath(args, "gradle_get_project_publications")
         fetchModelJson(
             args,
             fetch = { connection, prepareTasks ->

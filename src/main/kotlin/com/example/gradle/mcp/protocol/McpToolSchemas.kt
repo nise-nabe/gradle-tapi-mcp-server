@@ -50,7 +50,7 @@ internal fun integerProperty(description: String): Map<String, String> =
     mapOf("type" to "integer", "description" to description)
 
 internal fun prepareTasksProperty(): Map<String, Any> =
-    stringArrayProperty("Tasks to run before model fetch (e.g. [\":app:compileJava\"]). Optional.")
+    stringArrayProperty("Prefetch tasks (e.g. [\":app:compileJava\"])")
 
 internal val testMethodsClassPropertyNames = listOf("class", "className", "testClass")
 

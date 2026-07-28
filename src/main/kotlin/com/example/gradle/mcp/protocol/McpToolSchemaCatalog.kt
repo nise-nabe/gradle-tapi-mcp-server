@@ -16,6 +16,7 @@ import com.example.gradle.mcp.model.helpSchema
 import com.example.gradle.mcp.model.modelQuerySchema
 import com.example.gradle.mcp.model.projectTreeSchema
 import com.example.gradle.mcp.model.publicationsSchema
+import com.example.gradle.mcp.model.scopedProjectTreeSchema
 
 internal data class McpToolSpec(
     val name: String,
@@ -31,7 +32,7 @@ internal fun allMcpToolSpecs(): List<McpToolSpec> =
         McpToolSpec("gradle_get_build_environment", McpToolDescriptions.BUILD_ENVIRONMENT, buildEnvironmentSchema()),
         McpToolSpec("gradle_get_java_runtimes", McpToolDescriptions.JAVA_RUNTIMES, javaRuntimesSchema()),
         McpToolSpec("gradle_get_build_cache_status", McpToolDescriptions.BUILD_CACHE_STATUS, buildCacheStatusSchema()),
-        McpToolSpec("gradle_get_project_overview", McpToolDescriptions.PROJECT_OVERVIEW, projectTreeSchema()),
+        McpToolSpec("gradle_get_project_overview", McpToolDescriptions.PROJECT_OVERVIEW, scopedProjectTreeSchema()),
         McpToolSpec("gradle_get_gradle_build", McpToolDescriptions.GRADLE_BUILD, projectTreeSchema()),
         McpToolSpec("gradle_get_project_model", McpToolDescriptions.PROJECT_MODEL, modelQuerySchema()),
         McpToolSpec("gradle_get_build_invocations", McpToolDescriptions.BUILD_INVOCATIONS, buildInvocationsQuerySchema()),

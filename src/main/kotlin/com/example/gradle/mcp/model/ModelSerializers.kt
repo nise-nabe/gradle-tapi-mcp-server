@@ -4,6 +4,7 @@ import com.example.gradle.mcp.connection.buildEnvironmentSnapshotFrom
 import com.example.gradle.mcp.connection.toMap
 import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.Task
+import org.gradle.tooling.model.TaskSelector
 import org.gradle.tooling.model.build.BuildEnvironment
 import org.gradle.tooling.model.build.Help
 import org.gradle.tooling.model.gradle.BasicGradleProject
@@ -59,7 +60,14 @@ object ModelSerializers {
         project: GradleProject,
         options: ModelQueryOptions = ModelQueryOptions(),
         treeOptions: ProjectTreeOptions = ProjectTreeOptions(),
+        rootProject: GradleProject? = null,
     ): Map<String, Any?> {
+        if (project.path != ":" && options.includeTaskSelectors && rootProject == null) {
+            throw IllegalArgumentException(
+                "rootProject is required when filtering task selectors for a scoped subproject",
+            )
+        }
+        val effectiveRootProject = rootProject ?: project
         val taskBudget = TaskFilterBudget(options.maxTasks)
         val tasks = collectSerializedTasksWithGlobalBudget(project, treeOptions, options, taskBudget)
         return buildMap {
@@ -68,13 +76,14 @@ object ModelSerializers {
             if (options.includeTaskSelectors) {
                 put(
                     "taskSelectors",
-                    invocations.taskSelectors.map { selector ->
-                        mapOf(
-                            "name" to selector.name,
-                            "description" to selector.description,
-                            "displayName" to selector.displayName,
-                        )
-                    },
+                    filterTaskSelectors(invocations, project, treeOptions, options, effectiveRootProject)
+                        .map { selector ->
+                            mapOf(
+                                "name" to selector.name,
+                                "description" to selector.description,
+                                "displayName" to selector.displayName,
+                            )
+                        },
                 )
             }
         }
@@ -198,6 +207,10 @@ object ModelSerializers {
             return emptyList()
         }
 
+        return applyTaskQueryFilters(tasks, options)
+    }
+
+    internal fun applyTaskQueryFilters(tasks: List<TaskSnapshot>, options: ModelQueryOptions): List<TaskSnapshot> {
         var filtered = tasks.asSequence()
         options.taskGroup?.let { group ->
             filtered = filtered.filter { it.group == group }
@@ -351,5 +364,40 @@ object ModelSerializers {
             } else {
                 emptyMap()
             }
+    }
+
+    private fun filterTaskSelectors(
+        invocations: BuildInvocations,
+        project: GradleProject,
+        treeOptions: ProjectTreeOptions,
+        options: ModelQueryOptions,
+        rootProject: GradleProject,
+    ): List<TaskSelector> {
+        val selectors = invocations.taskSelectors.toList()
+        if (project.path == ":") {
+            return selectors
+        }
+        val scopedTasks = applyTaskQueryFilters(
+            collectTasksFromProjectTree(project, treeOptions),
+            options,
+        )
+        val scopedTaskNames = scopedTasks.map { it.name }.toSet()
+        val outOfScopeTaskNames = applyTaskQueryFilters(
+            collectTasksFromProjectTree(rootProject, ProjectTreeOptions()),
+            options,
+        )
+            .filterNot { isTaskInScopedSubtree(it, project) }
+            .map { it.name }
+            .toSet()
+        return selectors.filter { selector ->
+            selector.name in scopedTaskNames && selector.name !in outOfScopeTaskNames
+        }
+    }
+
+    private fun isTaskInScopedSubtree(task: TaskSnapshot, scopedProject: GradleProject): Boolean {
+        if (scopedProject.path == ":") {
+            return true
+        }
+        return task.path == scopedProject.path || task.path.startsWith("${scopedProject.path}:")
     }
 }

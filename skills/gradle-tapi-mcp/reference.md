@@ -81,7 +81,8 @@ Returns:
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `maxDepth` | unlimited | Maximum project tree depth |
+| `projectPath` | — | Scope results to a subproject path (e.g. `:plugin`); includes its children. Resolves within the connected build's `GradleProject` tree only (not included/editable composite builds; use `gradle_get_gradle_build` for those). |
+| `maxDepth` | unlimited | Maximum project tree depth (depth 0 = scoped `projectPath` when set, else build root) |
 | `maxChildren` | unlimited | Maximum child projects per node |
 | `prepareTasks` | `[]` | Optional tasks to run before fetching the model |
 
@@ -91,16 +92,17 @@ Returns hierarchy with `taskCount` per project; no task lists. When truncated: `
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `maxDepth` | unlimited | Maximum project tree depth |
+| `maxDepth` | unlimited | Maximum project tree depth (depth 0 = build root) |
 | `maxChildren` | unlimited | Maximum child projects per node |
 
-Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`BasicGradleProject`), flat `projects`, `projectCount`, `includedBuilds`, and `editableBuilds`. No tasks. Nested composite builds reuse the same shape; already-visited builds return `{ buildRootDir, cycleReference: true }`.
+`projectPath` is not supported on this tool. Use `gradle_get_project_overview`, `gradle_get_project_model`, or `gradle_get_build_invocations` to scope a subproject within the connected build. Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`BasicGradleProject`), flat `projects`, `projectCount`, `includedBuilds`, and `editableBuilds`. No tasks. Nested composite builds reuse the same shape; already-visited builds return `{ buildRootDir, cycleReference: true }`.
 
 ### gradle_get_project_model
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `maxDepth` | unlimited | Maximum project tree depth |
+| `projectPath` | — | Scope results to a subproject path (e.g. `:plugin`); includes its children. Resolves within the connected build's `GradleProject` tree only (not included/editable composite builds; use `gradle_get_gradle_build` for those). |
+| `maxDepth` | unlimited | Maximum project tree depth (depth 0 = scoped `projectPath` when set, else build root) |
 | `maxChildren` | unlimited | Maximum child projects per node |
 | `includeTasks` | `false` | Include task arrays |
 | `includeTaskDetails` | `false` | Add `description`, `displayName` per task |
@@ -112,7 +114,7 @@ Slim task shape (default): `{ name, path, group }`.
 
 ### gradle_get_build_invocations
 
-Same task query options as `gradle_get_project_model` (including global `maxTasks`, `maxDepth` / `maxChildren`). When `maxTasks` caps the result, the response includes `tasksTruncated` and `tasksTotalMatched`. Plus:
+Same task query options as `gradle_get_project_model` (including `projectPath`, global `maxTasks`, `maxDepth` / `maxChildren`). When `maxTasks` caps the result, the response includes `tasksTruncated` and `tasksTotalMatched`. Plus:
 
 | Argument | Default | Description |
 |----------|---------|-------------|
@@ -120,9 +122,16 @@ Same task query options as `gradle_get_project_model` (including global `maxTask
 
 Tasks are always included when this tool is called (`includeTasks` forced true internally).
 
+When `projectPath` is set, `taskSelectors` include only selectors whose task name is unique within the scoped subtree (names shared with sibling subprojects are omitted). Tooling API selectors are root-attached; prefer scoped `tasks` paths for precise invocation targets. `maxDepth` / `maxChildren` also limit the task names used for selector matching.
+
 ### gradle_get_project_publications
 
-No arguments.
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `projectDirectory` | `GRADLE_PROJECT_DIR` | Gradle project directory to connect |
+| `prepareTasks` | `[]` | Optional tasks to run before fetching the model |
+
+`projectPath` is not supported on this tool.
 
 ## Execute
 

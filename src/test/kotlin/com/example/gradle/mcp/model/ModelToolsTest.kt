@@ -6,17 +6,20 @@ import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.support.runningTracker
 import com.example.gradle.mcp.support.testBuildRecord
+import com.example.gradle.mcp.support.gradleProjectProxy
 import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
+import java.io.File
 
 class ModelToolsTest {
     @Test
     fun `model query schemas expose prepareTasks property`() {
         listOf(
             projectTreeSchema(),
+            scopedProjectTreeSchema(),
             modelQuerySchema(),
             buildInvocationsQuerySchema(),
             publicationsSchema(),
@@ -28,6 +31,15 @@ class ModelToolsTest {
             (prepareTasks["items"] as Map<*, *>)["type"] shouldBe "string"
             (prepareTasks["description"] as String) shouldContain ":app:compileJava"
         }
+    }
+
+    @Test
+    fun `scoped project tree schema exposes projectPath`() {
+        val schema = scopedProjectTreeSchema()
+        val properties = schema["properties"] as Map<*, *>
+
+        properties.containsKey("projectPath") shouldBe true
+        (properties["projectPath"] as Map<*, *>)["type"] shouldBe "string"
     }
 
     @Test
@@ -65,6 +77,76 @@ class ModelToolsTest {
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
         error.message shouldContain "prepareTasks"
         error.errorDetails["activeBuildId"] shouldBe "running-build"
+    }
+
+    @Test
+    fun `rejectUnsupportedProjectPath rejects projectPath on gradle_get_project_publications`() {
+        val error = shouldThrow<McpException> {
+            rejectUnsupportedProjectPath(
+                mapOf("projectPath" to ":plugin"),
+                "gradle_get_project_publications",
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "gradle_get_project_publications"
+    }
+
+    @Test
+    fun `rejectUnsupportedProjectPath rejects projectPath on gradle_get_gradle_build`() {
+        val error = shouldThrow<McpException> {
+            rejectUnsupportedProjectPath(mapOf("projectPath" to ":plugin"), "gradle_get_gradle_build")
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "gradle_get_gradle_build"
+        error.message shouldContain "gradle_get_project_overview"
+    }
+
+    @Test
+    fun `rejectUnsupportedProjectPath allows blank projectPath`() {
+        rejectUnsupportedProjectPath(mapOf("projectPath" to "   "), "gradle_get_gradle_build")
+    }
+
+    @Test
+    fun `scopedGradleProject rejects unknown projectPath with invalid argument`() {
+        val root = gradleProjectProxy(
+            name = "root",
+            path = ":",
+            directory = File("/root"),
+            children = listOf(
+                gradleProjectProxy(
+                    name = "plugin",
+                    path = ":plugin",
+                    directory = File("/root/plugin"),
+                ),
+            ),
+        )
+
+        val error = shouldThrow<McpException> {
+            scopedGradleProject(root, ProjectTreeOptions(projectPath = ":missing"))
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain ":missing"
+    }
+
+    @Test
+    fun `scopedGradleProject resolves scoped subproject`() {
+        val root = gradleProjectProxy(
+            name = "root",
+            path = ":",
+            directory = File("/root"),
+            children = listOf(
+                gradleProjectProxy(
+                    name = "plugin",
+                    path = ":plugin",
+                    directory = File("/root/plugin"),
+                ),
+            ),
+        )
+
+        scopedGradleProject(root, ProjectTreeOptions(projectPath = ":plugin")).path shouldBe ":plugin"
     }
 }
 

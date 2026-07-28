@@ -51,10 +51,10 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_get_java_runtimes` | Daemon Java from BuildEnvironment plus detected local JDKs via `javaToolchains -q` (set `includeToolchains: false` for daemon only) |
 | `gradle_get_help` | Gradle CLI help text (`gradle --help` equivalent); optional `maxChars` / `tailOutput`; requires Gradle 9.4+ |
 | `gradle_get_build_cache_status` | Build cache / configuration cache settings and local cache summaries |
-| `gradle_get_project_overview` | Project hierarchy and task counts only; optional `maxDepth` / `maxChildren` |
+| `gradle_get_project_overview` | Project hierarchy and task counts only; optional `projectPath`, `maxDepth` / `maxChildren` |
 | `gradle_get_gradle_build` | GradleBuild structure (root project tree, all projects, included/editable builds); optional `maxDepth` / `maxChildren` |
-| `gradle_get_project_model` | Project model; tasks omitted by default |
-| `gradle_get_build_invocations` | Runnable tasks; selectors omitted by default |
+| `gradle_get_project_model` | Project model; tasks omitted by default; optional `projectPath` to scope a subproject subtree |
+| `gradle_get_build_invocations` | Runnable tasks; selectors omitted by default; optional `projectPath` to scope task collection |
 | `gradle_get_project_publications` | Publications |
 | `gradle_run_tasks` | Execute tasks; stdout/stderr truncated by default |
 | `gradle_run_tests` | Execute JVM tests by class, method, pattern, or task scope; stdout/stderr truncated by default |
@@ -75,6 +75,7 @@ Use heavier tools only when required:
 - `gradle_get_project_model` with `includeTasks=true` to list tasks
 - `includeTaskDetails=true` only when descriptions are needed
 - `taskGroup`, `taskNamePrefix`, or `maxTasks` to narrow large builds
+- `projectPath` on overview/model/invocations to scope a subproject subtree (e.g. `:plugin`) instead of the full monorepo. Resolves within the connected build's `GradleProject` tree only; use `gradle_get_gradle_build` for included/editable composite builds. Scoped `taskSelectors` omit names shared with sibling subprojects; prefer scoped `tasks` paths for invocation targets.
 - `maxDepth` / `maxChildren` on overview/model queries for large monorepos
 - `gradle_get_build_invocations` with `includeTaskSelectors=true` only when selectors matter
 
