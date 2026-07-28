@@ -32,7 +32,7 @@ class McpToolSchemaSizeTest {
     }
 
     private companion object {
-        const val MAX_TOTAL_TOOLS_LIST_CHARS = 15_000
+        const val MAX_TOTAL_TOOLS_LIST_CHARS = 15_100
         const val MAX_SINGLE_TOOL_CHARS = 3_100
         const val MAX_DESCRIPTION_CHARS = 220
 

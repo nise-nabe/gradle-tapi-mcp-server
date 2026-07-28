@@ -49,9 +49,10 @@ internal object McpToolDescriptions {
             "waitUntilComplete is capped—prefer short polls. Optional output/progress."
 
     const val RUN_TASKS =
-        "Run Gradle tasks. background returns buildId; queueIfBusy enqueues when busy."
+        "Run Gradle tasks. background returns buildId; queueIfBusy when busy; " +
+            "busy errors include activeBuildId."
 
     const val RUN_TESTS =
-        "Run JVM tests by class, method, or pattern. taskPath/tasks scope Test suites; " +
-            "queueIfBusy enqueues when busy."
+        "Run JVM tests by class/method/pattern. taskPath/tasks scope Test suites; queueIfBusy when busy; " +
+            "busy errors include activeBuildId."
 }
