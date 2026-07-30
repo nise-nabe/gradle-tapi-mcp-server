@@ -33,7 +33,7 @@ internal object McpToolDescriptions {
         "Runnable Gradle tasks; projectPath scopes connected-build subtree. Selectors need includeTaskSelectors=true."
 
     const val PROJECT_PUBLICATIONS =
-        "Publications declared by the build."
+        "Publications declared by the build. No projectPath."
 
     const val HELP =
         "Gradle CLI help (--help). No projectPath. Requires Gradle 9.4+."

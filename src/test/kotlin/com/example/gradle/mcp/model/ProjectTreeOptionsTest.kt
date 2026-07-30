@@ -7,6 +7,8 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 
 class ProjectTreeOptionsTest {
     @Test
@@ -36,10 +38,11 @@ class ProjectTreeOptionsTest {
         options.projectPath shouldBe ":plugin"
     }
 
-    @Test
-    fun `fromArgs rejects malformed projectPath before model fetch`() {
+    @ParameterizedTest
+    @ValueSource(strings = ["::plugin", ":plugin:"])
+    fun `fromArgs rejects malformed projectPath before model fetch`(malformedPath: String) {
         val error = shouldThrow<McpException> {
-            ProjectTreeOptions.fromArgs(mapOf("projectPath" to "::plugin"))
+            ProjectTreeOptions.fromArgs(mapOf("projectPath" to malformedPath))
         }
 
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
