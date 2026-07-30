@@ -12,13 +12,13 @@ internal object McpToolDescriptions {
         "Close one or all Tooling API connections. Running builds for disconnected projects are cancelled."
 
     const val BUILD_ENVIRONMENT =
-        "Resolved Gradle/Java environment (BuildEnvironment). Lightweight stack check; versionInfo needs Gradle 9.4+."
+        "Resolved Gradle/Java environment (BuildEnvironment). No projectPath; lightweight stack check; versionInfo needs Gradle 9.4+."
 
     const val JAVA_RUNTIMES =
-        "Daemon Java plus local JDKs from javaToolchains when includeToolchains=true (default). Reconnect to refresh daemon Java."
+        "Daemon Java plus local JDKs from javaToolchains when includeToolchains=true (default). No projectPath. Reconnect to refresh daemon Java."
 
     const val BUILD_CACHE_STATUS =
-        "Build and configuration cache settings without a full build. Set probeConfigurationCache=true for a compatibility probe."
+        "Build/configuration cache settings without full build. No projectPath. Set probeConfigurationCache=true for compatibility probe."
 
     const val PROJECT_OVERVIEW =
         "Project hierarchy and task counts; projectPath scopes connected-build subtree."
@@ -36,7 +36,7 @@ internal object McpToolDescriptions {
         "Publications declared by the build."
 
     const val HELP =
-        "Gradle CLI help text (gradle --help). Requires Gradle 9.4+."
+        "Gradle CLI help (--help). No projectPath. Requires Gradle 9.4+."
 
     const val LIST_BUILDS =
         "Recent MCP builds from memory and .gradle/mcp-builds/ on disk. No Tooling API connection required."

@@ -52,6 +52,8 @@ Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `gradle.versionInfo` (G
 |----------|---------|-------------|
 | `includeToolchains` | `true` | Include `javaToolchains` probe results (extra Gradle work) |
 
+`projectPath` is not supported on this tool; a non-blank value returns `INVALID_ARGUMENT`.
+
 Returns daemon Java from the connected project (`javaHome`, `javaVersion`, `jvmArguments`) and, when `includeToolchains=true`, toolchain metadata from `javaToolchains`. Prefer `gradle_get_build_environment` for a lightweight stack snapshot; use this tool when selecting or comparing JDK installations for toolchain configuration.
 
 ### gradle_get_help
@@ -73,6 +75,8 @@ Returns `renderedText` (equivalent to `gradle --help`), `renderedTextTruncated`,
 | `includeLocalCacheDetails` | `true` | Include local build-cache / configuration-cache directory summaries |
 | `includeDeclaredProperties` | `true` | Include cache-related entries from project and user `gradle.properties` |
 | `probeConfigurationCache` | `false` | Run `properties -q --configuration-cache` compatibility probe |
+
+`projectPath` is not supported on this tool; a non-blank value returns `INVALID_ARGUMENT`.
 
 Returns:
 

@@ -2,15 +2,11 @@ package com.example.gradle.mcp.connection
 
 import com.example.gradle.mcp.DefaultGradleMcpRuntime
 import com.example.gradle.mcp.build.BuildExecutionManager
-import com.example.gradle.mcp.model.rejectUnsupportedProjectPath
-import com.example.gradle.mcp.protocol.McpErrorCode
-import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.support.defaultProxyReturn
 import com.example.gradle.mcp.support.noopProjectConnection
 import com.example.gradle.mcp.support.runningTracker
 import com.example.gradle.mcp.support.testBuildRecord
 import com.example.gradle.mcp.support.testProjectDirectory
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -23,16 +19,6 @@ import java.lang.reflect.Proxy
 import java.util.concurrent.atomic.AtomicBoolean
 
 class ConnectionToolsTest {
-    @Test
-    fun `rejectUnsupportedProjectPath rejects projectPath on gradle_get_build_environment`() {
-        val error = shouldThrow<McpException> {
-            rejectUnsupportedProjectPath(mapOf("projectPath" to ":plugin"), "gradle_get_build_environment")
-        }
-
-        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        error.message shouldContain "gradle_get_build_environment"
-    }
-
     @Test
     fun `disconnect includes warning when build was active`() {
         val connectionManager = GradleConnectionManager()

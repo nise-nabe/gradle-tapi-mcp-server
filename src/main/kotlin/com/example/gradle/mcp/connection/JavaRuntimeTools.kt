@@ -9,6 +9,7 @@ import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
 import com.example.gradle.mcp.protocol.optionalBoolean
+import com.example.gradle.mcp.protocol.rejectUnsupportedProjectPath
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.registerTool
 import io.modelcontextprotocol.kotlin.sdk.server.Server
@@ -234,6 +235,7 @@ fun Server.registerJavaRuntimeTools(scope: CoroutineScope) {
         description = McpToolDescriptions.JAVA_RUNTIMES,
         schema = javaRuntimesSchema(),
     ) { args ->
+        rejectUnsupportedProjectPath(args, "gradle_get_java_runtimes")
         val includeToolchains = args.optionalBoolean("includeToolchains", default = true)
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
         if (!includeToolchains) {

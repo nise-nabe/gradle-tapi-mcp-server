@@ -7,6 +7,7 @@ import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
+import com.example.gradle.mcp.protocol.rejectUnsupportedProjectPath
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.registerTool
 import io.modelcontextprotocol.kotlin.sdk.server.Server
@@ -31,6 +32,7 @@ fun Server.registerCacheTools(scope: CoroutineScope) {
         description = McpToolDescriptions.BUILD_CACHE_STATUS,
         schema = buildCacheStatusSchema(),
     ) { args ->
+        rejectUnsupportedProjectPath(args, "gradle_get_build_cache_status")
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
         val options = BuildCacheStatusOptions.fromArgs(args)
         ProjectLifecycleGuard.withNoActiveBuild(
