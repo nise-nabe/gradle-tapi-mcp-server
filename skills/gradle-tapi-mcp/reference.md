@@ -34,11 +34,15 @@ Model and overview tools also accept optional `prepareTasks` (string array): Gra
 
 ## Query (read-only)
 
+Tools that accept `projectPath` (`gradle_get_project_overview`, `gradle_get_project_model`, `gradle_get_build_invocations`) validate it in `ProjectTreeOptions.fromArgs`: malformed paths (e.g. `::plugin`, `:plugin:`) return `INVALID_ARGUMENT` before any Tooling API fetch. Unknown but syntactically valid paths (e.g. `:missing`) still require a `GradleProject` model fetch to resolve against the connected tree.
+
 ### gradle_get_build_environment
 
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `projectDirectory` | no | Gradle project root (default: `GRADLE_PROJECT_DIR`) |
+
+`projectPath` is not supported on this tool; a non-blank value returns `INVALID_ARGUMENT`.
 
 Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `gradle.versionInfo` (Gradle 9.4+; same text as `gradle --version`; omitted on older Gradle), `java.javaHome`, `java.javaVersion`, `java.jvmArguments`.
 
@@ -56,6 +60,8 @@ Returns daemon Java from the connected project (`javaHome`, `javaVersion`, `jvmA
 |----------|---------|-------------|
 | `maxChars` | `8000` | Maximum rendered help characters to return |
 | `tailOutput` | `true` | When truncated, keep the tail of the help text |
+
+`projectPath` is not supported on this tool; a non-blank value returns `INVALID_ARGUMENT`.
 
 Returns `renderedText` (equivalent to `gradle --help`), `renderedTextTruncated`, and `renderedTextTotalChars`. Truncation metadata is always included; `renderedTextTruncated` is `false` when the full text fits within `maxChars`. Requires Gradle 9.4+; returns `INVALID_ARGUMENT` when the Help model is unavailable.
 
@@ -87,8 +93,6 @@ Returns:
 | `prepareTasks` | `[]` | Optional tasks to run before fetching the model |
 
 Returns hierarchy with `taskCount` per project; no task lists. When truncated: `truncated: true`, `totalChildCount`.
-
-**`projectPath` validation:** Malformed paths (e.g. `::plugin`, `:plugin:`) are rejected with `INVALID_ARGUMENT` before any Tooling API fetch. Unknown but syntactically valid paths (e.g. `:missing`) still require a `GradleProject` model fetch to resolve against the connected tree—an accepted trade-off unless a per-connection tree cache is added later.
 
 ### gradle_get_gradle_build
 

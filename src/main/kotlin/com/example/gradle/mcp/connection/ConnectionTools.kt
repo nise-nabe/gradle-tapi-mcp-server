@@ -12,9 +12,9 @@ import com.example.gradle.mcp.protocol.optionalProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.requiredString
+import com.example.gradle.mcp.protocol.registerTool
 import com.example.gradle.mcp.protocol.stringProperty
 import com.example.gradle.mcp.model.rejectUnsupportedProjectPath
-import com.example.gradle.mcp.protocol.registerTool
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import kotlinx.coroutines.CoroutineScope
 import java.io.File
