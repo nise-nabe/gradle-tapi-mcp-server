@@ -41,6 +41,21 @@ Issue §2 asks for an optional queue (or `waitForSlot: true`) so “compile then
 
 There is **no grace window** after terminal status. As soon as `finalizeBuild` marks succeeded / failed / cancelled, the next start is allowed.
 
+### 2.1a Structured error payloads (`activeBuildId`)
+
+When a per-project start is rejected (`BUILD_ALREADY_RUNNING`, `BUILD_QUEUE_FULL`) or the global pool is saturated, errors include structured fields so agents can poll without guessing:
+
+| Field | When present | Meaning |
+|-------|----------------|---------|
+| `activeBuildId` | Single occupying build known | Poll `gradle_get_build_status` with this id |
+| `activeKind` | With `activeBuildId` | `tasks` or `tests` |
+| `activeStatus` | With `activeBuildId` | Occupying record status (`running` or `queued`) |
+| `activeTasks` / `activeTestClasses` / … | When applicable | Selection on the occupying build |
+| `activeBuildIds` | Global pool saturation (2+ running) | Sorted list of running build ids |
+| `activeBuildId` + siblings | Global pool saturation (exactly 1 running) | Same single-build enrichment as per-project errors |
+
+`ActiveBuildSnapshot.forProject` prefers, in order: a `running` build for the project → the queue head (`preferredQueuedBuildId` from `ProjectQueue.headBuildId` under the project lock) → the first remaining active (`queued` or `running`) record. The queue-head id is passed from `BuildExecutionManager.activeBuildSnapshotUnderProjectLock` so the fallback rarely runs.
+
 ### 2.2 Global concurrent pool (cross-project)
 
 Background/foreground work shares a bounded executor (`MAX_CONCURRENT_BUILDS = max(4, processors)`). When the pool is full, starts also return `BUILD_ALREADY_RUNNING` (same code, different message).

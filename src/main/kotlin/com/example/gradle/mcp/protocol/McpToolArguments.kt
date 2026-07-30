@@ -54,6 +54,17 @@ fun Map<String, Any>.optionalPositiveInt(key: String): Int? =
 fun Map<String, Any>.optionalNonNegativeInt(key: String): Int? =
     parseOptionalInt(key)?.takeIf { it >= 0 }
 
+fun rejectUnsupportedProjectPath(args: Map<String, Any>, toolName: String) {
+    val projectPath = args.optionalString("projectPath")
+    if (!projectPath.isNullOrBlank()) {
+        throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "projectPath is not supported on $toolName. " +
+                "Use gradle_get_project_overview, gradle_get_project_model, or gradle_get_build_invocations instead.",
+        )
+    }
+}
+
 private fun Map<String, Any>.parseOptionalInt(key: String): Int? =
     when (val value = this[key]) {
         is Number -> value.toExactIntOrNull()

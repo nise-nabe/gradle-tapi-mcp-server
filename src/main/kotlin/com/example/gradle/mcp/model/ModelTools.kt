@@ -14,6 +14,7 @@ import com.example.gradle.mcp.protocol.objectSchema
 import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.optionalStringList
 import com.example.gradle.mcp.protocol.prepareTasksProperty
+import com.example.gradle.mcp.protocol.rejectUnsupportedProjectPath
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.stringProperty
 import com.example.gradle.mcp.protocol.registerTool
@@ -87,17 +88,6 @@ internal fun helpSchema(): Map<String, Any> =
 
 private fun prepareTasksFromArgs(args: Map<String, Any>): List<String> =
     args.optionalStringList("prepareTasks").orEmpty().filter { it.isNotBlank() }.distinct()
-
-internal fun rejectUnsupportedProjectPath(args: Map<String, Any>, toolName: String) {
-    val projectPath = args.optionalString("projectPath")
-    if (!projectPath.isNullOrBlank()) {
-        throw McpException(
-            McpErrorCode.INVALID_ARGUMENT,
-            "projectPath is not supported on $toolName. " +
-                "Use gradle_get_project_overview, gradle_get_project_model, or gradle_get_build_invocations instead.",
-        )
-    }
-}
 
 internal fun scopedGradleProject(root: GradleProject, treeOptions: ProjectTreeOptions): GradleProject =
     ProjectTreeScope.requireProject(root, treeOptions.projectPath)
@@ -272,6 +262,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         description = McpToolDescriptions.HELP,
         schema = helpSchema(),
     ) { args ->
+        rejectUnsupportedProjectPath(args, "gradle_get_help")
         val limitOptions = HelpLimitOptions.fromArgs(args)
         fetchModelJson(
             args,

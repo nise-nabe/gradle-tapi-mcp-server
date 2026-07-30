@@ -10,11 +10,19 @@ data class ProjectTreeOptions(
     val projectPath: String? = null,
 ) {
     companion object {
-        fun fromArgs(args: Map<String, Any>): ProjectTreeOptions =
-            ProjectTreeOptions(
+        fun fromArgs(args: Map<String, Any>): ProjectTreeOptions {
+            val rawProjectPath = args.optionalString("projectPath")
+            val projectPath =
+                if (rawProjectPath.isNullOrBlank()) {
+                    null
+                } else {
+                    ProjectTreeScope.normalizeProjectPath(rawProjectPath)
+                }
+            return ProjectTreeOptions(
                 maxDepth = args.optionalNonNegativeInt("maxDepth"),
                 maxChildren = args.optionalPositiveInt("maxChildren"),
-                projectPath = args.optionalString("projectPath"),
+                projectPath = projectPath,
             )
+        }
     }
 }
