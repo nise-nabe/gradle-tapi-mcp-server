@@ -13,6 +13,7 @@ import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.requiredString
 import com.example.gradle.mcp.protocol.stringProperty
+import com.example.gradle.mcp.model.rejectUnsupportedProjectPath
 import com.example.gradle.mcp.protocol.registerTool
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import kotlinx.coroutines.CoroutineScope
@@ -161,6 +162,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
         description = McpToolDescriptions.BUILD_ENVIRONMENT,
         schema = buildEnvironmentSchema(),
     ) { args ->
+        rejectUnsupportedProjectPath(args, "gradle_get_build_environment")
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
         runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
             val snapshot = runtime.connectionManager.fetchAndCacheEnvironment(projectDirectory, connection)

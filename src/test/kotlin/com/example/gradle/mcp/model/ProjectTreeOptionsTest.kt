@@ -1,7 +1,11 @@
 package com.example.gradle.mcp.model
 
+import com.example.gradle.mcp.protocol.McpErrorCode
+import com.example.gradle.mcp.protocol.McpException
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 
 class ProjectTreeOptionsTest {
@@ -23,6 +27,23 @@ class ProjectTreeOptionsTest {
         val options = ProjectTreeOptions.fromArgs(mapOf("projectPath" to ":plugin"))
 
         options.projectPath shouldBe ":plugin"
+    }
+
+    @Test
+    fun `fromArgs normalizes bare projectPath`() {
+        val options = ProjectTreeOptions.fromArgs(mapOf("projectPath" to "plugin"))
+
+        options.projectPath shouldBe ":plugin"
+    }
+
+    @Test
+    fun `fromArgs rejects malformed projectPath before model fetch`() {
+        val error = shouldThrow<McpException> {
+            ProjectTreeOptions.fromArgs(mapOf("projectPath" to "::plugin"))
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "Invalid project path"
     }
 
     @Test

@@ -80,6 +80,26 @@ class ModelToolsTest {
     }
 
     @Test
+    fun `rejectUnsupportedProjectPath rejects projectPath on gradle_get_help`() {
+        val error = shouldThrow<McpException> {
+            rejectUnsupportedProjectPath(mapOf("projectPath" to ":plugin"), "gradle_get_help")
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "gradle_get_help"
+    }
+
+    @Test
+    fun `rejectUnsupportedProjectPath rejects projectPath on gradle_get_build_environment`() {
+        val error = shouldThrow<McpException> {
+            rejectUnsupportedProjectPath(mapOf("projectPath" to ":plugin"), "gradle_get_build_environment")
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "gradle_get_build_environment"
+    }
+
+    @Test
     fun `rejectUnsupportedProjectPath rejects projectPath on gradle_get_project_publications`() {
         val error = shouldThrow<McpException> {
             rejectUnsupportedProjectPath(

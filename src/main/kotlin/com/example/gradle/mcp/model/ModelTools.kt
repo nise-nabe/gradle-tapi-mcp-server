@@ -272,6 +272,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         description = McpToolDescriptions.HELP,
         schema = helpSchema(),
     ) { args ->
+        rejectUnsupportedProjectPath(args, "gradle_get_help")
         val limitOptions = HelpLimitOptions.fromArgs(args)
         fetchModelJson(
             args,

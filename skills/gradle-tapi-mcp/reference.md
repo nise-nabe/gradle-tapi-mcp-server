@@ -88,6 +88,8 @@ Returns:
 
 Returns hierarchy with `taskCount` per project; no task lists. When truncated: `truncated: true`, `totalChildCount`.
 
+**`projectPath` validation:** Malformed paths (e.g. `::plugin`, `:plugin:`) are rejected with `INVALID_ARGUMENT` before any Tooling API fetch. Unknown but syntactically valid paths (e.g. `:missing`) still require a `GradleProject` model fetch to resolve against the connected tree—an accepted trade-off unless a per-connection tree cache is added later.
+
 ### gradle_get_gradle_build
 
 | Argument | Default | Description |
