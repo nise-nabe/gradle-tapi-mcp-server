@@ -167,7 +167,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | 同一プロジェクトで複数テストを並列の別呼び出しで起動 | **不可** | 1 回の `gradle_run_tests` にまとめる（下記） |
 | 同一プロジェクトで複数クラス／メソッドを 1 回で実行 | **可** | `testMethods` / `testClasses` / `includePatterns` |
 | 複数 Test タスク（`:test` + カスタム `JvmTestSuite` `fastTest` 等）を 1 回で実行 | **可** | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
-| マルチモジュールで `taskPath`/`tasks` なし | **不可** | `INVALID_ARGUMENT` に `suggestedTaskPaths`（モデル上の JVM Test タスク）と `hint` |
+| マルチモジュールで `taskPath`/`tasks` なし | **不可** | `INVALID_ARGUMENT` に `suggestedTaskPaths`（最大 20 件、超過時 `suggestedTaskPathsTruncated: true`）と `hint`。全件は `gradle_get_project_model` + `includeTasks=true` |
 | 別 `projectDirectory` への並列テスト | **可** | 各プロジェクトで `background: true`（サーバー上限まで） |
 | 順次実行 | **可** | 前のビルド完了を待つか `gradle_cancel_build` で停止してから次を起動 |
 | 順次実行（キュー） | **可** | `background: true` + `queueIfBusy: true` で enqueue（`status: queued` → ポーリング） |
