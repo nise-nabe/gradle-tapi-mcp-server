@@ -9,6 +9,12 @@ import org.gradle.tooling.model.GradleProject
 import java.io.File
 
 internal object TestRunPreflight {
+    const val MAX_SUGGESTED_TEST_TASK_PATHS = 20
+
+    data class SuggestedTestTaskPaths(
+        val paths: List<String>,
+        val truncated: Boolean,
+    )
     fun requiresProjectScopeCheck(options: TestRunOptions): Boolean {
         val unscoped = when (options.selection) {
             is TestRunSelection.Classes -> options.selection.taskPath.isNullOrBlank()
@@ -25,16 +31,17 @@ internal object TestRunPreflight {
         val countPhrase = subprojectCount?.let { "($it subprojects)" } ?: "(multiple subprojects)"
         val errorDetails = buildMap<String, Any?> {
             project?.let { root ->
-                val paths = collectSuggestedTestTaskPaths(root)
-                if (paths.isNotEmpty()) {
-                    put("suggestedTaskPaths", paths)
+                val suggestion = collectSuggestedTestTaskPaths(root)
+                if (suggestion.paths.isNotEmpty()) {
+                    put("suggestedTaskPaths", suggestion.paths)
+                    if (suggestion.truncated) {
+                        put("suggestedTaskPathsTruncated", true)
+                    }
                 }
             }
             put(
                 "hint",
-                "Pass taskPath (e.g. \":module:test\") or use tasks for custom JvmTestSuite names " +
-                    "(e.g. \":mod:fastTest\"). suggestedTaskPaths lists JVM Test task paths from the model " +
-                    "(name test or *Test; excludes lifecycle tasks like :check).",
+                buildHint(project != null),
             )
         }
         throw McpException(
@@ -55,10 +62,28 @@ internal object TestRunPreflight {
         rejectUnscopedMultiProject(countGradleSubprojects(project), project)
     }
 
-    fun collectSuggestedTestTaskPaths(root: GradleProject): List<String> {
+    fun collectSuggestedTestTaskPaths(
+        root: GradleProject,
+        maxPaths: Int = MAX_SUGGESTED_TEST_TASK_PATHS,
+    ): SuggestedTestTaskPaths {
         val paths = mutableListOf<String>()
         collectTestTaskPathsRecursive(root, paths)
-        return paths.sorted()
+        val sorted = paths.sorted()
+        if (sorted.size <= maxPaths) {
+            return SuggestedTestTaskPaths(sorted, truncated = false)
+        }
+        return SuggestedTestTaskPaths(sorted.take(maxPaths), truncated = true)
+    }
+
+    private fun buildHint(hasProjectModel: Boolean): String {
+        val base =
+            "Pass taskPath (e.g. \":module:test\") or use tasks for custom JvmTestSuite names " +
+                "(e.g. \":mod:fastTest\")."
+        if (!hasProjectModel) {
+            return base
+        }
+        return "$base suggestedTaskPaths lists JVM Test task paths (name test or *Test). " +
+            "When truncated, use gradle_get_project_model with includeTasks=true for the full list."
     }
 
     private fun isLikelyJvmTestTaskName(name: String): Boolean =
