@@ -7,6 +7,7 @@ import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.support.TEST_ISO_FINISH
 import com.example.gradle.mcp.support.TEST_ISO_START
 import com.example.gradle.mcp.support.failedTestSnapshot
+import com.example.gradle.mcp.support.testBuildRecord
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
@@ -316,6 +317,27 @@ class BuildStatusAssemblerTest {
         response["failureKind"] shouldBe "TEST_FAILURE"
         response["failureCategory"] shouldBe "TEST"
         response.containsKey("error") shouldBe false
+    }
+
+    @Test
+    fun `assemble includes taskPathInferred for status poll when record was inferred at preflight`() {
+        val response = BuildStatusAssembler.assemble(
+            view = BuildStatusView.fromRecord(
+                testBuildRecord(
+                    id = "inferred-test-build",
+                    kind = BuildKind.TESTS,
+                    selection = TestRunSelection.Classes(
+                        classes = listOf("com.example.app.FooTest"),
+                        taskPath = ":app:test",
+                    ),
+                ).apply { taskPathInferred = true },
+            ),
+            outputLimit = OutputLimitOptions(),
+            progressOptions = ProgressResponseOptions(),
+        )
+
+        response["taskPath"] shouldBe ":app:test"
+        response["taskPathInferred"] shouldBe true
     }
 
     @Test

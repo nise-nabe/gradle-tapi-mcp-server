@@ -498,6 +498,57 @@ class TestRunPreflightTest {
     }
 
     @Test
+    fun `preflight inferred taskPath is visible in build status poll`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            connection = gradleProjectConnectionProxy(
+                gradleProjectProxy(
+                    children = listOf(
+                        gradleProjectProxy(
+                            name = "app",
+                            path = ":app",
+                            tasks = listOf(gradleJvmTestTaskProxy(projectPath = ":app")),
+                        ),
+                        gradleProjectProxy(name = "lib", path = ":lib"),
+                    ),
+                ),
+            ),
+            projectDirectory = projectDirectory,
+        )
+        val manager = BuildExecutionManager(connectionManager)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, manager)
+        val options = TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.app.FooTest")))
+
+        val scopeResolution = with(runtime) {
+            preflightRunTests(projectDirectory, options)
+        }
+        val request = scopeResolution.options.toBuildRunRequest(
+            projectDirectory = projectDirectory,
+            arguments = emptyList(),
+            jvmArguments = emptyList(),
+            outputLimit = com.example.gradle.mcp.model.OutputLimitOptions(),
+            progressOptions = com.example.gradle.mcp.protocol.ProgressResponseOptions(),
+        ).copy(
+            testScopeValidatedAtPreflight = true,
+            taskPathInferred = scopeResolution.taskPathInferred,
+        )
+
+        val startResponse = manager.startBackground(request, notifier = null)
+        val buildId = startResponse["buildId"] as String
+
+        val statusResponse = manager.status(
+            buildId = buildId,
+            outputLimit = com.example.gradle.mcp.model.OutputLimitOptions(),
+            progressOptions = com.example.gradle.mcp.protocol.ProgressResponseOptions(),
+            projectDirectoryHint = projectDirectory,
+        )
+
+        statusResponse["taskPath"] shouldBe ":app:test"
+        statusResponse["taskPathInferred"] shouldBe true
+        manager.shutdown()
+    }
+
+    @Test
     fun `preflightRunTests infers taskPath for unscoped testMethods when only one test task exists`() {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedConnectionForTests(

@@ -647,7 +647,9 @@ class BuildExecutionManager(
             progressTracker = tracker,
             streams = streams,
             projectDirectory = request.projectDirectory.absolutePath,
-        )
+        ).also { seeded ->
+            seeded.taskPathInferred = request.taskPathInferred
+        }
         return BuildStart(record, progressNotifier)
     }
 
@@ -716,6 +718,8 @@ class BuildExecutionManager(
         record: BuildRecord,
     ): BuildRunRequest {
         if (request.testScopeValidatedAtPreflight) {
+            record.selection = request.selection
+            record.taskPathInferred = request.taskPathInferred
             return request
         }
         val resolved = ensureTestRunProjectScope(
@@ -758,9 +762,10 @@ class BuildExecutionManager(
             put("buildId", record.id)
             put("status", BuildProgressTracker.STATUS_RUNNING)
             put("kind", request.kind.name.lowercase())
-            put("tasks", request.tasks)
-            put("testClasses", request.testClasses)
-            putTestRunSelection(request.selection)
+            put("tasks", record.tasks)
+            put("testClasses", record.testClasses)
+            putTestRunSelection(record.selection)
+            putTaskPathInferredIfNeeded(record.taskPathInferred)
             put("detached", true)
             put(
                 "message",
