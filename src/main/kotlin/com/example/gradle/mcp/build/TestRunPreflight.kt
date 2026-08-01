@@ -8,6 +8,11 @@ import com.example.gradle.mcp.protocol.McpException
 import org.gradle.tooling.model.GradleProject
 import java.io.File
 
+internal data class TestRunScopeResolution(
+    val options: TestRunOptions,
+    val taskPathInferred: Boolean = false,
+)
+
 internal object TestRunPreflight {
     const val MAX_SUGGESTED_TEST_TASK_PATHS = 20
 
@@ -15,6 +20,7 @@ internal object TestRunPreflight {
         val paths: List<String>,
         val truncated: Boolean,
     )
+
     fun requiresProjectScopeCheck(options: TestRunOptions): Boolean {
         val unscoped = when (options.selection) {
             is TestRunSelection.Classes -> options.selection.taskPath.isNullOrBlank()
@@ -52,33 +58,33 @@ internal object TestRunPreflight {
         )
     }
 
-    fun validateProjectScope(options: TestRunOptions, project: GradleProject) {
-        if (!requiresProjectScopeCheck(options)) {
-            return
+    fun resolveMultiProjectScope(options: TestRunOptions, project: GradleProject): TestRunScopeResolution {
+        val classNames = options.selection.testClassesForReporting()
+        val inferredTaskPath = TestTaskDiscovery.inferTaskPath(project, classNames)
+        if (inferredTaskPath != null) {
+            return TestRunScopeResolution(
+                options = options.withTaskPath(inferredTaskPath),
+                taskPathInferred = true,
+            )
         }
-        if (project.children.isEmpty()) {
-            return
-        }
-        rejectUnscopedMultiProject(countGradleSubprojects(project), project)
+        rejectUnscopedMultiProject(
+            subprojectCount = countGradleSubprojects(project),
+            project = project,
+        )
     }
 
-    fun collectSuggestedTestTaskPaths(
-        root: GradleProject,
-        maxPaths: Int = MAX_SUGGESTED_TEST_TASK_PATHS,
-    ): SuggestedTestTaskPaths {
-        val paths = mutableListOf<String>()
-        collectTestTaskPathsRecursive(root, paths)
-        val sorted = paths.sorted()
-        if (sorted.size <= maxPaths) {
-            return SuggestedTestTaskPaths(sorted, truncated = false)
+    fun validateProjectScope(options: TestRunOptions, project: GradleProject): TestRunScopeResolution {
+        if (!requiresProjectScopeCheck(options)) {
+            return TestRunScopeResolution(options)
         }
-        return SuggestedTestTaskPaths(sorted.take(maxPaths), truncated = true)
+        if (project.children.isEmpty()) {
+            return TestRunScopeResolution(options)
+        }
+        return resolveMultiProjectScope(options, project)
     }
 
     private fun buildHint(hasProjectModel: Boolean): String {
-        val base =
-            "Pass taskPath (e.g. \":module:test\") or use tasks for custom JvmTestSuite names " +
-                "(e.g. \":mod:fastTest\")."
+        val base = TestTaskDiscovery.MULTI_PROJECT_TEST_SCOPE_HINT
         if (!hasProjectModel) {
             return base
         }
@@ -86,37 +92,43 @@ internal object TestRunPreflight {
             "When truncated, use gradle_get_project_model with includeTasks=true for the full list."
     }
 
-    private fun isLikelyJvmTestTaskName(name: String): Boolean =
-        name == "test" || name.endsWith("Test")
-
-    private fun collectTestTaskPathsRecursive(project: GradleProject, out: MutableList<String>) {
-        project.tasks.forEach { task ->
-            if (task.group == "verification" && isLikelyJvmTestTaskName(task.name)) {
-                out.add(task.path)
-            }
+    fun collectSuggestedTestTaskPaths(
+        root: GradleProject,
+        maxPaths: Int = MAX_SUGGESTED_TEST_TASK_PATHS,
+    ): SuggestedTestTaskPaths {
+        val paths = TestTaskDiscovery.collectJvmTestTaskPaths(root)
+        if (paths.size <= maxPaths) {
+            return SuggestedTestTaskPaths(paths, truncated = false)
         }
-        project.children.toList().forEach { child ->
-            collectTestTaskPathsRecursive(child, out)
-        }
+        return SuggestedTestTaskPaths(paths.take(maxPaths), truncated = true)
     }
 
     private fun countGradleSubprojects(project: GradleProject): Int =
         project.children.toList().sumOf { child -> 1 + countGradleSubprojects(child) }
 }
 
+internal fun TestRunOptions.withTaskPath(taskPath: String): TestRunOptions =
+    copy(
+        selection = when (val current = selection) {
+            is TestRunSelection.Classes -> current.copy(taskPath = taskPath)
+            is TestRunSelection.Methods -> current.copy(taskPath = taskPath)
+            is TestRunSelection.Patterns, null -> selection
+        },
+    )
+
 context(runtime: GradleMcpRuntime)
 internal fun preflightRunTests(
     projectDirectory: File,
     options: TestRunOptions,
     deferScopeModelCheck: Boolean = false,
-) {
+): TestRunScopeResolution {
     if (!TestRunPreflight.requiresProjectScopeCheck(options)) {
-        return
+        return TestRunScopeResolution(options)
     }
     if (deferScopeModelCheck) {
-        return
+        return TestRunScopeResolution(options)
     }
-    ProjectLifecycleGuard.withNoActiveBuild(
+    return ProjectLifecycleGuard.withNoActiveBuild(
         projectDirectory = projectDirectory,
         buildExecutionManager = runtime.buildExecutionManager,
         message = { dir ->
@@ -133,14 +145,14 @@ internal fun ensureTestRunProjectScope(
     connectionManager: GradleConnectionManager,
     projectDirectory: File,
     options: TestRunOptions,
-) {
+): TestRunScopeResolution {
     if (!TestRunPreflight.requiresProjectScopeCheck(options)) {
-        return
+        return TestRunScopeResolution(options)
     }
-    connectionManager.withConnectionResult(projectDirectory) { connection ->
+    return connectionManager.withConnectionResult(projectDirectory) { connection ->
         val project = connection.getModel(GradleProject::class.java)
         if (project.children.isEmpty()) {
-            return@withConnectionResult
+            return@withConnectionResult TestRunScopeResolution(options)
         }
         connectionManager.cacheHasSubprojects(projectDirectory, hasSubprojects = true)
         TestRunPreflight.validateProjectScope(options, project)

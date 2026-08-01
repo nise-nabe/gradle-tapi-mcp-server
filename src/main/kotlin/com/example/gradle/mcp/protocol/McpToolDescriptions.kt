@@ -52,6 +52,7 @@ internal object McpToolDescriptions {
         "Run Gradle tasks. background→buildId; foreground auto-detaches ~45s; queueIfBusy; busy→activeBuildId."
 
     const val RUN_TESTS =
-        "Run JVM tests. Multi-project needs taskPath/tasks; unscoped errors list suggestedTaskPaths (capped). " +
+        "Run JVM tests. Multi-project infers taskPath when unambiguous; else needs taskPath/tasks. " +
+            "Errors list suggestedTaskPaths; success may include taskPathInferred. " +
             "background/detach/queue like gradle_run_tasks."
 }

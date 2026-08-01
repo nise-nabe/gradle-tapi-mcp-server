@@ -20,6 +20,7 @@ data class BuildRunRequest(
      * request bypasses MCP tool preflight — then execution still validates scope.
      */
     val testScopeValidatedAtPreflight: Boolean = false,
+    val taskPathInferred: Boolean = false,
 ) {
     val testClasses: List<String> get() = selection.testClassesForReporting()
     val testMethods: Map<String, List<String>> get() = selection.testMethodsOrEmpty()

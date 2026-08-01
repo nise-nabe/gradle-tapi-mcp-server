@@ -28,6 +28,7 @@ internal object BuildStatusAssembler {
                 "tests" -> {
                     response["testClasses"] = view.testClasses
                     response.putTestRunSelection(view.selection)
+                    response.putTaskPathInferredIfNeeded(view.taskPathInferred)
                 }
             }
         }
@@ -39,6 +40,7 @@ internal object BuildStatusAssembler {
             response["tasks"] = view.tasks
             response["testClasses"] = view.testClasses
             response.putTestRunSelection(view.selection)
+            response.putTaskPathInferredIfNeeded(view.taskPathInferred)
             response["statusSource"] = view.statusSource
         }
 

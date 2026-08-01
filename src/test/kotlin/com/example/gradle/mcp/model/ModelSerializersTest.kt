@@ -13,6 +13,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldStartWith
 import org.gradle.tooling.model.BuildIdentifier
+import org.gradle.tooling.model.GradleTask
 import org.gradle.tooling.model.Task
 import org.gradle.tooling.model.gradle.BasicGradleProject
 import org.gradle.tooling.model.gradle.GradleBuild
@@ -121,7 +122,7 @@ class ModelSerializersTest {
 
     @Test
     fun `gradleProject applies maxTasks globally across subprojects`() {
-        fun compileTasks(prefix: String, count: Int): List<org.gradle.tooling.model.Task> =
+        fun compileTasks(prefix: String, count: Int): List<GradleTask> =
             (1..count).map { index ->
                 mockTask("compile$index", "$prefix:compile$index", "build")
             }
@@ -434,7 +435,7 @@ class ModelSerializersTest {
 
     @Test
     fun `buildInvocations applies maxTasks globally with truncation metadata`() {
-        fun compileTasks(prefix: String, count: Int): List<org.gradle.tooling.model.Task> =
+        fun compileTasks(prefix: String, count: Int): List<GradleTask> =
             (1..count).map { index ->
                 mockTask("compile$index", "$prefix:compile$index", "build")
             }
@@ -826,10 +827,10 @@ class ModelSerializersTest {
             ),
         )
 
-    private fun mockTask(name: String, path: String, group: String): Task =
+    private fun mockTask(name: String, path: String, group: String): GradleTask =
         Proxy.newProxyInstance(
-            Task::class.java.classLoader,
-            arrayOf(Task::class.java),
+            GradleTask::class.java.classLoader,
+            arrayOf(GradleTask::class.java),
         ) { _, method, _ ->
             when (method.name) {
                 "getName" -> name
@@ -837,9 +838,10 @@ class ModelSerializersTest {
                 "getGroup" -> group
                 "getDescription" -> null
                 "getDisplayName" -> "task '$path'"
+                "getProject" -> null
                 else -> defaultProxyReturn(method)
             }
-        } as Task
+        } as GradleTask
 
     private fun mockBuildInvocations(
         tasks: List<Task>,

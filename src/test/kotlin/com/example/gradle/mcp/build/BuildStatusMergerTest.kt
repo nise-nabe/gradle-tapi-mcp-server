@@ -6,6 +6,7 @@ import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.support.TEST_ISO_FINISH
 import com.example.gradle.mcp.support.TEST_ISO_START
 import com.example.gradle.mcp.support.failedTestSnapshot
+import com.example.gradle.mcp.support.testBuildRecord
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
@@ -321,6 +322,32 @@ class BuildStatusMergerTest {
 
         merged.progress?.problems.orEmpty() shouldHaveSize 1
         merged.progress?.problems?.single()?.solutions shouldBe listOf("Fix imports", "Add dependency")
+    }
+
+    @Test
+    fun `merge preserves taskPathInferred from memory when disk view omits it`() {
+        val memory = BuildStatusView.fromRecord(
+            testBuildRecord(
+                id = "inferred-test",
+                kind = BuildKind.TESTS,
+                selection = TestRunSelection.Classes(
+                    classes = listOf("com.example.app.FooTest"),
+                    taskPath = ":app:test",
+                ),
+            ).apply { taskPathInferred = true },
+        )
+        val disk = diskView(
+            buildId = memory.buildId,
+            status = BuildProgressTracker.STATUS_SUCCEEDED,
+            stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+            buildSummary = mapOf("resultLine" to "BUILD SUCCESSFUL"),
+            recordDirectory = "/tmp/record",
+        )
+
+        val merged = BuildStatusMerger.merge(memory, disk)
+
+        merged.taskPathInferred shouldBe true
+        merged.taskPath shouldBe ":app:test"
     }
 
     private fun recordWithStdout(stdout: String): BuildRecord {
