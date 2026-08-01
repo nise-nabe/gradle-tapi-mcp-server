@@ -710,6 +710,52 @@ class ModelSerializersTest {
     }
 
     @Test
+    fun `buildInvocations scoped taskSelectors respect taskGroup filter`() {
+        val root = gradleProjectProxy(
+            name = "root",
+            path = ":",
+            directory = File("/root"),
+            children = listOf(
+                gradleProjectProxy(
+                    name = "plugin",
+                    path = ":plugin",
+                    directory = File("/root/plugin"),
+                    tasks = listOf(
+                        mockTask("pluginBuild", ":plugin:pluginBuild", "build"),
+                        mockTask("pluginTest", ":plugin:pluginTest", "verification"),
+                    ),
+                ),
+                gradleProjectProxy(
+                    name = "shared",
+                    path = ":shared",
+                    directory = File("/root/shared"),
+                    tasks = listOf(mockTask("sharedTest", ":shared:sharedTest", "verification")),
+                ),
+            ),
+        )
+        val invocations = mockBuildInvocations(
+            tasks = emptyList(),
+            selectors = listOf(
+                mockTaskSelector("pluginTest", ":"),
+                mockTaskSelector("pluginBuild", ":"),
+                mockTaskSelector("sharedTest", ":"),
+            ),
+        )
+
+        val scoped = ProjectTreeScope.requireProject(root, ":plugin")
+        val result = ModelSerializers.buildInvocations(
+            invocations,
+            scoped,
+            ModelQueryOptions(includeTaskSelectors = true, taskGroup = "verification"),
+            rootProject = root,
+        )
+
+        val selectors = result["taskSelectors"] as List<*>
+        selectors shouldHaveSize 1
+        (selectors.first() as Map<*, *>)["name"] shouldBe "pluginTest"
+    }
+
+    @Test
     fun `buildInvocations scoped to subproject excludes selectors without matching subtree tasks`() {
         val root = multiModuleRootForScoping()
         val invocations = mockBuildInvocations(

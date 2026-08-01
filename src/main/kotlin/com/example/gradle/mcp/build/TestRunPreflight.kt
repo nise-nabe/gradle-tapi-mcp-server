@@ -18,12 +18,30 @@ internal object TestRunPreflight {
         return unscoped && options.tasks.isEmpty()
     }
 
-    fun rejectUnscopedMultiProject(subprojectCount: Int? = null): Nothing {
+    fun rejectUnscopedMultiProject(
+        subprojectCount: Int? = null,
+        project: GradleProject? = null,
+    ): Nothing {
         val countPhrase = subprojectCount?.let { "($it subprojects)" } ?: "(multiple subprojects)"
+        val errorDetails = buildMap<String, Any?> {
+            project?.let { root ->
+                val paths = collectSuggestedTestTaskPaths(root)
+                if (paths.isNotEmpty()) {
+                    put("suggestedTaskPaths", paths)
+                }
+            }
+            put(
+                "hint",
+                "Pass taskPath (e.g. \":module:test\") or use tasks for custom JvmTestSuite names " +
+                    "(e.g. \":mod:fastTest\"). suggestedTaskPaths lists JVM Test task paths from the model " +
+                    "(name test or *Test; excludes lifecycle tasks like :check).",
+            )
+        }
         throw McpException(
             McpErrorCode.INVALID_ARGUMENT,
             "testClasses/testMethods without taskPath or tasks run matching tests in every subproject " +
                 "$countPhrase. Specify taskPath (e.g. \":module:test\") or tasks to scope execution.",
+            errorDetails = errorDetails,
         )
     }
 
@@ -34,11 +52,31 @@ internal object TestRunPreflight {
         if (project.children.isEmpty()) {
             return
         }
-        rejectUnscopedMultiProject(countGradleSubprojects(project))
+        rejectUnscopedMultiProject(countGradleSubprojects(project), project)
+    }
+
+    fun collectSuggestedTestTaskPaths(root: GradleProject): List<String> {
+        val paths = mutableListOf<String>()
+        collectTestTaskPathsRecursive(root, paths)
+        return paths.sorted()
+    }
+
+    private fun isLikelyJvmTestTaskName(name: String): Boolean =
+        name == "test" || name.endsWith("Test")
+
+    private fun collectTestTaskPathsRecursive(project: GradleProject, out: MutableList<String>) {
+        project.tasks.forEach { task ->
+            if (task.group == "verification" && isLikelyJvmTestTaskName(task.name)) {
+                out.add(task.path)
+            }
+        }
+        project.children.toList().forEach { child ->
+            collectTestTaskPathsRecursive(child, out)
+        }
     }
 
     private fun countGradleSubprojects(project: GradleProject): Int =
-        project.children.sumOf { child -> 1 + countGradleSubprojects(child) }
+        project.children.toList().sumOf { child -> 1 + countGradleSubprojects(child) }
 }
 
 context(runtime: GradleMcpRuntime)
@@ -49,9 +87,6 @@ internal fun preflightRunTests(
 ) {
     if (!TestRunPreflight.requiresProjectScopeCheck(options)) {
         return
-    }
-    if (runtime.connectionManager.cachedHasSubprojects(projectDirectory) == true) {
-        TestRunPreflight.rejectUnscopedMultiProject()
     }
     if (deferScopeModelCheck) {
         return
@@ -76,9 +111,6 @@ internal fun ensureTestRunProjectScope(
 ) {
     if (!TestRunPreflight.requiresProjectScopeCheck(options)) {
         return
-    }
-    if (connectionManager.cachedHasSubprojects(projectDirectory) == true) {
-        TestRunPreflight.rejectUnscopedMultiProject()
     }
     connectionManager.withConnectionResult(projectDirectory) { connection ->
         val project = connection.getModel(GradleProject::class.java)
