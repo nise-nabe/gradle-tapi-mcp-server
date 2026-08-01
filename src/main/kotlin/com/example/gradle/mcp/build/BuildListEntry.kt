@@ -8,6 +8,7 @@ internal data class BuildListEntry(
     val kind: String?,
     val tasks: List<String>,
     val selection: TestRunSelection? = null,
+    val taskPathInferred: Boolean = false,
     val projectDirectory: String?,
     val startedAt: String?,
     val finishedAt: String?,
@@ -35,6 +36,7 @@ internal data class BuildListEntry(
             put("tasks", tasks)
             put("testClasses", testClasses)
             putTestRunSelection(selection)
+            putTaskPathInferredIfNeeded(taskPathInferred)
             projectDirectory?.let { put("projectDirectory", it) }
             startedAt?.let { put("startedAt", it) }
             finishedAt?.let { put("finishedAt", it) }

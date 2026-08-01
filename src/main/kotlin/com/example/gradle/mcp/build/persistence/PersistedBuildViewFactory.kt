@@ -94,6 +94,7 @@ internal object PersistedBuildViewFactory {
             tasks = artifacts.mcpResult?.tasks?.takeIf { it.isNotEmpty() }
                 ?: artifacts.gradleResult?.taskNames.orEmpty(),
             selection = artifacts.mcpResult?.selection,
+            taskPathInferred = artifacts.mcpResult?.taskPathInferred ?: false,
             error = classified.error,
             failureKind = classified.failureKind
                 ?: artifacts.mcpResult?.failureKind?.let { runCatching { FailureKind.valueOf(it) }.getOrNull() },
