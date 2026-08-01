@@ -132,7 +132,7 @@ Same task query options as `gradle_get_project_model` (including `projectPath`, 
 
 Tasks are always included when this tool is called (`includeTasks` forced true internally).
 
-When `projectPath` is set, `taskSelectors` include only selectors whose task name is unique within the scoped subtree (names shared with sibling subprojects are omitted). Tooling API selectors are root-attached; prefer scoped `tasks` paths for precise invocation targets. `maxDepth` / `maxChildren` also limit the task names used for selector matching.
+When `projectPath` is set, `taskSelectors` include only selectors whose task name is unique within the scoped subtree (names shared with sibling subprojects are omitted). Tooling API selectors are often root-attached (`projectIdentifier.projectPath` is `:`); this server filters by matching selector **names** against tasks in the scoped subtree (and `taskGroup` / `taskNamePrefix` when set). Unit tests in `ModelSerializersTest` cover root-attached selectors, `maxDepth` truncation, and `taskGroup` scoping. Prefer explicit scoped `tasks` paths for precise invocation targets. `maxDepth` / `maxChildren` also limit the task names used for selector matching.
 
 ### gradle_get_project_publications
 
@@ -160,6 +160,8 @@ When `projectPath` is set, `taskSelectors` include only selectors whose task nam
 | `queueIfBusy` | no | `false` | Enqueue when the project already has a running or queued build. Requires `background=true`. |
 
 Response when `background=true`: `buildId`, `status` (`running` or `queued`), `kind`, `message`. Queued responses may include `queuePosition` and `queuedBehindBuildId`.
+
+Foreground builds auto-detach after ~45s when the MCP client request would time out: response includes `detached: true`, `buildId`, `status: "running"`, `message`, and `hint` to poll `gradle_get_build_status`. Use `background: true` explicitly for builds expected to exceed ~30s (cold IntelliJ Platform tests, first full `build`, etc.).
 
 Foreground responses include `outcome` (`SUCCESS` / `FAILED`), `buildSummary` (`resultLine`, `taskSummaryLine`), `failedTaskCount`, `failedTasks`, and `buildSummary.failureSummary` on failure. `stdout`/`stderr` are omitted unless `includeOutput=true` (truncated per `maxOutputChars`; CRLF normalized to LF). `progress` only when `includeProgress=true`.
 
@@ -194,7 +196,7 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 | One task, method map | `taskPath` + `testMethods` |
 | Custom suite only (`fastTest`) | `taskPath: ":mod:fastTest"` + classes/methods, **or** `tasks: [":mod:fastTest"]` + `includePatterns` |
 | Several Test tasks / suites in one build | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
-| Multi-project unscoped classes/methods | Invalid — must scope with `taskPath` or `tasks` |
+| Multi-project unscoped classes/methods | Invalid — must scope with `taskPath` or `tasks`. `INVALID_ARGUMENT` includes `suggestedTaskPaths` (verification-group tasks from the project model) and `hint` when the model is available. |
 
 `taskPath` uses `withTaskAndTest*` when combined with classes or methods (single task). `tasks` applies `TestLauncher.forTasks()` when non-empty; with patterns, each listed task gets the same `includePatterns`.
 
@@ -226,7 +228,7 @@ Cancels the Gradle daemon build via Tooling API `CancellationToken`. Returns imm
 | `buildId` | yes | — | Build ID from a background run |
 | `projectDirectory` | no | connected project | Project root for disk-only lookup when the in-memory record was evicted and the connected project differs |
 | `includeProgress` | no | `false` | Include detailed `progress` object |
-| `includeOutput` | no | `false` | Include stdout/stderr for running/completed builds |
+| `includeOutput` | no | `false` | Include stdout/stderr for running/completed builds. **Avoid `true` while `status` is `running`** unless debugging—prefer `sinceStdoutOffset` / `sinceStderrOffset` for incremental output, or read `testFailures` / `buildSummary` on terminal failure |
 | `maxOutputChars` | no | `8000` | Per-stream char limit when `includeOutput=true` |
 | `tailOutput` | no | `true` | Keep tail when truncating |
 | `sinceStdoutOffset` | no | — | With `includeOutput=true`, return `stdoutDelta` from this char offset (plus `stdoutOffset` for the next poll) instead of repeating the full tail |
@@ -235,7 +237,7 @@ Cancels the Gradle daemon build via Tooling API `CancellationToken`. Returns imm
 | `waitTimeoutMs` | no | `30000` | Max **server-side** wait when `waitUntilComplete=true` (capped at `60000`) |
 | `pollIntervalMs` | no | `2000` | Server-side poll interval while waiting |
 
-**Client vs server timeout:** `waitTimeoutMs` applies only inside this server. MCP hosts (e.g. Cursor) may kill the tool call earlier with a transport timeout such as `-32001`. For multi-minute builds, prefer plain polls (`waitUntilComplete` false/omitted) or short waits; treat `waitTimedOut` as “still running, poll again”, not server death. Without wait, status reads memory and/or `.gradle/mcp-builds/` only—no Tooling API call.
+**Client vs server timeout:** `waitTimeoutMs` applies only inside this server. MCP hosts (e.g. Cursor) may kill the tool call earlier with a transport timeout such as `-32001` (often ~90s). For multi-minute builds, prefer `background: true` at start or rely on foreground auto-detach (~45s) which returns `buildId` + `detached: true`; then poll without `includeOutput` until terminal. Prefer plain polls (`waitUntilComplete` false/omitted) or short waits; treat `waitTimedOut` as “still running, poll again”, not server death. Without wait, status reads memory and/or `.gradle/mcp-builds/` only—no Tooling API call.
 
 Returns `status` (`queued`, `running`, `succeeded`, `failed`, `cancelled`, or `not_found`), timestamps, `outcome`, and `buildSummary`. Always includes `statusSource` (`memory` or `disk`). Disk-backed responses also include `liveProgress` (`false`), `progressAvailable`, and `recordDirectory`. While memory reports `running`, memory status wins and disk `events.ndjson` task events are merged into `progress`; `recordDirectory` is included when disk artifacts exist. When memory is terminal or absent and memory and disk disagree, Gradle on-disk status wins while Gradle is still active; stale Gradle `running` (MCP terminal, no post-finalize events in `events.ndjson`) falls back to MCP. Completed builds include `failedTaskCount`, `failedTasks`, and `buildSummary.failureSummary` without `includeProgress` when available (in-memory, MCP-terminal disk, or Gradle-terminal failed with `events.ndjson`). Failed test runs also include `testFailures` (structured `className`, `methodName`, `exceptionType`, `message`, `sourceFile`, `line`) and `failedTestCount` without `includeOutput` or `includeTestDetails`. Terminal failures include `failureKind` and `failureCategory` (`TEST`, `GRADLE_TASK`, `TOOLING_CONNECTION`, `CANCELLED`). Persisted in `mcp-result.json` under `.gradle/mcp-builds/<buildId>/`. `stdout`/`stderr` are included only when `includeOutput=true`. When `sinceStdoutOffset` / `sinceStderrOffset` are set, responses use `stdoutDelta` / `stderrDelta` and `stdoutOffset` / `stderrOffset` so agents do not re-read prior log prefixes. When `waitUntilComplete=true` and the build is still running when `waitTimeoutMs` elapses, the response includes `waitTimedOut: true`, `waitedMs`, and `hint` (poll again; do not treat as MCP failure). While running, live output requires an in-memory record; disk-only polls return streams only after MCP finalizes logs at build end. `progress` only when `includeProgress=true`; with an in-memory record, includes `CONFIG_*` events from the live `ProgressListener` (task, test, and project-configuration) merged with disk `events.ndjson` task/test events plus capped lists. Disk-only polls read `events.ndjson` (task and test events only—not project-configuration, which the init script does not write).
 
@@ -262,7 +264,7 @@ Detailed parameter semantics live in this reference (Layer 3). Tool `description
 
 ### Tool errors vs build outcomes
 
-- **Tool errors** (`isError=true`): structured `{ "error": { "code", "message", ... } }` for preflight failures (`NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, …). `BUILD_ALREADY_RUNNING` and `BUILD_QUEUE_FULL` include `activeBuildId`, `activeKind`, `activeStatus`, and task/test fields (`activeTasks`, `activeTestClasses`, …) when the occupying build is known. `activeStatus` reflects the occupying record (`running` or `queued`), not the error code name. Global pool saturation returns `activeBuildIds` when multiple builds are running.
+- **Tool errors** (`isError=true`): structured `{ "error": { "code", "message", ... } }` for preflight failures (`NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, …). `BUILD_ALREADY_RUNNING` and `BUILD_QUEUE_FULL` include `activeBuildId`, `activeKind`, `activeStatus`, and task/test fields (`activeTasks`, `activeTestClasses`, …) when the occupying build is known. `activeStatus` reflects the occupying record (`running` or `queued`), not the error code name. Global pool saturation returns `activeBuildIds` when multiple builds are running. Multi-project `gradle_run_tests` without `taskPath`/`tasks` returns `INVALID_ARGUMENT` with `suggestedTaskPaths` and `hint` when the Gradle project model is available.
 - **Build outcomes** (`isError=false`): `gradle_run_tasks` / `gradle_run_tests` foreground responses and `gradle_get_build_status` terminal polls return `status: "failed"` / `outcome: "FAILED"` with `buildSummary`—not `error.code: BUILD_FAILED`.
 - **`BUILD_FAILED`**: reserved for tooling/setup failures where Gradle could not be invoked meaningfully (for example `gradle_get_java_runtimes` when `javaToolchains` probing fails).
 
