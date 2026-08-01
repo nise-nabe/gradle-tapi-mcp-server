@@ -674,6 +674,9 @@ class BuildExecutionManagerRunTest {
         detached["status"] shouldBe "running"
         detached["detached"] shouldBe true
         detached["buildId"].shouldNotBeNull()
+        detached["hint"] shouldBe
+            "Use background: true for builds that may exceed ~30s. Poll without includeOutput until terminal; " +
+            "on failure read testFailures/buildSummary before enabling includeOutput."
         manager.hasActiveBuild().shouldBeTrue()
 
         releaseBuild.countDown()

@@ -131,11 +131,12 @@ class TestRunPreflightTest {
         error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test", ":plugin:fastTest")
         error.errorDetails["hint"] shouldBe
             "Pass taskPath (e.g. \":module:test\") or use tasks for custom JvmTestSuite names " +
-            "(e.g. \":mod:fastTest\"). suggestedTaskPaths lists verification-group tasks from the model."
+            "(e.g. \":mod:fastTest\"). suggestedTaskPaths lists JVM Test task paths from the model " +
+            "(name test or *Test; excludes lifecycle tasks like :check)."
     }
 
     @Test
-    fun `collectSuggestedTestTaskPaths uses task path for root verification tasks`() {
+    fun `collectSuggestedTestTaskPaths includes JVM test tasks and excludes lifecycle verification tasks`() {
         val project = gradleProjectProxy(
             path = ":",
             tasks = listOf(mockVerificationTask("check", ":check")),
@@ -148,7 +149,37 @@ class TestRunPreflightTest {
             ),
         )
 
-        TestRunPreflight.collectSuggestedTestTaskPaths(project) shouldBe listOf(":app:test", ":check")
+        TestRunPreflight.collectSuggestedTestTaskPaths(project) shouldBe listOf(":app:test")
+    }
+
+    @Test
+    fun `ensureTestRunProjectScope rejects deferred multi-project run with suggestedTaskPaths`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            connection = gradleProjectConnectionProxy(
+                gradleProjectProxy(
+                    children = listOf(
+                        gradleProjectProxy(
+                            name = "app",
+                            path = ":app",
+                            tasks = listOf(mockVerificationTask("test", ":app:test")),
+                        ),
+                    ),
+                ),
+            ),
+            projectDirectory = projectDirectory,
+        )
+
+        val error = shouldThrow<McpException> {
+            ensureTestRunProjectScope(
+                connectionManager,
+                projectDirectory,
+                TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest"))),
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test")
     }
 
     @Test

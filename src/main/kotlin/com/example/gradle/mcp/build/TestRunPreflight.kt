@@ -33,7 +33,8 @@ internal object TestRunPreflight {
             put(
                 "hint",
                 "Pass taskPath (e.g. \":module:test\") or use tasks for custom JvmTestSuite names " +
-                    "(e.g. \":mod:fastTest\"). suggestedTaskPaths lists verification-group tasks from the model.",
+                    "(e.g. \":mod:fastTest\"). suggestedTaskPaths lists JVM Test task paths from the model " +
+                    "(name test or *Test; excludes lifecycle tasks like :check).",
             )
         }
         throw McpException(
@@ -60,9 +61,12 @@ internal object TestRunPreflight {
         return paths.sorted()
     }
 
+    private fun isLikelyJvmTestTaskName(name: String): Boolean =
+        name == "test" || name.endsWith("Test")
+
     private fun collectTestTaskPathsRecursive(project: GradleProject, out: MutableList<String>) {
         project.tasks.forEach { task ->
-            if (task.group == "verification") {
+            if (task.group == "verification" && isLikelyJvmTestTaskName(task.name)) {
                 out.add(task.path)
             }
         }

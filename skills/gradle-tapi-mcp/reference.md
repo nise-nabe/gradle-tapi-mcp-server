@@ -196,7 +196,7 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 | One task, method map | `taskPath` + `testMethods` |
 | Custom suite only (`fastTest`) | `taskPath: ":mod:fastTest"` + classes/methods, **or** `tasks: [":mod:fastTest"]` + `includePatterns` |
 | Several Test tasks / suites in one build | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
-| Multi-project unscoped classes/methods | Invalid — must scope with `taskPath` or `tasks`. `INVALID_ARGUMENT` includes `suggestedTaskPaths` (verification-group tasks from the project model) and `hint` when the model is available. |
+| Multi-project unscoped classes/methods | Invalid — must scope with `taskPath` or `tasks`. `INVALID_ARGUMENT` includes `suggestedTaskPaths` (JVM Test task paths from the model: name `test` or `*Test`) and `hint` when the model is available. |
 
 `taskPath` uses `withTaskAndTest*` when combined with classes or methods (single task). `tasks` applies `TestLauncher.forTasks()` when non-empty; with patterns, each listed task gets the same `includePatterns`.
 
