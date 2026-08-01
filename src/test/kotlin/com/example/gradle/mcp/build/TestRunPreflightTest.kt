@@ -42,11 +42,22 @@ class TestRunPreflightTest {
     }
 
     @Test
-    fun `preflightRunTests skips getModel when multi-project is cached`() {
+    fun `preflightRunTests loads model when multi-project is cached to include suggestedTaskPaths`() {
         val getModelCalls = AtomicInteger(0)
         val connectionManager = GradleConnectionManager()
         connectionManager.seedConnectionForTests(
-            connection = gradleProjectConnectionProxy(gradleProjectProxy(), getModelCalls),
+            connection = gradleProjectConnectionProxy(
+                gradleProjectProxy(
+                    children = listOf(
+                        gradleProjectProxy(
+                            name = "app",
+                            path = ":app",
+                            tasks = listOf(mockVerificationTask("test", ":app:test")),
+                        ),
+                    ),
+                ),
+                getModelCalls,
+            ),
             projectDirectory = projectDirectory,
             cachedHasSubprojects = true,
         )
@@ -62,7 +73,8 @@ class TestRunPreflightTest {
         }
 
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
-        getModelCalls.get() shouldBe 0
+        error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test")
+        getModelCalls.get() shouldBe 1
     }
 
     @Test
@@ -119,7 +131,75 @@ class TestRunPreflightTest {
         error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test", ":plugin:fastTest")
         error.errorDetails["hint"] shouldBe
             "Pass taskPath (e.g. \":module:test\") or use tasks for custom JvmTestSuite names " +
-            "(e.g. \":mod:fastTest\")."
+            "(e.g. \":mod:fastTest\"). suggestedTaskPaths lists verification-group tasks from the model."
+    }
+
+    @Test
+    fun `collectSuggestedTestTaskPaths uses task path for root verification tasks`() {
+        val project = gradleProjectProxy(
+            path = ":",
+            tasks = listOf(mockVerificationTask("check", ":check")),
+            children = listOf(
+                gradleProjectProxy(
+                    name = "app",
+                    path = ":app",
+                    tasks = listOf(mockVerificationTask("test", ":app:test")),
+                ),
+            ),
+        )
+
+        TestRunPreflight.collectSuggestedTestTaskPaths(project) shouldBe listOf(":app:test", ":check")
+    }
+
+    @Test
+    fun `preflightRunTests defers scope check when multi-project is cached and deferScopeModelCheck is true`() {
+        val getModelCalls = AtomicInteger(0)
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            connection = gradleProjectConnectionProxy(gradleProjectProxy(), getModelCalls),
+            projectDirectory = projectDirectory,
+            cachedHasSubprojects = true,
+        )
+        val runtime = DefaultGradleMcpRuntime(connectionManager, BuildExecutionManager(connectionManager))
+        val options = TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest")))
+
+        with(runtime) {
+            preflightRunTests(projectDirectory, options, deferScopeModelCheck = true)
+        }
+
+        getModelCalls.get() shouldBe 0
+    }
+
+    @Test
+    fun `preflightRunTests includes suggestedTaskPaths after model load`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            connection = gradleProjectConnectionProxy(
+                gradleProjectProxy(
+                    children = listOf(
+                        gradleProjectProxy(
+                            name = "app",
+                            path = ":app",
+                            tasks = listOf(mockVerificationTask("test", ":app:test")),
+                        ),
+                    ),
+                ),
+            ),
+            projectDirectory = projectDirectory,
+        )
+        val runtime = DefaultGradleMcpRuntime(connectionManager, BuildExecutionManager(connectionManager))
+
+        val error = shouldThrow<McpException> {
+            with(runtime) {
+                preflightRunTests(
+                    projectDirectory,
+                    TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest"))),
+                )
+            }
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test")
     }
 
     @Test

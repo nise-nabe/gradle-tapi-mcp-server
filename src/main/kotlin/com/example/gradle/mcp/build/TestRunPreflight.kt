@@ -33,7 +33,7 @@ internal object TestRunPreflight {
             put(
                 "hint",
                 "Pass taskPath (e.g. \":module:test\") or use tasks for custom JvmTestSuite names " +
-                    "(e.g. \":mod:fastTest\").",
+                    "(e.g. \":mod:fastTest\"). suggestedTaskPaths lists verification-group tasks from the model.",
             )
         }
         throw McpException(
@@ -63,7 +63,7 @@ internal object TestRunPreflight {
     private fun collectTestTaskPathsRecursive(project: GradleProject, out: MutableList<String>) {
         project.tasks.forEach { task ->
             if (task.group == "verification") {
-                out.add("${project.path}:${task.name}")
+                out.add(task.path)
             }
         }
         project.children.toList().forEach { child ->
@@ -83,9 +83,6 @@ internal fun preflightRunTests(
 ) {
     if (!TestRunPreflight.requiresProjectScopeCheck(options)) {
         return
-    }
-    if (runtime.connectionManager.cachedHasSubprojects(projectDirectory) == true) {
-        TestRunPreflight.rejectUnscopedMultiProject()
     }
     if (deferScopeModelCheck) {
         return
@@ -110,9 +107,6 @@ internal fun ensureTestRunProjectScope(
 ) {
     if (!TestRunPreflight.requiresProjectScopeCheck(options)) {
         return
-    }
-    if (connectionManager.cachedHasSubprojects(projectDirectory) == true) {
-        TestRunPreflight.rejectUnscopedMultiProject()
     }
     connectionManager.withConnectionResult(projectDirectory) { connection ->
         val project = connection.getModel(GradleProject::class.java)
