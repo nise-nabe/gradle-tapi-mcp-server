@@ -6,10 +6,13 @@ import org.gradle.tooling.model.Task
 internal object TestTaskDiscovery {
     const val MULTI_PROJECT_TEST_SCOPE_HINT =
         "Pass taskPath (e.g. \":module:test\"), or use tasks: [\":mod:test\", \":mod:fastTest\"] " +
-            "for custom JvmTestSuite suite names."
+            "for custom JvmTestSuite suite names. Auto taskPath inference matches package suffix " +
+            "tokens to subproject path segments and rejects ambiguous ties."
 
     fun collectJvmTestTaskPaths(project: GradleProject): List<String> =
-        collectJvmTestTasks(project).map { it.taskPath }.sorted()
+        collectJvmTestTasks(project)
+            .map { it.taskPath }
+            .sortedWith(::compareGradleTaskPathsNaturally)
 
     fun inferTaskPath(project: GradleProject, classNames: List<String>): String? {
         val testTasks = collectJvmTestTasks(project)
@@ -17,7 +20,7 @@ internal object TestTaskDiscovery {
             return null
         }
         if (testTasks.size == 1) {
-            return testTasks.single().taskPath
+            return inferTaskPathForSingleTestTask(testTasks.single(), classNames)
         }
         if (classNames.isEmpty()) {
             return null
@@ -48,6 +51,19 @@ internal object TestTaskDiscovery {
         return name.equals("test", ignoreCase = true) || name.endsWith("Test")
     }
 
+    internal fun compareGradleTaskPathsNaturally(left: String, right: String): Int {
+        val leftParts = left.split(':').filter { it.isNotEmpty() }
+        val rightParts = right.split(':').filter { it.isNotEmpty() }
+        val sharedParts = minOf(leftParts.size, rightParts.size)
+        for (index in 0 until sharedParts) {
+            val comparison = comparePathSegmentsNaturally(leftParts[index], rightParts[index])
+            if (comparison != 0) {
+                return comparison
+            }
+        }
+        return leftParts.size.compareTo(rightParts.size)
+    }
+
     private data class JvmTestTaskRef(
         val projectPath: String,
         val taskPath: String,
@@ -68,6 +84,16 @@ internal object TestTaskDiscovery {
         project.children.forEach { child ->
             collectJvmTestTasksRecursive(child, result)
         }
+    }
+
+    private fun inferTaskPathForSingleTestTask(task: JvmTestTaskRef, classNames: List<String>): String? {
+        if (classNames.isEmpty()) {
+            return null
+        }
+        val allMatch = classNames.all { className ->
+            bestMatchingProjectPath(setOf(task.projectPath), className) == task.projectPath
+        }
+        return if (allMatch) task.taskPath else null
     }
 
     private fun bestMatchingProjectPath(projectPaths: Set<String>, className: String): String? {
@@ -96,6 +122,33 @@ internal object TestTaskDiscovery {
         return score
     }
 
+    private fun comparePathSegmentsNaturally(left: String, right: String): Int {
+        val leftTokens = tokenizePathSegment(left)
+        val rightTokens = tokenizePathSegment(right)
+        val sharedTokens = minOf(leftTokens.size, rightTokens.size)
+        for (index in 0 until sharedTokens) {
+            val comparison = compareNaturalTokens(leftTokens[index], rightTokens[index])
+            if (comparison != 0) {
+                return comparison
+            }
+        }
+        return leftTokens.size.compareTo(rightTokens.size)
+    }
+
+    private fun tokenizePathSegment(segment: String): List<String> =
+        NATURAL_SORT_TOKEN_PATTERN.findAll(segment).map { it.value.lowercase() }.toList()
+
+    private fun compareNaturalTokens(left: String, right: String): Int {
+        val leftNumber = left.toIntOrNull()
+        val rightNumber = right.toIntOrNull()
+        return when {
+            leftNumber != null && rightNumber != null -> leftNumber.compareTo(rightNumber)
+            leftNumber != null -> -1
+            rightNumber != null -> 1
+            else -> left.compareTo(right)
+        }
+    }
+
     private fun projectPathTokens(projectPath: String): List<String> =
         projectPath
             .trim(':')
@@ -103,4 +156,6 @@ internal object TestTaskDiscovery {
             .flatMap { segment -> segment.split('-', '_') }
             .filter { it.isNotBlank() }
             .map { it.lowercase() }
+
+    private val NATURAL_SORT_TOKEN_PATTERN = Regex("""\d+|\D+""")
 }

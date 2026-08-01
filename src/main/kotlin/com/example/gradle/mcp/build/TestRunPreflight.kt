@@ -35,19 +35,19 @@ internal object TestRunPreflight {
         project: GradleProject? = null,
     ): Nothing {
         val countPhrase = subprojectCount?.let { "($it subprojects)" } ?: "(multiple subprojects)"
+        val suggestion = project?.let { collectSuggestedTestTaskPaths(it) }
         val errorDetails = buildMap<String, Any?> {
-            project?.let { root ->
-                val suggestion = collectSuggestedTestTaskPaths(root)
-                if (suggestion.paths.isNotEmpty()) {
-                    put("suggestedTaskPaths", suggestion.paths)
-                    if (suggestion.truncated) {
+            suggestion?.let { resolved ->
+                if (resolved.paths.isNotEmpty()) {
+                    put("suggestedTaskPaths", resolved.paths)
+                    if (resolved.truncated) {
                         put("suggestedTaskPathsTruncated", true)
                     }
                 }
             }
             put(
                 "hint",
-                buildHint(project != null),
+                buildHint(project != null, suggestion?.truncated == true),
             )
         }
         throw McpException(
@@ -83,13 +83,18 @@ internal object TestRunPreflight {
         return resolveMultiProjectScope(options, project)
     }
 
-    private fun buildHint(hasProjectModel: Boolean): String {
+    private fun buildHint(hasProjectModel: Boolean, truncated: Boolean): String {
         val base = TestTaskDiscovery.MULTI_PROJECT_TEST_SCOPE_HINT
         if (!hasProjectModel) {
             return base
         }
-        return "$base suggestedTaskPaths lists JVM Test task paths (name test or *Test). " +
-            "When truncated, use gradle_get_project_model with includeTasks=true for the full list."
+        val suffix = buildString {
+            append(" suggestedTaskPaths lists JVM Test task paths (name test or *Test).")
+            if (truncated) {
+                append(" When truncated, use gradle_get_project_model with includeTasks=true for the full list.")
+            }
+        }
+        return base + suffix
     }
 
     fun collectSuggestedTestTaskPaths(
