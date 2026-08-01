@@ -8,6 +8,7 @@ import com.example.gradle.mcp.support.defaultProxyReturn
 import com.example.gradle.mcp.support.gradleJvmTestTaskProxy
 import com.example.gradle.mcp.support.gradleProjectConnectionProxy
 import com.example.gradle.mcp.support.gradleProjectProxy
+import com.example.gradle.mcp.support.testProjectDirectory
 import com.example.gradle.mcp.support.testRunProjectConnection
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContain
@@ -22,7 +23,7 @@ import java.lang.reflect.Proxy
 import java.util.concurrent.atomic.AtomicInteger
 
 class TestRunPreflightTest {
-    private val projectDirectory = File("/workspace").absoluteFile
+    private val projectDirectory = testProjectDirectory
 
     @Test
     fun `preflightRunTests refetches single-project on each call because false is not cached`() {
