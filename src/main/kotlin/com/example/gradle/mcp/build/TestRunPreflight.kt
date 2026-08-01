@@ -18,12 +18,29 @@ internal object TestRunPreflight {
         return unscoped && options.tasks.isEmpty()
     }
 
-    fun rejectUnscopedMultiProject(subprojectCount: Int? = null): Nothing {
+    fun rejectUnscopedMultiProject(
+        subprojectCount: Int? = null,
+        project: GradleProject? = null,
+    ): Nothing {
         val countPhrase = subprojectCount?.let { "($it subprojects)" } ?: "(multiple subprojects)"
+        val errorDetails = buildMap<String, Any?> {
+            project?.let { root ->
+                val paths = collectSuggestedTestTaskPaths(root)
+                if (paths.isNotEmpty()) {
+                    put("suggestedTaskPaths", paths)
+                }
+            }
+            put(
+                "hint",
+                "Pass taskPath (e.g. \":module:test\") or use tasks for custom JvmTestSuite names " +
+                    "(e.g. \":mod:fastTest\").",
+            )
+        }
         throw McpException(
             McpErrorCode.INVALID_ARGUMENT,
             "testClasses/testMethods without taskPath or tasks run matching tests in every subproject " +
                 "$countPhrase. Specify taskPath (e.g. \":module:test\") or tasks to scope execution.",
+            errorDetails = errorDetails,
         )
     }
 
@@ -34,11 +51,28 @@ internal object TestRunPreflight {
         if (project.children.isEmpty()) {
             return
         }
-        rejectUnscopedMultiProject(countGradleSubprojects(project))
+        rejectUnscopedMultiProject(countGradleSubprojects(project), project)
+    }
+
+    fun collectSuggestedTestTaskPaths(root: GradleProject): List<String> {
+        val paths = mutableListOf<String>()
+        collectTestTaskPathsRecursive(root, paths)
+        return paths.sorted()
+    }
+
+    private fun collectTestTaskPathsRecursive(project: GradleProject, out: MutableList<String>) {
+        project.tasks.forEach { task ->
+            if (task.group == "verification") {
+                out.add("${project.path}:${task.name}")
+            }
+        }
+        project.children.toList().forEach { child ->
+            collectTestTaskPathsRecursive(child, out)
+        }
     }
 
     private fun countGradleSubprojects(project: GradleProject): Int =
-        project.children.sumOf { child -> 1 + countGradleSubprojects(child) }
+        project.children.toList().sumOf { child -> 1 + countGradleSubprojects(child) }
 }
 
 context(runtime: GradleMcpRuntime)

@@ -4,6 +4,7 @@ import com.example.gradle.mcp.DefaultGradleMcpRuntime
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.support.defaultProxyReturn
 import com.example.gradle.mcp.support.gradleProjectConnectionProxy
 import com.example.gradle.mcp.support.gradleProjectProxy
 import com.example.gradle.mcp.support.testRunProjectConnection
@@ -11,8 +12,10 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.runBlocking
+import org.gradle.tooling.model.GradleTask
 import org.junit.jupiter.api.Test
 import java.io.File
+import java.lang.reflect.Proxy
 import java.util.concurrent.atomic.AtomicInteger
 
 class TestRunPreflightTest {
@@ -86,6 +89,37 @@ class TestRunPreflightTest {
 
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
         connectionManager.cachedHasSubprojects(projectDirectory) shouldBe true
+    }
+
+    @Test
+    fun `validateProjectScope includes suggestedTaskPaths for verification tasks`() {
+        val project = gradleProjectProxy(
+            children = listOf(
+                gradleProjectProxy(
+                    name = "app",
+                    path = ":app",
+                    tasks = listOf(mockVerificationTask("test", ":app:test")),
+                ),
+                gradleProjectProxy(
+                    name = "plugin",
+                    path = ":plugin",
+                    tasks = listOf(mockVerificationTask("fastTest", ":plugin:fastTest")),
+                ),
+            ),
+        )
+
+        val error = shouldThrow<McpException> {
+            TestRunPreflight.validateProjectScope(
+                TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest"))),
+                project,
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test", ":plugin:fastTest")
+        error.errorDetails["hint"] shouldBe
+            "Pass taskPath (e.g. \":module:test\") or use tasks for custom JvmTestSuite names " +
+            "(e.g. \":mod:fastTest\")."
     }
 
     @Test
@@ -207,4 +241,19 @@ class TestRunPreflightTest {
 
         getModelCalls.get() shouldBe 1
     }
+
+    private fun mockVerificationTask(name: String, path: String): GradleTask =
+        Proxy.newProxyInstance(
+            GradleTask::class.java.classLoader,
+            arrayOf(GradleTask::class.java),
+        ) { _, method, _ ->
+            when (method.name) {
+                "getName" -> name
+                "getPath" -> path
+                "getGroup" -> "verification"
+                "getDescription" -> null
+                "getDisplayName" -> "task '$path'"
+                else -> defaultProxyReturn(method)
+            }
+        } as GradleTask
 }
