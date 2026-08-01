@@ -60,7 +60,7 @@ internal data class ActiveBuildSnapshot(
                 it.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING
             } ?: preferredQueuedBuildId?.let { buildId ->
                 active.firstOrNull { it.id == buildId }
-            } ?: active.minByOrNull { it.id }
+            } ?: active.minByOrNull { it.startedAt }
             return record?.let(::fromRecord)
         }
 

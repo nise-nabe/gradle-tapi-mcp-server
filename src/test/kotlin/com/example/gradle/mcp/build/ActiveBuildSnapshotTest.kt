@@ -99,26 +99,28 @@ class ActiveBuildSnapshotTest {
     }
 
     @Test
-    fun `forProject picks lowest build id when no running or preferred queued build`() {
-        val first = testBuildRecord(
-            id = "queued-a",
+    fun `forProject picks earliest queued build when no running or preferred queued build`() {
+        val earlier = testBuildRecord(
+            id = "queued-z",
             tracker = queuedTracker(),
             projectDirectory = testProjectDirectory.absolutePath,
             tasks = listOf("first"),
+            startedAt = java.time.Instant.parse("2026-06-14T10:00:00Z"),
         )
-        val second = testBuildRecord(
-            id = "queued-b",
+        val later = testBuildRecord(
+            id = "queued-a",
             tracker = queuedTracker(),
             projectDirectory = testProjectDirectory.absolutePath,
             tasks = listOf("second"),
+            startedAt = java.time.Instant.parse("2026-06-14T10:01:00Z"),
         )
 
         val snapshot = ActiveBuildSnapshot.forProject(
-            builds = listOf(second, first),
+            builds = listOf(later, earlier),
             projectDirectory = testProjectDirectory,
         )
 
-        snapshot?.activeBuildId shouldBe "queued-a"
+        snapshot?.activeBuildId shouldBe "queued-z"
     }
 
     @Test
