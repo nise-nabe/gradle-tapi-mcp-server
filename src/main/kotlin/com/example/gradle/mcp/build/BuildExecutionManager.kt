@@ -750,6 +750,11 @@ class BuildExecutionManager(
                 "MCP client request ended; build continues in background. " +
                     "Poll gradle_get_build_status with this buildId.",
             )
+            put(
+                "hint",
+                "Use background: true for builds that may exceed ~30s. Poll without includeOutput until terminal; " +
+                    "on failure read testFailures/buildSummary before enabling includeOutput.",
+            )
         }
 
     private fun configureLauncher(

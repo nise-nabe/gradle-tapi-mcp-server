@@ -146,7 +146,11 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 
 → `gradle_get_build_status`（`status`, `outcome`, `buildSummary`；失敗時は `problems` / `failureKind` / `failureCategory` も；`stdout`/`stderr` は `includeOutput=true` 時のみ—ディスクのみポーリングでは完了まで空；`progress` は `includeProgress=true` 時のみ—実行中はメモリと disk の `events.ndjson` をマージ；`recordDirectory` で `.gradle/mcp-builds/<buildId>/` を参照可能；`statusSource` は常に付与）
 
-**待ち方:** 数分かかるビルドで `waitUntilComplete: true` を長時間（例: 3 分）にしない。`waitTimeoutMs` は **サーバー側のみ**（デフォルト 30s / 上限 60s）で、MCP クライアントの transport timeout（Cursor の `-32001` など）とは別物。長い 1 回待ちは「MCP 死亡」に見えやすい。短い待ちか、待ちなしポーリングを繰り返す。タイムアウト時は `waitTimedOut` / `waitedMs` / `hint` が返り、ビルドは継続中のまま。待ちなしの status はメモリ/ディスク読み取りのみで Tooling API をブロックしない。
+**待ち方:** 数分かかるビルドで `waitUntilComplete: true` を長時間（例: 3 分）にしない。`waitTimeoutMs` は **サーバー側のみ**（デフォルト 30s / 上限 60s）で、MCP クライアントの transport timeout（Cursor の `-32001` など、多くは ~90s）とは別物。長い 1 回待ちは「MCP 死亡」に見えやすい。短い待ちか、待ちなしポーリングを繰り返す。タイムアウト時は `waitTimedOut` / `waitedMs` / `hint` が返り、ビルドは継続中のまま。待ちなしの status はメモリ/ディスク読み取りのみで Tooling API をブロックしない。
+
+**フォアグラウンド自動デタッチ:** `background: false` のまま長時間かかるビルドは、MCP クライアント timeout 前（既定 ~45s）に `detached: true` と `buildId` を返し、バックグラウンド継続する。コールドな IntelliJ Platform テストや初回 `build` は **`background: true` を明示**するのが安全。
+
+**ポーリング時のトークン節約:** `status: running` の間は `gradle_get_build_status` に `includeOutput: true` を付けない（デバッグ時以外）。ライブログは `sinceStdoutOffset` / `sinceStderrOffset`、失敗時は `testFailures` / `buildSummary` を先に読む。
 
 `buildId` は必須（並行ビルド時の取り違え防止）。**同一 `projectDirectory` では MCP ビルドは 1 本のみ**（2 本目は `BUILD_ALREADY_RUNNING` で `error.activeBuildId` 等が付く場合あり）。終端ステータスになった瞬間にゲートは解放される（grace なし）。別プロジェクトへの並行ビルドはサーバー側上限まで可能。同一 checkout で MCP と shell の `./gradlew` を並行しないこと（IntelliJ Platform の `:plugin:test` は sandbox 競合でハングしやすい）。上限到達時も `BUILD_ALREADY_RUNNING` が返り、`activeBuildIds`（単一時は `activeBuildId` も）で占有ビルドを特定できる。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` を `running` でなくなるまでポーリングして終端ステータス（`cancelled` / `succeeded` / `failed`）を確認する。
 
