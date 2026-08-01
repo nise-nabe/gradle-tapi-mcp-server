@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.protocol
 
+import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -25,6 +26,7 @@ class McpToolSchemaSizeTest {
         val payloadChars = encodeMcpJsonDynamic(tools).length
 
         payloadChars shouldBeLessThanOrEqual MAX_TOTAL_TOOLS_LIST_CHARS
+        (MAX_TOTAL_TOOLS_LIST_CHARS - payloadChars) shouldBeGreaterThanOrEqual MIN_TOTAL_TOOLS_HEADROOM_CHARS
         allMcpToolSpecs().forEach { spec ->
             toolDefinitionChars(spec) shouldBeLessThanOrEqual MAX_SINGLE_TOOL_CHARS
             spec.description.length shouldBeLessThanOrEqual MAX_DESCRIPTION_CHARS
@@ -32,7 +34,13 @@ class McpToolSchemaSizeTest {
     }
 
     private companion object {
-        const val MAX_TOTAL_TOOLS_LIST_CHARS = 15_125
+        /**
+         * Total serialized tools/list payload budget. When extending tool descriptions, trim elsewhere
+         * first; bump this only when net growth is unavoidable and leave at least
+         * [MIN_TOTAL_TOOLS_HEADROOM_CHARS] below the new limit.
+         */
+        const val MAX_TOTAL_TOOLS_LIST_CHARS = 15_100
+        const val MIN_TOTAL_TOOLS_HEADROOM_CHARS = 200
         const val MAX_SINGLE_TOOL_CHARS = 3_100
         const val MAX_DESCRIPTION_CHARS = 220
 

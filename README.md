@@ -131,9 +131,17 @@ The single-flight gate (one MCP build per `projectDirectory`) releases as soon a
 | One Test task + method map | `taskPath` + `testMethods` |
 | Custom `JvmTestSuite` (e.g. `fastTest`) | Same as above with `taskPath: ":mod:fastTest"`, or `tasks: [":mod:fastTest"]` + `includePatterns` |
 | Several Test tasks in **one** MCP build | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
-| Multi-project without scoping | Avoid unscoped `testClasses`/`testMethods` — returns `INVALID_ARGUMENT` |
+| Multi-project without scoping | Avoid unscoped `testClasses`/`testMethods` — returns `INVALID_ARGUMENT` with `suggestedTaskPaths` (capped) and `hint` |
 
 Exactly one of `testClasses`, `testMethods`, or `includePattern(s)` is required. Patterns require `tasks`.
+
+## Agent workflows
+
+Key defaults for MCP clients and agents (full detail in `skills/gradle-tapi-mcp/SKILL.md` and `skills/gradle-tapi-mcp/reference.md`):
+
+- **Long builds:** pass `background: true` for runs that may exceed ~30s. Foreground `gradle_run_tasks` / `gradle_run_tests` auto-detach after ~45s with `detached: true` and a `buildId` to poll.
+- **Status polling:** call `gradle_get_build_status` without `includeOutput` while `status` is `running`. Use `sinceStdoutOffset` / `sinceStderrOffset` for live logs, or read `testFailures` / `buildSummary` on terminal failure.
+- **Multi-project tests:** `gradle_run_tests` requires `taskPath` or `tasks` when using `testClasses` / `testMethods`. Unscoped errors include up to 20 `suggestedTaskPaths` (`suggestedTaskPathsTruncated: true` when capped) plus a `hint`; use `gradle_get_project_model` with `includeTasks=true` for the full task list.
 
 When the MCP client supplies a progress token, the server may also emit MCP progress/logging notifications during the run.
 

@@ -9,6 +9,7 @@ import com.example.gradle.mcp.support.gradleProjectConnectionProxy
 import com.example.gradle.mcp.support.gradleProjectProxy
 import com.example.gradle.mcp.support.testRunProjectConnection
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.runBlocking
@@ -131,8 +132,48 @@ class TestRunPreflightTest {
         error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test", ":plugin:fastTest")
         error.errorDetails["hint"] shouldBe
             "Pass taskPath (e.g. \":module:test\") or use tasks for custom JvmTestSuite names " +
-            "(e.g. \":mod:fastTest\"). suggestedTaskPaths lists JVM Test task paths from the model " +
-            "(name test or *Test; excludes lifecycle tasks like :check)."
+            "(e.g. \":mod:fastTest\"). suggestedTaskPaths lists JVM Test task paths (name test or *Test). " +
+            "When truncated, use gradle_get_project_model with includeTasks=true for the full list."
+    }
+
+    @Test
+    fun `collectSuggestedTestTaskPaths caps list and marks truncation`() {
+        val children = (1..25).map { index ->
+            gradleProjectProxy(
+                name = "mod$index",
+                path = ":mod$index",
+                tasks = listOf(mockVerificationTask("test", ":mod$index:test")),
+            )
+        }
+        val project = gradleProjectProxy(children = children)
+
+        val suggestion = TestRunPreflight.collectSuggestedTestTaskPaths(project, maxPaths = 20)
+
+        suggestion.paths shouldHaveSize 20
+        suggestion.truncated shouldBe true
+        suggestion.paths.all { it.endsWith(":test") && it.startsWith(":mod") } shouldBe true
+    }
+
+    @Test
+    fun `validateProjectScope marks suggestedTaskPathsTruncated when capped`() {
+        val children = (1..25).map { index ->
+            gradleProjectProxy(
+                name = "mod$index",
+                path = ":mod$index",
+                tasks = listOf(mockVerificationTask("test", ":mod$index:test")),
+            )
+        }
+        val project = gradleProjectProxy(children = children)
+
+        val error = shouldThrow<McpException> {
+            TestRunPreflight.validateProjectScope(
+                TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest"))),
+                project,
+            )
+        }
+
+        (error.errorDetails["suggestedTaskPaths"] as List<*>) shouldHaveSize 20
+        error.errorDetails["suggestedTaskPathsTruncated"] shouldBe true
     }
 
     @Test
@@ -149,7 +190,7 @@ class TestRunPreflightTest {
             ),
         )
 
-        TestRunPreflight.collectSuggestedTestTaskPaths(project) shouldBe listOf(":app:test")
+        TestRunPreflight.collectSuggestedTestTaskPaths(project).paths shouldBe listOf(":app:test")
     }
 
     @Test

@@ -196,7 +196,7 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 | One task, method map | `taskPath` + `testMethods` |
 | Custom suite only (`fastTest`) | `taskPath: ":mod:fastTest"` + classes/methods, **or** `tasks: [":mod:fastTest"]` + `includePatterns` |
 | Several Test tasks / suites in one build | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
-| Multi-project unscoped classes/methods | Invalid — must scope with `taskPath` or `tasks`. `INVALID_ARGUMENT` includes `suggestedTaskPaths` (JVM Test task paths from the model: name `test` or `*Test`) and `hint` when the model is available. |
+| Multi-project unscoped classes/methods | Invalid — must scope with `taskPath` or `tasks`. `INVALID_ARGUMENT` includes up to 20 `suggestedTaskPaths` (JVM Test task paths from the model: name `test` or `*Test`), `suggestedTaskPathsTruncated: true` when capped, and `hint` when the model is available. Use `gradle_get_project_model` with `includeTasks=true` for the full task list. |
 
 `taskPath` uses `withTaskAndTest*` when combined with classes or methods (single task). `tasks` applies `TestLauncher.forTasks()` when non-empty; with patterns, each listed task gets the same `includePatterns`.
 
@@ -264,7 +264,7 @@ Detailed parameter semantics live in this reference (Layer 3). Tool `description
 
 ### Tool errors vs build outcomes
 
-- **Tool errors** (`isError=true`): structured `{ "error": { "code", "message", ... } }` for preflight failures (`NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, …). `BUILD_ALREADY_RUNNING` and `BUILD_QUEUE_FULL` include `activeBuildId`, `activeKind`, `activeStatus`, and task/test fields (`activeTasks`, `activeTestClasses`, …) when the occupying build is known. `activeStatus` reflects the occupying record (`running` or `queued`), not the error code name. Global pool saturation returns `activeBuildIds` when multiple builds are running. Multi-project `gradle_run_tests` without `taskPath`/`tasks` returns `INVALID_ARGUMENT` with `suggestedTaskPaths` and `hint` when the Gradle project model is available.
+- **Tool errors** (`isError=true`): structured `{ "error": { "code", "message", ... } }` for preflight failures (`NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, …). `BUILD_ALREADY_RUNNING` and `BUILD_QUEUE_FULL` include `activeBuildId`, `activeKind`, `activeStatus`, and task/test fields (`activeTasks`, `activeTestClasses`, …) when the occupying build is known. `activeStatus` reflects the occupying record (`running` or `queued`), not the error code name. Global pool saturation returns `activeBuildIds` when multiple builds are running. Multi-project `gradle_run_tests` without `taskPath`/`tasks` returns `INVALID_ARGUMENT` with up to 20 `suggestedTaskPaths`, optional `suggestedTaskPathsTruncated: true`, and `hint` when the Gradle project model is available.
 - **Build outcomes** (`isError=false`): `gradle_run_tasks` / `gradle_run_tests` foreground responses and `gradle_get_build_status` terminal polls return `status: "failed"` / `outcome: "FAILED"` with `buildSummary`—not `error.code: BUILD_FAILED`.
 - **`BUILD_FAILED`**: reserved for tooling/setup failures where Gradle could not be invoked meaningfully (for example `gradle_get_java_runtimes` when `javaToolchains` probing fails).
 
