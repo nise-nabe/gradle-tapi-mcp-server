@@ -8,6 +8,7 @@ data class BuildStatusView(
     val finishedAt: String?,
     val tasks: List<String>,
     val selection: TestRunSelection? = null,
+    val taskPathInferred: Boolean = false,
     val error: String?,
     val failureKind: FailureKind? = null,
     val outcome: String?,
@@ -42,6 +43,7 @@ data class BuildStatusView(
                 finishedAt = record.finishedAt?.toString(),
                 tasks = record.tasks,
                 selection = record.selection,
+                taskPathInferred = record.taskPathInferred,
                 error = record.errorMessage,
                 failureKind = record.failureKind,
                 outcome = if (isTerminal) {

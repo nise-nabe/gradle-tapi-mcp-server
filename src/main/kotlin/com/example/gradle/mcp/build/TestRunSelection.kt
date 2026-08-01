@@ -124,3 +124,9 @@ internal fun MutableMap<String, Any?>.putTestRunSelection(selection: TestRunSele
         put("includePatterns", includePatterns)
     }
 }
+
+internal fun MutableMap<String, Any?>.putTaskPathInferredIfNeeded(taskPathInferred: Boolean) {
+    if (taskPathInferred) {
+        put("taskPathInferred", true)
+    }
+}

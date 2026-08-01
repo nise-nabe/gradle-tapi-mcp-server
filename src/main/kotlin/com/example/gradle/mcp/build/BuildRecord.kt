@@ -10,7 +10,7 @@ data class BuildRecord(
     val id: String,
     val kind: BuildKind,
     val tasks: List<String>,
-    val selection: TestRunSelection? = null,
+    @Volatile var selection: TestRunSelection? = null,
     val startedAt: Instant,
     val progressTracker: BuildProgressTracker,
     val streams: CapturingStreams,
@@ -21,6 +21,9 @@ data class BuildRecord(
     val testMethods: Map<String, List<String>> get() = selection.testMethodsOrEmpty()
     val taskPath: String? get() = selection.taskPathOrNull()
     val includePatterns: List<String> get() = selection.includePatternsOrEmpty()
+
+    @Volatile
+    var taskPathInferred: Boolean = false
 
     @Volatile
     var finishedAt: Instant? = null

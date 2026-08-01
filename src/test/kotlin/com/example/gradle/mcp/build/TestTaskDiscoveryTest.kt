@@ -107,6 +107,32 @@ class TestTaskDiscoveryTest {
     }
 
     @Test
+    fun `inferTaskPath returns null when only some classes match a subproject`() {
+        val project = gradleProjectProxy(
+            children = listOf(
+                gradleProjectProxy(
+                    name = "app",
+                    path = ":app",
+                    tasks = listOf(gradleJvmTestTaskProxy(projectPath = ":app")),
+                ),
+                gradleProjectProxy(
+                    name = "lib",
+                    path = ":lib",
+                    tasks = listOf(gradleJvmTestTaskProxy(projectPath = ":lib")),
+                ),
+            ),
+        )
+
+        TestTaskDiscovery.inferTaskPath(
+            project,
+            listOf(
+                "com.example.app.FooTest",
+                "com.unrelated.OtherTest",
+            ),
+        ).shouldBe(null)
+    }
+
+    @Test
     fun `isJvmTestTask accepts test and fastTest in verification group`() {
         TestTaskDiscovery.isJvmTestTask(gradleJvmTestTaskProxy(projectPath = ":app")).shouldBe(true)
         TestTaskDiscovery.isJvmTestTask(gradleJvmTestTaskProxy(name = "fastTest", projectPath = ":app")).shouldBe(true)

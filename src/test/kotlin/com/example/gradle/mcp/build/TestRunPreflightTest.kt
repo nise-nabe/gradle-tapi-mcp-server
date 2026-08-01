@@ -182,8 +182,8 @@ class TestRunPreflightTest {
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
         error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test", ":plugin:fastTest")
         error.errorDetails["hint"] shouldBe
-            "Pass taskPath (e.g. \":module:test\") or use tasks for custom JvmTestSuite names " +
-            "(e.g. \":mod:fastTest\"). suggestedTaskPaths lists JVM Test task paths (name test or *Test). " +
+            TestTaskDiscovery.MULTI_PROJECT_TEST_SCOPE_HINT +
+            " suggestedTaskPaths lists JVM Test task paths (name test or *Test). " +
             "When truncated, use gradle_get_project_model with includeTasks=true for the full list."
     }
 
@@ -453,6 +453,83 @@ class TestRunPreflightTest {
         }
 
         getModelCalls.get() shouldBe 1
+    }
+
+    @Test
+    fun `deferred test run infers taskPath on record at execution time`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            connection = gradleProjectConnectionProxy(
+                gradleProjectProxy(
+                    children = listOf(
+                        gradleProjectProxy(
+                            name = "app",
+                            path = ":app",
+                            tasks = listOf(gradleJvmTestTaskProxy(projectPath = ":app")),
+                        ),
+                        gradleProjectProxy(name = "lib", path = ":lib"),
+                    ),
+                ),
+            ),
+            projectDirectory = projectDirectory,
+        )
+        val manager = BuildExecutionManager(connectionManager)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, manager)
+        val options = TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest")))
+
+        with(runtime) {
+            preflightRunTests(projectDirectory, options, deferScopeModelCheck = true)
+        }
+
+        val response = runBlocking {
+            manager.runForeground(
+                request = BuildRunRequest(
+                    projectDirectory = projectDirectory,
+                    kind = BuildKind.TESTS,
+                    selection = options.selection,
+                    testScopeValidatedAtPreflight = false,
+                ),
+                notifier = null,
+            )
+        }
+
+        response["taskPath"] shouldBe ":app:test"
+        response["taskPathInferred"] shouldBe true
+    }
+
+    @Test
+    fun `preflightRunTests infers taskPath for unscoped testMethods when only one test task exists`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            connection = gradleProjectConnectionProxy(
+                gradleProjectProxy(
+                    children = listOf(
+                        gradleProjectProxy(
+                            name = "app",
+                            path = ":app",
+                            tasks = listOf(gradleJvmTestTaskProxy(projectPath = ":app")),
+                        ),
+                        gradleProjectProxy(name = "lib", path = ":lib"),
+                    ),
+                ),
+            ),
+            projectDirectory = projectDirectory,
+        )
+        val runtime = DefaultGradleMcpRuntime(connectionManager, BuildExecutionManager(connectionManager))
+
+        val resolution = with(runtime) {
+            preflightRunTests(
+                projectDirectory,
+                TestRunOptions(
+                    selection = TestRunSelection.Methods(
+                        mapOf("com.example.FooTest" to listOf("works")),
+                    ),
+                ),
+            )
+        }
+
+        resolution.taskPathInferred shouldBe true
+        resolution.options.taskPath shouldBe ":app:test"
     }
 
     private fun mockVerificationTask(name: String, path: String): GradleTask =

@@ -83,23 +83,8 @@ internal object TestRunPreflight {
         return resolveMultiProjectScope(options, project)
     }
 
-    fun collectSuggestedTestTaskPaths(
-        root: GradleProject,
-        maxPaths: Int = MAX_SUGGESTED_TEST_TASK_PATHS,
-    ): SuggestedTestTaskPaths {
-        val paths = mutableListOf<String>()
-        collectTestTaskPathsRecursive(root, paths)
-        val sorted = paths.sorted()
-        if (sorted.size <= maxPaths) {
-            return SuggestedTestTaskPaths(sorted, truncated = false)
-        }
-        return SuggestedTestTaskPaths(sorted.take(maxPaths), truncated = true)
-    }
-
     private fun buildHint(hasProjectModel: Boolean): String {
-        val base =
-            "Pass taskPath (e.g. \":module:test\") or use tasks for custom JvmTestSuite names " +
-                "(e.g. \":mod:fastTest\")."
+        val base = TestTaskDiscovery.MULTI_PROJECT_TEST_SCOPE_HINT
         if (!hasProjectModel) {
             return base
         }
@@ -107,18 +92,15 @@ internal object TestRunPreflight {
             "When truncated, use gradle_get_project_model with includeTasks=true for the full list."
     }
 
-    private fun isLikelyJvmTestTaskName(name: String): Boolean =
-        name == "test" || name.endsWith("Test")
-
-    private fun collectTestTaskPathsRecursive(project: GradleProject, out: MutableList<String>) {
-        project.tasks.forEach { task ->
-            if (task.group == "verification" && isLikelyJvmTestTaskName(task.name)) {
-                out.add(task.path)
-            }
+    fun collectSuggestedTestTaskPaths(
+        root: GradleProject,
+        maxPaths: Int = MAX_SUGGESTED_TEST_TASK_PATHS,
+    ): SuggestedTestTaskPaths {
+        val paths = TestTaskDiscovery.collectJvmTestTaskPaths(root)
+        if (paths.size <= maxPaths) {
+            return SuggestedTestTaskPaths(paths, truncated = false)
         }
-        project.children.toList().forEach { child ->
-            collectTestTaskPathsRecursive(child, out)
-        }
+        return SuggestedTestTaskPaths(paths.take(maxPaths), truncated = true)
     }
 
     private fun countGradleSubprojects(project: GradleProject): Int =

@@ -27,7 +27,11 @@ internal object TestTaskDiscovery {
         val matchingProjectPaths = classNames.map { className ->
             bestMatchingProjectPath(tasksByProject.keys, className)
         }
-        val distinctMatches = matchingProjectPaths.filterNotNull().distinct()
+        if (matchingProjectPaths.any { it == null }) {
+            return null
+        }
+        val resolvedPaths = matchingProjectPaths.filterNotNull()
+        val distinctMatches = resolvedPaths.distinct()
         if (distinctMatches.size != 1) {
             return null
         }

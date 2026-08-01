@@ -676,34 +676,28 @@ class BuildExecutionManager(
         tracker: BuildProgressTracker,
         notifier: BuildProgressNotifier,
     ) {
-        val operationLabel = when (request.kind) {
-            BuildKind.TASKS -> "Gradle tasks: ${request.tasks.joinToString()}"
-            BuildKind.TESTS -> describeTestOperation(request)
+        val effectiveRequest = when (request.kind) {
+            BuildKind.TESTS -> resolveTestRunScopeAtExecution(request, record)
+            else -> request
+        }
+        val operationLabel = when (effectiveRequest.kind) {
+            BuildKind.TASKS -> "Gradle tasks: ${effectiveRequest.tasks.joinToString()}"
+            BuildKind.TESTS -> describeTestOperation(effectiveRequest)
         }
         tracker.markStarting(operationLabel)
         notifier.notifyIfNeeded(tracker)
 
         try {
-            when (request.kind) {
+            when (effectiveRequest.kind) {
                 BuildKind.TASKS -> {
                     val launcher = connection.newBuild()
-                        .forTasks(*request.tasks.toTypedArray())
-                    configureLauncher(launcher, record, request, streams, tracker)
+                        .forTasks(*effectiveRequest.tasks.toTypedArray())
+                    configureLauncher(launcher, record, effectiveRequest, streams, tracker)
                     launcher.run()
                 }
                 BuildKind.TESTS -> {
-                    val scopedRequest = if (!request.testScopeValidatedAtPreflight) {
-                        val resolved = ensureTestRunProjectScope(
-                            connectionManager,
-                            request.projectDirectory,
-                            TestRunOptions(selection = request.selection, tasks = request.tasks),
-                        )
-                        request.copy(selection = resolved.options.selection)
-                    } else {
-                        request
-                    }
-                    val launcher = configureTestLauncher(connection.newTestLauncher(), scopedRequest)
-                    configureLauncher(launcher, record, scopedRequest, streams, tracker)
+                    val launcher = configureTestLauncher(connection.newTestLauncher(), effectiveRequest)
+                    configureLauncher(launcher, record, effectiveRequest, streams, tracker)
                     launcher.run()
                 }
             }
@@ -715,6 +709,26 @@ class BuildExecutionManager(
             notifier.notifyFinal(tracker)
             throw exception
         }
+    }
+
+    private fun resolveTestRunScopeAtExecution(
+        request: BuildRunRequest,
+        record: BuildRecord,
+    ): BuildRunRequest {
+        if (request.testScopeValidatedAtPreflight) {
+            return request
+        }
+        val resolved = ensureTestRunProjectScope(
+            connectionManager,
+            request.projectDirectory,
+            TestRunOptions(selection = request.selection, tasks = request.tasks),
+        )
+        record.selection = resolved.options.selection
+        record.taskPathInferred = resolved.taskPathInferred
+        return request.copy(
+            selection = resolved.options.selection,
+            taskPathInferred = resolved.taskPathInferred,
+        )
     }
 
     private fun terminalOutcomeFor(exception: Exception, record: BuildRecord? = null): BuildTerminalOutcome {
@@ -846,6 +860,7 @@ class BuildExecutionManager(
             put("tasks", request.tasks)
             put("testClasses", request.testClasses)
             putTestRunSelection(request.selection)
+            putTaskPathInferredIfNeeded(request.taskPathInferred)
             put(
                 "message",
                 "Build started in background. Poll gradle_get_build_status with this buildId.",
@@ -864,6 +879,7 @@ class BuildExecutionManager(
             put("tasks", request.tasks)
             put("testClasses", request.testClasses)
             putTestRunSelection(request.selection)
+            putTaskPathInferredIfNeeded(request.taskPathInferred)
             projectQueue.position(projectDirectory, buildId)?.let { put("queuePosition", it) }
             projectQueue.behindBuildId(projectDirectory, buildId, runningBuildId(projectDirectory))
                 ?.let { put("queuedBehindBuildId", it) }

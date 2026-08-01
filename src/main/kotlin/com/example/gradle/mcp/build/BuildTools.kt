@@ -229,7 +229,10 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
             outputLimit = OutputLimitOptions.fromArgs(args),
             progressOptions = ProgressResponseOptions.fromArgs(args),
         )
-        val scopedRequest = request.copy(testScopeValidatedAtPreflight = !deferScopeModelCheck)
+        val scopedRequest = request.copy(
+            testScopeValidatedAtPreflight = !deferScopeModelCheck,
+            taskPathInferred = scopeResolution.taskPathInferred,
+        )
         val response = if (background) {
             runtime.buildExecutionManager.startBackground(scopedRequest, notifier, queueIfBusy)
         } else {
