@@ -38,6 +38,7 @@ internal object BuildStatusMerger {
             buildSummary = mergedTerminalBuildSummary(disk.status, stdout, disk.buildSummary),
             progress = progress,
             progressAvailable = progress != null,
+            taskPathInferred = memory.taskPathInferred || disk.taskPathInferred,
         )
     }
 
