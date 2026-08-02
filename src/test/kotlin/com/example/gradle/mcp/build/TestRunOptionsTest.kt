@@ -537,8 +537,7 @@ class TestRunOptionsTest {
         error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test", ":lib:test")
         error.errorDetails["hint"] shouldBe
             TestTaskDiscovery.MULTI_PROJECT_TEST_SCOPE_HINT +
-            " suggestedTaskPaths lists JVM Test task paths (name test or *Test). " +
-            "When truncated, use gradle_get_project_model with includeTasks=true for the full list."
+            " suggestedTaskPaths lists JVM Test task paths (name test or *Test)."
     }
 
     @Test

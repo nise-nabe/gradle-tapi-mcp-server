@@ -60,6 +60,29 @@ class BuildExecutionManagerListBuildsTest {
     }
 
     @Test
+    fun `listBuilds exposes taskPathInferred for inferred test runs`(@TempDir projectDir: File) {
+        val (manager, store) = persistedBuildManager(projectDir)
+        store.writeMcpResultToDisk(
+            projectDir,
+            mcpBuildResult(
+                buildId = "inferred-test",
+                projectDirectory = projectDir.absolutePath,
+                kind = "tests",
+                tasks = listOf(":app:test"),
+                testClasses = listOf("com.example.app.FooTest"),
+                taskPath = ":app:test",
+                taskPathInferred = true,
+            ),
+        )
+
+        val builds = (manager.listBuilds(projectDir, limit = 10)["builds"] as List<*>)
+        val entry = builds.map { it as Map<*, *> }.single { it["buildId"] == "inferred-test" }
+
+        entry["taskPath"] shouldBe ":app:test"
+        entry["taskPathInferred"] shouldBe true
+    }
+
+    @Test
     fun `listBuilds merges disk gradle status when memory failed on connection error`(@TempDir projectDir: File) {
         val buildId = "shared-build"
         val (manager, store) = persistedBuildManager(projectDir)

@@ -15,6 +15,7 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import kotlinx.coroutines.runBlocking
 import org.gradle.tooling.model.GradleTask
 import org.junit.jupiter.api.Test
@@ -148,7 +149,7 @@ class TestRunPreflightTest {
         val resolution = with(runtime) {
             preflightRunTests(
                 projectDirectory,
-                TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest"))),
+                TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.app.FooTest"))),
             )
         }
 
@@ -184,8 +185,28 @@ class TestRunPreflightTest {
         error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test", ":plugin:fastTest")
         error.errorDetails["hint"] shouldBe
             TestTaskDiscovery.MULTI_PROJECT_TEST_SCOPE_HINT +
-            " suggestedTaskPaths lists JVM Test task paths (name test or *Test). " +
-            "When truncated, use gradle_get_project_model with includeTasks=true for the full list."
+            " suggestedTaskPaths lists JVM Test task paths (name test or *Test)."
+    }
+
+    @Test
+    fun `validateProjectScope hint mentions truncation only when suggestions are capped`() {
+        val children = (1..25).map { index ->
+            gradleProjectProxy(
+                name = "mod$index",
+                path = ":mod$index",
+                tasks = listOf(mockVerificationTask("test", ":mod$index:test")),
+            )
+        }
+        val project = gradleProjectProxy(children = children)
+
+        val error = shouldThrow<McpException> {
+            TestRunPreflight.validateProjectScope(
+                TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest"))),
+                project,
+            )
+        }
+
+        (error.errorDetails["hint"] as String) shouldContain "When truncated"
     }
 
     @Test
@@ -203,7 +224,7 @@ class TestRunPreflightTest {
 
         suggestion.paths shouldHaveSize 20
         suggestion.truncated shouldBe true
-        suggestion.paths.all { it.endsWith(":test") && it.startsWith(":mod") } shouldBe true
+        suggestion.paths shouldBe (1..20).map { ":mod$it:test" }
     }
 
     @Test
@@ -476,7 +497,7 @@ class TestRunPreflightTest {
         )
         val manager = BuildExecutionManager(connectionManager)
         val runtime = DefaultGradleMcpRuntime(connectionManager, manager)
-        val options = TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest")))
+        val options = TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.app.FooTest")))
 
         with(runtime) {
             preflightRunTests(projectDirectory, options, deferScopeModelCheck = true)
@@ -574,7 +595,7 @@ class TestRunPreflightTest {
                 projectDirectory,
                 TestRunOptions(
                     selection = TestRunSelection.Methods(
-                        mapOf("com.example.FooTest" to listOf("works")),
+                        mapOf("com.example.app.FooTest" to listOf("works")),
                     ),
                 ),
             )

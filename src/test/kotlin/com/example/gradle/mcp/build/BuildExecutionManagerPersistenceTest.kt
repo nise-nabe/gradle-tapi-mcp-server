@@ -57,6 +57,29 @@ class BuildExecutionManagerPersistenceTest {
     }
 
     @Test
+    fun `status restores taskPathInferred from persisted mcp result`(@TempDir projectDir: File) {
+        val (persistedManager, store) = persistedBuildManager(projectDir)
+        val buildId = "inferred-disk-build"
+        store.writeMcpResultToDisk(
+            projectDir,
+            mcpBuildResult(
+                buildId = buildId,
+                projectDirectory = projectDir.absolutePath,
+                kind = "tests",
+                tasks = listOf(":app:test"),
+                testClasses = listOf("com.example.app.FooTest"),
+                taskPath = ":app:test",
+                taskPathInferred = true,
+            ),
+        )
+
+        val result = persistedManager.status(buildId, OutputLimitOptions(), ProgressResponseOptions())
+
+        result["taskPath"] shouldBe ":app:test"
+        result["taskPathInferred"] shouldBe true
+    }
+
+    @Test
     fun `status loads persisted build from workspace env when disconnected`(@TempDir projectDir: File) {
         val store = com.example.gradle.mcp.build.persistence.BuildRecordStore()
         val manager = BuildExecutionManager(GradleConnectionManager(), store)

@@ -16,6 +16,7 @@ data class McpBuildResult(
     val testMethods: Map<String, List<String>> = emptyMap(),
     val taskPath: String? = null,
     val includePatterns: List<String> = emptyList(),
+    val taskPathInferred: Boolean = false,
     val projectDirectory: String,
     val startedAt: String,
     val finishedAt: String,

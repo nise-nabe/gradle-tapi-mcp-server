@@ -389,6 +389,7 @@ class BuildExecutionManager(
             kind = record.kind.name.lowercase(),
             tasks = record.tasks,
             selection = record.selection,
+            taskPathInferred = record.taskPathInferred,
             projectDirectory = record.projectDirectory,
             startedAt = record.startedAt.toString(),
             finishedAt = record.finishedAt?.toString(),

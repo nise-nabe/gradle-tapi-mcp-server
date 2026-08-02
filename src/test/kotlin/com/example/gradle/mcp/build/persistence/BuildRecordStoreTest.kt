@@ -90,6 +90,26 @@ class BuildRecordStoreTest {
     }
 
     @Test
+    fun `writeMcpResult persists taskPathInferred`(@TempDir projectDir: File) {
+        val record = succeededBuildRecord(projectDir, "inferred-test-build").copy(
+            kind = BuildKind.TESTS,
+            tasks = listOf(":app:test"),
+            selection = TestRunSelection.Classes(
+                classes = listOf("com.example.app.FooTest"),
+                taskPath = ":app:test",
+            ),
+        ).apply { taskPathInferred = true }
+        store.writeMcpResult(record, record.progressTracker.snapshot())
+
+        val mcpResult = store.readMcpResult(
+            store.recordDirectory(projectDir, "inferred-test-build").shouldNotBeNull(),
+        ).shouldNotBeNull()
+
+        mcpResult.taskPathInferred shouldBe true
+        mcpResult.taskPath shouldBe ":app:test"
+    }
+
+    @Test
     fun `writeMcpResult persists result and logs`(@TempDir projectDir: File) {
         val record = succeededBuildRecord(projectDir, "persisted-build")
         store.writeMcpResult(record, record.progressTracker.snapshot())
@@ -1013,6 +1033,28 @@ class BuildRecordStoreTest {
         emptyRecordDir.mkdirs()
 
         store.listBuildIds(projectDir).toSet() shouldBe setOf(olderId, newerId)
+    }
+
+    @Test
+    fun `loadListSummary exposes taskPathInferred from persisted mcp result`(@TempDir projectDir: File) {
+        val buildId = "inferred-listed-build"
+        store.writeMcpResultToDisk(
+            projectDir,
+            mcpBuildResult(
+                buildId = buildId,
+                projectDirectory = projectDir.absolutePath,
+                kind = "tests",
+                tasks = listOf(":app:test"),
+                testClasses = listOf("com.example.app.FooTest"),
+                taskPath = ":app:test",
+                taskPathInferred = true,
+            ),
+        )
+
+        val summary = store.loadListSummary(projectDir, buildId).shouldNotBeNull()
+
+        summary.taskPath shouldBe ":app:test"
+        summary.taskPathInferred shouldBe true
     }
 
     @Test

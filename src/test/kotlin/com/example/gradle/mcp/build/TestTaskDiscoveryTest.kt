@@ -54,7 +54,23 @@ class TestTaskDiscoveryTest {
             ),
         )
 
-        TestTaskDiscovery.inferTaskPath(project, listOf("com.example.FooTest")) shouldBe ":app:test"
+        TestTaskDiscovery.inferTaskPath(project, listOf("com.example.app.FooTest")) shouldBe ":app:test"
+        TestTaskDiscovery.inferTaskPath(project, listOf("com.lib.WrongModuleTest")) shouldBe null
+    }
+
+    @Test
+    fun `inferTaskPath rejects unscoped class when sole test task package does not match`() {
+        val project = gradleProjectProxy(
+            children = listOf(
+                gradleProjectProxy(
+                    name = "app",
+                    path = ":app",
+                    tasks = listOf(gradleJvmTestTaskProxy(projectPath = ":app")),
+                ),
+            ),
+        )
+
+        TestTaskDiscovery.inferTaskPath(project, listOf("com.lib.WrongModuleTest")).shouldBe(null)
     }
 
     @Test
@@ -130,6 +146,31 @@ class TestTaskDiscoveryTest {
                 "com.unrelated.OtherTest",
             ),
         ).shouldBe(null)
+    }
+
+    @Test
+    fun `compareGradleTaskPathsNaturally orders numeric module segments`() {
+        TestTaskDiscovery.compareGradleTaskPathsNaturally(":mod2:test", ":mod10:test") shouldBe -1
+        TestTaskDiscovery.compareGradleTaskPathsNaturally(":mod10:test", ":mod2:test") shouldBe 1
+    }
+
+    @Test
+    fun `collectJvmTestTaskPaths sorts modules in natural order`() {
+        val project = gradleProjectProxy(
+            children = listOf(10, 2, 1).map { index ->
+                gradleProjectProxy(
+                    name = "mod$index",
+                    path = ":mod$index",
+                    tasks = listOf(gradleJvmTestTaskProxy(projectPath = ":mod$index")),
+                )
+            },
+        )
+
+        TestTaskDiscovery.collectJvmTestTaskPaths(project) shouldBe listOf(
+            ":mod1:test",
+            ":mod2:test",
+            ":mod10:test",
+        )
     }
 
     @Test
