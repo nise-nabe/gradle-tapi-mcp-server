@@ -42,7 +42,7 @@ class TestLauncherConfigurationTest {
     }
 
     @Test
-    fun `configureTestLauncher uses withTaskAndTestClasses when taskPath set`() {
+    fun `configureTestLauncher uses forTasks and withTestsFor when taskPath set`() {
         val recording = recordingTestLauncher()
         configureTestLauncher(
             recording.launcher,
@@ -52,8 +52,32 @@ class TestLauncherConfigurationTest {
                 selection = TestRunSelection.Classes(listOf("com.example.FooTest"), taskPath = ":app:test"),
             ),
         )
-        recording.calls shouldContainExactly listOf(
-            TestLauncherCall("withTaskAndTestClasses", listOf(":app:test", listOf("com.example.FooTest"))),
+        recording.calls.map { it.method } shouldBe listOf("forTasks", "withTestsFor")
+        recording.testsForSpecs shouldContainExactly listOf(
+            RecordedTestSpec(taskPath = ":app:test", classes = listOf("com.example.FooTest")),
+        )
+    }
+
+    @Test
+    fun `configureTestLauncher uses withTestsFor includeMethods when taskPath set`() {
+        val recording = recordingTestLauncher()
+        configureTestLauncher(
+            recording.launcher,
+            BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TESTS,
+                selection = TestRunSelection.Methods(
+                    mapOf("com.example.FooTest" to listOf("method1", "method2")),
+                    taskPath = ":plugin:test",
+                ),
+            ),
+        )
+        recording.calls.map { it.method } shouldBe listOf("forTasks", "withTestsFor")
+        recording.testsForSpecs shouldContainExactly listOf(
+            RecordedTestSpec(
+                taskPath = ":plugin:test",
+                methods = mapOf("com.example.FooTest" to listOf("method1", "method2")),
+            ),
         )
     }
 
@@ -91,6 +115,24 @@ class TestLauncherConfigurationTest {
         recording.testsForSpecs shouldContainExactly listOf(
             RecordedTestSpec(":mod:test", listOf("com.example.FooTest", "com.example.FooParseTest")),
             RecordedTestSpec(":mod:fastTest", listOf("com.example.FooTest", "com.example.FooParseTest")),
+        )
+    }
+
+    @Test
+    fun `configureTestLauncher scopes tasks plus testClasses with withTestsFor`() {
+        val recording = recordingTestLauncher()
+        configureTestLauncher(
+            recording.launcher,
+            BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TESTS,
+                tasks = listOf(":plugin:test"),
+                selection = TestRunSelection.Classes(listOf("com.example.FooTest")),
+            ),
+        )
+        recording.calls.map { it.method } shouldBe listOf("forTasks", "withTestsFor")
+        recording.testsForSpecs shouldContainExactly listOf(
+            RecordedTestSpec(taskPath = ":plugin:test", classes = listOf("com.example.FooTest")),
         )
     }
 }

@@ -5,6 +5,8 @@ import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import com.example.gradle.mcp.support.testLauncherFailureThenBuildLauncherConnection
+import com.example.gradle.mcp.support.LauncherCall
 import com.example.gradle.mcp.support.noopProjectConnection
 import com.example.gradle.mcp.support.seedNoopConnection
 import com.example.gradle.mcp.support.blockingProjectConnection
@@ -686,5 +688,86 @@ class BuildExecutionManagerRunTest {
             attempts++
         }
         manager.hasActiveBuild().shouldBeFalse()
+    }
+
+    @Test
+    fun `runForeground falls back to BuildLauncher when TestLauncher cannot resolve taskPath`() = runBlocking {
+        val connectionManager = GradleConnectionManager()
+        val buildLauncherCalls = mutableListOf<LauncherCall>()
+        val testLauncherRunCount = AtomicInteger(0)
+        val buildLauncherRunCount = AtomicInteger(0)
+        connectionManager.seedConnectionForTests(
+            testLauncherFailureThenBuildLauncherConnection(
+                testLauncherFailure = RuntimeException(
+                    "Could not execute tests using connection to Gradle distribution.",
+                    RuntimeException("Requested test task with path ':plugin:test' cannot be found."),
+                ),
+                buildLauncherCalls = buildLauncherCalls,
+                testLauncherRunCount = testLauncherRunCount,
+                buildLauncherRunCount = buildLauncherRunCount,
+            ),
+        )
+        val manager = BuildExecutionManager(connectionManager)
+
+        val result = manager.runForeground(
+            request = BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TESTS,
+                selection = TestRunSelection.Methods(
+                    methods = mapOf(
+                        "com.linecorp.intellij.plugins.armeria.test.ArmeriaTestMethodInserterTest" to
+                            listOf("testDoesNotModuleFallbackWhenMainSourceEditorFocused"),
+                    ),
+                    taskPath = ":plugin:test",
+                ),
+                testScopeValidatedAtPreflight = true,
+            ),
+            notifier = null,
+        )
+
+        result["status"] shouldBe "succeeded"
+        testLauncherRunCount.get() shouldBe 1
+        buildLauncherRunCount.get() shouldBe 1
+        buildLauncherCalls.any { it.method == "forTasks" && it.args == listOf(":plugin:test") }.shouldBeTrue()
+        buildLauncherCalls.any { call ->
+            call.method == "addArguments" &&
+                call.args == listOf(
+                    "--tests",
+                    "com.linecorp.intellij.plugins.armeria.test.ArmeriaTestMethodInserterTest.testDoesNotModuleFallbackWhenMainSourceEditorFocused",
+                )
+        }.shouldBeTrue()
+        buildLauncherCalls.any { it.method == "addArguments" && it.args == listOf("--rerun") }.shouldBeTrue()
+    }
+
+    @Test
+    fun `runForeground does not fall back when TestLauncher fails without a scoped task`() = runBlocking {
+        val connectionManager = GradleConnectionManager()
+        val buildLauncherCalls = mutableListOf<LauncherCall>()
+        val buildLauncherRunCount = AtomicInteger(0)
+        connectionManager.seedConnectionForTests(
+            testLauncherFailureThenBuildLauncherConnection(
+                testLauncherFailure = RuntimeException(
+                    "Requested test task with path ':plugin:test' cannot be found.",
+                ),
+                buildLauncherCalls = buildLauncherCalls,
+                buildLauncherRunCount = buildLauncherRunCount,
+            ),
+        )
+        val manager = BuildExecutionManager(connectionManager)
+
+        val result = manager.runForeground(
+            request = BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TESTS,
+                selection = TestRunSelection.Classes(listOf("com.example.FooTest")),
+                testScopeValidatedAtPreflight = true,
+            ),
+            notifier = null,
+        )
+
+        result["status"] shouldBe "failed"
+        result["error"] shouldBe "Requested test task with path ':plugin:test' cannot be found."
+        buildLauncherRunCount.get() shouldBe 0
+        buildLauncherCalls.size shouldBe 0
     }
 }

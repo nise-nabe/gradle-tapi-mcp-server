@@ -11,7 +11,9 @@ internal data class TestLauncherCall(
 
 internal data class RecordedTestSpec(
     val taskPath: String,
-    val patterns: List<String>,
+    val patterns: List<String> = emptyList(),
+    val classes: List<String> = emptyList(),
+    val methods: Map<String, List<String>> = emptyMap(),
 )
 
 internal class RecordingTestLauncher(
@@ -101,6 +103,39 @@ private fun recordingTestSpec(
                         else -> emptyList()
                     }
                     state[0] = state[0].copy(patterns = patterns)
+                    sink += state[0]
+                    self[0]
+                }
+                "includeClasses" -> {
+                    val classes = when (val value = args?.get(0)) {
+                        is Collection<*> -> value.filterIsInstance<String>()
+                        else -> emptyList()
+                    }
+                    state[0] = state[0].copy(classes = classes)
+                    sink += state[0]
+                    self[0]
+                }
+                "includeClass" -> {
+                    val className = args[0] as? String ?: return@InvocationHandler self[0]
+                    state[0] = state[0].copy(classes = state[0].classes + className)
+                    sink += state[0]
+                    self[0]
+                }
+                "includeMethods" -> {
+                    val className = args[0] as? String ?: return@InvocationHandler self[0]
+                    val methods = when (val value = args.getOrNull(1)) {
+                        is Collection<*> -> value.filterIsInstance<String>()
+                        else -> emptyList()
+                    }
+                    state[0] = state[0].copy(methods = state[0].methods + (className to methods))
+                    sink += state[0]
+                    self[0]
+                }
+                "includeMethod" -> {
+                    val className = args[0] as? String ?: return@InvocationHandler self[0]
+                    val methodName = args.getOrNull(1) as? String ?: return@InvocationHandler self[0]
+                    val existing = state[0].methods[className].orEmpty()
+                    state[0] = state[0].copy(methods = state[0].methods + (className to (existing + methodName)))
                     sink += state[0]
                     self[0]
                 }

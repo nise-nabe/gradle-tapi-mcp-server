@@ -171,9 +171,9 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `testClasses` | no* | `[]` | FQCN list (`withJvmTestClasses` / `withTaskAndTestClasses`). `Class.method` entries with a lowercase-leading final segment (e.g. `com.example.FooTest.testBar`) normalize to `testMethods`. Wildcards (`*`, `?`) in either segment and uppercase final segments stay as class names; nested classes use JVM `$` notation (e.g. `com.example.Outer$Inner.testMethod`). Prefer `testMethods` or `includePatterns` when ambiguous. |
+| `testClasses` | no* | `[]` | FQCN list (`withJvmTestClasses`, or `withTestsFor` `includeClasses` when scoped). `Class.method` entries with a lowercase-leading final segment (e.g. `com.example.FooTest.testBar`) normalize to `testMethods`. Wildcards (`*`, `?`) in either segment and uppercase final segments stay as class names; nested classes use JVM `$` notation (e.g. `com.example.Outer$Inner.testMethod`). Prefer `testMethods` or `includePatterns` when ambiguous. |
 | `testMethods` | no* | — | Preferred API for method selection: map `{"com.example.FooTest": ["method1"]}` or array `[{"class": "...", "methods": ["..."]}]`. `className` and `testClass` are accepted at runtime as aliases for `class`. |
-| `taskPath` | no | — | **Single** Test task path for `withTaskAndTest*` (Gradle 6.1+), including custom `JvmTestSuite` tasks such as `:mod:fastTest`. Requires `testClasses` or `testMethods` |
+| `taskPath` | no | — | **Single** Test task path (`:mod:test` or a JvmTestSuite name such as `:mod:fastTest`). Requires `testClasses` or `testMethods`. Combined with `forTasks` + `withTestsFor` (Gradle 7.6+) |
 | `includePattern` | no* | — | Single include pattern for `withTestsFor` TestSpec (Gradle 7.6+) |
 | `includePatterns` | no* | `[]` | Include patterns for `withTestsFor` TestSpec (Gradle 7.6+). Applied to **every** path in `tasks` |
 | `tasks` | no | `[]` | One or more Test task paths for `TestLauncher.forTasks()` (Gradle 7.6+). Required with patterns. Use multiple paths to batch `:test` and custom suites (e.g. `:fastTest`) in **one** MCP build |
@@ -198,7 +198,7 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 | Several Test tasks / suites in one build | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
 | Multi-project unscoped classes/methods | Invalid — must scope with `taskPath` or `tasks`. `INVALID_ARGUMENT` includes up to 20 `suggestedTaskPaths` (JVM Test task paths from the model: name `test` or `*Test`), `suggestedTaskPathsTruncated: true` when capped, and `hint` when the model is available. Use `gradle_get_project_model` with `includeTasks=true` for the full task list. |
 
-`taskPath` uses `withTaskAndTest*` when combined with classes or methods (single task). `tasks` applies `TestLauncher.forTasks()` when non-empty; with patterns, each listed task gets the same `includePatterns`.
+`taskPath` and `tasks` both scope execution with `TestLauncher.forTasks()` plus `withTestsFor` class/method/pattern filters (Gradle 7.6+). If TestLauncher cannot resolve a scoped task (for example some JvmTestSuite `test` tasks), the server retries once with `BuildLauncher.forTasks` and `--tests` (same path as `gradle_run_tasks`). With patterns, each listed task gets the same `includePatterns`.
 
 **Concurrency:** Do not start multiple `gradle_run_tests` calls in parallel for the same `projectDirectory` unless `queueIfBusy=true` with `background=true` (otherwise the second call returns `BUILD_ALREADY_RUNNING` with `activeBuildId` and related fields). The single-flight gate clears as soon as the build is terminal in memory (no grace window)—serialize `gradle_run_*` across turns after a terminal status. Batch multiple classes, methods, **or Test tasks** in one call via `testMethods` / `testClasses` / `tasks`+`includePatterns`. Parallel test runs are only supported across **different** `projectDirectory` values, up to the server concurrent-build limit (see Connection section).
 

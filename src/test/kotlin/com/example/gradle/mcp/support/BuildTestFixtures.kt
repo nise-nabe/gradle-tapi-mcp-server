@@ -199,6 +199,81 @@ internal fun interruptedOnRunProjectConnection(): ProjectConnection =
         },
     ) as ProjectConnection
 
+internal data class LauncherCall(
+    val method: String,
+    val args: List<Any?>,
+)
+
+/**
+ * TestLauncher.run() throws [testLauncherFailure]; BuildLauncher records calls and succeeds.
+ */
+internal fun testLauncherFailureThenBuildLauncherConnection(
+    testLauncherFailure: Throwable,
+    buildLauncherCalls: MutableList<LauncherCall>,
+    testLauncherRunCount: AtomicInteger = AtomicInteger(0),
+    buildLauncherRunCount: AtomicInteger = AtomicInteger(0),
+): ProjectConnection =
+    Proxy.newProxyInstance(
+        ProjectConnection::class.java.classLoader,
+        arrayOf(ProjectConnection::class.java),
+        InvocationHandler { _, method, _ ->
+            when (method.name) {
+                "newTestLauncher" -> chainingProxy(
+                    Class.forName("org.gradle.tooling.TestLauncher"),
+                    onRun = {
+                        testLauncherRunCount.incrementAndGet()
+                        throw testLauncherFailure
+                    },
+                )
+                "newBuild" -> recordingLauncherProxy(
+                    Class.forName("org.gradle.tooling.BuildLauncher"),
+                    calls = buildLauncherCalls,
+                    onRun = { buildLauncherRunCount.incrementAndGet() },
+                )
+                else -> defaultProxyReturn(method)
+            }
+        },
+    ) as ProjectConnection
+
+private fun recordingLauncherProxy(
+    interfaceClass: Class<*>,
+    calls: MutableList<LauncherCall>,
+    onRun: () -> Unit,
+): Any {
+    val self = arrayOfNulls<Any>(1)
+    self[0] = Proxy.newProxyInstance(
+        interfaceClass.classLoader,
+        arrayOf(interfaceClass),
+        InvocationHandler { _, method, args ->
+            when (method.name) {
+                "run" -> {
+                    onRun()
+                    null
+                }
+                else -> {
+                    calls += LauncherCall(method.name, normalizeLauncherArgs(args))
+                    self[0]
+                }
+            }
+        },
+    )
+    return self[0]!!
+}
+
+private fun normalizeLauncherArgs(args: Array<out Any?>?): List<Any?> {
+    val raw = args?.toList().orEmpty()
+    if (raw.size == 1 && raw[0] is Array<*>) {
+        return (raw[0] as Array<*>).toList()
+    }
+    return raw.map { arg ->
+        when (arg) {
+            is Array<*> -> arg.toList()
+            is Iterable<*> -> arg.toList()
+            else -> arg
+        }
+    }
+}
+
 private fun chainingProxy(
     interfaceClass: Class<*>,
     onRun: () -> Unit,
