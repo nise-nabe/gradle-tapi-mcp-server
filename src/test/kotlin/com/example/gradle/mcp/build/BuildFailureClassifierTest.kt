@@ -89,6 +89,50 @@ class BuildFailureClassifierTest {
     }
 
     @Test
+    fun `distribution wrapper with failedTasks is a task failure with unwrapped error`() {
+        val classified = BuildFailureClassifier.classify(
+            status = BuildProgressTracker.STATUS_FAILED,
+            kind = "tasks",
+            error = "Could not execute build using connection to Gradle distribution " +
+                "'https://services.gradle.org/distributions/gradle-9.7.0-bin.zip'.",
+            progress = BuildProgressSnapshot(
+                status = BuildProgressTracker.STATUS_FAILED,
+                currentOperation = null,
+                completedTaskCount = 0,
+                runningTaskCount = 0,
+                failedTaskCount = 1,
+                completedTasks = emptyList(),
+                runningTasks = emptyList(),
+                failedTasks = listOf(":plugin-route-collectors:compileFastTestKotlin"),
+                failedGradleTasks = listOf(":plugin-route-collectors:compileFastTestKotlin"),
+                recentEvents = emptyList(),
+                totalEventCount = 1,
+            ),
+            stdout = "",
+        )
+
+        classified.failureKind shouldBe FailureKind.TASK_FAILURE
+        classified.failureKind.shouldNotBeNull().category shouldBe "GRADLE_TASK"
+        classified.error shouldBe "Execution failed for task ':plugin-route-collectors:compileFastTestKotlin'."
+    }
+
+    @Test
+    fun `unwrapBuildFailureMessage prefers Execution failed for task from cause chain`() {
+        val exception = RuntimeException(
+            "Could not execute build using connection to Gradle distribution " +
+                "'https://services.gradle.org/distributions/gradle-9.7.0-bin.zip'.",
+            RuntimeException(
+                "Execution failed for task ':plugin-route-collectors:compileFastTestKotlin' " +
+                    "(registered by plugin 'org.jetbrains.kotlin.jvm').",
+            ),
+        )
+
+        BuildFailureClassifier.unwrapBuildFailureMessage(exception) shouldBe
+            "Execution failed for task ':plugin-route-collectors:compileFastTestKotlin' " +
+            "(registered by plugin 'org.jetbrains.kotlin.jvm')."
+    }
+
+    @Test
     fun `cancelled build reports CANCELLED`() {
         val classified = BuildFailureClassifier.classify(
             status = BuildProgressTracker.STATUS_CANCELLED,

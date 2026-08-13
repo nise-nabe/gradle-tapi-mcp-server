@@ -744,7 +744,7 @@ class BuildExecutionManager(
                 exception.message?.takeIf { it.isNotBlank() } ?: "Build interrupted",
             )
         }
-        return BuildTerminalOutcome.Failed(exception.message ?: exception.toString())
+        return BuildTerminalOutcome.Failed(BuildFailureClassifier.unwrapBuildFailureMessage(exception))
     }
 
     private fun isInterruptRelated(exception: Exception): Boolean =
@@ -846,7 +846,7 @@ class BuildExecutionManager(
         launcher.addJvmArguments(*request.jvmArguments.toTypedArray())
         launcher.withCancellationToken(record.cancellationTokenSource.token())
         launcher.withDetailedFailure()
-        tracker.configureLauncher(launcher, request.progressOptions.includeProblems)
+        tracker.configureLauncher(launcher)
         streams.applyTo(launcher)
     }
 

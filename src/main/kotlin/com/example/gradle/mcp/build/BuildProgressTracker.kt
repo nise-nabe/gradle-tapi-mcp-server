@@ -153,10 +153,7 @@ class BuildProgressTracker(
             }
         }
 
-    fun configureLauncher(
-        launcher: org.gradle.tooling.ConfigurableLauncher<*>,
-        includeProblems: Boolean = false,
-    ) {
+    fun configureLauncher(launcher: org.gradle.tooling.ConfigurableLauncher<*>) {
         val operationTypes = buildList {
             add(OperationType.TASK)
             add(OperationType.TEST)
@@ -165,9 +162,9 @@ class BuildProgressTracker(
             if (trackDownloads) {
                 add(OperationType.FILE_DOWNLOAD)
             }
-            if (includeProblems) {
-                problemOperationType?.let(::add)
-            }
+            // Always collect Problems API events. Response mapping still omits them while
+            // running unless includeProblems=true; failed GRADLE_TASK includes a cap.
+            problemOperationType?.let(::add)
         }
         launcher.addProgressListener(asGradleListener(), *operationTypes.toTypedArray())
     }

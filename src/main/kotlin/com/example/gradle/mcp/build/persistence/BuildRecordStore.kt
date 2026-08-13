@@ -10,6 +10,7 @@ import com.example.gradle.mcp.build.ProgressEventTypes
 import com.example.gradle.mcp.build.CapturedStreamSnapshot
 import com.example.gradle.mcp.build.TestProgressDetailsExtractor
 import com.example.gradle.mcp.build.BuildRecord
+import com.example.gradle.mcp.protocol.ProblemsSerializer
 import com.example.gradle.mcp.protocol.decodeMcpJson
 import com.example.gradle.mcp.protocol.decodeMcpJsonMap
 import com.example.gradle.mcp.protocol.encodeMcpJson
@@ -97,7 +98,10 @@ class BuildRecordStore {
             testFailures = methodLevelFailures,
             failedTestCount = progress.failedTestCount,
             failedTestNames = progress.failedTestNames,
-            problems = progress.problems,
+            problems = ProblemsSerializer.mergedDistinct(
+                progress.problems,
+                progress.liveProblems,
+            ),
             stdoutTotalChars = stdout.totalChars,
             stderrTotalChars = stderr.totalChars,
         )

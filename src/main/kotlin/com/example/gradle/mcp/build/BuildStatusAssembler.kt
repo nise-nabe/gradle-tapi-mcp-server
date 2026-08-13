@@ -12,6 +12,9 @@ internal enum class BuildStatusResponseStyle {
 }
 
 internal object BuildStatusAssembler {
+    const val GRADLE_TASK_FAILURE_HINT =
+        "Do not re-run via shell to read compiler output. Failed GRADLE_TASK includes capped problems when emitted."
+
     fun assemble(
         view: BuildStatusView,
         outputLimit: OutputLimitOptions,
@@ -73,6 +76,12 @@ internal object BuildStatusAssembler {
         if (!isActive) {
             view.buildSummary?.let { response["buildSummary"] = it }
             view.progress?.let { response.putAll(terminalFailureFields(it, progressOptions)) }
+            if (
+                view.failureKind == FailureKind.TASK_FAILURE &&
+                (response["problems"] as? List<*>).isNullOrEmpty()
+            ) {
+                response["hint"] = GRADLE_TASK_FAILURE_HINT
+            }
         }
         response.putAll(streamResponseFields(view.stdout, outputLimit, "stdout"))
         response.putAll(streamResponseFields(view.stderr, outputLimit, "stderr"))

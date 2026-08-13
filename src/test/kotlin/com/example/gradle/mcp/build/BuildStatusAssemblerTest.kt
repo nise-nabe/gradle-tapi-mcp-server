@@ -1,7 +1,5 @@
 package com.example.gradle.mcp.build
 
-import com.example.gradle.mcp.build.BuildProblemSnapshot
-import com.example.gradle.mcp.build.DownloadProgressSnapshot
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.support.TEST_ISO_FINISH
@@ -125,6 +123,50 @@ class BuildStatusAssemblerTest {
         (response["liveProblems"] as List<*>).single().let { problem ->
             (problem as Map<*, *>)["label"] shouldBe "Deprecated API usage"
         }
+    }
+
+    @Test
+    fun `assemble omits liveProblems while running unless includeProblems is enabled`() {
+        val response = BuildStatusAssembler.assemble(
+            view = BuildStatusView(
+                buildId = "running-build",
+                kind = "tasks",
+                status = BuildProgressTracker.STATUS_RUNNING,
+                startedAt = "2026-06-14T10:00:00Z",
+                finishedAt = null,
+                tasks = listOf("build"),
+                error = null,
+                outcome = null,
+                buildSummary = null,
+                progress = BuildProgressSnapshot(
+                    status = BuildProgressTracker.STATUS_RUNNING,
+                    currentOperation = "Gradle tasks: build",
+                    completedTaskCount = 0,
+                    runningTaskCount = 1,
+                    failedTaskCount = 0,
+                    completedTasks = emptyList(),
+                    runningTasks = listOf(":app:compileKotlin"),
+                    failedTasks = emptyList(),
+                    recentEvents = emptyList(),
+                    totalEventCount = 1,
+                    liveProblems = listOf(
+                        BuildProblemSnapshot(
+                            label = "Kotlin compiler error",
+                            severity = "error",
+                        ),
+                    ),
+                ),
+                progressAvailable = true,
+                stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+                stderr = CapturedStreamSnapshot(text = "", totalChars = 0),
+                statusSource = BuildStatusView.SOURCE_MEMORY,
+            ),
+            outputLimit = OutputLimitOptions(),
+            progressOptions = ProgressResponseOptions(),
+        )
+
+        response.containsKey("liveProblems") shouldBe false
+        response.containsKey("problems") shouldBe false
     }
 
     @Test
@@ -266,6 +308,99 @@ class BuildStatusAssemblerTest {
             (problem as Map<*, *>)["label"] shouldBe "Compilation failed"
         }
         response.containsKey("progress") shouldBe false
+    }
+
+    @Test
+    fun `assemble includes liveProblems as capped problems on failed GRADLE_TASK without includeProblems`() {
+        val response = BuildStatusAssembler.assemble(
+            view = BuildStatusView(
+                buildId = "failed-compile",
+                kind = "tasks",
+                status = BuildProgressTracker.STATUS_FAILED,
+                startedAt = "2026-06-14T10:00:00Z",
+                finishedAt = "2026-06-14T10:01:00Z",
+                tasks = listOf("compileKotlin"),
+                error = "Execution failed for task ':plugin-route-collectors:compileFastTestKotlin'.",
+                failureKind = FailureKind.TASK_FAILURE,
+                outcome = "FAILED",
+                buildSummary = mapOf(
+                    "failureSummary" to listOf(":plugin-route-collectors:compileFastTestKotlin"),
+                ),
+                progress = BuildProgressSnapshot(
+                    status = BuildProgressTracker.STATUS_FAILED,
+                    currentOperation = null,
+                    completedTaskCount = 0,
+                    runningTaskCount = 0,
+                    failedTaskCount = 1,
+                    completedTasks = emptyList(),
+                    runningTasks = emptyList(),
+                    failedTasks = listOf(":plugin-route-collectors:compileFastTestKotlin"),
+                    recentEvents = emptyList(),
+                    totalEventCount = 1,
+                    liveProblems = listOf(
+                        BuildProblemSnapshot(
+                            label = "Kotlin compiler error",
+                            details = "No parameter with name 'routeMatch'",
+                            severity = "error",
+                        ),
+                    ),
+                ),
+                progressAvailable = true,
+                stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+                stderr = CapturedStreamSnapshot(text = "", totalChars = 0),
+                statusSource = BuildStatusView.SOURCE_MEMORY,
+            ),
+            outputLimit = OutputLimitOptions(),
+            progressOptions = ProgressResponseOptions(),
+        )
+
+        response["failureCategory"] shouldBe "GRADLE_TASK"
+        (response["problems"] as List<*>).single().let { problem ->
+            (problem as Map<*, *>)["label"] shouldBe "Kotlin compiler error"
+            problem["details"] shouldBe "No parameter with name 'routeMatch'"
+        }
+        response.containsKey("hint") shouldBe false
+        response.containsKey("liveProblems") shouldBe false
+    }
+
+    @Test
+    fun `assemble adds shell-fallback hint when failed GRADLE_TASK has no problems`() {
+        val response = BuildStatusAssembler.assemble(
+            view = BuildStatusView(
+                buildId = "failed-without-problems",
+                kind = "tasks",
+                status = BuildProgressTracker.STATUS_FAILED,
+                startedAt = "2026-06-14T10:00:00Z",
+                finishedAt = "2026-06-14T10:01:00Z",
+                tasks = listOf("ktlintCheck"),
+                error = "Execution failed for task ':plugin:ktlintCheck'.",
+                failureKind = FailureKind.TASK_FAILURE,
+                outcome = "FAILED",
+                buildSummary = null,
+                progress = BuildProgressSnapshot(
+                    status = BuildProgressTracker.STATUS_FAILED,
+                    currentOperation = null,
+                    completedTaskCount = 0,
+                    runningTaskCount = 0,
+                    failedTaskCount = 1,
+                    completedTasks = emptyList(),
+                    runningTasks = emptyList(),
+                    failedTasks = listOf(":plugin:ktlintCheck"),
+                    recentEvents = emptyList(),
+                    totalEventCount = 1,
+                ),
+                progressAvailable = true,
+                stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+                stderr = CapturedStreamSnapshot(text = "", totalChars = 0),
+                statusSource = BuildStatusView.SOURCE_MEMORY,
+            ),
+            outputLimit = OutputLimitOptions(),
+            progressOptions = ProgressResponseOptions(),
+        )
+
+        response["failureCategory"] shouldBe "GRADLE_TASK"
+        response.containsKey("problems") shouldBe false
+        response["hint"] shouldBe BuildStatusAssembler.GRADLE_TASK_FAILURE_HINT
     }
 
     @Test

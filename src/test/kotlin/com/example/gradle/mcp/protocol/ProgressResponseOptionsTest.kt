@@ -151,6 +151,31 @@ class ProgressResponseOptionsTest {
     }
 
     @Test
+    fun `optionalProgressFields omits liveProblems on failed status`() {
+        val snapshot = BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_FAILED,
+            currentOperation = null,
+            completedTaskCount = 0,
+            runningTaskCount = 0,
+            failedTaskCount = 1,
+            completedTasks = emptyList(),
+            runningTasks = emptyList(),
+            failedTasks = listOf(":compileKotlin"),
+            recentEvents = emptyList(),
+            totalEventCount = 1,
+            liveProblems = listOf(
+                BuildProblemSnapshot(
+                    label = "Kotlin compiler error",
+                    severity = "error",
+                ),
+            ),
+        )
+
+        optionalProgressFields(ProgressResponseOptions(includeProblems = true), snapshot)
+            .containsKey("liveProblems") shouldBe false
+    }
+
+    @Test
     fun `optionalProgressFields caps liveProblems with most recent entries`() {
         val snapshot = BuildProgressSnapshot(
             status = BuildProgressTracker.STATUS_RUNNING,
@@ -376,7 +401,7 @@ class ProgressResponseOptionsTest {
     }
 
     @Test
-    fun `terminalFailureFields merges liveProblems when includeProblems is enabled`() {
+    fun `terminalFailureFields merges liveProblems on failed status`() {
         val snapshot = BuildProgressSnapshot(
             status = BuildProgressTracker.STATUS_FAILED,
             currentOperation = null,
@@ -408,10 +433,41 @@ class ProgressResponseOptionsTest {
             ),
         )
 
-        val fields = terminalFailureFields(snapshot, ProgressResponseOptions(includeProblems = true))
+        val fields = terminalFailureFields(snapshot, ProgressResponseOptions())
 
         (fields["problems"] as List<*>).map { (it as Map<*, *>)["label"] } shouldBe
             listOf("Compilation failed", "Deprecated API usage")
+    }
+
+    @Test
+    fun `terminalFailureFields merges liveProblems on failed GRADLE_TASK without includeProblems`() {
+        val snapshot = BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_FAILED,
+            currentOperation = null,
+            completedTaskCount = 0,
+            runningTaskCount = 0,
+            failedTaskCount = 1,
+            completedTasks = emptyList(),
+            runningTasks = emptyList(),
+            failedTasks = listOf(":plugin-route-collectors:compileFastTestKotlin"),
+            recentEvents = emptyList(),
+            totalEventCount = 2,
+            liveProblems = listOf(
+                BuildProblemSnapshot(
+                    label = "Kotlin compiler error",
+                    details = "No parameter with name 'routeMatch'",
+                    severity = "error",
+                    contextualLabel = "File.kt:24",
+                ),
+            ),
+        )
+
+        val fields = terminalFailureFields(snapshot, ProgressResponseOptions())
+
+        (fields["problems"] as List<*>).single().let { problem ->
+            (problem as Map<*, *>)["label"] shouldBe "Kotlin compiler error"
+            problem["details"] shouldBe "No parameter with name 'routeMatch'"
+        }
     }
 
     @Test
