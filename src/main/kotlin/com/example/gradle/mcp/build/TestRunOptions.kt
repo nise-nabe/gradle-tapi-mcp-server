@@ -116,24 +116,32 @@ internal fun describeTestOperation(request: BuildRunRequest): String =
     }
 
 internal fun configureTestLauncher(launcher: TestLauncher, request: BuildRunRequest): TestLauncher {
+    val scopedPaths = TestLauncherSupport.scopedTaskPaths(request)
     var configured = launcher
-    if (request.tasks.isNotEmpty()) {
-        configured = configured.forTasks(*request.tasks.toTypedArray())
+    if (scopedPaths.isNotEmpty()) {
+        configured = configured.forTasks(*scopedPaths.toTypedArray())
     }
     return when (val selection = request.selection) {
         is TestRunSelection.Classes -> {
-            val taskPath = selection.taskPath
-            if (!taskPath.isNullOrBlank()) {
-                configured.withTaskAndTestClasses(taskPath, selection.classes)
+            if (scopedPaths.isNotEmpty()) {
+                configured.withTestsFor { specs ->
+                    for (path in scopedPaths) {
+                        specs.forTaskPath(path).includeClasses(selection.classes)
+                    }
+                }
             } else {
                 configured.withJvmTestClasses(*selection.classes.toTypedArray())
             }
         }
         is TestRunSelection.Methods -> {
-            val taskPath = selection.taskPath
-            if (!taskPath.isNullOrBlank()) {
-                selection.methods.entries.fold(configured) { acc, (className, methods) ->
-                    acc.withTaskAndTestMethods(taskPath, className, methods)
+            if (scopedPaths.isNotEmpty()) {
+                configured.withTestsFor { specs ->
+                    for (path in scopedPaths) {
+                        val spec = specs.forTaskPath(path)
+                        selection.methods.forEach { (className, methods) ->
+                            spec.includeMethods(className, methods)
+                        }
+                    }
                 }
             } else {
                 selection.methods.entries.fold(configured) { acc, (className, methods) ->
@@ -143,7 +151,7 @@ internal fun configureTestLauncher(launcher: TestLauncher, request: BuildRunRequ
         }
         is TestRunSelection.Patterns -> {
             configured.withTestsFor { specs ->
-                for (path in request.tasks) {
+                for (path in scopedPaths) {
                     specs.forTaskPath(path).includePatterns(selection.patterns)
                 }
             }

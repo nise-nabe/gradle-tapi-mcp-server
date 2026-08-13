@@ -699,9 +699,7 @@ class BuildExecutionManager(
                     launcher.run()
                 }
                 BuildKind.TESTS -> {
-                    val launcher = configureTestLauncher(connection.newTestLauncher(), effectiveRequest)
-                    configureLauncher(launcher, record, effectiveRequest, streams, tracker)
-                    launcher.run()
+                    runTests(connection, record, effectiveRequest, streams, tracker)
                 }
             }
             finalizeBuild(record, BuildTerminalOutcome.Succeeded)
@@ -779,6 +777,59 @@ class BuildExecutionManager(
                     "on failure read testFailures/buildSummary before enabling includeOutput.",
             )
         }
+
+    private fun runTests(
+        connection: ProjectConnection,
+        record: BuildRecord,
+        request: BuildRunRequest,
+        streams: CapturingStreams,
+        tracker: BuildProgressTracker,
+    ) {
+        try {
+            val launcher = configureTestLauncher(connection.newTestLauncher(), request)
+            configureLauncher(launcher, record, request, streams, tracker)
+            launcher.run()
+        } catch (exception: Exception) {
+            if (!shouldFallbackToBuildLauncher(record, request, exception)) {
+                throw exception
+            }
+            runTestsViaBuildLauncher(connection, record, request, streams, tracker)
+        }
+    }
+
+    private fun shouldFallbackToBuildLauncher(
+        record: BuildRecord,
+        request: BuildRunRequest,
+        exception: Exception,
+    ): Boolean {
+        val progress = record.progressTracker.snapshot()
+        return TestLauncherSupport.shouldFallbackToBuildLauncher(
+            request = request,
+            exception = exception,
+            completedTaskCount = progress.completedTaskCount,
+            failedTasks = progress.failedTasks,
+        )
+    }
+
+    private fun runTestsViaBuildLauncher(
+        connection: ProjectConnection,
+        record: BuildRecord,
+        request: BuildRunRequest,
+        streams: CapturingStreams,
+        tracker: BuildProgressTracker,
+    ) {
+        val tasks = TestLauncherSupport.scopedTaskPaths(request)
+        val launcher = connection.newBuild().forTasks(*tasks.toTypedArray())
+        configureLauncher(launcher, record, request, streams, tracker)
+        val filterArgs = TestLauncherSupport.testFilterCliArguments(request.selection)
+        if (filterArgs.isNotEmpty()) {
+            launcher.addArguments(*filterArgs.toTypedArray())
+        }
+        if (TestLauncherSupport.RERUN_ARGUMENT !in request.arguments) {
+            launcher.addArguments(TestLauncherSupport.RERUN_ARGUMENT)
+        }
+        launcher.run()
+    }
 
     private fun configureLauncher(
         launcher: ConfigurableLauncher<*>,
