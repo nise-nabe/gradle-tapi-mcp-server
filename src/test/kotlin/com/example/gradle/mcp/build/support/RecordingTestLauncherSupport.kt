@@ -116,14 +116,14 @@ private fun recordingTestSpec(
                     self[0]
                 }
                 "includeClass" -> {
-                    val className = args?.get(0) as? String ?: return@InvocationHandler self[0]
+                    val className = args[0] as? String ?: return@InvocationHandler self[0]
                     state[0] = state[0].copy(classes = state[0].classes + className)
                     sink += state[0]
                     self[0]
                 }
                 "includeMethods" -> {
-                    val className = args?.get(0) as? String ?: return@InvocationHandler self[0]
-                    val methods = when (val value = args?.get(1)) {
+                    val className = args[0] as? String ?: return@InvocationHandler self[0]
+                    val methods = when (val value = args.getOrNull(1)) {
                         is Collection<*> -> value.filterIsInstance<String>()
                         else -> emptyList()
                     }
@@ -132,8 +132,8 @@ private fun recordingTestSpec(
                     self[0]
                 }
                 "includeMethod" -> {
-                    val className = args?.get(0) as? String ?: return@InvocationHandler self[0]
-                    val methodName = args?.get(1) as? String ?: return@InvocationHandler self[0]
+                    val className = args[0] as? String ?: return@InvocationHandler self[0]
+                    val methodName = args.getOrNull(1) as? String ?: return@InvocationHandler self[0]
                     val existing = state[0].methods[className].orEmpty()
                     state[0] = state[0].copy(methods = state[0].methods + (className to (existing + methodName)))
                     sink += state[0]

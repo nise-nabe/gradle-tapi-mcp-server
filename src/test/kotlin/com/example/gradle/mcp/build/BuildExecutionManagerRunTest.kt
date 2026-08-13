@@ -768,6 +768,6 @@ class BuildExecutionManagerRunTest {
         result["status"] shouldBe "failed"
         result["error"] shouldBe "Requested test task with path ':plugin:test' cannot be found."
         buildLauncherRunCount.get() shouldBe 0
-        buildLauncherCalls.shouldBe(emptyList())
+        buildLauncherCalls.size shouldBe 0
     }
 }
