@@ -286,13 +286,12 @@ class BuildProgressTrackerTest {
     }
 
     @Test
-    fun `configureLauncher subscribes problem events only when enabled`() {
+    fun `configureLauncher always subscribes problem events`() {
         val problemOperationType = OperationType.values()
             .firstOrNull { it.name == "PROBLEM" || it.name == "PROBLEMS" }
             ?: return
 
-        captureOperationTypes(includeProblems = false) shouldNotContain problemOperationType
-        captureOperationTypes(includeProblems = true) shouldContain problemOperationType
+        captureOperationTypes() shouldContain problemOperationType
     }
 
     @Test
@@ -502,7 +501,6 @@ class BuildProgressTrackerTest {
 
     private fun captureOperationTypes(
         trackDownloads: Boolean = false,
-        includeProblems: Boolean = false,
     ): List<OperationType> {
         val tracker = BuildProgressTracker(trackDownloads = trackDownloads)
         val captured = mutableListOf<OperationType>()
@@ -530,7 +528,7 @@ class BuildProgressTrackerTest {
                 }
             },
         ) as ConfigurableLauncher<*>
-        tracker.configureLauncher(launcher, includeProblems)
+        tracker.configureLauncher(launcher)
         return captured.toList()
     }
 

@@ -246,7 +246,7 @@ Returns `status` (`queued`, `running`, `succeeded`, `failed`, `cancelled`, or `n
 | Flag | Default | Effect |
 |------|---------|--------|
 | `includeProgress` | `false` | `progress.completedTasks`, `progress.recentEvents` (live Tooling API or disk `events.ndjson`) |
-| `includeProblems` | `false` | Live Gradle Problems API as `liveProblems`; merged into terminal failure responses |
+| `includeProblems` | `false` | Live Gradle Problems API as `liveProblems` while running. Failed `GRADLE_TASK` status includes a **capped** `problems` array by default (merged failure-result + live events). |
 | `includeDownloads` | `false` | `activeDownloadCount`, `recentDownloads` (requires in-memory live record) |
 | `includeTestDetails` | `false` | Terminal `failedTests`; with `includeProgress=true`, adds `progress.recentEvents[].test` on `TEST_*` events. Disk polls restore `failedTests` from `events.ndjson` (`className`, `methodName`, `failureMessage`; `sourcePath`/`sourceLine` need live Tooling API) |
 

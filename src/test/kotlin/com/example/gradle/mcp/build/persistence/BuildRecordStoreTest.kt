@@ -126,6 +126,34 @@ class BuildRecordStoreTest {
     }
 
     @Test
+    fun `writeMcpResult merges liveProblems into persisted problems`(@TempDir projectDir: File) {
+        val record = testBuildRecord(
+            id = "live-problems-build",
+            tracker = failedTracker(message = "Execution failed for task ':compileKotlin'."),
+            projectDirectory = projectDir.absolutePath,
+        ) {
+            finishedAt = Instant.parse(TEST_ISO_FINISH)
+        }
+        val progress = record.progressTracker.snapshot().copy(
+            liveProblems = listOf(
+                BuildProblemSnapshot(
+                    label = "Kotlin compiler error",
+                    details = "No parameter with name 'routeMatch'",
+                    severity = "error",
+                ),
+            ),
+        )
+        store.writeMcpResult(record, progress)
+
+        val mcpResult = store.readMcpResult(
+            store.recordDirectory(projectDir, "live-problems-build").shouldNotBeNull(),
+        ).shouldNotBeNull()
+
+        mcpResult.problems.single().label shouldBe "Kotlin compiler error"
+        mcpResult.problems.single().details shouldBe "No parameter with name 'routeMatch'"
+    }
+
+    @Test
     fun `writeMcpResult prefers gradle succeeded when memory failed without task failures`(@TempDir projectDir: File) {
         store.writeGradleResultToDisk(
             projectDir,

@@ -30,7 +30,7 @@ import kotlinx.coroutines.CoroutineScope
 internal fun progressProperties(): Map<String, Any> =
     mapOf(
         "includeProgress" to booleanProperty("Task/test progress. Default false."),
-        "includeProblems" to booleanProperty("Gradle Problems API events. Default false."),
+        "includeProblems" to booleanProperty("Live Problems API. Default false."),
         "includeDownloads" to booleanProperty("Download progress. Default false."),
         "includeTestDetails" to booleanProperty(
             "Test metadata and failedTests. Default false; live progress events need includeProgress=true.",

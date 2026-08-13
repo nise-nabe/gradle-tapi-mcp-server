@@ -1,5 +1,7 @@
 package com.example.gradle.mcp.build
 
+import org.gradle.tooling.GradleConnectionException
+
 data class ClassifiedFailure(
     val failureKind: FailureKind?,
     val error: String?,
@@ -30,7 +32,21 @@ object BuildFailureClassifier {
         if (isLikelyConnectionFailure(error, progress, stdout)) {
             return ClassifiedFailure(FailureKind.CONNECTION_FAILURE, error)
         }
-        return ClassifiedFailure(FailureKind.TASK_FAILURE, error)
+        return ClassifiedFailure(FailureKind.TASK_FAILURE, unwrapTaskFailureError(error, progress, stdout))
+    }
+
+    fun unwrapBuildFailureMessage(exception: Throwable): String {
+        val fromDetailedFailures = detailedFailureMessages(exception)
+            .firstOrNull { !isToolingConnectionWrapper(it) }
+        if (fromDetailedFailures != null) {
+            return fromDetailedFailures
+        }
+        val fromCauses = causeMessages(exception)
+            .firstOrNull(::looksLikeTaskExecutionFailure)
+        if (fromCauses != null) {
+            return fromCauses
+        }
+        return exception.message?.takeIf { it.isNotBlank() } ?: exception.toString()
     }
 
     fun hasEvidenceOfTestFailures(
@@ -60,18 +76,41 @@ object BuildFailureClassifier {
         return false
     }
 
+    internal fun isToolingConnectionWrapper(message: String?): Boolean {
+        if (message.isNullOrBlank()) {
+            return false
+        }
+        val lower = message.lowercase()
+        return lower.contains("gradle distribution") ||
+            (lower.contains("connection") && lower.contains("could not execute"))
+    }
+
+    private fun unwrapTaskFailureError(
+        error: String?,
+        progress: BuildProgressSnapshot?,
+        stdout: String,
+    ): String? {
+        if (!isToolingConnectionWrapper(error)) {
+            return error
+        }
+        val failedTask = progress?.failedGradleTasks?.firstOrNull()
+            ?: progress?.failedTasks?.firstOrNull()
+        if (!failedTask.isNullOrBlank()) {
+            return "Execution failed for task '$failedTask'."
+        }
+        val fromStdout = BuildOutputParser.parse(stdout).failureSummary.firstOrNull()
+        if (!fromStdout.isNullOrBlank()) {
+            return "Execution failed for task '$fromStdout'."
+        }
+        return error
+    }
+
     private fun isLikelyConnectionFailure(
         error: String?,
         progress: BuildProgressSnapshot?,
         stdout: String,
     ): Boolean {
-        if (error.isNullOrBlank()) {
-            return false
-        }
-        val lower = error.lowercase()
-        val looksLikeConnection = lower.contains("gradle distribution") ||
-            (lower.contains("connection") && lower.contains("could not execute"))
-        if (!looksLikeConnection) {
+        if (!isToolingConnectionWrapper(error)) {
             return false
         }
         if (stdout.contains("BUILD FAILED") || stdout.contains("BUILD SUCCESSFUL")) {
@@ -80,9 +119,35 @@ object BuildFailureClassifier {
         if ((progress?.completedTaskCount ?: 0) > 0) {
             return false
         }
+        if ((progress?.failedTaskCount ?: 0) > 0) {
+            return false
+        }
+        if (!progress?.failedTasks.isNullOrEmpty()) {
+            return false
+        }
         if (hasEvidenceOfTestFailures(progress, null, stdout)) {
             return false
         }
         return true
+    }
+
+    private fun looksLikeTaskExecutionFailure(message: String): Boolean =
+        message.contains("Execution failed for task", ignoreCase = true)
+
+    private fun detailedFailureMessages(exception: Throwable): List<String> {
+        val connection = exception as? GradleConnectionException ?: return emptyList()
+        return runCatching { connection.failures }
+            .getOrNull()
+            .orEmpty()
+            .mapNotNull { failure -> failure.message?.takeIf { it.isNotBlank() } }
+    }
+
+    private fun causeMessages(exception: Throwable): Sequence<String> = sequence {
+        val seen = mutableSetOf<Throwable>()
+        var current: Throwable? = exception
+        while (current != null && seen.add(current)) {
+            current.message?.takeIf { it.isNotBlank() }?.let { yield(it) }
+            current = current.cause
+        }
     }
 }

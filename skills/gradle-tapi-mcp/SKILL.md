@@ -107,7 +107,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 - 詳細 progress は `includeProgress=true` のときのみ（デフォルト false）
 - 末尾を残す: `tailOutput=true`（デフォルト）
 
-失敗時は `failedTasks` / `buildSummary.failureSummary` を先に確認する。失敗ビルドでは `problems`（構造化 Problem API：`label`, `details`, `severity`, `solutions` 等）も返る（`includeProgress` 不要）。詳細ログが必要なら `includeOutput=true` を付ける。バックグラウンド実行中は `gradle_get_build_status` で再ポーリングすれば取得できる（メモリ上の実行中ビルドはライブ出力あり）。**ディスクのみのポーリング**（MCP 再起動後やメモリ evict 後）では `includeOutput=true` でも **ビルド完了まで stdout/stderr は空**（MCP が `finalizeBuild` でログを書くまで）。フォアグラウンド実行では同じ `gradle_run_*` 呼び出しに `includeOutput=true` を付けて再実行する。完了ビルドでは `includeProgress` なしでも `failedTaskCount` / `failedTasks` が返る。
+失敗時は `failedTasks` / `buildSummary.failureSummary` / `problems` を先に確認する。`GRADLE_TASK` 失敗では capped な Problems API `problems` がデフォルトで付く（`includeProblems` / `includeProgress` 不要）。コンパイラ診断のために shell `./gradlew` へ切り替えない。詳細ログが必要なら `includeOutput=true` を付ける。バックグラウンド実行中は `gradle_get_build_status` で再ポーリングすれば取得できる（メモリ上の実行中ビルドはライブ出力あり）。**ディスクのみのポーリング**（MCP 再起動後やメモリ evict 後）では `includeOutput=true` でも **ビルド完了まで stdout/stderr は空**（MCP が `finalizeBuild` でログを書くまで）。フォアグラウンド実行では同じ `gradle_run_*` 呼び出しに `includeOutput=true` を付けて再実行する。完了ビルドでは `includeProgress` なしでも `failedTaskCount` / `failedTasks` が返る。
 
 ## ディスク永続化と `gradle_get_build_status`
 
