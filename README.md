@@ -113,8 +113,9 @@ For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` o
 - `statusSource`: `memory` (in-process record) or `disk` (`.gradle/mcp-builds/<buildId>/`)
 - `outcome` and `buildSummary` when the build has finished
 - `progress` (only when `includeProgress: true`): capped task lists and recent events; running polls merge in-memory progress with disk `events.ndjson` when available
+- `problems` on terminal `failed` + `failureCategory: GRADLE_TASK` when the Problems API emitted them (capped; no `includeProblems` needed). Set `includeProblems: true` for `liveProblems` while running, or to re-poll if terminal `problems` is missing. Do not re-run the task via CLI just to read compiler output.
 - `recordDirectory`: path to `.gradle/mcp-builds/<buildId>/` (included during running polls when disk artifacts exist)
-- `stdout`/`stderr` only when `includeOutput: true` — live partial output while running only when the MCP server still holds the in-memory record; disk-only polls return streams after MCP finalizes logs at build end
+- `stdout`/`stderr` only when `includeOutput: true` — live partial output while running only when the MCP server still holds the in-memory record; disk-only polls return streams after MCP finalizes logs at build end. Tails often miss Kotlin compiler diagnostics (`Compilation error. See log for more details`); prefer `problems` on `GRADLE_TASK` failure
 - optional `projectDirectory` when the in-memory record was evicted and the connected project differs (disk-only lookup)
 - `sinceStdoutOffset` / `sinceStderrOffset` with `includeOutput: true` for incremental `stdoutDelta` / `stderrDelta` polling (avoids re-reading prior log prefixes)
 - `waitUntilComplete: true` with optional `waitTimeoutMs` (default `30000`, max `60000`) / `pollIntervalMs` for a **short server-side** wait. This wait is independent of the MCP client/host request timeout: do not rely on one long wait for multi-minute builds. Prefer plain polls (`waitUntilComplete` omitted/false) or short waits; on timeout the response includes `waitTimedOut`, `waitedMs`, and a `hint` to poll again. Non-wait status polls read memory/disk only and never block on the Tooling API.
@@ -132,7 +133,7 @@ The single-flight gate (one MCP build per `projectDirectory`) releases as soon a
 | Custom `JvmTestSuite` (e.g. `fastTest`) | Same as above with `taskPath: ":mod:fastTest"`, or `tasks: [":mod:fastTest"]` + `includePatterns` |
 | Several Test tasks in **one** MCP build | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
 | Whole Test task / suite (no class filter) | `gradle_run_tasks` with `tasks: [":mod:test"]` — not selector-less `gradle_run_tests` |
-| Multi-project without scoping | Avoid unscoped `testClasses`/`testMethods` — returns `INVALID_ARGUMENT` with `suggestedTaskPaths` (capped) and `hint` |
+| Multi-project without scoping | Infers `taskPath` when unambiguous (`taskPathInferred: true`); else `INVALID_ARGUMENT` with `suggestedTaskPaths` (capped) and `hint` |
 
 Exactly one of `testClasses`, `testMethods`, or `includePattern(s)` is required. Patterns require `tasks`. `gradle_run_tests` with only `taskPath` / `tasks` returns `INVALID_ARGUMENT` plus a `hint` to call `gradle_run_tasks` for the whole suite.
 
@@ -141,8 +142,8 @@ Exactly one of `testClasses`, `testMethods`, or `includePattern(s)` is required.
 Key defaults for MCP clients and agents (full detail in `skills/gradle-tapi-mcp/SKILL.md` and `skills/gradle-tapi-mcp/reference.md`):
 
 - **Long builds:** pass `background: true` for runs that may exceed ~30s. Foreground `gradle_run_tasks` / `gradle_run_tests` auto-detach after ~45s with `detached: true` and a `buildId` to poll.
-- **Status polling:** call `gradle_get_build_status` without `includeOutput` while `status` is `running`. Use `sinceStdoutOffset` / `sinceStderrOffset` for live logs, or read `testFailures` / `buildSummary` on terminal failure.
-- **Multi-project tests:** `gradle_run_tests` requires `taskPath` or `tasks` when using `testClasses` / `testMethods`. Unscoped errors include up to 20 `suggestedTaskPaths` (`suggestedTaskPathsTruncated: true` when capped) plus a `hint`; use `gradle_get_project_model` with `includeTasks=true` for the full task list.
+- **Status polling:** call `gradle_get_build_status` without `includeOutput` while `status` is `running`. Use `sinceStdoutOffset` / `sinceStderrOffset` for live logs. On terminal failure, read `testFailures` / `buildSummary` / `problems` / `failureCategory`. On `status: failed` + `failureCategory: GRADLE_TASK`, use capped `problems` (included by default when emitted). Re-poll with `includeProblems: true` if `problems` is missing; do not re-run the task via CLI for compiler output. `includeOutput` tails often miss Kotlin compiler diagnostics (`Compilation error. See log for more details`).
+- **Multi-project tests:** `gradle_run_tests` infers `taskPath` for unscoped `testClasses` / `testMethods` when a unique JVM Test task matches (package-suffix tokens vs subproject path segments); success sets `taskPathInferred: true`. When ambiguous or unmatched, the error is `INVALID_ARGUMENT` with up to 20 `suggestedTaskPaths` (`suggestedTaskPathsTruncated: true` when capped) plus a `hint`; use `gradle_get_project_model` with `includeTasks=true` for the full task list.
 
 When the MCP client supplies a progress token, the server may also emit MCP progress/logging notifications during the run.
 
