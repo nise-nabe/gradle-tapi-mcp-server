@@ -116,7 +116,9 @@ internal fun runTestsSchema(): Map<String, Any> =
             "taskPath" to stringProperty("Single Test task (:mod:test or :mod:fastTest). Requires testClasses or testMethods."),
             "includePattern" to stringProperty("Single test include pattern (Gradle 7.6+). Requires tasks."),
             "includePatterns" to stringArrayProperty("Include patterns for every path in tasks (Gradle 7.6+)."),
-            "tasks" to stringArrayProperty("Test task paths for TestLauncher.forTasks() (Gradle 7.6+)."),
+            "tasks" to stringArrayProperty(
+                "Test task paths for TestLauncher.forTasks() (Gradle 7.6+). Without selectors, use gradle_run_tasks.",
+            ),
             "background" to booleanProperty("Return buildId immediately. Default false."),
             "queueIfBusy" to booleanProperty("Enqueue if busy (needs background)."),
         ),

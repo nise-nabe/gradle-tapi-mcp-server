@@ -448,7 +448,7 @@ class TestRunOptionsTest {
                 Arguments.of(
                     "missing selection mechanism",
                     { TestRunOptions().validate() },
-                    "At least one of testClasses, testMethods, or includePattern/includePatterns must be provided",
+                    MISSING_TEST_SELECTION_MESSAGE,
                 ),
                 Arguments.of(
                     "taskPath without classes or methods",
@@ -504,6 +504,58 @@ class TestRunOptionsTest {
                     "includePattern/includePatterns requires tasks for test task scoping",
                 ),
             )
+    }
+
+    @Test
+    fun `validate without selectors includes gradle_run_tasks hint`() {
+        val error = shouldThrow<McpException> { TestRunOptions().validate() }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldBe MISSING_TEST_SELECTION_MESSAGE
+        error.errorDetails["hint"] shouldBe MISSING_TEST_SELECTION_HINT
+    }
+
+    @Test
+    fun `validate with only taskPath hints gradle_run_tasks using that path`() {
+        val error = shouldThrow<McpException> {
+            parseTestRunOptions(mapOf("taskPath" to ":mod:test")).options.validate(inputTaskPath = ":mod:test")
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldBe MISSING_TEST_SELECTION_MESSAGE
+        error.errorDetails["hint"] shouldBe
+            "To run the whole suite, call gradle_run_tasks with tasks: [\":mod:test\"]. " +
+            "gradle_run_tests is for selected classes/methods/patterns."
+    }
+
+    @Test
+    fun `validate with only tasks hints gradle_run_tasks using those paths`() {
+        val error = shouldThrow<McpException> {
+            parseTestRunOptions(
+                mapOf("tasks" to listOf(":mod:test", ":mod:fastTest")),
+            ).options.validate()
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.errorDetails["hint"] shouldBe
+            "To run the whole suite, call gradle_run_tasks with tasks: [\":mod:test\", \":mod:fastTest\"]. " +
+            "gradle_run_tests is for selected classes/methods/patterns."
+    }
+
+    @Test
+    fun `validate with taskPath and tasks deduplicates suite paths in hint`() {
+        val error = shouldThrow<McpException> {
+            parseTestRunOptions(
+                mapOf(
+                    "taskPath" to ":mod:test",
+                    "tasks" to listOf(":mod:test", ":mod:fastTest"),
+                ),
+            ).options.validate(inputTaskPath = ":mod:test")
+        }
+
+        error.errorDetails["hint"] shouldBe
+            "To run the whole suite, call gradle_run_tasks with tasks: [\":mod:test\", \":mod:fastTest\"]. " +
+            "gradle_run_tests is for selected classes/methods/patterns."
     }
 
     @Test

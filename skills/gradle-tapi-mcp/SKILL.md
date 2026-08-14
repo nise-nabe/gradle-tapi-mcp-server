@@ -167,6 +167,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | 同一プロジェクトで複数テストを並列の別呼び出しで起動 | **不可** | 1 回の `gradle_run_tests` にまとめる（下記） |
 | 同一プロジェクトで複数クラス／メソッドを 1 回で実行 | **可** | `testMethods` / `testClasses` / `includePatterns` |
 | 複数 Test タスク（`:test` + カスタム `JvmTestSuite` `fastTest` 等）を 1 回で実行 | **可** | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
+| テストスイート全体（クラス指定なし） | **可** | `gradle_run_tasks`（`gradle_run_tests` にセレクタなしは `INVALID_ARGUMENT` + `hint`） |
 | マルチモジュールで `taskPath`/`tasks` なし | **不可** | `INVALID_ARGUMENT` に `suggestedTaskPaths`（最大 20 件、超過時 `suggestedTaskPathsTruncated: true`）と `hint`。全件は `gradle_get_project_model` + `includeTasks=true` |
 | 別 `projectDirectory` への並列テスト | **可** | 各プロジェクトで `background: true`（サーバー上限まで） |
 | 順次実行 | **可** | 前のビルド完了を待つか `gradle_cancel_build` で停止してから次を起動 |
@@ -178,9 +179,13 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 { "tasks": ["compileKotlin"], "background": true, "queueIfBusy": true }
 ```
 
+→ `gradle_run_tasks`
+
 ```json
 { "tasks": [":plugin:test"], "background": true, "queueIfBusy": true }
 ```
+
+→ `gradle_run_tasks`（スイート全体。`gradle_run_tests` には `testClasses` / `testMethods` / `includePatterns` が必要）
 
 複数テストを検証するときは **別 tool 呼び出しに分けず、1 回の `gradle_run_tests` にまとめる**のが正攻法。Gradle は 1 本の TestLauncher ビルド内で選択したテストを実行する。
 
@@ -203,6 +208,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | 1 つの Test タスク + メソッド | `taskPath` + `testMethods` |
 | カスタム suite（`fastTest`）のみ | `taskPath: ":mod:fastTest"` または `tasks: [":mod:fastTest"]` + `includePatterns` |
 | `:test` と `fastTest` をまとめて 1 MCP ビルド | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
+| スイート全体（フィルタなし） | `gradle_run_tasks` with `tasks: [":mod:test"]` |
 
 別リポジトリを並列検証する場合のみ、各 `projectDirectory` で `gradle_connect` したうえで `background: true` の `gradle_run_tests` を並列起動する（[複数プロジェクト](#複数プロジェクト) 参照）。
 
@@ -245,6 +251,14 @@ Configuration Cache 互換性まで試す場合:
 ```
 
 → `gradle_run_tasks`
+
+**テストスイート全体**（セレクタなし）
+
+```json
+{ "tasks": [":mod:test"] }
+```
+
+→ `gradle_run_tasks`（`gradle_run_tests` はクラス / メソッド / パターン指定用。セレクタなしは `INVALID_ARGUMENT` + `hint`）
 
 **テストクラス指定**
 
