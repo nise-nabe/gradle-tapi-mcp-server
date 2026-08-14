@@ -152,7 +152,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 
 **ポーリング時のトークン節約:** `status: running` の間は `gradle_get_build_status` に `includeOutput: true` を付けない（デバッグ時以外）。ライブログは `sinceStdoutOffset` / `sinceStderrOffset`、失敗時は `testFailures` / `buildSummary` を先に読む。
 
-`buildId` は必須（並行ビルド時の取り違え防止）。**同一 `projectDirectory` では MCP ビルドは 1 本のみ**（2 本目は `BUILD_ALREADY_RUNNING` で `error.activeBuildId` 等が付く場合あり）。終端ステータスになった瞬間にゲートは解放される（grace なし）。別プロジェクトへの並行ビルドはサーバー側上限まで可能。同一 checkout で MCP と shell の `./gradlew` を並行しないこと（IntelliJ Platform の `:plugin:test` は sandbox 競合でハングしやすい）。上限到達時も `BUILD_ALREADY_RUNNING` が返り、`activeBuildIds`（単一時は `activeBuildId` も）で占有ビルドを特定できる。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` を `running` でなくなるまでポーリングして終端ステータス（`cancelled` / `succeeded` / `failed`）を確認する。
+`buildId` は必須（並行ビルド時の取り違え防止）。**同一 `projectDirectory` では MCP ビルドは同時に 1 本だけ実行**される。2 本目の `background: true` は enqueue（`status: queued`、`queueIfBusy` は background 時デフォルト true）。フォアグラウンド衝突や `queueIfBusy: false` は `BUILD_ALREADY_RUNNING`（`error.activeBuildId` 等が付く場合あり）。終端ステータスになった瞬間にゲートは解放される（grace なし）。別プロジェクトへの並行ビルドはサーバー側上限まで可能。同一 checkout で MCP と shell の `./gradlew` を並行しないこと（IntelliJ Platform の `:plugin:test` は sandbox 競合でハングしやすい）。上限到達時も `BUILD_ALREADY_RUNNING` が返り、`activeBuildIds`（単一時は `activeBuildId` も）で占有ビルドを特定できる。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` を `running` でなくなるまでポーリングして終端ステータス（`cancelled` / `succeeded` / `failed`）を確認する。
 
 `buildId` を失ったときは `gradle_list_builds` で直近の MCP ビルドを探し、見つかった `buildId` で `gradle_get_build_status` をポーリングする。TAPI 接続は不要（メモリ上のビルドは常に含まれる。ディスク走査は `projectDirectory`、接続中プロジェクト、または `GRADLE_PROJECT_DIR` を使用）。`projectDirectory` を明示する場合は、接続中プロジェクトまたは `GRADLE_PROJECT_DIR` で許可境界が定義されている必要がある（未定義だと `INVALID_ARGUMENT`）。
 
@@ -160,7 +160,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 
 ## テスト実行と並行性
 
-**同一 `projectDirectory` では、複数の `gradle_run_tests` を別 tool 呼び出しで同時起動できない。** クライアントが同一ターンで並列送信しても、2 本目以降は `BUILD_ALREADY_RUNNING` になる（`background: true` でも同様。`error.activeBuildId` 等で占有ビルドを特定可能）。`gradle_run_tasks` も同じ制約。終端後に次の呼び出しを出す（別ターンで直列化する）。
+**同一 `projectDirectory` では MCP ビルドは同時に 1 本だけ実行される。** クライアントが同一ターンで `background: true` の `gradle_run_*` を並列送信すると、2 本目以降は enqueue（`status: queued`）。`queueIfBusy` は `background: true` のときデフォルト true。フォアグラウンドの衝突、または明示的な `queueIfBusy: false` は `BUILD_ALREADY_RUNNING`（`error.activeBuildId` 等で占有ビルドを特定可能）。終端後に次の呼び出しを出すか、キューをポーリングする。
 
 | やりたいこと | 可否 | やり方 |
 |-------------|------|--------|
@@ -171,18 +171,18 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | マルチモジュールで `taskPath`/`tasks` なし | **不可** | `INVALID_ARGUMENT` に `suggestedTaskPaths`（最大 20 件、超過時 `suggestedTaskPathsTruncated: true`）と `hint`。全件は `gradle_get_project_model` + `includeTasks=true` |
 | 別 `projectDirectory` への並列テスト | **可** | 各プロジェクトで `background: true`（サーバー上限まで） |
 | 順次実行 | **可** | 前のビルド完了を待つか `gradle_cancel_build` で停止してから次を起動 |
-| 順次実行（キュー） | **可** | `background: true` + `queueIfBusy: true` で enqueue（`status: queued` → ポーリング） |
+| 順次実行（キュー） | **可** | `background: true` で enqueue（`queueIfBusy` デフォルト true。`status: queued` → ポーリング） |
 
-`compile → test` のように別ステップを連鎖するときは、`queueIfBusy: true` を付けて 2 本目以降を enqueue できる（同一ターンの並列送信も吸収）。キュー深さ上限はプロジェクトあたり 3。飽和時は `BUILD_QUEUE_FULL`。`queueIfBusy` は `background: true` 必須。
+`compile → test` のように別ステップを連鎖するときは、`background: true` で 2 本目以降が enqueue される（同一ターンの並列送信も吸収）。キュー深さ上限はプロジェクトあたり 3。飽和時は `BUILD_QUEUE_FULL`。フォアグラウンドのまま、または `queueIfBusy: false` では拒否。`queueIfBusy: true` は `background: true` 必須。
 
 ```json
-{ "tasks": ["compileKotlin"], "background": true, "queueIfBusy": true }
+{ "tasks": ["compileKotlin"], "background": true }
 ```
 
 → `gradle_run_tasks`
 
 ```json
-{ "tasks": [":plugin:test"], "background": true, "queueIfBusy": true }
+{ "tasks": [":plugin:test"], "background": true }
 ```
 
 → `gradle_run_tasks`（スイート全体。`gradle_run_tests` には `testClasses` / `testMethods` / `includePatterns` が必要）
@@ -353,7 +353,7 @@ MCP だけでなくファイルも読んだうえで、次の形式で要約す�
 | 症状 | 対処 |
 |------|------|
 | `error.code: NOT_CONNECTED` | `gradle_connect` または MCP 再起動 |
-| `error.code: BUILD_ALREADY_RUNNING` | 同一 `projectDirectory` で既に MCP ビルド実行中、またはモデル照会とビルドの競合。`error.activeBuildId` で `gradle_get_build_status` に直行可能（`activeStatus` は occupying レコードの `running`/`queued`）。グローバル上限時は `activeBuildIds` 配列の場合あり。完了待ち、`gradle_cancel_build` で停止、複数テストを 1 回の `gradle_run_tests` にまとめる、または `queueIfBusy: true` で enqueue（[テスト実行と並行性](#テスト実行と並行性)） |
+| `error.code: BUILD_ALREADY_RUNNING` | フォアグラウンド衝突、`queueIfBusy: false`、モデル照会とビルドの競合、またはグローバル上限。`error.activeBuildId` で `gradle_get_build_status` に直行可能（`activeStatus` は occupying レコードの `running`/`queued`）。グローバル上限時は `activeBuildIds` 配列の場合あり。完了待ち、`gradle_cancel_build` で停止、複数テストを 1 回の `gradle_run_tests` にまとめる、または `background: true` で enqueue（[テスト実行と並行性](#テスト実行と並行性)） |
 | `error.code: BUILD_QUEUE_FULL` | 同一プロジェクトのキューが飽和（queued 上限 3）。`error.activeBuildId` 等で占有ビルドを特定可能。`gradle_cancel_build` で不要な `buildId` を止めるか、完了を待つ |
 | `gradle_disconnect` で MCP が cancelled 確定 | ディスクの `gradle-result.json` を優先して再ポーリング；Gradle がまだ走っていれば `running` に戻る |
 | 応答が巨大 | `includeTasks` / `includeTaskSelectors` を false のままにする |

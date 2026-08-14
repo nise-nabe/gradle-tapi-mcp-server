@@ -276,6 +276,6 @@ Issue §2 also asked to run `:test` and `:fastTest` in one invocation. That is *
 
 ## 9. Recommendation
 
-**Implemented (v0.6+):** Option C — `queueIfBusy` (default `false`, `background` required) with `status: queued`, FIFO drain, `BUILD_QUEUE_FULL` at depth 3.
+**Implemented (v0.6+):** Option C — `queueIfBusy` (`background` required) with `status: queued`, FIFO drain, `BUILD_QUEUE_FULL` at depth 3. **Default (later):** `queueIfBusy` is true when `background` is true; pass `false` to reject.
 
 Until clients adopt queueing, agents should still batch multi-suite tests in one call and poll with short `waitUntilComplete` windows.

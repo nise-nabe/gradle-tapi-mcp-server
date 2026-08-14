@@ -24,7 +24,7 @@
 
 `gradle_connect` keeps existing connections open. It rejects the call while a build is running for the same `projectDirectory`.
 
-Multiple `background=true` builds may run concurrently across **different** connected projects (bounded by a server-side pool). Only one MCP build may run per `projectDirectory` at a time; a second `gradle_run_tasks` / `gradle_run_tests` for the same project returns `BUILD_ALREADY_RUNNING` with `activeBuildId` and related fields unless `queueIfBusy=true` with `background=true` (enqueues with `status: queued`, max 3 queued per project; saturated queue returns `BUILD_QUEUE_FULL` with the same active-build fields). When the global pool is full, new background starts also return `BUILD_ALREADY_RUNNING` with `activeBuildIds` (and full single-build fields when only one build is running).
+Multiple `background=true` builds may run concurrently across **different** connected projects (bounded by a server-side pool). Only one MCP build may run per `projectDirectory` at a time; a second background `gradle_run_tasks` / `gradle_run_tests` for the same project enqueues (`status: queued`, max 3 queued per project; `queueIfBusy` defaults true when `background` is true). Saturated queue returns `BUILD_QUEUE_FULL` with the same active-build fields. Foreground overlap or `queueIfBusy=false` returns `BUILD_ALREADY_RUNNING` with `activeBuildId` and related fields. When the global pool is full, new background starts also return `BUILD_ALREADY_RUNNING` with `activeBuildIds` (and full single-build fields when only one build is running).
 
 Do not run shell `./gradlew` in parallel on the same checkout while an MCP build is active. IntelliJ Platform `:plugin:test` runs compete for the same IDE test sandbox and can appear hung for many minutes or corrupt sandbox state.
 
@@ -157,7 +157,7 @@ When `projectPath` is set, `taskSelectors` include only selectors whose task nam
 | `tailOutput` | no | `true` | Keep tail when truncating |
 | `includeProgress` | no | `false` | Include detailed `progress` object |
 | `background` | no | `false` | Return `buildId` immediately; poll with `gradle_get_build_status` (multiple concurrent background builds allowed) |
-| `queueIfBusy` | no | `false` | Enqueue when the project already has a running or queued build. Requires `background=true`. |
+| `queueIfBusy` | no | `true` when `background` is true, else `false` | Enqueue when the project already has a running or queued build. Requires `background=true` when set. Pass `false` to reject with `BUILD_ALREADY_RUNNING`. |
 
 Response when `background=true`: `buildId`, `status` (`running` or `queued`), `kind`, `message`. Queued responses may include `queuePosition` and `queuedBehindBuildId`.
 
@@ -184,7 +184,7 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 | `tailOutput` | no | `true` | Keep tail when truncating |
 | `includeProgress` | no | `false` | Include detailed `progress` object |
 | `background` | no | `false` | Return `buildId` immediately; poll with `gradle_get_build_status` |
-| `queueIfBusy` | no | `false` | Enqueue when the project already has a running or queued build. Requires `background=true`. |
+| `queueIfBusy` | no | `true` when `background` is true, else `false` | Enqueue when the project already has a running or queued build. Requires `background=true` when set. Pass `false` to reject with `BUILD_ALREADY_RUNNING`. |
 
 \* Provide exactly one of `testClasses`, `testMethods`, or `includePattern`/`includePatterns` (patterns also require `tasks`). Optional `taskPath` and `tasks` scope the selected tests.
 
@@ -201,7 +201,7 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 
 `taskPath` and `tasks` both scope execution with `TestLauncher.forTasks()` plus `withTestsFor` class/method/pattern filters (Gradle 7.6+). If TestLauncher cannot resolve a scoped task (for example some JvmTestSuite `test` tasks), the server retries once with `BuildLauncher.forTasks` and `--tests` (same path as `gradle_run_tasks`). With patterns, each listed task gets the same `includePatterns`.
 
-**Concurrency:** Do not start multiple `gradle_run_tests` calls in parallel for the same `projectDirectory` unless `queueIfBusy=true` with `background=true` (otherwise the second call returns `BUILD_ALREADY_RUNNING` with `activeBuildId` and related fields). The single-flight gate clears as soon as the build is terminal in memory (no grace window)—serialize `gradle_run_*` across turns after a terminal status. Batch multiple classes, methods, **or Test tasks** in one call via `testMethods` / `testClasses` / `tasks`+`includePatterns`. Parallel test runs are only supported across **different** `projectDirectory` values, up to the server concurrent-build limit (see Connection section).
+**Concurrency:** Only one MCP build may **run** per `projectDirectory`. Parallel `background: true` `gradle_run_tests` calls enqueue (`queueIfBusy` defaults true; max 3 queued; `BUILD_QUEUE_FULL` when saturated). Foreground overlap or `queueIfBusy=false` returns `BUILD_ALREADY_RUNNING` with `activeBuildId` and related fields. The single-flight gate clears as soon as the build is terminal in memory (no grace window)—serialize `gradle_run_*` across turns after a terminal status. Batch multiple classes, methods, **or Test tasks** in one call via `testMethods` / `testClasses` / `tasks`+`includePatterns`. Parallel test runs are only supported across **different** `projectDirectory` values, up to the server concurrent-build limit (see Connection section).
 
 Same foreground/background response shape as `gradle_run_tasks`. When `testClasses` entries were normalized to `testMethods`, the initial tool response may include `selectionNormalized: true` (not present on `gradle_get_build_status` polls).
 
