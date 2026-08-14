@@ -46,7 +46,7 @@ internal object McpToolDescriptions {
 
     const val BUILD_STATUS =
         "Poll buildId (memory/disk). No includeOutput while running; use deltas or terminal failures. " +
-            "Failed GRADLE_TASK includes capped problems; includeProblems for liveProblems. " +
+            "GRADLE_TASK→capped problems; includeProblems=liveProblems. " +
             "Short polls; waitUntilComplete capped."
 
     const val RUN_TASKS =
