@@ -25,6 +25,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.longs.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -65,6 +66,8 @@ class BuildExecutionManagerRunTest {
         error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
         error.message.shouldContain("already active")
         error.message.shouldContain("gradle_get_build_status")
+        error.message.shouldContain("background=true")
+        error.message.shouldNotContain("queueIfBusy=true")
         error.errorDetails["activeBuildId"] shouldBe "running-build"
         error.errorDetails["activeKind"] shouldBe "tasks"
         error.errorDetails["activeTasks"] shouldBe listOf("build")
