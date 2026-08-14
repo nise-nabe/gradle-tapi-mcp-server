@@ -6,7 +6,7 @@ mcp-kotlin = "0.15.0"
 coroutines = "1.11.0"
 serialization = "1.11.0"
 slf4j = "2.0.17"
-gradle-tooling-api = "9.6.1"
+gradle-tooling-api = "9.7.0"
 
 [libraries]
 mcp-kotlin-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp-kotlin" }
