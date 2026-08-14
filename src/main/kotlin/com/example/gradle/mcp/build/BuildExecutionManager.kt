@@ -1095,7 +1095,7 @@ class BuildExecutionManager(
             McpErrorCode.BUILD_ALREADY_RUNNING,
             "A Gradle build is already active for ${projectDirectory.path}. " +
                 "Poll gradle_get_build_status with the active buildId, call gradle_cancel_build to stop it, " +
-                "wait for it to finish, or pass queueIfBusy=true with background=true to enqueue.",
+                "wait for it to finish, or retry with background=true to enqueue.",
             errorDetails = activeBuildSnapshotUnderProjectLock(projectDirectory)?.toErrorFields().orEmpty(),
         )
 
