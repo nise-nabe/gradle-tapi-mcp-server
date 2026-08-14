@@ -47,11 +47,35 @@ internal fun parseTestRunOptions(args: Map<String, Any>): TestRunOptionsParseRes
     )
 }
 
+internal const val MISSING_TEST_SELECTION_MESSAGE =
+    "At least one of testClasses, testMethods, or includePattern/includePatterns must be provided"
+
+private const val MISSING_TEST_SELECTION_HINT_DETAIL =
+    "gradle_run_tests is for selected classes/methods/patterns."
+
+internal const val MISSING_TEST_SELECTION_HINT =
+    "To run the whole suite, call gradle_run_tasks with the Test task paths. " +
+        MISSING_TEST_SELECTION_HINT_DETAIL
+
+internal fun missingTestSelectionHint(taskPath: String?, tasks: List<String>): String {
+    val suiteTasks = buildList {
+        taskPath?.takeIf { it.isNotBlank() }?.let { add(it) }
+        addAll(tasks.filter { it.isNotBlank() })
+    }.distinct()
+    if (suiteTasks.isEmpty()) {
+        return MISSING_TEST_SELECTION_HINT
+    }
+    val tasksJson = suiteTasks.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
+    return "To run the whole suite, call gradle_run_tasks with tasks: $tasksJson. " +
+        MISSING_TEST_SELECTION_HINT_DETAIL
+}
+
 internal fun TestRunOptions.validate(inputTaskPath: String? = null): TestRunOptions {
     val selection = this.selection
         ?: throw McpException(
             McpErrorCode.INVALID_ARGUMENT,
-            "At least one of testClasses, testMethods, or includePattern/includePatterns must be provided",
+            MISSING_TEST_SELECTION_MESSAGE,
+            errorDetails = mapOf("hint" to missingTestSelectionHint(inputTaskPath, tasks)),
         )
     val taskPathToCheck = inputTaskPath ?: selection.taskPath
     if (!taskPathToCheck.isNullOrBlank() && selection is TestRunSelection.Patterns) {
