@@ -49,7 +49,7 @@ internal object McpToolDescriptions {
             "Short polls; waitUntilComplete capped."
 
     const val RUN_TASKS =
-        "Run Gradle tasks. background→buildId; foreground auto-detaches ~45s; queueIfBusy; busy→activeBuildId."
+        "Run Gradle tasks. background→buildId (queues if busy); foreground auto-detaches ~45s; busy→activeBuildId."
 
     const val RUN_TESTS =
         "Run selected JVM tests (classes/methods/patterns). Whole suite→gradle_run_tasks. " +
