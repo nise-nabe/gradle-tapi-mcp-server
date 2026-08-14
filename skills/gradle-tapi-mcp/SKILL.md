@@ -107,7 +107,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 - 詳細 progress は `includeProgress=true` のときのみ（デフォルト false）
 - 末尾を残す: `tailOutput=true`（デフォルト）
 
-失敗時は `failedTasks` / `buildSummary.failureSummary` / `problems` を先に確認する。`GRADLE_TASK` 失敗では capped な Problems API `problems` がデフォルトで付く（`includeProblems` / `includeProgress` 不要）。コンパイラ診断のために shell `./gradlew` へ切り替えない。詳細ログが必要なら `includeOutput=true` を付ける。バックグラウンド実行中は `gradle_get_build_status` で再ポーリングすれば取得できる（メモリ上の実行中ビルドはライブ出力あり）。**ディスクのみのポーリング**（MCP 再起動後やメモリ evict 後）では `includeOutput=true` でも **ビルド完了まで stdout/stderr は空**（MCP が `finalizeBuild` でログを書くまで）。フォアグラウンド実行では同じ `gradle_run_*` 呼び出しに `includeOutput=true` を付けて再実行する。完了ビルドでは `includeProgress` なしでも `failedTaskCount` / `failedTasks` が返る。
+失敗時は `failedTasks` / `buildSummary.failureSummary` / `problems` / `failureCategory` を先に確認する。`status: failed` + `failureCategory: GRADLE_TASK` では capped な Problems API `problems` がデフォルトで付く（`includeProblems` / `includeProgress` 不要）。`problems` が空なら `includeProblems: true` で再ポーリングする。コンパイラ診断のために shell `./gradlew` へ切り替えない。`includeOutput` の末尾は Kotlin の `Compilation error. See log for more details` しか出ないことが多く、Problems を読まないと診断できない。実行中の `liveProblems` は `includeProblems: true`。詳細ログが必要なら `includeOutput=true` を付ける。バックグラウンド実行中は `gradle_get_build_status` で再ポーリングすれば取得できる（メモリ上の実行中ビルドはライブ出力あり）。**ディスクのみのポーリング**（MCP 再起動後やメモリ evict 後）では `includeOutput=true` でも **ビルド完了まで stdout/stderr は空**（MCP が `finalizeBuild` でログを書くまで）。フォアグラウンド実行では同じ `gradle_run_*` 呼び出しに `includeOutput=true` を付けて再実行する。完了ビルドでは `includeProgress` なしでも `failedTaskCount` / `failedTasks` が返る。
 
 ## ディスク永続化と `gradle_get_build_status`
 
@@ -150,7 +150,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 
 **フォアグラウンド自動デタッチ:** `background: false` のまま長時間かかるビルドは、MCP クライアント timeout 前（既定 ~45s）に `detached: true` と `buildId` を返し、バックグラウンド継続する。コールドな IntelliJ Platform テストや初回 `build` は **`background: true` を明示**するのが安全。
 
-**ポーリング時のトークン節約:** `status: running` の間は `gradle_get_build_status` に `includeOutput: true` を付けない（デバッグ時以外）。ライブログは `sinceStdoutOffset` / `sinceStderrOffset`、失敗時は `testFailures` / `buildSummary` を先に読む。
+**ポーリング時のトークン節約:** `status: running` の間は `gradle_get_build_status` に `includeOutput: true` を付けない（デバッグ時以外）。ライブログは `sinceStdoutOffset` / `sinceStderrOffset`、失敗時は `testFailures` / `buildSummary` / `problems` / `failureCategory` を先に読む。`GRADLE_TASK` で `problems` が空なら `includeProblems: true` で再ポーリングし、CLI で再実行しない。
 
 `buildId` は必須（並行ビルド時の取り違え防止）。**同一 `projectDirectory` では MCP ビルドは同時に 1 本だけ実行**される。2 本目の `background: true` は enqueue（`status: queued`、`queueIfBusy` は background 時デフォルト true）。フォアグラウンド衝突や `queueIfBusy: false` は `BUILD_ALREADY_RUNNING`（`error.activeBuildId` 等が付く場合あり）。終端ステータスになった瞬間にゲートは解放される（grace なし）。別プロジェクトへの並行ビルドはサーバー側上限まで可能。同一 checkout で MCP と shell の `./gradlew` を並行しないこと（IntelliJ Platform の `:plugin:test` は sandbox 競合でハングしやすい）。上限到達時も `BUILD_ALREADY_RUNNING` が返り、`activeBuildIds`（単一時は `activeBuildId` も）で占有ビルドを特定できる。不要になったら `gradle_cancel_build` で停止し、`gradle_get_build_status` を `running` でなくなるまでポーリングして終端ステータス（`cancelled` / `succeeded` / `failed`）を確認する。
 
@@ -168,7 +168,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | 同一プロジェクトで複数クラス／メソッドを 1 回で実行 | **可** | `testMethods` / `testClasses` / `includePatterns` |
 | 複数 Test タスク（`:test` + カスタム `JvmTestSuite` `fastTest` 等）を 1 回で実行 | **可** | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
 | テストスイート全体（クラス指定なし） | **可** | `gradle_run_tasks`（`gradle_run_tests` にセレクタなしは `INVALID_ARGUMENT` + `hint`） |
-| マルチモジュールで `taskPath`/`tasks` なし | **不可** | `INVALID_ARGUMENT` に `suggestedTaskPaths`（最大 20 件、超過時 `suggestedTaskPathsTruncated: true`）と `hint`。全件は `gradle_get_project_model` + `includeTasks=true` |
+| マルチモジュールで `taskPath`/`tasks` なし | **条件付き** | 一意なら `taskPath` を推論（`taskPathInferred: true`）。曖昧・不一致なら `INVALID_ARGUMENT` に `suggestedTaskPaths`（最大 20 件、超過時 `suggestedTaskPathsTruncated: true`）と `hint`。全件は `gradle_get_project_model` + `includeTasks=true` |
 | 別 `projectDirectory` への並列テスト | **可** | 各プロジェクトで `background: true`（サーバー上限まで） |
 | 順次実行 | **可** | 前のビルド完了を待つか `gradle_cancel_build` で停止してから次を起動 |
 | 順次実行（キュー） | **可** | `background: true` で enqueue（`queueIfBusy` デフォルト true。`status: queued` → ポーリング） |
