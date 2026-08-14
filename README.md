@@ -131,9 +131,10 @@ The single-flight gate (one MCP build per `projectDirectory`) releases as soon a
 | One Test task + method map | `taskPath` + `testMethods` |
 | Custom `JvmTestSuite` (e.g. `fastTest`) | Same as above with `taskPath: ":mod:fastTest"`, or `tasks: [":mod:fastTest"]` + `includePatterns` |
 | Several Test tasks in **one** MCP build | `tasks: [":mod:test", ":mod:fastTest"]` + `includePatterns` |
+| Whole Test task / suite (no class filter) | `gradle_run_tasks` with `tasks: [":mod:test"]` — not selector-less `gradle_run_tests` |
 | Multi-project without scoping | Avoid unscoped `testClasses`/`testMethods` — returns `INVALID_ARGUMENT` with `suggestedTaskPaths` (capped) and `hint` |
 
-Exactly one of `testClasses`, `testMethods`, or `includePattern(s)` is required. Patterns require `tasks`.
+Exactly one of `testClasses`, `testMethods`, or `includePattern(s)` is required. Patterns require `tasks`. `gradle_run_tests` with only `taskPath` / `tasks` returns `INVALID_ARGUMENT` plus a `hint` to call `gradle_run_tasks` for the whole suite.
 
 ## Agent workflows
 
