@@ -147,18 +147,18 @@ Extend `gradle_run_tasks` and `gradle_run_tests`:
 
 | Argument | Default | Behavior |
 |----------|---------|----------|
-| `queueIfBusy` | `false` | When `false`, keep today’s reject with `BUILD_ALREADY_RUNNING`. When `true` and a build is already `running` or `queued` for the project, enqueue. |
+| `queueIfBusy` | `true` when `background` is true (v0.7.1+); else `false` | When `false`, reject with `BUILD_ALREADY_RUNNING`. When `true` and a build is already `running` or `queued` for the project, enqueue. |
 | *(optional later)* `queueTimeoutMs` | n/a | Not needed for enqueue; only if we add Option B-style wait. |
 
 Naming notes:
 
 - Issue used `waitForSlot`. Prefer **`queueIfBusy`** to signal non-blocking enqueue, not a long wait.
-- Default **`false`** preserves current fail-fast for callers that treat `BUILD_ALREADY_RUNNING` as “don’t stack work.”
+- Default **`true` when `background` is true** (v0.7.1+). Pass `false` for fail-fast callers that treat `BUILD_ALREADY_RUNNING` as “don’t stack work.”
 
-Background should be the normal path with `queueIfBusy: true`:
+Background should be the normal path (`queueIfBusy` defaults true when `background` is true):
 
 ```json
-{ "tasks": ["compileKotlin"], "background": true, "queueIfBusy": true }
+{ "tasks": ["compileKotlin"], "background": true }
 ```
 
 Foreground + `queueIfBusy: true`:
@@ -228,9 +228,10 @@ Today disk recorder assumes a started Gradle operation. For v1:
 ### 5.8 Agent skill / docs updates (when implementing)
 
 - Prefer batching multiple Test tasks in one call when filters allow.
-- Use `queueIfBusy: true` + `background: true` when chaining distinct steps.
-- Still avoid unbounded parallel `gradle_run_*` without queue (default remains reject).
+- Chain distinct steps with `background: true` (enqueue is the default; omit `queueIfBusy`).
+- Pass `queueIfBusy: false` only to keep fail-fast reject.
 - Poll `queued` → `running` → terminal; do not treat `queued` as stuck.
+- Do not fall back to shell `./gradlew` on `BUILD_ALREADY_RUNNING`.
 
 ---
 
@@ -242,7 +243,7 @@ Issue §2 also asked to run `:test` and `:fastTest` in one invocation. That is *
 |------|-----------|
 | Same filters across several Test tasks | One `gradle_run_tests` with multiple `tasks` |
 | Different steps (compile then tests, or incompatible selectors) | Queue (`queueIfBusy`) or agent-side poll between calls |
-| Accidental parallel starts | Queue absorbs; default reject remains |
+| Accidental parallel starts | Queue absorbs by default; pass `queueIfBusy: false` to reject |
 
 ---
 
@@ -276,6 +277,6 @@ Issue §2 also asked to run `:test` and `:fastTest` in one invocation. That is *
 
 ## 9. Recommendation
 
-**Implemented (v0.6+):** Option C — `queueIfBusy` (`background` required) with `status: queued`, FIFO drain, `BUILD_QUEUE_FULL` at depth 3. **Default (later):** `queueIfBusy` is true when `background` is true; pass `false` to reject.
+**Implemented (v0.6+):** Option C — `queueIfBusy` (`background` required) with `status: queued`, FIFO drain, `BUILD_QUEUE_FULL` at depth 3. **Default (v0.7.1):** `queueIfBusy` is true when `background` is true; pass `false` to reject.
 
-Until clients adopt queueing, agents should still batch multi-suite tests in one call and poll with short `waitUntilComplete` windows.
+Batching multi-suite tests in one call remains the right approach when filters allow; queue is for distinct sequential steps. Prefer short `gradle_get_build_status` polls over long `waitUntilComplete` waits.

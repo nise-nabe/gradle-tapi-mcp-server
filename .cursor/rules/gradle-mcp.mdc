@@ -47,8 +47,9 @@ When using Cursor **GetMcpTools** (some clients expose this as `mcp_get_tools`):
 
 ## Shell fallback when MCP is appropriate but unavailable
 
-- MCP tools time out or the server is unresponsive (poll `gradle_list_builds` / `gradle_get_build_status` first)
-- `BUILD_ALREADY_RUNNING` and you cannot cancel the in-flight MCP build
+- MCP tools time out or the server is unresponsive (poll `gradle_list_builds` / `gradle_get_build_status` first; cancel stuck builds with `gradle_cancel_build`)
 - PR / CI parity requires `./gradlew build` after MCP verification passes
+
+Do **not** treat `BUILD_ALREADY_RUNNING` as a reason to switch to shell. A second `background: true` run enqueues (`queueIfBusy` defaults true). Poll or cancel `error.activeBuildId` instead. Foreground overlap still needs a terminal poll, cancel, or a background retry.
 
 Do **not** run MCP `gradle_run_tests` and shell `./gradlew test` on the same checkout concurrently.
