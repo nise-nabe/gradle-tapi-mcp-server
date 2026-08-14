@@ -2,7 +2,7 @@
 kotlin = "2.4.10"
 junit = "6.1.2"
 kotest = "6.2.3"
-mcp-kotlin = "0.14.0"
+mcp-kotlin = "0.15.0"
 coroutines = "1.11.0"
 serialization = "1.11.0"
 slf4j = "2.0.17"
