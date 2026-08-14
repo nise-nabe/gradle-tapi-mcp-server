@@ -44,7 +44,7 @@ class BuildToolsQueueIfBusyTest {
 
     @Test
     fun `run schemas document queueIfBusy default with background`() {
-        val expected = "Enqueue if busy. Default true when background."
+        val expected = "Enqueue if busy (true if background)."
         queueIfBusyDescription(runTasksSchema()) shouldBe expected
         queueIfBusyDescription(runTestsSchema()) shouldBe expected
     }

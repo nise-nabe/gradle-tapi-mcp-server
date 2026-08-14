@@ -101,7 +101,7 @@ internal fun runTasksSchema(): Map<String, Any> =
         extraProperties = mapOf(
             "tasks" to stringArrayProperty("Gradle task paths to execute"),
             "background" to booleanProperty("Return buildId immediately. Default false."),
-            "queueIfBusy" to booleanProperty("Enqueue if busy. Default true when background."),
+            "queueIfBusy" to booleanProperty("Enqueue if busy (true if background)."),
         ),
     )
 
@@ -120,7 +120,7 @@ internal fun runTestsSchema(): Map<String, Any> =
                 "Test task paths for TestLauncher.forTasks() (Gradle 7.6+). Without selectors, use gradle_run_tasks.",
             ),
             "background" to booleanProperty("Return buildId immediately. Default false."),
-            "queueIfBusy" to booleanProperty("Enqueue if busy. Default true when background."),
+            "queueIfBusy" to booleanProperty("Enqueue if busy (true if background)."),
         ),
     )
 
