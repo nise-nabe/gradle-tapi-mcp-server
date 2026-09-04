@@ -61,7 +61,7 @@ When bumping the server version, update together:
 
 - `build.gradle.kts` `version`
 - `.cursor/install.sh` `GRADLE_TAPI_MCP_VERSION` and SHA-256
-- `.cursor/skills/gradle-tapi-mcp/SKILL.md` and `skills/gradle-tapi-mcp/SKILL.md` version mentions
+- `.cursor/skills/gradle-tapi-mcp/SKILL.md` and `plugins/gradle-tapi-mcp/skills/gradle-tapi-mcp/SKILL.md` version mentions
 - `AGENTS.md` bootstrap section
 
 Follow `.cursor/skills/release/SKILL.md` for the full release workflow.

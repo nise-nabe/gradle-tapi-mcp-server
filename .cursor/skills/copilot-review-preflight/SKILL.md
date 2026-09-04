@@ -49,11 +49,11 @@ Use as a final pass before requesting review on `nise-nabe/gradle-tapi-mcp-serve
 - [ ] `dependencyResolutionManagement` with `FAIL_ON_PROJECT_REPOS` preserved
 - [ ] JVM Test Suites for tests; Configuration Cache compatibility maintained
 
-### Agent docs and release sync (`.cursor/`, `skills/`, `AGENTS.md`, `README.md`)
+### Agent docs and release sync (`.cursor/`, `plugins/`, `skills/`, `AGENTS.md`, `README.md`)
 
 - [ ] `install.sh` version and SHA-256 match the release being documented
-- [ ] `.cursor/skills/gradle-tapi-mcp/SKILL.md` and `skills/gradle-tapi-mcp/SKILL.md` stay in sync when editing MCP workflow docs
-- [ ] New agent workflow skills (`workflow-router`, `thermo-nuclear-review`, etc.) live under `.cursor/skills/` only — no `skills/` mirror unless the skill is user-installable (like `gradle-tapi-mcp`)
+- [ ] `.cursor/skills/gradle-tapi-mcp/SKILL.md` and `plugins/gradle-tapi-mcp/skills/gradle-tapi-mcp/SKILL.md` stay in sync when editing MCP workflow docs
+- [ ] New agent workflow skills (`workflow-router`, `thermo-nuclear-review`, etc.) live under `.cursor/skills/` only — no `skills/` or plugin mirror unless the skill is user-installable (like `gradle-tapi-mcp`)
 - [ ] MCP config uses stdio transport; `GRADLE_PROJECT_DIR` documented correctly
 - [ ] Invoke shell scripts via `bash path/to/script.sh` in docs when executable bit may vary
 - [ ] PR description is a feature summary (not a "review fixes" changelog) per `pr-description-format.mdc`
