@@ -1,0 +1,23 @@
+{
+  "name": "gradle-tapi-mcp-server",
+  "interface": {
+    "displayName": "Gradle Tooling API MCP Server"
+  },
+  "plugins": [
+    {
+      "name": "gradle-tapi-mcp",
+      "source": {
+        "source": "local",
+        "path": "./plugins/gradle-tapi-mcp"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity",
+      "version": "0.7.1",
+      "homepage": "https://github.com/nise-nabe/gradle-tapi-mcp-server",
+      "repository": "https://github.com/nise-nabe/gradle-tapi-mcp-server"
+    }
+  ]
+}

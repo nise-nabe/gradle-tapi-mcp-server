@@ -1,0 +1,18 @@
+{
+  "name": "gradle-tapi-mcp",
+  "version": "0.7.1",
+  "description": "Query and run Gradle builds through the Gradle Tooling API MCP server with token-efficient defaults.",
+  "author": {
+    "name": "nise-nabe",
+    "url": "https://github.com/nise-nabe"
+  },
+  "homepage": "https://github.com/nise-nabe/gradle-tapi-mcp-server",
+  "repository": "https://github.com/nise-nabe/gradle-tapi-mcp-server",
+  "keywords": ["gradle", "mcp", "tooling-api", "build"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Gradle Tooling API MCP",
+    "shortDescription": "Token-efficient Gradle Tooling API tools for agents"
+  }
+}

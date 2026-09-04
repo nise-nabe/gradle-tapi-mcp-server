@@ -17,7 +17,7 @@ Gradle プロジェクトの**実行時状態**を MCP 経由で取得・実行�
 2. JAR がビルド済みであること（`gradle-tapi-mcp-server` で `./gradlew jar`）
 3. 接続前に `gradle_connection_status` で `connected: true` を確認。未接続なら `gradle_connect` または `GRADLE_PROJECT_DIR=${workspaceFolder}`
 
-グローバル設定では `${workspaceFolder}` が開いている Gradle プロジェクトを指す。設定例は [README.md](../../README.md) を参照。
+グローバル設定では `${workspaceFolder}` が開いている Gradle プロジェクトを指す。設定例は [README.md](https://github.com/nise-nabe/gradle-tapi-mcp-server/blob/main/README.md) を参照。
 
 ## 複数プロジェクト
 

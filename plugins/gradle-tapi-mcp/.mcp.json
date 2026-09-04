@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "gradle": {
+      "type": "stdio",
+      "command": "bash",
+      "args": ["${PLUGIN_ROOT}/scripts/run-mcp.sh"]
+    }
+  }
+}
