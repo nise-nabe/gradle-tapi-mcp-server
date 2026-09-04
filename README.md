@@ -10,6 +10,34 @@ MCP server that exposes [Gradle Tooling API](https://docs.gradle.org/current/use
 
 The fat JAR is written to `build/libs/gradle-tapi-mcp-server-0.7.1.jar`.
 
+## Plugin marketplace
+
+This repository is a plugin marketplace for Cursor, Codex, and GitHub Copilot. It publishes the `gradle-tapi-mcp` plugin (Gradle Tooling API MCP server plus the token-efficient agent skill).
+
+Requires Java 17+ and `bash`. The plugin launcher downloads the release JAR to `~/.local/share/gradle-tapi-mcp-server/` (same location as `.cursor/install.sh`).
+
+### Cursor
+
+Add this Git repository as a plugin marketplace from Customize → Plugins (or a team marketplace). The catalog is `.cursor-plugin/marketplace.json`.
+
+### Codex
+
+```bash
+codex plugin marketplace add nise-nabe/gradle-tapi-mcp-server
+```
+
+The catalog is `.agents/plugins/marketplace.json`.
+
+### GitHub Copilot CLI
+
+```bash
+copilot plugin marketplace add nise-nabe/gradle-tapi-mcp-server
+```
+
+The catalog is `.github/plugin/marketplace.json`.
+
+Then install the `gradle-tapi-mcp` plugin from that marketplace.
+
 ## Cursor configuration
 
 Add to `.cursor/mcp.json` in your Gradle project:
@@ -139,7 +167,7 @@ Exactly one of `testClasses`, `testMethods`, or `includePattern(s)` is required.
 
 ## Agent workflows
 
-Key defaults for MCP clients and agents (full detail in `skills/gradle-tapi-mcp/SKILL.md` and `skills/gradle-tapi-mcp/reference.md`):
+Key defaults for MCP clients and agents (full detail in `plugins/gradle-tapi-mcp/skills/gradle-tapi-mcp/SKILL.md` and `plugins/gradle-tapi-mcp/skills/gradle-tapi-mcp/reference.md`):
 
 - **Long builds:** pass `background: true` for runs that may exceed ~30s. Foreground `gradle_run_tasks` / `gradle_run_tests` auto-detach after ~45s with `detached: true` and a `buildId` to poll.
 - **Status polling:** call `gradle_get_build_status` without `includeOutput` while `status` is `running`. Use `sinceStdoutOffset` / `sinceStderrOffset` for live logs. On terminal failure, read `testFailures` / `buildSummary` / `problems` / `failureCategory`. On `status: failed` + `failureCategory: GRADLE_TASK`, use capped `problems` (included by default when emitted). Re-poll with `includeProblems: true` if `problems` is missing; do not re-run the task via CLI for compiler output. `includeOutput` tails often miss Kotlin compiler diagnostics (`Compilation error. See log for more details`).
@@ -155,7 +183,7 @@ When the MCP client supplies a progress token, the server may also emit MCP prog
 
 ## Agent skill
 
-Copy or symlink `skills/gradle-tapi-mcp/` into your Cursor skills directory (for example `~/.cursor/skills/gradle-tapi-mcp/`) so agents use token-efficient MCP workflows with `project-context-ingestion`.
+Copy or symlink `plugins/gradle-tapi-mcp/skills/gradle-tapi-mcp/` into your Cursor skills directory (for example `~/.cursor/skills/gradle-tapi-mcp/`) so agents use token-efficient MCP workflows with `project-context-ingestion`. Prefer the plugin marketplace above when the host supports it.
 
 ## Notes
 

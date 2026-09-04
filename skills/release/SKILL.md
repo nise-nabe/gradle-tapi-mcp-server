@@ -56,6 +56,13 @@ git log "${LATEST_TAG}"..main --oneline   # 未リリースコミット
 | ファイル | 変更内容 |
 |---------|---------|
 | `.cursor/install.sh` | `GRADLE_TAPI_MCP_VERSION`, `GRADLE_TAPI_MCP_SHA256` |
+| `plugins/gradle-tapi-mcp/server-release.json` | `version` と `sha256`（`install.sh` と一致させる） |
+| `.cursor-plugin/marketplace.json` | marketplace `metadata.version` と plugin `version` |
+| `.agents/plugins/marketplace.json` | plugin `version` |
+| `.github/plugin/marketplace.json` | marketplace `metadata.version` と plugin `version` |
+| `plugins/gradle-tapi-mcp/plugin.json` | plugin `version` |
+| `plugins/gradle-tapi-mcp/.cursor-plugin/plugin.json` | plugin `version` |
+| `plugins/gradle-tapi-mcp/.codex-plugin/plugin.json` | plugin `version` |
 | `AGENTS.md` | リリース番号の記述（該当箇所） |
 | `.cursor/skills/gradle-tapi-mcp/SKILL.md` | `release vX.Y.Z` の記述 |
 | `.cursor/skills/release/SKILL.md` | 必要なら説明文の更新（バージョン例はプレースホルダのまま維持） |
@@ -147,7 +154,7 @@ Release 本文のテンプレ（`--notes` で上書きする場合）:
 
 ### 5. install.sh 更新（任意だが Cloud 利用時は推奨）
 
-Release アセット公開後、別 PR で `.cursor/install.sh` のバージョンと SHA-256 を更新する。マージ後、次回 Cloud Agent セッションから新 JAR がダウンロードされる。
+Release アセット公開後、別 PR で `.cursor/install.sh` のバージョンと SHA-256 を更新する。あわせて `plugins/gradle-tapi-mcp/server-release.json` と marketplace / plugin の `version` も揃える。マージ後、次回 Cloud Agent セッションから新 JAR がダウンロードされる。
 
 ### 6. リリース検証
 
@@ -170,7 +177,7 @@ timeout 5 env GRADLE_PROJECT_DIR=/workspace java -jar /tmp/test.jar </dev/null |
 - [ ] `vX.Y.Z` タグを `main` HEAD に push
 - [ ] GitHub Release に JAR アセットあり
 - [ ] Release JAR の SHA-256 を記録済み
-- [ ] （Cloud 向け）`install.sh` / `AGENTS.md` / スキル類の follow-up PR
+- [ ] （Cloud 向け）`install.sh` / `server-release.json` / marketplace・plugin の version / `AGENTS.md` / スキル類の follow-up PR
 
 ## 関連スキル
 
