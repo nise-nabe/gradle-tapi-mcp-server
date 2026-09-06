@@ -16,3 +16,6 @@ dependencyResolutionManagement {
         }
     }
 }
+
+include("dependency-sources-core")
+include("dependency-sources-mcp")
