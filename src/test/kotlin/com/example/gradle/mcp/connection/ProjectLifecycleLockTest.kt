@@ -159,6 +159,6 @@ class McpToolRegistrationCatalogTest {
         missingFromCatalog.shouldBeEmpty()
         missingFromRegistration.shouldBeEmpty()
         catalogNames.size shouldBe registeredNames.size
-        catalogNameSet.size shouldBe 19
+        catalogNameSet.size shouldBe 20
     }
 }

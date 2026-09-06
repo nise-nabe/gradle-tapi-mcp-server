@@ -27,7 +27,7 @@ Apply during implementation — not only before opening a PR.
 | `cache/` | Build cache status and local cache inspection tools |
 | `server/` | Stdio transport helpers (e.g. `EofSignalingInputStream`) |
 | `:dependency-sources-core` (`…dependency`) | Lexer, δ codec, keep-set, name-locate index I/O (no MCP SDK) |
-| `:dependency-sources-mcp` (`…dependency.mcp`) | `gradle_index_dependency_sources` / `gradle_search_dependency_sources` catalog + facade |
+| `:dependency-sources-mcp` (`…dependency.mcp`) | `gradle_index_dependency_sources` / `gradle_search_dependency_sources` / `gradle_search_dependency_sources_multi` catalog + facade |
 
 Do not add tool handler classes to the root package (thin register wrappers that call a subproject facade are OK). Do not put connection logic in `protocol/`.
 

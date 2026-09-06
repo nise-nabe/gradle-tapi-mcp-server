@@ -105,6 +105,201 @@ class DependencySourcesFacadeTest {
     }
 
     @Test
+    fun `search limit one returns single hit`() {
+        val sources = File(tempDir, "src-limit").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\n")
+        val project = File(tempDir, "proj-limit").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+
+        val search = facade.search(
+            mapOf("query" to "Foo", "tokenMode" to "idents", "limit" to 1),
+            access,
+        )
+        search["hitCount"] shouldBe 1
+        search["hitsTruncated"] shouldBe true
+        @Suppress("UNCHECKED_CAST")
+        val hits = search["hits"] as List<Map<String, Any?>>
+        hits.single()["line"] shouldBe 1
+    }
+
+    @Test
+    fun `searchMulti returns matchedQueries tags`() {
+        val sources = File(tempDir, "src-multi-facade").apply { mkdirs() }
+        File(sources, "A.kt").writeText("class A { HttpClient a; Foo b; }\n")
+        val project = File(tempDir, "proj-multi-facade").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+
+        val search = facade.searchMulti(
+            mapOf("queries" to listOf("HttpClient", "Foo"), "tokenMode" to "idents"),
+            access,
+        )
+        search["hitCount"] shouldBe 2
+        @Suppress("UNCHECKED_CAST")
+        val hits = search["hits"] as List<Map<String, Any?>>
+        hits.single { (it["matchedQueries"] as List<String>).contains("HttpClient") }["matchedQueries"] shouldBe
+            listOf("HttpClient")
+    }
+
+    @Test
+    fun `searchMulti explicit null perQueryLimit wins over per_query_limit alias`() {
+        val sources = File(tempDir, "src-alias-null").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\n")
+        val project = File(tempDir, "proj-alias-null").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val search = facade.searchMulti(
+            linkedMapOf<String, Any?>(
+                "queries" to listOf("Foo"),
+                "tokenMode" to "idents",
+                "perQueryLimit" to null,
+                "per_query_limit" to 1,
+            ) as Map<String, Any>,
+            access,
+        )
+        search["hitCount"] shouldBe 2
+        search["hitsTruncated"] shouldBe false
+    }
+
+    @Test
+    fun `searchMulti accepts per_query_limit alias`() {
+        val sources = File(tempDir, "src-alias").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\n")
+        val project = File(tempDir, "proj-alias").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+
+        val search = facade.searchMulti(
+            mapOf("queries" to listOf("Foo"), "tokenMode" to "idents", "per_query_limit" to 1),
+            access,
+        )
+        search["hitCount"] shouldBe 1
+        search["hitsTruncated"] shouldBe true
+    }
+
+    @Test
+    fun `search limit zero returns empty`() {
+        val sources = File(tempDir, "src-zero-facade").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-zero-facade").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+
+        val search = facade.search(
+            mapOf("query" to "Foo", "tokenMode" to "idents", "limit" to 0),
+            access,
+        )
+        search["hitCount"] shouldBe 0
+        search["hitsTruncated"] shouldBe true
+    }
+
+    @Test
+    fun `negative limit is rejected`() {
+        val sources = File(tempDir, "src-neg").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-neg").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+
+        val error = shouldThrow<IllegalArgumentException> {
+            facade.search(mapOf("query" to "Foo", "tokenMode" to "idents", "limit" to -1), access)
+        }
+        error.message shouldContain "non-negative"
+    }
+
+    @Test
+    fun `fractional limit is rejected`() {
+        val sources = File(tempDir, "src-frac").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-frac").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+
+        val error = shouldThrow<IllegalArgumentException> {
+            facade.search(mapOf("query" to "Foo", "tokenMode" to "idents", "limit" to 1.5), access)
+        }
+        error.message shouldContain "non-negative integer"
+    }
+
+    @Test
+    fun `explicit null limit behaves as unlimited`() {
+        val sources = File(tempDir, "src-null-limit").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\n")
+        val project = File(tempDir, "proj-null-limit").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val args = linkedMapOf<String, Any?>(
+            "query" to "Foo",
+            "tokenMode" to "idents",
+            "limit" to null,
+        ) as Map<String, Any>
+        val search = facade.search(args, access)
+        search["hitCount"] shouldBe 2
+        search["hitsTruncated"] shouldBe false
+    }
+
+    @Test
     fun `non-array sourcePaths is rejected`() {
         val project = File(tempDir, "proj4").apply { mkdirs() }
         val access = StubAccess(project)

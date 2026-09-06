@@ -28,6 +28,16 @@ data class LocateHit(
     val path: String,
     val line: Int,
     val column: Int,
+    val matchedQueries: List<String> = emptyList(),
+) {
+    internal fun locateKey(): LocateKey = LocateKey(gav, path, line, column)
+}
+
+internal data class LocateKey(
+    val gav: String,
+    val path: String,
+    val line: Int,
+    val column: Int,
 )
 
 data class IndexStats(
@@ -43,6 +53,12 @@ data class IndexStats(
 )
 
 private data class DocMeta(val gav: String, val path: String)
+
+private fun requireNonNegativeLimit(limit: Int?, paramName: String = "limit") {
+    if (limit != null && limit < 0) {
+        throw IllegalArgumentException("$paramName must be non-negative")
+    }
+}
 
 class NameLocateIndex private constructor(
     val tokenMode: TokenMode,
@@ -66,17 +82,71 @@ class NameLocateIndex private constructor(
             cacheHit = cacheHit,
         )
 
-    fun locate(query: String, limit: Int = DEFAULT_LIMIT): List<LocateHit> {
-        if (limit <= 0) return emptyList()
+    /**
+     * Occurrence count for [query] without decoding postings payloads.
+     */
+    fun postingCount(query: String): Int {
+        val nameId = dictionary.lookup(query) ?: return 0
+        return postings.getOrNull(nameId)?.second ?: 0
+    }
+
+    /**
+     * Exact simple-name locate. [limit] null = unlimited; 0 = empty without decode work.
+     * Returns hits in posting order (doc_id, line, col). Decodes the full posting list, then
+     * caps returned hits (scode main semantics; full decode, emit cap only).
+     */
+    fun locate(query: String, limit: Int? = null): List<LocateHit> {
+        requireNonNegativeLimit(limit)
+        if (limit == 0) return emptyList()
         val nameId = dictionary.lookup(query) ?: return emptyList()
         val (blob, count) = postings.getOrNull(nameId) ?: return emptyList()
+        if (limit == null) {
+            val hits = ArrayList<LocateHit>(count)
+            GapEliasDeltaCodec.forEachOccurrence(blob, count) { docId, line, column ->
+                val doc = documents[docId]
+                hits.add(LocateHit(doc.gav, doc.path, line, column))
+                true
+            }
+            return hits
+        }
         val hits = ArrayList<LocateHit>(minOf(limit, count))
         GapEliasDeltaCodec.forEachOccurrence(blob, count) { docId, line, column ->
-            val doc = documents[docId]
-            hits.add(LocateHit(doc.gav, doc.path, line, column))
-            hits.size < limit
+            if (hits.size < limit) {
+                val doc = documents[docId]
+                hits.add(LocateHit(doc.gav, doc.path, line, column))
+            }
+            true
         }
         return hits
+    }
+
+    /**
+     * Multi-query OR with dedup and [LocateHit.matchedQueries] tags.
+     * Merged hits sort by (gav, path, line, column); overall [limit] truncates after merge.
+     */
+    fun searchMulti(
+        queries: List<String>,
+        limit: Int? = null,
+        perQueryLimit: Int? = null,
+    ): List<LocateHit> {
+        requireNonNegativeLimit(limit)
+        requireNonNegativeLimit(perQueryLimit, "perQueryLimit")
+        if (limit == 0) return emptyList()
+        val uniqueQueries = queries.distinct()
+        val merged = LinkedHashMap<LocateKey, LocateHit>()
+        for (query in uniqueQueries) {
+            for (hit in locate(query, perQueryLimit)) {
+                val key = hit.locateKey()
+                val existing = merged[key]
+                if (existing == null) {
+                    merged[key] = hit.copy(matchedQueries = listOf(query))
+                } else if (!existing.matchedQueries.contains(query)) {
+                    merged[key] = existing.copy(matchedQueries = existing.matchedQueries + query)
+                }
+            }
+        }
+        val sorted = merged.values.sortedWith(compareBy({ it.gav }, { it.path }, { it.line }, { it.column }))
+        return if (limit == null) sorted else sorted.take(limit)
     }
 
     fun writeTo(directory: File) {
@@ -160,7 +230,6 @@ class NameLocateIndex private constructor(
     }
 
     companion object {
-        const val DEFAULT_LIMIT: Int = 100
         const val MANIFEST_NAME: String = "manifest.json"
         const val DICTIONARY_NAME: String = "dictionary.bin"
         const val DOCUMENTS_NAME: String = "documents.bin"

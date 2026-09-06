@@ -1,6 +1,9 @@
 package com.example.gradle.mcp.dependency
 
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -108,5 +111,169 @@ class DependencyIndexStoreSearchTest {
         )
         withoutMatches.hitCount shouldBe 0
         withoutMatches.hitsTruncated shouldBe false
+    }
+
+    @Test
+    fun `omitted limit returns all hits`() {
+        val sources = File(tempDir, "src-unlimited").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\nfun Foo() {}\n")
+        val project = File(tempDir, "proj-unlimited").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+
+        val result = store.search(
+            SearchRequest(
+                projectDirectory = project,
+                query = "Foo",
+                tokenMode = TokenMode.IDENTS,
+                limit = null,
+            ),
+        )
+        result.hitCount shouldBe 3
+        result.hitsTruncated shouldBe false
+    }
+
+    @Test
+    fun `searchMulti overall limit truncates merged hits`() {
+        val sources = File(tempDir, "src-multi").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Bar() {}\n")
+        val project = File(tempDir, "proj-multi").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+
+        val result = store.searchMulti(
+            SearchMultiRequest(
+                projectDirectory = project,
+                queries = listOf("Foo", "Bar"),
+                tokenMode = TokenMode.IDENTS,
+                limit = 1,
+            ),
+        )
+        result.hitCount shouldBe 1
+        result.hitsTruncated shouldBe true
+        result.hits.single().matchedQueries shouldContainExactly listOf("Foo")
+    }
+
+    @Test
+    fun `searchMulti limit zero short circuits`() {
+        val sources = File(tempDir, "src-multi-zero").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-multi-zero").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+
+        val result = store.searchMulti(
+            SearchMultiRequest(
+                projectDirectory = project,
+                queries = listOf("Foo"),
+                tokenMode = TokenMode.IDENTS,
+                limit = 0,
+            ),
+        )
+        result.hitCount shouldBe 0
+        result.hitsTruncated shouldBe true
+    }
+
+    @Test
+    fun `searchMulti per query limit zero reports truncation when matches exist`() {
+        val sources = File(tempDir, "src-per-query-zero").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-per-query-zero").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+
+        val result = store.searchMulti(
+            SearchMultiRequest(
+                projectDirectory = project,
+                queries = listOf("Foo"),
+                tokenMode = TokenMode.IDENTS,
+                perQueryLimit = 0,
+            ),
+        )
+        result.hitCount shouldBe 0
+        result.hitsTruncated shouldBe true
+    }
+
+    @Test
+    fun `searchMulti per query limit reports truncation when overall limit omitted`() {
+        val sources = File(tempDir, "src-per-query-trunc").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\n")
+        val project = File(tempDir, "proj-per-query-trunc").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+
+        val result = store.searchMulti(
+            SearchMultiRequest(
+                projectDirectory = project,
+                queries = listOf("Foo"),
+                tokenMode = TokenMode.IDENTS,
+                perQueryLimit = 1,
+            ),
+        )
+        result.hitCount shouldBe 1
+        result.hitsTruncated shouldBe true
+    }
+
+    @Test
+    fun `negative limit is rejected at store layer`() {
+        val sources = File(tempDir, "src-neg-store").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-neg-store").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+
+        val error = shouldThrow<IllegalArgumentException> {
+            store.search(
+                SearchRequest(
+                    projectDirectory = project,
+                    query = "Foo",
+                    tokenMode = TokenMode.IDENTS,
+                    limit = -1,
+                ),
+            )
+        }
+        error.message shouldContain "non-negative"
     }
 }
