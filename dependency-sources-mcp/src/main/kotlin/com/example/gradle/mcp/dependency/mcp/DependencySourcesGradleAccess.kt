@@ -10,6 +10,13 @@ import java.io.File
 interface DependencySourcesGradleAccess {
     fun resolveProjectDirectory(args: Map<String, Any>): File
 
+    /**
+     * Gradle user home for a connected project, or null when the project is not connected.
+     * Used so `artifacts[]` keep-set lookup can consult the connection's cache, not only
+     * process `GRADLE_USER_HOME` / `~/.gradle`.
+     */
+    fun gradleUserHome(projectDirectory: File): File? = null
+
     fun <T> withConnection(projectDirectory: File, block: (ProjectConnection) -> T): T
 
     fun <T> withNoActiveBuild(projectDirectory: File, block: () -> T): T

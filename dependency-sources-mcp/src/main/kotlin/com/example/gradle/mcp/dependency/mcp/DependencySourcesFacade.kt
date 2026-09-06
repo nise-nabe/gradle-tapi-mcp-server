@@ -20,6 +20,12 @@ class DependencySourcesFacade(
         val indexDir = args.optionalString("indexDir")?.let(::File)
         val forceReindex = args.optionalBoolean("forceReindex", default = false)
         val needsConnection = artifacts.isEmpty() && sourcePaths.isEmpty()
+        val gradleUserHome = resolveGradleUserHome(
+            explicit = args.optionalString("gradleUserHome")?.let(::File),
+            projectDirectory = projectDirectory,
+            access = access,
+            needsArtifactsLookup = artifacts.isNotEmpty(),
+        )
 
         val request = IndexRequest(
             projectDirectory = projectDirectory,
@@ -28,6 +34,7 @@ class DependencySourcesFacade(
             sourcePaths = sourcePaths,
             indexDir = indexDir,
             forceReindex = forceReindex,
+            gradleUserHome = gradleUserHome,
         )
         // Hold no-active-build + connection only while resolving the Idea keep-set.
         // Corpus lex / disk write run unlocked so unrelated builds are not blocked.
@@ -145,6 +152,17 @@ class DependencySourcesFacade(
             map["matchedQueries"] = hit.matchedQueries
         }
         return map
+    }
+
+    private fun resolveGradleUserHome(
+        explicit: File?,
+        projectDirectory: File,
+        access: DependencySourcesGradleAccess,
+        needsArtifactsLookup: Boolean,
+    ): File? {
+        if (explicit != null) return explicit
+        if (!needsArtifactsLookup) return null
+        return access.gradleUserHome(projectDirectory)
     }
 
     private fun parseArtifacts(raw: Any?): List<DependencyArtifactRef> {

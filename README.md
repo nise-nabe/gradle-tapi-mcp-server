@@ -89,7 +89,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_list_builds` | List recent MCP builds from memory and `.gradle/mcp-builds/` (no Tooling API required) |
 | `gradle_get_build_status` | Poll status/output for a background build (`buildId` required); set `includeProgress: true` for detailed progress |
 | `gradle_cancel_build` | Cancel a background build via Tooling API `CancellationToken` (`buildId` required) |
-| `gradle_index_dependency_sources` | Index dependency sources for exact simple-name locate. `tokenMode`: `all` (default; includes comments/strings) or `idents`. Keep-set: Idea sources by default, or explicit `artifacts[]` / `sourcePaths[]`. Persists under `.gradle/mcp-dependency-sources/<tokenMode>/` |
+| `gradle_index_dependency_sources` | Index dependency sources for exact simple-name locate. `tokenMode`: `all` (default; includes comments/strings) or `idents`. Keep-set: Idea sources by default, or explicit `artifacts[]` / `sourcePaths[]`. `artifacts[]` lookup uses optional `gradleUserHome`, else the connected project's Gradle user home, else process `GRADLE_USER_HOME`/`~/.gradle`. Persists under `.gradle/mcp-dependency-sources/<tokenMode>/` |
 | `gradle_search_dependency_sources` | Exact simple-name locate against a prior index (does not reindex). Optional `limit` (omit = unlimited; `0` = empty) |
 | `gradle_search_dependency_sources_multi` | Multi-name OR locate with dedup and `matchedQueries`; optional `limit` and `perQueryLimit` (`per_query_limit` alias) |
 
@@ -103,7 +103,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 
 ### Dependency sources name locate
 
-1. Call `gradle_index_dependency_sources` (optional `tokenMode`, `artifacts`, `sourcePaths`, `forceReindex`).
+1. Call `gradle_index_dependency_sources` (optional `tokenMode`, `artifacts`, `sourcePaths`, `gradleUserHome`, `forceReindex`).
 2. Call `gradle_search_dependency_sources` with `query` (and matching `tokenMode` when not preferring the default `all` index).
 3. For several names at once, call `gradle_search_dependency_sources_multi` with `queries`.
 

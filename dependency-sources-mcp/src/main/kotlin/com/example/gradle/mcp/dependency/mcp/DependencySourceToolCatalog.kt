@@ -34,7 +34,7 @@ object DependencySourceToolCatalog {
                 "projectDirectory" to stringProp("Project root; omit for default/GRADLE_PROJECT_DIR."),
                 "tokenMode" to stringProp("all (default) or idents."),
                 "artifacts" to arrayOfObjects(
-                    description = "Optional GAVs; skips Idea keep-set when set.",
+                    description = "GAVs; skips Idea keep-set when set.",
                     itemProperties = mapOf(
                         "group" to stringProp("Group"),
                         "name" to stringProp("Name"),
@@ -43,17 +43,18 @@ object DependencySourceToolCatalog {
                     required = listOf("group", "name", "version"),
                 ),
                 "sourcePaths" to arrayOfObjects(
-                    description = "Local trees/jars when sources jars are missing.",
+                    description = "Local trees/jars when sources missing.",
                     itemProperties = mapOf(
                         "path" to stringProp("Directory, jar, or zip"),
-                        "group" to stringProp("Optional group label"),
-                        "name" to stringProp("Optional name label"),
-                        "version" to stringProp("Optional version label"),
+                        "group" to stringProp("Group label"),
+                        "name" to stringProp("Name label"),
+                        "version" to stringProp("Version label"),
                     ),
                     required = listOf("path"),
                 ),
-                "indexDir" to stringProp("Override dir (writes <dir>/<tokenMode>/)."),
-                "forceReindex" to booleanProp("Rebuild on cache hit. Default false."),
+                "gradleUserHome" to stringProp("Artifacts[] cache home; else connected."),
+                "indexDir" to stringProp("Override dir (<dir>/<tokenMode>/)."),
+                "forceReindex" to booleanProp("Rebuild on hit."),
             ),
         )
 

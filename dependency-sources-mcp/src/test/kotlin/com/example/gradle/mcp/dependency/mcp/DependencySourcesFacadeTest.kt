@@ -2,6 +2,7 @@ package com.example.gradle.mcp.dependency.mcp
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.gradle.tooling.ProjectConnection
@@ -311,12 +312,108 @@ class DependencySourcesFacadeTest {
         }
         error.message shouldContain "sourcePaths must be an array"
     }
+
+    @Test
+    fun `artifacts index uses explicit gradleUserHome for sources jar lookup`() {
+        val gradleHome = File(tempDir, "explicit-ghome")
+        val jar = placeSourcesJar(gradleHome, "com.example", "explicit-lib", "1.0.0")
+        val project = File(tempDir, "proj-explicit-ghome").apply { mkdirs() }
+        val access = StubAccess(project, connectedGradleUserHome = File(tempDir, "should-not-use"))
+        val facade = DependencySourcesFacade()
+
+        val indexed = facade.index(
+            mapOf(
+                "artifacts" to listOf(
+                    mapOf("group" to "com.example", "name" to "explicit-lib", "version" to "1.0.0"),
+                ),
+                "gradleUserHome" to gradleHome.absolutePath,
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+        indexed["memberCount"] shouldBe 1
+        indexed["keepSetMode"] shouldBe "explicit"
+
+        val search = facade.search(mapOf("query" to "ExplicitLib", "tokenMode" to "idents"), access)
+        @Suppress("UNCHECKED_CAST")
+        val hits = search["hits"] as List<Map<String, Any?>>
+        hits.shouldHaveSize(1)
+        hits.single()["path"] shouldBe "ExplicitLib.kt"
+        jar.isFile shouldBe true
+    }
+
+    @Test
+    fun `artifacts index uses connected gradleUserHome when arg omitted`() {
+        val connectedHome = File(tempDir, "connected-ghome")
+        placeSourcesJar(connectedHome, "com.example", "connected-lib", "2.0.0")
+        val project = File(tempDir, "proj-connected-ghome").apply { mkdirs() }
+        val access = StubAccess(project, connectedGradleUserHome = connectedHome)
+        val facade = DependencySourcesFacade()
+
+        val indexed = facade.index(
+            mapOf(
+                "artifacts" to listOf(
+                    mapOf("group" to "com.example", "name" to "connected-lib", "version" to "2.0.0"),
+                ),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+        indexed["memberCount"] shouldBe 1
+        indexed["keepSetMode"] shouldBe "explicit"
+    }
+
+    @Test
+    fun `artifacts index fails when jar only exists under unused connected home`() {
+        val unusedHome = File(tempDir, "unused-connected")
+        placeSourcesJar(unusedHome, "com.example", "wrong-home", "3.0.0")
+        val project = File(tempDir, "proj-wrong-home").apply { mkdirs() }
+        val access = StubAccess(project, connectedGradleUserHome = File(tempDir, "empty-home").apply { mkdirs() })
+
+        val error = shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().index(
+                mapOf(
+                    "artifacts" to listOf(
+                        mapOf("group" to "com.example", "name" to "wrong-home", "version" to "3.0.0"),
+                    ),
+                ),
+                access,
+            )
+        }
+        error.message shouldContain "com.example:wrong-home:3.0.0"
+    }
+
+    private fun placeSourcesJar(
+        gradleUserHome: File,
+        group: String,
+        name: String,
+        version: String,
+    ): File {
+        val moduleDir = File(
+            gradleUserHome,
+            "caches/modules-2/files-2.1/$group/$name/$version/hash",
+        )
+        moduleDir.mkdirs()
+        val jar = File(moduleDir, "$name-$version-sources.jar")
+        val simpleName = name.split('-').joinToString("") { part ->
+            part.replaceFirstChar { it.uppercase() }
+        }
+        java.util.zip.ZipOutputStream(jar.outputStream()).use { zip ->
+            zip.putNextEntry(java.util.zip.ZipEntry("$simpleName.kt"))
+            zip.write("class $simpleName\n".toByteArray())
+            zip.closeEntry()
+        }
+        return jar
+    }
 }
 
 private class StubAccess(
     private val projectDirectory: File,
+    private val connectedGradleUserHome: File? = null,
 ) : DependencySourcesGradleAccess {
     override fun resolveProjectDirectory(args: Map<String, Any>): File = projectDirectory
+
+    override fun gradleUserHome(projectDirectory: File): File? = connectedGradleUserHome
 
     override fun <T> withConnection(projectDirectory: File, block: (ProjectConnection) -> T): T =
         error("connection should not be required for explicit sourcePaths")

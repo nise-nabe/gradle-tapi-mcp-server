@@ -68,6 +68,9 @@ private class RuntimeDependencySourcesAccess(
     override fun resolveProjectDirectory(args: Map<String, Any>): File =
         ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
 
+    override fun gradleUserHome(projectDirectory: File): File? =
+        runtime.connectionManager.gradleUserHome(projectDirectory)
+
     override fun <T> withConnection(projectDirectory: File, block: (ProjectConnection) -> T): T =
         runtime.connectionManager.withConnectionResult(projectDirectory, block)
 
