@@ -114,6 +114,87 @@ class DependencySourceReaderTest {
         DependencySourceReader.parseGav("a.b:c:1.2.3").gav() shouldBe "a.b:c:1.2.3"
     }
 
+
+    @Test
+    fun `rejects blank path after normalization`() {
+        val jar = File(tempDir, "blank-path.jar")
+        writeJar(jar, "A.kt", "fun a()")
+        shouldThrow<IllegalArgumentException> {
+            DependencySourceReader.read(
+                ReadSourceRequest(
+                    artifact = DependencyArtifactRef("g", "n", "1"),
+                    path = "  ///  ",
+                    sourceRoot = jar,
+                ),
+            )
+        }.message shouldContain "path must not be blank"
+    }
+
+    @Test
+    fun `caps whole file read with maxLines`() {
+        val jar = File(tempDir, "long-sources.jar")
+        writeJar(jar, "Long.kt", (1..10).joinToString("\n") { "line$it" })
+
+        val result = DependencySourceReader.read(
+            ReadSourceRequest(
+                artifact = DependencyArtifactRef("g", "n", "1"),
+                path = "Long.kt",
+                maxLines = 3,
+                sourceRoot = jar,
+            ),
+        )
+
+        result.startLine shouldBe 1
+        result.endLine shouldBe 3
+        result.lineCount shouldBe 10
+        result.truncated shouldBe true
+        result.snippet shouldBe "line1\nline2\nline3"
+    }
+
+    @Test
+    fun `rejects line past end of file`() {
+        val jar = File(tempDir, "short.jar")
+        writeJar(jar, "S.kt", "one\ntwo")
+        shouldThrow<IllegalArgumentException> {
+            DependencySourceReader.read(
+                ReadSourceRequest(
+                    artifact = DependencyArtifactRef("g", "n", "1"),
+                    path = "S.kt",
+                    line = 9,
+                    sourceRoot = jar,
+                ),
+            )
+        }.message shouldContain "past end of file"
+    }
+
+    @Test
+    fun `rejects non-source path extension`() {
+        val jar = File(tempDir, "mixed.jar")
+        writeJar(jar, "META-INF/MANIFEST.MF", "Manifest-Version: 1.0\n")
+        shouldThrow<IllegalArgumentException> {
+            DependencySourceReader.read(
+                ReadSourceRequest(
+                    artifact = DependencyArtifactRef("g", "n", "1"),
+                    path = "META-INF/MANIFEST.MF",
+                    sourceRoot = jar,
+                ),
+            )
+        }.message shouldContain "source file"
+    }
+
+    @Test
+    fun `sources not found without sourceRoot or cache jar`() {
+        shouldThrow<IllegalArgumentException> {
+            DependencySourceReader.read(
+                ReadSourceRequest(
+                    artifact = DependencyArtifactRef("missing.group", "none", "0.0.0"),
+                    path = "A.kt",
+                    gradleUserHome = File(tempDir, "empty-home").apply { mkdirs() },
+                ),
+            )
+        }.message shouldContain "Sources not found"
+    }
+
     private fun placeSourcesJar(
         gradleUserHome: File,
         group: String,

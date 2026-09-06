@@ -252,6 +252,39 @@ Returns `status` (`queued`, `running`, `succeeded`, `failed`, `cancelled`, or `n
 | `includeDownloads` | `false` | `activeDownloadCount`, `recentDownloads` (requires in-memory live record) |
 | `includeTestDetails` | `false` | Terminal `failedTests`; with `includeProgress=true`, adds `progress.recentEvents[].test` on `TEST_*` events. Disk polls restore `failedTests` from `events.ndjson` (`className`, `methodName`, `failureMessage`; `sourcePath`/`sourceLine` need live Tooling API) |
 
+
+## Dependency sources
+
+### gradle_index_dependency_sources
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `tokenMode` | no | `all` (default) or `idents` |
+| `artifacts[]` | no | Explicit GAVs; skips Idea keep-set |
+| `sourcePaths[]` | no | Local trees/jars with optional GAV labels |
+| `gradleUserHome` | no | Cache home for `artifacts[]` jar lookup |
+| `indexDir` | no | Override index directory |
+| `forceReindex` | no | Rebuild even on fingerprint hit |
+
+### gradle_search_dependency_sources / gradle_search_dependency_sources_multi
+
+Exact simple-name locate against a prior index. Optional `limit` / `perQueryLimit` (`per_query_limit` alias): omit = unlimited; `0` = empty.
+
+### gradle_read_dependency_source
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `path` | yes | Path inside sources jar/tree (from a search hit) |
+| `gav` | one of | `group:name:version` |
+| `group`+`name`+`version` | one of | Alternative to `gav` |
+| `line` | no | 1-based anchor; must be within the file |
+| `contextLines` | no | Window around `line` (default 10) |
+| `maxLines` | no | Cap when `line` omitted (default 200) |
+| `sourceRoot` | sometimes | Explicit jar/zip/dir/file. **Required** for Idea directory sources and `sourcePaths` keep-sets (coordinate cache lookup only finds `*-sources.jar` under Maven local / Gradle caches) |
+| `gradleUserHome` | no | Cache home for jar lookup; else connected project |
+
+Returns `snippet`, `startLine`, `endLine`, `lineCount`, `truncated`, and resolved `sourceRoot`.
+
 ## MCP tool discovery (token-efficient)
 
 `tools/list` returns every tool name, description, and `inputSchema`. For Cursor agents, prefer lazy discovery:

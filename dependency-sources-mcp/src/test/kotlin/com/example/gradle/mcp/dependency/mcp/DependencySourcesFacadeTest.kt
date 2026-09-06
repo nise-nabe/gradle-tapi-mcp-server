@@ -451,6 +451,37 @@ class DependencySourcesFacadeTest {
         error.message shouldContain "either gav or group/name/version"
     }
 
+
+    @Test
+    fun `read requires gav or group name version`() {
+        val project = File(tempDir, "proj-read-coords").apply { mkdirs() }
+        val error = shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().read(
+                mapOf("path" to "A.kt"),
+                StubAccess(project),
+            )
+        }
+        error.message shouldContain "gav or group+name+version"
+    }
+
+    @Test
+    fun `read with sourcePaths-style tree requires sourceRoot when jar missing`() {
+        val tree = File(tempDir, "local-src").apply { mkdirs() }
+        File(tree, "Lib.kt").writeText("class Lib")
+        val project = File(tempDir, "proj-read-missing-jar").apply { mkdirs() }
+        val access = StubAccess(project, connectedGradleUserHome = File(tempDir, "no-cache").apply { mkdirs() })
+        val error = shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().read(
+                mapOf(
+                    "gav" to "local:tree:0",
+                    "path" to "Lib.kt",
+                ),
+                access,
+            )
+        }
+        error.message shouldContain "sourceRoot"
+    }
+
     private fun multilineDemoSource(): String =
         """
         package demo

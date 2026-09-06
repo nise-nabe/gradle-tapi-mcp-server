@@ -24,7 +24,8 @@ object DependencySourceToolCatalog {
 
     const val READ_DESCRIPTION: String =
         "Read UTF-8 snippet from dependency sources jar/dir. " +
-            "After search: gav+path (+line). contextLines default 10; omit line=whole file."
+            "Need gav|group+name+version + path. Cache jars by coords; Idea/sourcePaths need sourceRoot. " +
+            "line+contextLines=10; omit line → maxLines=200."
 
     fun specs(): List<DependencySourceToolSpec> =
         listOf(
@@ -99,14 +100,15 @@ object DependencySourceToolCatalog {
         objectSchema(
             properties = mapOf(
                 "projectDirectory" to stringProp("Project root; omit for default/GRADLE_PROJECT_DIR."),
-                "gav" to stringProp("group:name:version (alt: group+name+version)."),
-                "group" to stringProp("Group when gav omitted."),
-                "name" to stringProp("Name when gav omitted."),
-                "version" to stringProp("Version when gav omitted."),
+                "gav" to stringProp("Required unless group+name+version: group:name:version."),
+                "group" to stringProp("With name+version when gav omitted."),
+                "name" to stringProp("With group+version when gav omitted."),
+                "version" to stringProp("With group+name when gav omitted."),
                 "path" to stringProp("Path inside sources jar/tree (from search hit)."),
-                "line" to integerProp("Optional 1-based anchor line."),
+                "line" to integerProp("Optional 1-based anchor; must be within file."),
                 "contextLines" to integerProp("Lines before/after line (default 10)."),
-                "sourceRoot" to stringProp("Explicit jar/zip/dir/file override."),
+                "maxLines" to integerProp("Whole-file cap when line omitted (default 200)."),
+                "sourceRoot" to stringProp("Jar/zip/dir/file; required for Idea dirs / sourcePaths."),
                 "gradleUserHome" to stringProp("Cache home for *-sources.jar; else connected."),
             ),
             required = listOf("path"),

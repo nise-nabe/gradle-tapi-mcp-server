@@ -92,7 +92,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_index_dependency_sources` | Index dependency sources for exact simple-name locate. `tokenMode`: `all` (default; includes comments/strings) or `idents`. Keep-set: Idea sources by default, or explicit `artifacts[]` / `sourcePaths[]`. `artifacts[]` lookup uses optional `gradleUserHome`, else the connected project's Gradle user home, else process `GRADLE_USER_HOME`/`~/.gradle`. Persists under `.gradle/mcp-dependency-sources/<tokenMode>/` |
 | `gradle_search_dependency_sources` | Exact simple-name locate against a prior index (does not reindex). Optional `limit` (omit = unlimited; `0` = empty) |
 | `gradle_search_dependency_sources_multi` | Multi-name OR locate with dedup and `matchedQueries`; optional `limit` and `perQueryLimit` (`per_query_limit` alias) |
-| `gradle_read_dependency_source` | Read a UTF-8 snippet from a dependency `*-sources.jar` (or explicit `sourceRoot`) using `gav`/`group`+`name`+`version` and `path` from a search hit. Optional `line` + `contextLines` (default 10); omit `line` for the whole file |
+| `gradle_read_dependency_source` | Read a UTF-8 snippet from a dependency `*-sources.jar` using `gav`/`group`+`name`+`version` and `path`. Optional `line` + `contextLines` (default 10); omit `line` to read from the start up to `maxLines` (default 200). Maven/Gradle cache jars resolve by coordinates; Idea directories / `sourcePaths` require `sourceRoot` |
 
 ## Modules
 
@@ -107,7 +107,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 1. Call `gradle_index_dependency_sources` (optional `tokenMode`, `artifacts`, `sourcePaths`, `gradleUserHome`, `forceReindex`).
 2. Call `gradle_search_dependency_sources` with `query` (and matching `tokenMode` when not preferring the default `all` index).
 3. For several names at once, call `gradle_search_dependency_sources_multi` with `queries`.
-4. Call `gradle_read_dependency_source` with a hit's `gav` + `path` (and optional `line`) to read the surrounding source without shelling out to `unzip`.
+4. Call `gradle_read_dependency_source` with a hit's `gav` + `path` (and optional `line`) to read the surrounding source without shelling out to `unzip`. For Idea directory / `sourcePaths` keep-sets, also pass `sourceRoot`.
 
 `limit` / `perQueryLimit` are query-time only (no `formatVersion` bump): omit or null = unlimited; `0` = empty. `per_query_limit` is accepted as an alias for `perQueryLimit`. Single search returns hits in posting order; multi search merges, dedups, sorts by `(gav, path, line, column)`, then applies the overall `limit`.
 

@@ -115,6 +115,9 @@ class DependencySourcesFacade(
             "contextLines",
             default = ReadSourceRequest.DEFAULT_CONTEXT_LINES,
         )
+        val maxLines = args.optionalPositiveInt(
+            "maxLines",
+        ) ?: ReadSourceRequest.DEFAULT_MAX_LINES
         val sourceRoot = args.optionalString("sourceRoot")?.let(::File)
         val gradleUserHome = resolveGradleUserHome(
             explicit = args.optionalString("gradleUserHome")?.let(::File),
@@ -129,6 +132,7 @@ class DependencySourcesFacade(
                 path = path,
                 line = line,
                 contextLines = contextLines,
+                maxLines = maxLines,
                 sourceRoot = sourceRoot,
                 gradleUserHome = gradleUserHome,
             ),

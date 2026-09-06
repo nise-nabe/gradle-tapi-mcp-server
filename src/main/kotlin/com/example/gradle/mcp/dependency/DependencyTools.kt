@@ -103,6 +103,12 @@ private fun mapDependencySourcesError(error: Throwable): Throwable =
         is McpException -> error
         is IllegalArgumentException ->
             McpException(McpErrorCode.INVALID_ARGUMENT, error.message ?: "Invalid argument", error)
+        is java.util.zip.ZipException, is java.io.IOException ->
+            McpException(
+                McpErrorCode.INVALID_ARGUMENT,
+                error.message ?: "Failed to read dependency sources",
+                error,
+            )
         is IllegalStateException ->
             McpException(McpErrorCode.INTERNAL_ERROR, error.message ?: "Internal error", error)
         else -> error
