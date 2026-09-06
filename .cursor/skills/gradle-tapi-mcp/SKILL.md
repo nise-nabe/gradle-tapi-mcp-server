@@ -22,8 +22,9 @@ JAR only after you need to test server changes (not during `./gradlew build` of 
 
 1. `gradle_connection_status` — confirm connected (`runtimeStackAvailable=true` shows `gradleVersion` / `javaHome`; when false, call with `refresh: true` or use `gradle_get_build_environment`; listing all connections with `refresh: true` fetches per project)
 2. `gradle_get_build_environment` — resolved Gradle/Java versions
-3. `gradle_get_project_overview` — project name and task counts (single-module repo)
+3. `gradle_get_project_overview` — project name and task counts (scope with `projectPath` on multi-module repos)
 4. `gradle_run_tasks` with `["build"]` or `gradle_run_tests` when verification is needed
+5. Optional: `gradle_index_dependency_sources` then `gradle_search_dependency_sources` for exact simple-name locate in dependency sources (`tokenMode=all` default)
 
 Avoid `includeTasks=true` and heavy model queries unless necessary. On multi-module projects, pass `projectPath` (e.g. `:plugin`) to scope overview/model/invocation queries to a subproject subtree within the connected build only (not included/editable composite builds; use `gradle_get_gradle_build` for those). `gradle_run_tasks` omits stdout/stderr by default (`includeOutput=false`).
 
