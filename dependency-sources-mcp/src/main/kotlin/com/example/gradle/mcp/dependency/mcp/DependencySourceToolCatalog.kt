@@ -10,6 +10,7 @@ object DependencySourceToolCatalog {
     const val INDEX_TOOL: String = "gradle_index_dependency_sources"
     const val SEARCH_TOOL: String = "gradle_search_dependency_sources"
     const val SEARCH_MULTI_TOOL: String = "gradle_search_dependency_sources_multi"
+    const val READ_TOOL: String = "gradle_read_dependency_source"
 
     const val INDEX_DESCRIPTION: String =
         "Index dependency sources (Idea, artifacts[], or sourcePaths[]). " +
@@ -21,11 +22,17 @@ object DependencySourceToolCatalog {
     const val SEARCH_MULTI_DESCRIPTION: String =
         "Multi-name OR locate; dedup hits and tag matchedQueries. Requires prior index."
 
+    const val READ_DESCRIPTION: String =
+        "Read UTF-8 snippet from dependency sources jar/dir. " +
+            "Need gav|group+name+version + path. Cache jars by coords; Idea/sourcePaths: prefer hit sourceRoot. " +
+            "line+contextLines=10; omit line → maxLines=200."
+
     fun specs(): List<DependencySourceToolSpec> =
         listOf(
             DependencySourceToolSpec(INDEX_TOOL, INDEX_DESCRIPTION, indexSchema()),
             DependencySourceToolSpec(SEARCH_TOOL, SEARCH_DESCRIPTION, searchSchema()),
             DependencySourceToolSpec(SEARCH_MULTI_TOOL, SEARCH_MULTI_DESCRIPTION, searchMultiSchema()),
+            DependencySourceToolSpec(READ_TOOL, READ_DESCRIPTION, readSchema()),
         )
 
     fun indexSchema(): Map<String, Any> =
@@ -87,6 +94,26 @@ object DependencySourceToolCatalog {
                 "indexDir" to stringProp("Override dir (reads <dir>/<tokenMode>/)."),
             ),
             required = listOf("queries"),
+        )
+
+    fun readSchema(): Map<String, Any> =
+        objectSchema(
+            properties = mapOf(
+                "projectDirectory" to stringProp("Project root; omit for default/GRADLE_PROJECT_DIR."),
+                "gav" to stringProp("Required unless group+name+version: group:name:version."),
+                "group" to stringProp("With name+version when gav omitted."),
+                "name" to stringProp("With group+version when gav omitted."),
+                "version" to stringProp("With group+name when gav omitted."),
+                "path" to stringProp("Path inside sources jar/tree (from search hit)."),
+                "line" to integerProp("Optional 1-based anchor; must be within file."),
+                "contextLines" to integerProp("Lines before/after line (default 10, max 100)."),
+                "maxLines" to integerProp("Whole-file cap when line omitted (default 200, max 2000)."),
+                "sourceRoot" to stringProp("Jar/zip/dir/file override; else hit/index/cache."),
+                "tokenMode" to stringProp("Index mode for roots lookup (all|idents)."),
+                "indexDir" to stringProp("Override index dir (<dir>/<tokenMode>/)."),
+                "gradleUserHome" to stringProp("Cache home for *-sources.jar; else connected."),
+            ),
+            required = listOf("path"),
         )
 
     private fun objectSchema(

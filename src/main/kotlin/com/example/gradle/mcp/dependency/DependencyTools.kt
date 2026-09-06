@@ -60,6 +60,19 @@ fun Server.registerDependencySourceTools(scope: CoroutineScope) {
                 .getOrElse { throw mapDependencySourcesError(it) },
         )
     }
+
+    registerTool(
+        scope,
+        name = DependencySourceToolCatalog.READ_TOOL,
+        description = DependencySourceToolCatalog.READ_DESCRIPTION,
+        schema = DependencySourceToolCatalog.readSchema(),
+    ) { args ->
+        rejectUnsupportedProjectPath(args, DependencySourceToolCatalog.READ_TOOL)
+        jsonResult(
+            runCatching { dependencySourcesFacade.read(args, access) }
+                .getOrElse { throw mapDependencySourcesError(it) },
+        )
+    }
 }
 
 private class RuntimeDependencySourcesAccess(

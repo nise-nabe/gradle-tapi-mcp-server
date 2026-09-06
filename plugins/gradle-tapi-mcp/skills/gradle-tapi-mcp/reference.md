@@ -252,6 +252,43 @@ Returns `status` (`queued`, `running`, `succeeded`, `failed`, `cancelled`, or `n
 | `includeDownloads` | `false` | `activeDownloadCount`, `recentDownloads` (requires in-memory live record) |
 | `includeTestDetails` | `false` | Terminal `failedTests`; with `includeProgress=true`, adds `progress.recentEvents[].test` on `TEST_*` events. Disk polls restore `failedTests` from `events.ndjson` (`className`, `methodName`, `failureMessage`; `sourcePath`/`sourceLine` need live Tooling API) |
 
+
+## Dependency sources
+
+### gradle_index_dependency_sources
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `tokenMode` | no | `all` (default) or `idents` |
+| `artifacts[]` | no | Explicit GAVs; skips Idea keep-set |
+| `sourcePaths[]` | no | Local trees/jars with optional GAV labels |
+| `gradleUserHome` | no | Cache home for `artifacts[]` jar lookup |
+| `indexDir` | no | Override index directory |
+| `forceReindex` | no | Rebuild even on fingerprint hit |
+
+### gradle_search_dependency_sources / gradle_search_dependency_sources_multi
+
+Exact simple-name locate against a prior index. Optional `limit` / `perQueryLimit` (`per_query_limit` alias): omit = unlimited; `0` = empty.
+
+### gradle_read_dependency_source
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `path` | yes | Path inside sources jar/tree (from a search hit) |
+| `gav` | one of | `group:name:version` |
+| `group`+`name`+`version` | one of | Alternative to `gav` |
+| `line` | no | 1-based anchor; must be within the file |
+| `contextLines` | no | Window around `line` (default 10) |
+| `maxLines` | no | Cap when `line` omitted (default 200) |
+| `sourceRoot` | no | Explicit jar/zip/dir/file. Optional when search hit / `source-roots.tsv` provides it, or a `*-sources.jar` exists in Maven local / Gradle caches. Pass when neither index nor cache can resolve the root |
+| `tokenMode` | no | Which index side-car to consult (`all`/`idents`; omit tries `all` then `idents`) |
+| `indexDir` | no | Override index directory |
+| `gradleUserHome` | no | Cache home for jar lookup; else connected project |
+
+Returns `snippet`, `startLine`, `endLine`, `lineCount`, `truncated`, and resolved `sourceRoot`.
+
+Search hits may include `sourceRoot` from the index side-car `source-roots.tsv` (written at index time). Hits omit `sourceRoot` when multiple roots contain the same path. `gradle_read_dependency_source` uses that path when `sourceRoot` is omitted (before falling back to cache jar lookup); if the path is ambiguous across indexed roots, read fails and requires an explicit `sourceRoot` (no silent jar fallback). An explicit `sourceRoot` works without a Gradle connection. `contextLines` max 100; `maxLines` max 2000. Oversized lines/snippets are truncated (`MAX_LINE_CHARS` / `MAX_SNIPPET_CHARS`) and `truncated=true`.
+
 ## MCP tool discovery (token-efficient)
 
 `tools/list` returns every tool name, description, and `inputSchema`. For Cursor agents, prefer lazy discovery:

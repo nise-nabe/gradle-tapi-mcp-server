@@ -97,8 +97,9 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | `gradle_index_dependency_sources` | 依存ソース索引（Idea / `artifacts[]` / `sourcePaths[]`）。`tokenMode=all`（既定・コメント含む）または `idents` |
 | `gradle_search_dependency_sources` | 依存ソース上の単純名 exact locate（要事前 index）。`limit` 省略=無制限、`0`=空 |
 | `gradle_search_dependency_sources_multi` | 複数名 OR locate（dedup + `matchedQueries`）。`limit` / `perQueryLimit` 対応（`per_query_limit` エイリアス） |
+| `gradle_read_dependency_source` | 検索ヒットの `gav`+`path`（任意で `line`）から UTF-8 スニペット。`contextLines` 既定 10。`line` 省略は先頭から `maxLines`（既定 200）。Idea ディレクトリ / `sourcePaths` はヒットの `sourceRoot` を利用 |
 
-依存ソース検索: 先に `gradle_index_dependency_sources`、続けて `gradle_search_dependency_sources` または `gradle_search_dependency_sources_multi`。索引は `.gradle/mcp-dependency-sources/<tokenMode>/`（`formatVersion` 付き）。mode 不一致時は暗黙 reindex しない。
+依存ソース検索: 先に `gradle_index_dependency_sources`、続けて `gradle_search_dependency_sources` または `gradle_search_dependency_sources_multi`、必要なら `gradle_read_dependency_source`。索引は `.gradle/mcp-dependency-sources/<tokenMode>/`（`formatVersion` 付き）。mode 不一致時は暗黙 reindex しない。
 
 詳細な引数は [reference.md](reference.md)。
 

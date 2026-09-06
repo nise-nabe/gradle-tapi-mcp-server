@@ -3,6 +3,7 @@ package com.example.gradle.mcp.dependency.mcp
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.gradle.tooling.ProjectConnection
@@ -383,11 +384,224 @@ class DependencySourcesFacadeTest {
         error.message shouldContain "com.example:wrong-home:3.0.0"
     }
 
+    @Test
+    fun `read returns snippet from sources jar using gav and connected gradle home`() {
+        val home = File(tempDir, "read-home")
+        placeSourcesJar(home, "com.example", "readable", "1.2.3", sourceBody = multilineDemoSource())
+        val project = File(tempDir, "proj-read").apply { mkdirs() }
+        val access = StubAccess(project, connectedGradleUserHome = home)
+        val facade = DependencySourcesFacade()
+
+        val result = facade.read(
+            mapOf(
+                "gav" to "com.example:readable:1.2.3",
+                "path" to "Readable.kt",
+                "line" to 3,
+                "contextLines" to 1,
+            ),
+            access,
+        )
+
+        result["gav"] shouldBe "com.example:readable:1.2.3"
+        result["path"] shouldBe "Readable.kt"
+        result["startLine"] shouldBe 2
+        result["endLine"] shouldBe 4
+        result["truncated"] shouldBe true
+        (result["snippet"] as String) shouldContain "class Readable"
+        (result["snippet"] as String) shouldContain "fun hit()"
+    }
+
+    @Test
+    fun `read accepts group name version and explicit sourceRoot`() {
+        val tree = File(tempDir, "read-tree").apply { mkdirs() }
+        File(tree, "Demo.java").writeText("class Demo {}")
+        val project = File(tempDir, "proj-read-root").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+
+        val result = facade.read(
+            mapOf(
+                "group" to "local",
+                "name" to "demo",
+                "version" to "0",
+                "path" to "Demo.java",
+                "sourceRoot" to tree.absolutePath,
+            ),
+            access,
+        )
+
+        result["snippet"] shouldBe "class Demo {}"
+        result["truncated"] shouldBe false
+        result["startLine"] shouldBe 1
+        result["endLine"] shouldBe 1
+    }
+
+    @Test
+    fun `read rejects gav mixed with group fields`() {
+        val project = File(tempDir, "proj-read-mixed").apply { mkdirs() }
+        val error = shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().read(
+                mapOf(
+                    "gav" to "g:n:1",
+                    "group" to "g",
+                    "path" to "A.kt",
+                ),
+                StubAccess(project),
+            )
+        }
+        error.message shouldContain "either gav or group/name/version"
+    }
+
+
+    @Test
+    fun `read requires gav or group name version`() {
+        val project = File(tempDir, "proj-read-coords").apply { mkdirs() }
+        val error = shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().read(
+                mapOf("path" to "A.kt"),
+                StubAccess(project),
+            )
+        }
+        error.message shouldContain "gav or group+name+version"
+    }
+
+    @Test
+    fun `read with sourcePaths-style tree requires sourceRoot when jar missing`() {
+        val tree = File(tempDir, "local-src").apply { mkdirs() }
+        File(tree, "Lib.kt").writeText("class Lib")
+        val project = File(tempDir, "proj-read-missing-jar").apply { mkdirs() }
+        val access = StubAccess(project, connectedGradleUserHome = File(tempDir, "no-cache").apply { mkdirs() })
+        val error = shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().read(
+                mapOf(
+                    "gav" to "local:tree:0",
+                    "path" to "Lib.kt",
+                ),
+                access,
+            )
+        }
+        error.message shouldContain "sourceRoot"
+    }
+
+
+    @Test
+    fun `read resolves sourceRoot from indexed sourcePaths`() {
+        val sources = File(tempDir, "src-paths-read").apply { mkdirs() }
+        File(sources, "Lib.kt").writeText(
+            """
+            class Lib {
+                fun target() {}
+            }
+            """.trimIndent(),
+        )
+        val project = File(tempDir, "proj-src-read").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(
+                    mapOf(
+                        "path" to sources.absolutePath,
+                        "group" to "local",
+                        "name" to "lib",
+                        "version" to "1",
+                    ),
+                ),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+        val search = facade.search(mapOf("query" to "target", "tokenMode" to "idents"), access)
+        @Suppress("UNCHECKED_CAST")
+        val hits = search["hits"] as List<Map<String, Any?>>
+        hits.shouldNotBeEmpty()
+        hits[0]["sourceRoot"] shouldBe sources.absolutePath
+
+        val read = facade.read(
+            mapOf(
+                "gav" to "local:lib:1",
+                "path" to "Lib.kt",
+                "line" to 2,
+                "contextLines" to 1,
+            ),
+            access,
+        )
+        (read["snippet"] as String) shouldContain "fun target"
+        read["sourceRoot"] shouldBe sources.absolutePath
+    }
+
+    private fun multilineDemoSource(): String =
+        """
+        package demo
+        class Readable {
+            fun hit() {}
+            fun other() {}
+        }
+        """.trimIndent()
+
+    @Test
+    fun `read with explicit sourceRoot does not require project directory resolution`() {
+        val tree = File(tempDir, "offline-read").apply { mkdirs() }
+        File(tree, "Offline.kt").writeText("class Offline\n")
+        val access = object : DependencySourcesGradleAccess {
+            override fun resolveProjectDirectory(args: Map<String, Any>): File =
+                error("resolveProjectDirectory must not be called when sourceRoot is explicit")
+
+            override fun gradleUserHome(projectDirectory: File): File? =
+                error("gradleUserHome must not be called when sourceRoot is explicit")
+
+            override fun <T> withConnection(projectDirectory: File, block: (ProjectConnection) -> T): T =
+                error("connection must not be required")
+
+            override fun <T> withNoActiveBuild(projectDirectory: File, block: () -> T): T = block()
+        }
+        val result = DependencySourcesFacade().read(
+            mapOf(
+                "gav" to "local:offline:0",
+                "path" to "Offline.kt",
+                "sourceRoot" to tree.absolutePath,
+            ),
+            access,
+        )
+        result["snippet"] shouldBe "class Offline"
+        result["truncated"] shouldBe false
+    }
+
+    @Test
+    fun `read fails closed when indexed roots are ambiguous for path`() {
+        val a = File(tempDir, "ambig-a").apply { mkdirs() }
+        val b = File(tempDir, "ambig-b").apply { mkdirs() }
+        File(a, "Shared.kt").writeText("class SharedA\n")
+        File(b, "Shared.kt").writeText("class SharedB\n")
+        val project = File(tempDir, "proj-ambig").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(
+                    mapOf("path" to a.absolutePath, "group" to "g", "name" to "n", "version" to "1"),
+                    mapOf("path" to b.absolutePath, "group" to "g", "name" to "n", "version" to "1"),
+                ),
+            ),
+            access,
+        )
+        shouldThrow<IllegalArgumentException> {
+            facade.read(
+                mapOf(
+                    "gav" to "g:n:1",
+                    "path" to "Shared.kt",
+                ),
+                access,
+            )
+        }.message shouldContain "sourceRoot"
+    }
+
     private fun placeSourcesJar(
         gradleUserHome: File,
         group: String,
         name: String,
         version: String,
+        sourceBody: String? = null,
     ): File {
         val moduleDir = File(
             gradleUserHome,
@@ -398,9 +612,10 @@ class DependencySourcesFacadeTest {
         val simpleName = name.split('-').joinToString("") { part ->
             part.replaceFirstChar { it.uppercase() }
         }
+        val body = sourceBody ?: "class $simpleName\n"
         java.util.zip.ZipOutputStream(jar.outputStream()).use { zip ->
             zip.putNextEntry(java.util.zip.ZipEntry("$simpleName.kt"))
-            zip.write("class $simpleName\n".toByteArray())
+            zip.write(body.toByteArray())
             zip.closeEntry()
         }
         return jar
