@@ -124,8 +124,15 @@ class DependencyIndexStore {
                     "Call gradle_index_dependency_sources first.",
             )
         val limit = request.limit.coerceAtLeast(0)
-        val hits = index.locate(request.query, limit = if (limit == 0) Int.MAX_VALUE else limit)
-        val truncated = limit > 0 && hits.size >= limit
+        // Probe limit+1 so hitsTruncated is false when there are exactly `limit` matches.
+        val probed =
+            if (limit == 0) {
+                index.locate(request.query, limit = Int.MAX_VALUE)
+            } else {
+                index.locate(request.query, limit = limit + 1)
+            }
+        val truncated = limit > 0 && probed.size > limit
+        val hits = if (truncated) probed.take(limit) else probed
         val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode, request.indexDir)
         return SearchResult(
             hits = hits,
