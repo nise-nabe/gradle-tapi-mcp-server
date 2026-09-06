@@ -286,6 +286,13 @@ class NameLocateIndex private constructor(
             )
         }
 
+        /**
+         * Load an on-disk index when present and compatible.
+         *
+         * Returns null when the directory or manifest is missing, or when fingerprint/tokenMode
+         * constraints do not match. Throws [UnsupportedIndexFormatException] when the manifest
+         * [IndexManifest.formatVersion] does not match [IndexFormat.VERSION].
+         */
         fun tryLoad(
             directory: File,
             expectedFingerprint: String?,

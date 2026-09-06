@@ -59,7 +59,7 @@ internal sealed class PostingsTable {
 
         fun packInMemory(entries: List<Pair<ByteArray, Int>>): ByteArray {
             val nameCount = entries.size
-            val dataBase = NAME_COUNT_SIZE + nameCount * POSTING_ENTRY_SIZE
+            val dataBase = offsetTableBase(nameCount)
             val blobBytesLong = entries.fold(0L) { acc, (blob, _) -> acc + blob.size }
             val totalSizeLong = dataBase.toLong() + blobBytesLong
             require(totalSizeLong in 0..Int.MAX_VALUE.toLong()) {
@@ -105,7 +105,7 @@ internal sealed class PostingsTable {
             require(duplicate.remaining() >= NAME_COUNT_SIZE) { "truncated postings" }
             val nameCount = duplicate.getInt()
             require(nameCount >= 0) { "posting entry count must be non-negative" }
-            val dataBase = NAME_COUNT_SIZE + nameCount * POSTING_ENTRY_SIZE
+            val dataBase = offsetTableBase(nameCount)
             require(duplicate.limit() >= dataBase) { "truncated postings offset table" }
 
             val maxEntriesByFile =
@@ -150,6 +150,14 @@ internal sealed class PostingsTable {
                 "corrupt postings: name id $nameId blob out of range"
             }
             return startLong.toInt()
+        }
+
+        private fun offsetTableBase(nameCount: Int): Int {
+            val dataBaseLong = NAME_COUNT_SIZE.toLong() + nameCount.toLong() * POSTING_ENTRY_SIZE
+            require(dataBaseLong in NAME_COUNT_SIZE.toLong()..Int.MAX_VALUE.toLong()) {
+                "posting offset table size $dataBaseLong exceeds Int.MAX_VALUE"
+            }
+            return dataBaseLong.toInt()
         }
     }
 }
