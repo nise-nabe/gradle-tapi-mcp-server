@@ -169,7 +169,7 @@ class DependencyIndexStoreSearchTest {
     }
 
     @Test
-    fun `searchMulti limit zero short circuits`() {
+    fun `searchMulti limit zero runs decode probe`() {
         val sources = File(tempDir, "src-multi-zero").apply { mkdirs() }
         File(sources, "A.kt").writeText("fun Foo() {}\n")
         val project = File(tempDir, "proj-multi-zero").apply { mkdirs() }
@@ -247,6 +247,42 @@ class DependencyIndexStoreSearchTest {
         )
         result.hitCount shouldBe 1
         result.hitsTruncated shouldBe true
+    }
+
+    @Test
+    fun `search rejects stale v2 index with actionable error`() {
+        val sources = File(tempDir, "src-stale").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-stale").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+        val indexDir = store.defaultIndexDir(project, TokenMode.IDENTS)
+        val manifest = File(indexDir, NameLocateIndex.MANIFEST_NAME)
+        manifest.writeText(
+            manifest.readText().replace(
+                "\"formatVersion\":${IndexFormat.VERSION}",
+                "\"formatVersion\":2",
+            ),
+        )
+
+        val searchStore = DependencyIndexStore()
+        val error = shouldThrow<UnsupportedIndexFormatException> {
+            searchStore.search(
+                SearchRequest(
+                    projectDirectory = project,
+                    query = "Foo",
+                    tokenMode = TokenMode.IDENTS,
+                ),
+            )
+        }
+        error.message shouldContain "format v3"
     }
 
     @Test

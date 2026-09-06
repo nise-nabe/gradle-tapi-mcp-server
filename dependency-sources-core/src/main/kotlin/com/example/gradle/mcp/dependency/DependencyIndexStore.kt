@@ -57,17 +57,12 @@ class DependencyIndexStore {
         File(projectDirectory, ".gradle/mcp-dependency-sources/${tokenMode.wireName()}")
 
     fun resolveIndexDir(projectDirectory: File, tokenMode: TokenMode, override: File?): File =
-        // Always isolate by tokenMode, including indexDir overrides, so all/idents never share a tree.
         if (override != null) {
             File(override, tokenMode.wireName())
         } else {
             defaultIndexDir(projectDirectory, tokenMode)
         }
 
-    /**
-     * Resolve the keep-set only. Callers that need Idea Tooling API should hold
-     * connection / no-active-build locks around this method, then call [index] unlocked.
-     */
     fun resolveKeepSet(
         request: IndexRequest,
         connection: ProjectConnection?,
@@ -81,10 +76,6 @@ class DependencyIndexStore {
         )
     }
 
-    /**
-     * Build or load the on-disk index for an already-resolved keep-set.
-     * Does not touch Gradle Tooling API — safe outside [ProjectLifecycleGuard].
-     */
     fun index(
         request: IndexRequest,
         keepSet: ResolvedKeepSet,
@@ -98,11 +89,16 @@ class DependencyIndexStore {
         val key = cacheKey(request.projectDirectory, request.tokenMode, indexDir)
 
         if (!request.forceReindex) {
-            val loaded = NameLocateIndex.tryLoad(
-                directory = indexDir,
-                expectedFingerprint = fingerprint,
-                expectedTokenMode = request.tokenMode,
-            )
+            val loaded =
+                try {
+                    NameLocateIndex.tryLoad(
+                        directory = indexDir,
+                        expectedFingerprint = fingerprint,
+                        expectedTokenMode = request.tokenMode,
+                    )
+                } catch (_: UnsupportedIndexFormatException) {
+                    null
+                }
             if (loaded != null) {
                 memory[key] = loaded
                 return IndexResult(
@@ -126,7 +122,6 @@ class DependencyIndexStore {
         )
     }
 
-    /** Convenience for tests: resolve keep-set then index in one call. */
     fun index(
         request: IndexRequest,
         connection: ProjectConnection?,
@@ -152,6 +147,7 @@ class DependencyIndexStore {
                 )
             }
             0 -> {
+                index.locate(request.query, limit = 0)
                 SearchResult(
                     hits = emptyList(),
                     stats = index.stats(indexDir, cacheHit = true),
@@ -203,12 +199,16 @@ class DependencyIndexStore {
                     hitsTruncated = perQueryHitsTruncated(index, request.queries, request.perQueryLimit),
                 )
             }
-            0 -> SearchMultiResult(
-                hits = emptyList(),
-                stats = index.stats(indexDir, cacheHit = true),
-                hitCount = 0,
-                hitsTruncated = request.queries.any { index.postingCount(it) > 0 },
-            )
+            0 -> {
+                val hits = index.searchMulti(request.queries, limit = 0, perQueryLimit = request.perQueryLimit)
+                SearchMultiResult(
+                    hits = hits,
+                    stats = index.stats(indexDir, cacheHit = true),
+                    hitCount = 0,
+                    hitsTruncated = request.queries.any { index.postingCount(it) > 0 } ||
+                        perQueryHitsTruncated(index, request.queries, request.perQueryLimit),
+                )
+            }
             else -> {
                 val probed =
                     if (limit == Int.MAX_VALUE) {
@@ -259,11 +259,16 @@ class DependencyIndexStore {
             val indexDir = resolveIndexDir(projectDirectory, mode, indexDirOverride)
             val key = cacheKey(projectDirectory, mode, indexDir)
             memory[key]?.let { return it }
-            val loaded = NameLocateIndex.tryLoad(
-                directory = indexDir,
-                expectedFingerprint = null,
-                expectedTokenMode = mode,
-            ) ?: continue
+            val loaded =
+                try {
+                    NameLocateIndex.tryLoad(
+                        directory = indexDir,
+                        expectedFingerprint = null,
+                        expectedTokenMode = mode,
+                    )
+                } catch (error: UnsupportedIndexFormatException) {
+                    throw error
+                } ?: continue
             memory[key] = loaded
             return loaded
         }

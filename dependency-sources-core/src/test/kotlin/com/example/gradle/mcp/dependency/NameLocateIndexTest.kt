@@ -28,6 +28,25 @@ class GapEliasDeltaCodecTest {
     }
 
     @Test
+    fun `decodeOccurrences respects limit`() {
+        val occs =
+            (0 until 200).map { i ->
+                OccPos(docId = 0, line = i + 1, column = 0)
+            }
+        val encoded = GapEliasDeltaCodec.encodeOccurrences(occs)
+        val limited = GapEliasDeltaCodec.decodeOccurrences(encoded, occs.size, limit = 5)
+        val fullPrefix = GapEliasDeltaCodec.decodeOccurrences(encoded, occs.size, limit = null).take(5)
+        limited shouldContainExactly fullPrefix
+    }
+
+    @Test
+    fun `decodeOccurrences limit zero returns empty`() {
+        val occs = listOf(OccPos(docId = 0, line = 1, column = 0))
+        val encoded = GapEliasDeltaCodec.encodeOccurrences(occs)
+        GapEliasDeltaCodec.decodeOccurrences(encoded, occs.size, limit = 0) shouldContainExactly emptyList()
+    }
+
+    @Test
     fun `round-trips occurrence payloads with same-doc and doc-change`() {
         val occs =
             listOf(
@@ -141,6 +160,47 @@ class NameLocateIndexTest {
             "explicit",
         )
         idents.locate("HttpClient").map { it.line } shouldContainExactly listOf(3)
+    }
+
+    @Test
+    fun `v3 postings use offset table layout`() {
+        val sources = File(tempDir, "v3-layout").apply { mkdirs() }
+        File(sources, "Demo.java").writeText("class Demo { HttpClient c; }\n")
+        val members = listOf(KeepSetMember(gav = "demo:lib:1", sourceRoot = sources))
+        val fingerprint = KeepSetFingerprint.compute(TokenMode.IDENTS, "explicit", members)
+        val index = NameLocateIndex.build(members, TokenMode.IDENTS, fingerprint, "explicit")
+        val indexDir = File(tempDir, "idx-v3")
+        index.writeTo(indexDir)
+
+        val postingsFile = File(indexDir, NameLocateIndex.POSTINGS_NAME)
+        DataInputStream(postingsFile.inputStream().buffered()).use { input ->
+            val nameCount = input.readInt()
+            nameCount shouldBe index.stats(indexDir, cacheHit = false).nameCount
+            var dataOffset = 0
+            repeat(nameCount) {
+                input.readInt() // count
+                val offset = input.readInt()
+                val len = input.readInt()
+                offset shouldBe dataOffset
+                dataOffset += len
+            }
+            postingsFile.length() shouldBe (4L + nameCount * PostingsTable.POSTING_ENTRY_SIZE + dataOffset)
+        }
+    }
+
+    @Test
+    fun `mmap loaded index returns same hits as in-memory`() {
+        val sources = File(tempDir, "mmap").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\n")
+        val members = listOf(KeepSetMember(gav = "demo:lib:1", sourceRoot = sources))
+        val fingerprint = KeepSetFingerprint.compute(TokenMode.IDENTS, "explicit", members)
+        val built = NameLocateIndex.build(members, TokenMode.IDENTS, fingerprint, "explicit")
+        val indexDir = File(tempDir, "idx-mmap")
+        built.writeTo(indexDir)
+
+        val loaded = NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.IDENTS).shouldNotBeNull()
+        built.locate("Foo", limit = null) shouldContainExactly loaded.locate("Foo", limit = null)
+        loaded.locate("Foo", limit = 1) shouldHaveSize 1
     }
 
     @Test
@@ -303,7 +363,25 @@ class NameLocateIndexTest {
         index.writeTo(indexDir)
         val manifest = File(indexDir, NameLocateIndex.MANIFEST_NAME)
         manifest.writeText(manifest.readText().replace("\"formatVersion\":${IndexFormat.VERSION}", "\"formatVersion\":99"))
-        NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
+        shouldThrow<UnsupportedIndexFormatException> {
+            NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL)
+        }.message shouldContain "unsupported index format version 99"
+    }
+
+    @Test
+    fun `rejects v2 formatVersion`() {
+        val sources = File(tempDir, "src-v2").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}")
+        val members = listOf(KeepSetMember(gav = "g:a:1", sourceRoot = sources))
+        val fingerprint = KeepSetFingerprint.compute(TokenMode.ALL, "explicit", members)
+        val index = NameLocateIndex.build(members, TokenMode.ALL, fingerprint, "explicit")
+        val indexDir = File(tempDir, "idx-v2")
+        index.writeTo(indexDir)
+        val manifest = File(indexDir, NameLocateIndex.MANIFEST_NAME)
+        manifest.writeText(manifest.readText().replace("\"formatVersion\":${IndexFormat.VERSION}", "\"formatVersion\":2"))
+        shouldThrow<UnsupportedIndexFormatException> {
+            NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL)
+        }.message shouldContain "format v3"
     }
 
     @Test
@@ -317,7 +395,9 @@ class NameLocateIndexTest {
         index.writeTo(indexDir)
         val manifest = File(indexDir, NameLocateIndex.MANIFEST_NAME)
         manifest.writeText(manifest.readText().replace("\"formatVersion\":${IndexFormat.VERSION}", "\"formatVersion\":1"))
-        NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
+        shouldThrow<UnsupportedIndexFormatException> {
+            NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL)
+        }
     }
 
     @Test
@@ -345,7 +425,7 @@ class NameLocateIndexTest {
     }
 
     @Test
-    fun `rejects postings with out-of-range docId`() {
+    fun `locate rejects out-of-range docId at search time`() {
         val sources = File(tempDir, "src-oob").apply { mkdirs() }
         File(sources, "A.kt").writeText("fun Foo() {}")
         val members = listOf(KeepSetMember(gav = "g:a:1", sourceRoot = sources))
@@ -354,45 +434,21 @@ class NameLocateIndexTest {
         val indexDir = File(tempDir, "idx-oob")
         index.writeTo(indexDir)
 
-        val postingsFile = File(indexDir, NameLocateIndex.POSTINGS_NAME)
-        // Preserve per-name occurrence counts and only replace the first posting blob so
-        // load failure is attributable to docId range validation, not count mismatch.
-        data class Posting(val count: Int, val blob: ByteArray)
-        val (magic, version, postings) =
-            DataInputStream(postingsFile.inputStream().buffered()).use { input ->
-                val magic = input.readInt()
-                val version = input.readInt()
-                val nameCount = input.readInt()
-                val entries = List(nameCount) {
-                    val count = input.readInt()
-                    val blob = ByteArray(input.readInt()).also { input.readFully(it) }
-                    Posting(count, blob)
-                }
-                Triple(magic, version, entries)
-            }
-        magic shouldBe IndexFormat.MAGIC
-        version shouldBe IndexFormat.VERSION
+        val postings = readV3PostingEntries(File(indexDir, NameLocateIndex.POSTINGS_NAME))
         require(postings.isNotEmpty())
-        val targetCount = postings.first().count
+        val targetCount = postings.first().second
         require(targetCount >= 1) { "expected at least one occurrence to forge" }
-        val forgedSameCount =
+        val forgedBlob =
             GapEliasDeltaCodec.encodeOccurrences(
                 List(targetCount) { OccPos(docId = 99, line = it, column = 0) },
             )
-        DataOutputStream(postingsFile.outputStream().buffered()).use { out ->
-            out.writeInt(IndexFormat.MAGIC)
-            out.writeInt(IndexFormat.VERSION)
-            out.writeInt(postings.size)
-            postings.forEachIndexed { index, posting ->
-                val blob = if (index == 0) forgedSameCount else posting.blob
-                out.writeInt(posting.count)
-                out.writeInt(blob.size)
-                out.write(blob)
-            }
+        val patchedAll = postings.map { (_, count) -> forgedBlob to count }
+        writeV3Postings(File(indexDir, NameLocateIndex.POSTINGS_NAME), patchedAll)
+        val reloaded = NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL).shouldNotBeNull()
+        shouldThrow<IllegalArgumentException> {
+            reloaded.locate("Foo")
         }
-        NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
     }
-
 
     @Test
     fun `rejects empty occCount with non-empty blob`() {
@@ -405,39 +461,14 @@ class NameLocateIndexTest {
         index.writeTo(indexDir)
 
         val postingsFile = File(indexDir, NameLocateIndex.POSTINGS_NAME)
-        data class Posting(val count: Int, val blob: ByteArray)
-        val (magic, version, postings) =
-            DataInputStream(postingsFile.inputStream().buffered()).use { input ->
-                val magic = input.readInt()
-                val version = input.readInt()
-                val nameCount = input.readInt()
-                val entries =
-                    List(nameCount) {
-                        val count = input.readInt()
-                        val blob = ByteArray(input.readInt()).also { input.readFully(it) }
-                        Posting(count, blob)
-                    }
-                Triple(magic, version, entries)
-            }
-        magic shouldBe IndexFormat.MAGIC
-        version shouldBe IndexFormat.VERSION
-        require(postings.isNotEmpty())
-        DataOutputStream(postingsFile.outputStream().buffered()).use { out ->
-            out.writeInt(IndexFormat.MAGIC)
-            out.writeInt(IndexFormat.VERSION)
-            out.writeInt(postings.size)
-            postings.forEachIndexed { index, posting ->
-                if (index == 0) {
-                    out.writeInt(0)
-                    out.writeInt(posting.blob.size.coerceAtLeast(1))
-                    out.write(if (posting.blob.isNotEmpty()) posting.blob else byteArrayOf(0))
-                } else {
-                    out.writeInt(posting.count)
-                    out.writeInt(posting.blob.size)
-                    out.write(posting.blob)
-                }
-            }
-        }
+        val bytes = postingsFile.readBytes().toMutableList()
+        // First offset-table row starts at byte 4: force count=0 with non-zero len.
+        bytes[4] = 0
+        bytes[5] = 0
+        bytes[6] = 0
+        bytes[7] = 0
+        bytes[15] = 1
+        postingsFile.writeBytes(bytes.toByteArray())
         NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
     }
 
@@ -453,13 +484,31 @@ class NameLocateIndexTest {
 
         val postingsFile = File(indexDir, NameLocateIndex.POSTINGS_NAME)
         val bytes = postingsFile.readBytes()
-        // Overwrite the entry-count int (offset 8 after MAGIC+VERSION) with Int.MAX_VALUE.
-        require(bytes.size >= 12)
-        bytes[8] = 0x7F.toByte()
-        bytes[9] = 0xFF.toByte()
-        bytes[10] = 0xFF.toByte()
-        bytes[11] = 0xFF.toByte()
+        // Overwrite name_count (first u32) with Int.MAX_VALUE.
+        require(bytes.size >= 4)
+        bytes[0] = 0x7F.toByte()
+        bytes[1] = 0xFF.toByte()
+        bytes[2] = 0xFF.toByte()
+        bytes[3] = 0xFF.toByte()
         postingsFile.writeBytes(bytes)
         NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
     }
+}
+
+private fun readV3PostingEntries(file: File): List<Pair<ByteArray, Int>> {
+    val bytes = file.readBytes()
+    DataInputStream(bytes.inputStream()).use { input ->
+        val nameCount = input.readInt()
+        val metas = List(nameCount) {
+            Triple(input.readInt(), input.readInt(), input.readInt())
+        }
+        val dataBase = 4 + nameCount * PostingsTable.POSTING_ENTRY_SIZE
+        return metas.map { (count, offset, len) ->
+            bytes.copyOfRange(dataBase + offset, dataBase + offset + len) to count
+        }
+    }
+}
+
+private fun writeV3Postings(file: File, entries: List<Pair<ByteArray, Int>>) {
+    file.writeBytes(PostingsTable.packInMemory(entries.map { (blob, count) -> blob to count }))
 }
