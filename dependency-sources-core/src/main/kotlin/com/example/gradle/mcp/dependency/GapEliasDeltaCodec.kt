@@ -111,8 +111,8 @@ object GapEliasDeltaCodec {
     ) {
         require(count >= 0) { "occurrence count must be non-negative" }
         if (count == 0) return
-        val maxBits = bytes.size * 8
-        require(count <= maxBits) {
+        val maxBits = bytes.size.toLong() * 8L
+        require(count.toLong() <= maxBits) {
             "occurrence count $count exceeds bitstream capacity ($maxBits bits)"
         }
         val reader = BitReader(bytes)

@@ -194,15 +194,19 @@ class NameLocateIndex private constructor(
             }
 
             val postings = ArrayList<Pair<ByteArray, Int>>(dictionary.size())
-            var totalOccurrences = 0
+            var totalOccurrencesLong = 0L
             for (nameId in 0 until dictionary.size()) {
                 val list = if (nameId < postingBuilder.size) postingBuilder[nameId] else emptyList()
                 val sorted =
                     list.sortedWith(compareBy({ it.docId }, { it.line }, { it.column }))
                 val blob = GapEliasDeltaCodec.encodeOccurrences(sorted)
                 postings.add(blob to sorted.size)
-                totalOccurrences += sorted.size
+                totalOccurrencesLong += sorted.size.toLong()
             }
+            require(totalOccurrencesLong in 0L..Int.MAX_VALUE.toLong()) {
+                "occurrence count $totalOccurrencesLong does not fit in Int"
+            }
+            val totalOccurrences = totalOccurrencesLong.toInt()
 
             return NameLocateIndex(
                 tokenMode = tokenMode,

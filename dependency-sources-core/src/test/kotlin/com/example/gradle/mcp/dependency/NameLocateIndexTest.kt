@@ -198,24 +198,43 @@ class NameLocateIndexTest {
         val indexDir = File(tempDir, "idx-oob")
         index.writeTo(indexDir)
 
-        val forged = GapEliasDeltaCodec.encodeOccurrences(listOf(OccPos(docId = 99, line = 0, column = 0)))
         val postingsFile = File(indexDir, NameLocateIndex.POSTINGS_NAME)
-        val nameCount =
+        // Preserve per-name occurrence counts and only replace the first posting blob so
+        // load failure is attributable to docId range validation, not count mismatch.
+        data class Posting(val count: Int, val blob: ByteArray)
+        val (magic, version, postings) =
             DataInputStream(postingsFile.inputStream().buffered()).use { input ->
-                input.readInt() shouldBe IndexFormat.MAGIC
-                input.readInt() shouldBe IndexFormat.VERSION
-                input.readInt()
+                val magic = input.readInt()
+                val version = input.readInt()
+                val nameCount = input.readInt()
+                val entries = List(nameCount) {
+                    val count = input.readInt()
+                    val blob = ByteArray(input.readInt()).also { input.readFully(it) }
+                    Posting(count, blob)
+                }
+                Triple(magic, version, entries)
             }
+        magic shouldBe IndexFormat.MAGIC
+        version shouldBe IndexFormat.VERSION
+        require(postings.isNotEmpty())
+        val targetCount = postings.first().count
+        require(targetCount >= 1) { "expected at least one occurrence to forge" }
+        val forgedSameCount =
+            GapEliasDeltaCodec.encodeOccurrences(
+                List(targetCount) { OccPos(docId = 99, line = it, column = 0) },
+            )
         DataOutputStream(postingsFile.outputStream().buffered()).use { out ->
             out.writeInt(IndexFormat.MAGIC)
             out.writeInt(IndexFormat.VERSION)
-            out.writeInt(nameCount)
-            repeat(nameCount) {
-                out.writeInt(1)
-                out.writeInt(forged.size)
-                out.write(forged)
+            out.writeInt(postings.size)
+            postings.forEachIndexed { index, posting ->
+                val blob = if (index == 0) forgedSameCount else posting.blob
+                out.writeInt(posting.count)
+                out.writeInt(blob.size)
+                out.write(blob)
             }
         }
         NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
     }
+
 }
