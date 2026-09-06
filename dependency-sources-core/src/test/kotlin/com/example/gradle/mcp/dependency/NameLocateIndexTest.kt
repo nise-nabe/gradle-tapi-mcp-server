@@ -5,6 +5,7 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.DataInputStream
@@ -155,7 +156,23 @@ class NameLocateIndexTest {
         )
         index.locate("HttpClient", limit = 0) shouldContainExactly emptyList()
         index.locate("Missing", limit = 0) shouldContainExactly emptyList()
-        index.locate("HttpClient", limit = -1) shouldContainExactly emptyList()
+    }
+
+    @Test
+    fun `locate rejects negative limit`() {
+        val sources = File(tempDir, "limit-neg").apply { mkdirs() }
+        File(sources, "Demo.java").writeText("class Demo { HttpClient c; }\n")
+        val members = listOf(KeepSetMember(gav = "demo:lib:1", sourceRoot = sources))
+        val index = NameLocateIndex.build(
+            members,
+            TokenMode.IDENTS,
+            KeepSetFingerprint.compute(TokenMode.IDENTS, "explicit", members),
+            "explicit",
+        )
+        val error = shouldThrow<IllegalArgumentException> {
+            index.locate("HttpClient", limit = -1)
+        }
+        error.message shouldContain "non-negative"
     }
 
     @Test
@@ -254,7 +271,7 @@ class NameLocateIndexTest {
     }
 
     @Test
-    fun `searchMulti negative limit returns empty`() {
+    fun `searchMulti rejects negative limit`() {
         val sources = File(tempDir, "multi-neg").apply { mkdirs() }
         File(sources, "A.kt").writeText("fun Foo() {}\n")
         val members = listOf(KeepSetMember(gav = "demo:lib:1", sourceRoot = sources))
@@ -264,7 +281,15 @@ class NameLocateIndexTest {
             KeepSetFingerprint.compute(TokenMode.IDENTS, "explicit", members),
             "explicit",
         )
-        index.searchMulti(queries = listOf("Foo"), limit = -1, perQueryLimit = null) shouldContainExactly emptyList()
+        val limitError = shouldThrow<IllegalArgumentException> {
+            index.searchMulti(queries = listOf("Foo"), limit = -1, perQueryLimit = null)
+        }
+        limitError.message shouldContain "non-negative"
+
+        val perQueryError = shouldThrow<IllegalArgumentException> {
+            index.searchMulti(queries = listOf("Foo"), limit = null, perQueryLimit = -2)
+        }
+        perQueryError.message shouldContain "perQueryLimit"
     }
 
     @Test

@@ -54,6 +54,12 @@ data class IndexStats(
 
 private data class DocMeta(val gav: String, val path: String)
 
+private fun requireNonNegativeLimit(limit: Int?, paramName: String = "limit") {
+    if (limit != null && limit < 0) {
+        throw IllegalArgumentException("$paramName must be non-negative")
+    }
+}
+
 class NameLocateIndex private constructor(
     val tokenMode: TokenMode,
     val fingerprint: String,
@@ -86,10 +92,12 @@ class NameLocateIndex private constructor(
 
     /**
      * Exact simple-name locate. [limit] null = unlimited; 0 = empty without decode work.
-     * Returns hits in posting order (doc_id, line, col). Caps returned hit count, not decoded rows.
+     * Returns hits in posting order (doc_id, line, col). Decodes the full posting list, then
+     * caps returned hits (scode main semantics; no decode-time early-stop).
      */
     fun locate(query: String, limit: Int? = null): List<LocateHit> {
-        if (limit != null && limit <= 0) return emptyList()
+        requireNonNegativeLimit(limit)
+        if (limit == 0) return emptyList()
         val nameId = dictionary.lookup(query) ?: return emptyList()
         val (blob, count) = postings.getOrNull(nameId) ?: return emptyList()
         if (limit == null) {
@@ -101,13 +109,13 @@ class NameLocateIndex private constructor(
             }
             return hits
         }
-        val hits = ArrayList<LocateHit>(minOf(limit, count))
+        val hits = ArrayList<LocateHit>(count)
         GapEliasDeltaCodec.forEachOccurrence(blob, count) { docId, line, column ->
             val doc = documents[docId]
             hits.add(LocateHit(doc.gav, doc.path, line, column))
-            hits.size < limit
+            true
         }
-        return hits
+        return hits.take(limit)
     }
 
     /**
@@ -119,7 +127,9 @@ class NameLocateIndex private constructor(
         limit: Int? = null,
         perQueryLimit: Int? = null,
     ): List<LocateHit> {
-        if (limit != null && limit <= 0) return emptyList()
+        requireNonNegativeLimit(limit)
+        requireNonNegativeLimit(perQueryLimit, "perQueryLimit")
+        if (limit == 0) return emptyList()
         val uniqueQueries = queries.distinct()
         val merged = LinkedHashMap<LocateKey, LocateHit>()
         for (query in uniqueQueries) {
