@@ -11,7 +11,7 @@ class McpToolSchemaSizeTest {
         val catalogNames = allMcpToolSpecs().map { it.name }
         val catalogNameSet = catalogNames.toSet()
         catalogNames.size shouldBe catalogNameSet.size
-        catalogNameSet.size shouldBe 19
+        catalogNameSet.size shouldBe 20
     }
 
     @Test
@@ -39,7 +39,7 @@ class McpToolSchemaSizeTest {
          * first; bump this only when net growth is unavoidable and leave at least
          * [MIN_TOTAL_TOOLS_HEADROOM_CHARS] below the new limit.
          */
-        const val MAX_TOTAL_TOOLS_LIST_CHARS = 17_100
+        const val MAX_TOTAL_TOOLS_LIST_CHARS = 17_900
         const val MIN_TOTAL_TOOLS_HEADROOM_CHARS = 200
         const val MAX_SINGLE_TOOL_CHARS = 3_100
         const val MAX_DESCRIPTION_CHARS = 220
