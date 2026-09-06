@@ -59,7 +59,7 @@ object DependencySourceToolCatalog {
                 "query" to stringProp("Exact simple-name to locate"),
                 "tokenMode" to stringProp("Must match an index (all|idents). Prefer all."),
                 "limit" to integerProp("Max hits (default 100)."),
-                "indexDir" to stringProp("Override dir (writes <dir>/<tokenMode>/)."),
+                "indexDir" to stringProp("Override dir (reads <dir>/<tokenMode>/)."),
             ),
             required = listOf("query"),
         )
