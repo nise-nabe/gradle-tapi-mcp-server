@@ -119,7 +119,7 @@ class NameLocateIndex private constructor(
         limit: Int? = null,
         perQueryLimit: Int? = null,
     ): List<LocateHit> {
-        if (limit == 0) return emptyList()
+        if (limit != null && limit <= 0) return emptyList()
         val uniqueQueries = queries.distinct()
         val merged = LinkedHashMap<LocateKey, LocateHit>()
         for (query in uniqueQueries) {

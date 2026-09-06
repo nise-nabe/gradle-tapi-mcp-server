@@ -254,6 +254,20 @@ class NameLocateIndexTest {
     }
 
     @Test
+    fun `searchMulti negative limit returns empty`() {
+        val sources = File(tempDir, "multi-neg").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val members = listOf(KeepSetMember(gav = "demo:lib:1", sourceRoot = sources))
+        val index = NameLocateIndex.build(
+            members,
+            TokenMode.IDENTS,
+            KeepSetFingerprint.compute(TokenMode.IDENTS, "explicit", members),
+            "explicit",
+        )
+        index.searchMulti(queries = listOf("Foo"), limit = -1, perQueryLimit = null) shouldContainExactly emptyList()
+    }
+
+    @Test
     fun `rejects incompatible format version`() {
         val sources = File(tempDir, "src").apply { mkdirs() }
         File(sources, "A.kt").writeText("fun Foo() {}")
