@@ -3,6 +3,7 @@ package com.example.gradle.mcp.dependency.mcp
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.gradle.tooling.ProjectConnection
@@ -480,6 +481,53 @@ class DependencySourcesFacadeTest {
             )
         }
         error.message shouldContain "sourceRoot"
+    }
+
+
+    @Test
+    fun `read resolves sourceRoot from indexed sourcePaths`() {
+        val sources = File(tempDir, "src-paths-read").apply { mkdirs() }
+        File(sources, "Lib.kt").writeText(
+            """
+            class Lib {
+                fun target() {}
+            }
+            """.trimIndent(),
+        )
+        val project = File(tempDir, "proj-src-read").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(
+                    mapOf(
+                        "path" to sources.absolutePath,
+                        "group" to "local",
+                        "name" to "lib",
+                        "version" to "1",
+                    ),
+                ),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+        val search = facade.search(mapOf("query" to "target", "tokenMode" to "idents"), access)
+        @Suppress("UNCHECKED_CAST")
+        val hits = search["hits"] as List<Map<String, Any?>>
+        hits.shouldNotBeEmpty()
+        hits[0]["sourceRoot"] shouldBe sources.absolutePath
+
+        val read = facade.read(
+            mapOf(
+                "gav" to "local:lib:1",
+                "path" to "Lib.kt",
+                "line" to 2,
+                "contextLines" to 1,
+            ),
+            access,
+        )
+        (read["snippet"] as String) shouldContain "fun target"
+        read["sourceRoot"] shouldBe sources.absolutePath
     }
 
     private fun multilineDemoSource(): String =

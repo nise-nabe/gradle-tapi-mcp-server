@@ -103,6 +103,7 @@ class DependencyIndexStore {
                 }
             if (loaded != null) {
                 memory[key] = loaded
+                IndexSourceRoots.write(indexDir, keepSet.members)
                 return IndexResult(
                     stats = loaded.stats(indexDir, cacheHit = true),
                     memberCount = keepSet.members.size,
@@ -120,6 +121,7 @@ class DependencyIndexStore {
         // block directory moves/deletes, especially on Windows).
         memory.remove(key)
         built.writeTo(indexDir)
+        IndexSourceRoots.write(indexDir, keepSet.members)
         memory[key] = built
         return IndexResult(
             stats = built.stats(indexDir, cacheHit = false),
@@ -143,7 +145,7 @@ class DependencyIndexStore {
         val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode, request.indexDir)
         return when (val limit = request.limit) {
             null -> {
-                val hits = index.locate(request.query, limit = null)
+                val hits = enrichHits(indexDir, index.locate(request.query, limit = null))
                 SearchResult(
                     hits = hits,
                     stats = index.stats(indexDir, cacheHit = true),
@@ -170,7 +172,7 @@ class DependencyIndexStore {
                         index.locate(request.query, limit = limit + 1)
                     }
                 val truncated = limit < Int.MAX_VALUE && probed.size > limit
-                val hits = if (truncated) probed.take(limit) else probed
+                val hits = enrichHits(indexDir, if (truncated) probed.take(limit) else probed)
                 SearchResult(
                     hits = hits,
                     stats = index.stats(indexDir, cacheHit = true),
@@ -196,7 +198,7 @@ class DependencyIndexStore {
         val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode, request.indexDir)
         return when (val limit = request.limit) {
             null -> {
-                val hits = index.searchMulti(request.queries, limit = null, perQueryLimit = request.perQueryLimit)
+                val hits = enrichHits(indexDir, index.searchMulti(request.queries, limit = null, perQueryLimit = request.perQueryLimit))
                 SearchMultiResult(
                     hits = hits,
                     stats = index.stats(indexDir, cacheHit = true),
@@ -232,7 +234,7 @@ class DependencyIndexStore {
                         )
                     }
                 val truncated = limit < Int.MAX_VALUE && probed.size > limit
-                val hits = if (truncated) probed.take(limit) else probed
+                val hits = enrichHits(indexDir, if (truncated) probed.take(limit) else probed)
                 SearchMultiResult(
                     hits = hits,
                     stats = index.stats(indexDir, cacheHit = true),
@@ -288,7 +290,18 @@ class DependencyIndexStore {
         return null
     }
 
-    private fun cacheKey(projectDirectory: File, tokenMode: TokenMode, indexDir: File): String =
+    
+    private fun enrichHits(indexDir: File, hits: List<LocateHit>): List<LocateHit> {
+        if (hits.isEmpty()) return hits
+        val roots = IndexSourceRoots.load(indexDir)
+        if (roots.isEmpty()) return hits
+        return hits.map { hit ->
+            val root = IndexSourceRoots.resolve(roots, hit.gav, hit.path) ?: return@map hit
+            if (hit.sourceRoot != null) hit else hit.copy(sourceRoot = root.absolutePath)
+        }
+    }
+
+private fun cacheKey(projectDirectory: File, tokenMode: TokenMode, indexDir: File): String =
         projectDirectory.canonicalFile.absolutePath + "|" + tokenMode.wireName() + "|" +
             indexDir.canonicalFile.absolutePath
 }

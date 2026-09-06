@@ -118,13 +118,21 @@ class DependencySourcesFacade(
         val maxLines = args.optionalPositiveInt(
             "maxLines",
         ) ?: ReadSourceRequest.DEFAULT_MAX_LINES
-        val sourceRoot = args.optionalString("sourceRoot")?.let(::File)
+        var sourceRoot = args.optionalString("sourceRoot")?.let(::File)
         val gradleUserHome = resolveGradleUserHome(
             explicit = args.optionalString("gradleUserHome")?.let(::File),
             projectDirectory = projectDirectory,
             access = access,
             needsArtifactsLookup = sourceRoot == null,
         )
+        if (sourceRoot == null) {
+            sourceRoot = resolveIndexedSourceRoot(
+                projectDirectory = projectDirectory,
+                artifact = artifact,
+                path = path,
+                indexDir = args.optionalString("indexDir")?.let(::File),
+            )
+        }
 
         val result = DependencySourceReader.read(
             ReadSourceRequest(
@@ -212,6 +220,9 @@ class DependencySourcesFacade(
             "line" to hit.line,
             "column" to hit.column,
         )
+        if (hit.sourceRoot != null) {
+            map["sourceRoot"] = hit.sourceRoot
+        }
         if (includeMatchedQueries && hit.matchedQueries.isNotEmpty()) {
             map["matchedQueries"] = hit.matchedQueries
         }
@@ -258,6 +269,31 @@ class DependencySourcesFacade(
                 version = map.mapString("version"),
             )
         }
+    }
+
+    private fun resolveIndexedSourceRoot(
+        projectDirectory: File,
+        artifact: DependencyArtifactRef,
+        path: String,
+        indexDir: File?,
+    ): File? {
+        val modes = listOf(
+            com.example.gradle.mcp.dependency.TokenMode.ALL,
+            com.example.gradle.mcp.dependency.TokenMode.IDENTS,
+        )
+        for (mode in modes) {
+            val dir = store.resolveIndexDir(projectDirectory, mode, indexDir)
+            val roots = com.example.gradle.mcp.dependency.IndexSourceRoots.load(dir)
+            val resolved = com.example.gradle.mcp.dependency.IndexSourceRoots.resolve(
+                roots,
+                artifact.gav(),
+                path,
+            )
+            if (resolved != null) {
+                return resolved
+            }
+        }
+        return null
     }
 }
 

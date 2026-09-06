@@ -29,6 +29,7 @@ data class LocateHit(
     val line: Int,
     val column: Int,
     val matchedQueries: List<String> = emptyList(),
+    val sourceRoot: String? = null,
 ) {
     internal fun locateKey(): LocateKey = LocateKey(gav, path, line, column)
 }

@@ -85,7 +85,7 @@ class DependencySourceReaderTest {
             ),
         )
 
-        result.snippet shouldBe "class Hello\n"
+        result.snippet shouldBe "class Hello"
         result.truncated shouldBe false
     }
 
@@ -193,6 +193,39 @@ class DependencySourceReaderTest {
                 ),
             )
         }.message shouldContain "Sources not found"
+    }
+
+
+    @Test
+    fun `rejects contextLines above max`() {
+        val jar = File(tempDir, "cap.jar")
+        writeJar(jar, "A.kt", "fun a()")
+        shouldThrow<IllegalArgumentException> {
+            DependencySourceReader.read(
+                ReadSourceRequest(
+                    artifact = DependencyArtifactRef("g", "n", "1"),
+                    path = "A.kt",
+                    contextLines = ReadSourceRequest.MAX_CONTEXT_LINES + 1,
+                    sourceRoot = jar,
+                ),
+            )
+        }.message shouldContain "contextLines"
+    }
+
+    @Test
+    fun `rejects maxLines above max`() {
+        val jar = File(tempDir, "cap2.jar")
+        writeJar(jar, "A.kt", "fun a()")
+        shouldThrow<IllegalArgumentException> {
+            DependencySourceReader.read(
+                ReadSourceRequest(
+                    artifact = DependencyArtifactRef("g", "n", "1"),
+                    path = "A.kt",
+                    maxLines = ReadSourceRequest.MAX_MAX_LINES + 1,
+                    sourceRoot = jar,
+                ),
+            )
+        }.message shouldContain "maxLines"
     }
 
     private fun placeSourcesJar(

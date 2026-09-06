@@ -285,6 +285,8 @@ Exact simple-name locate against a prior index. Optional `limit` / `perQueryLimi
 
 Returns `snippet`, `startLine`, `endLine`, `lineCount`, `truncated`, and resolved `sourceRoot`.
 
+Search hits may include `sourceRoot` from the index side-car `source-roots.tsv` (written at index time). `gradle_read_dependency_source` uses that path when `sourceRoot` is omitted and cache jar lookup misses. `contextLines` max 100; `maxLines` max 2000.
+
 ## MCP tool discovery (token-efficient)
 
 `tools/list` returns every tool name, description, and `inputSchema`. For Cursor agents, prefer lazy discovery:
