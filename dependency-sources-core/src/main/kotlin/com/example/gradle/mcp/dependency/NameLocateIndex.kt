@@ -242,7 +242,11 @@ class NameLocateIndex private constructor(
             require(dictionary.size() == manifest.nameCount)
             require(documents.size == manifest.docCount)
             require(postings.size == dictionary.size())
-            val totalOccurrences = postings.sumOf { it.second }
+            val totalOccurrencesLong = postings.fold(0L) { acc, posting -> acc + posting.second.toLong() }
+            require(totalOccurrencesLong in 0L..Int.MAX_VALUE.toLong()) {
+                "occurrence count $totalOccurrencesLong does not fit in Int"
+            }
+            val totalOccurrences = totalOccurrencesLong.toInt()
             require(totalOccurrences == manifest.occurrenceCount)
             // Eagerly validate posting payloads so corrupt indexes fail at load, not at search.
             for ((blob, count) in postings) {
