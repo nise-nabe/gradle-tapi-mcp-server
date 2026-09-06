@@ -23,9 +23,8 @@ object DependencySourceToolCatalog {
         "Multi-name OR locate; dedup hits and tag matchedQueries. Requires prior index."
 
     const val READ_DESCRIPTION: String =
-        "Read a UTF-8 snippet from a dependency *-sources.jar (or sourceRoot). " +
-            "Use after search hits (gav + path + optional line). " +
-            "contextLines default 10 around line; omit line for the whole file."
+        "Read UTF-8 snippet from dependency sources jar/dir. " +
+            "After search: gav+path (+line). contextLines default 10; omit line=whole file."
 
     fun specs(): List<DependencySourceToolSpec> =
         listOf(
@@ -100,15 +99,15 @@ object DependencySourceToolCatalog {
         objectSchema(
             properties = mapOf(
                 "projectDirectory" to stringProp("Project root; omit for default/GRADLE_PROJECT_DIR."),
-                "gav" to stringProp("group:name:version from a search hit (alt: group+name+version)."),
-                "group" to stringProp("Artifact group when gav is omitted."),
-                "name" to stringProp("Artifact name when gav is omitted."),
-                "version" to stringProp("Artifact version when gav is omitted."),
-                "path" to stringProp("Path inside the sources jar / source tree (from search hit)."),
-                "line" to integerProp("Optional 1-based anchor line from a search hit."),
-                "contextLines" to integerProp("Lines before/after line (default 10). Ignored when line omitted."),
-                "sourceRoot" to stringProp("Explicit jar/zip/dir/file when cache lookup is not enough."),
-                "gradleUserHome" to stringProp("Gradle cache home for *-sources.jar lookup; else connected."),
+                "gav" to stringProp("group:name:version (alt: group+name+version)."),
+                "group" to stringProp("Group when gav omitted."),
+                "name" to stringProp("Name when gav omitted."),
+                "version" to stringProp("Version when gav omitted."),
+                "path" to stringProp("Path inside sources jar/tree (from search hit)."),
+                "line" to integerProp("Optional 1-based anchor line."),
+                "contextLines" to integerProp("Lines before/after line (default 10)."),
+                "sourceRoot" to stringProp("Explicit jar/zip/dir/file override."),
+                "gradleUserHome" to stringProp("Cache home for *-sources.jar; else connected."),
             ),
             required = listOf("path"),
         )
