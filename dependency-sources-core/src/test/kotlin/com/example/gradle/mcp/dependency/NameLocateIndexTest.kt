@@ -290,4 +290,26 @@ class NameLocateIndexTest {
         }
         NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
     }
+
+    @Test
+    fun `rejects absurd posting entry count`() {
+        val sources = File(tempDir, "src-huge-count").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}")
+        val members = listOf(KeepSetMember(gav = "g:a:1", sourceRoot = sources))
+        val fingerprint = KeepSetFingerprint.compute(TokenMode.ALL, "explicit", members)
+        val index = NameLocateIndex.build(members, TokenMode.ALL, fingerprint, "explicit")
+        val indexDir = File(tempDir, "idx-huge-count")
+        index.writeTo(indexDir)
+
+        val postingsFile = File(indexDir, NameLocateIndex.POSTINGS_NAME)
+        val bytes = postingsFile.readBytes()
+        // Overwrite the entry-count int (offset 8 after MAGIC+VERSION) with Int.MAX_VALUE.
+        require(bytes.size >= 12)
+        bytes[8] = 0x7F.toByte()
+        bytes[9] = 0xFF.toByte()
+        bytes[10] = 0xFF.toByte()
+        bytes[11] = 0xFF.toByte()
+        postingsFile.writeBytes(bytes)
+        NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
+    }
 }

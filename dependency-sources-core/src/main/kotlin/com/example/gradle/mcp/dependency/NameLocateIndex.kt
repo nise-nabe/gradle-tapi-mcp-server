@@ -292,6 +292,12 @@ class NameLocateIndex private constructor(
                 requireMagic(input)
                 val count = input.readInt()
                 require(count >= 0) { "posting entry count must be non-negative" }
+                // Header is MAGIC+VERSION+count (12 bytes). Each entry needs at least
+                // occCount+blobSize (8 bytes), so reject impossible counts before allocating.
+                val maxEntriesByFile = ((file.length() - 12L) / 8L).coerceAtLeast(0L)
+                require(count.toLong() <= maxEntriesByFile) {
+                    "posting entry count $count exceeds file capacity (max $maxEntriesByFile for ${file.length()} bytes)"
+                }
                 val postings = ArrayList<Pair<ByteArray, Int>>(count)
                 repeat(count) {
                     val occCount = input.readInt()
