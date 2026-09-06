@@ -11,6 +11,7 @@ import com.example.gradle.mcp.connection.connectSchema
 import com.example.gradle.mcp.connection.connectionStatusSchema
 import com.example.gradle.mcp.connection.disconnectSchema
 import com.example.gradle.mcp.connection.javaRuntimesSchema
+import com.example.gradle.mcp.dependency.mcp.DependencySourceToolCatalog
 import com.example.gradle.mcp.model.buildInvocationsQuerySchema
 import com.example.gradle.mcp.model.helpSchema
 import com.example.gradle.mcp.model.modelQuerySchema
@@ -43,4 +44,6 @@ internal fun allMcpToolSpecs(): List<McpToolSpec> =
         McpToolSpec("gradle_get_build_status", McpToolDescriptions.BUILD_STATUS, buildStatusSchema()),
         McpToolSpec("gradle_run_tasks", McpToolDescriptions.RUN_TASKS, runTasksSchema()),
         McpToolSpec("gradle_run_tests", McpToolDescriptions.RUN_TESTS, runTestsSchema()),
-    )
+    ) + DependencySourceToolCatalog.specs().map { spec ->
+        McpToolSpec(spec.name, spec.description, spec.schema)
+    }
