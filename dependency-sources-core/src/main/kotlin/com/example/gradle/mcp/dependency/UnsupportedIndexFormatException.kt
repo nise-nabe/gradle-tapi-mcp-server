@@ -9,11 +9,7 @@ class UnsupportedIndexFormatException(
             buildString {
                 append("unsupported index format version $foundVersion (expected $expectedVersion)")
                 if (foundVersion < expectedVersion) {
-                    when (foundVersion) {
-                        2 -> append("; call gradle_index_dependency_sources to rebuild with format v3")
-                        1 -> append("; call gradle_index_dependency_sources to rebuild")
-                        else -> append("; call gradle_index_dependency_sources to re-index")
-                    }
+                    append("; call gradle_index_dependency_sources to rebuild with format v$expectedVersion")
                 }
             }
     }

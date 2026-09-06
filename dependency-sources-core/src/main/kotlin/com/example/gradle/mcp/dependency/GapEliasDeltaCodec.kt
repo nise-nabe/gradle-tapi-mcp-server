@@ -270,15 +270,23 @@ private class BitReader private constructor(
 
     companion object {
         fun fromBytes(bytes: ByteArray): BitReader =
-            BitReader(bytes = bytes, buffer = null, bufferBase = 0, bitLimit = bytes.size * 8)
+            BitReader(bytes = bytes, buffer = null, bufferBase = 0, bitLimit = bitLimitFromByteCount(bytes.size))
 
         fun fromBuffer(buffer: ByteBuffer): BitReader =
             BitReader(
                 bytes = null,
                 buffer = buffer,
                 bufferBase = buffer.position(),
-                bitLimit = buffer.remaining() * 8,
+                bitLimit = bitLimitFromByteCount(buffer.remaining()),
             )
+
+        private fun bitLimitFromByteCount(byteCount: Int): Int {
+            val bitLimitLong = byteCount.toLong() * 8L
+            require(bitLimitLong <= Int.MAX_VALUE) {
+                "posting bitstream size $bitLimitLong bits exceeds Int.MAX_VALUE"
+            }
+            return bitLimitLong.toInt()
+        }
     }
 
     fun position(): Int = pos

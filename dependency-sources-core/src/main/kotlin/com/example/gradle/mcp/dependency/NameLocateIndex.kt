@@ -121,7 +121,7 @@ class NameLocateIndex private constructor(
         val uniqueQueries = queries.distinct()
         if (limit == 0) {
             for (query in uniqueQueries) {
-                locate(query, perQueryLimit ?: 0)
+                locate(query, limit = 0)
             }
             return emptyList()
         }

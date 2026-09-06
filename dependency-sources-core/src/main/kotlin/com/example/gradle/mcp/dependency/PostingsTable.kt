@@ -64,7 +64,12 @@ internal sealed class PostingsTable {
         fun packInMemory(entries: List<Pair<ByteArray, Int>>): ByteArray {
             val nameCount = entries.size
             val dataBase = NAME_COUNT_SIZE + nameCount * POSTING_ENTRY_SIZE
-            val blobBytes = entries.sumOf { it.first.size }
+            val blobBytesLong = entries.fold(0L) { acc, (blob, _) -> acc + blob.size }
+            val totalSizeLong = dataBase.toLong() + blobBytesLong
+            require(totalSizeLong in 0..Int.MAX_VALUE.toLong()) {
+                "packed postings size $totalSizeLong exceeds Int.MAX_VALUE"
+            }
+            val blobBytes = blobBytesLong.toInt()
             val out = ByteArray(dataBase + blobBytes)
             val table = ByteBuffer.wrap(out).order(ByteOrder.LITTLE_ENDIAN)
 
