@@ -48,8 +48,12 @@ internal sealed class PostingsTable {
 
         override fun postingAt(nameId: Int): PostingSlice? {
             val entry = meta.getOrNull(nameId) ?: return null
-            val start = validatedBlobStart(dataBase, entry.offset, entry.len, buffer.limit(), nameId)
-            return PostingSlice(buffer = buffer, offset = start, length = entry.len, count = entry.count)
+            return PostingSlice(
+                buffer = buffer,
+                offset = dataBase + entry.offset,
+                length = entry.len,
+                count = entry.count,
+            )
         }
     }
 

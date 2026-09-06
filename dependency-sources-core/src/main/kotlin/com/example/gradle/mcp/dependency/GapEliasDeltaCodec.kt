@@ -86,7 +86,13 @@ object GapEliasDeltaCodec {
     internal fun decodeOccurrences(bytes: ByteArray, count: Int, limit: Int? = null): List<OccPos> {
         require(count >= 0) { "occurrence count must be non-negative" }
         if (count == 0) return emptyList()
-        val out = ArrayList<OccPos>()
+        val expectedSize =
+            when (limit) {
+                null -> count
+                0 -> 0
+                else -> minOf(limit, count)
+            }
+        val out = ArrayList<OccPos>(expectedSize)
         forEachOccurrence(bytes, count, docCount = Int.MAX_VALUE, limit = limit) { docId, line, column ->
             out.add(OccPos(docId = docId, line = line, column = column))
             true
