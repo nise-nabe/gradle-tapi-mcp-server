@@ -157,6 +157,35 @@ class DependencySourcesFacadeTest {
     }
 
     @Test
+    fun `searchMulti explicit null perQueryLimit wins over per_query_limit alias`() {
+        val sources = File(tempDir, "src-alias-null").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\n")
+        val project = File(tempDir, "proj-alias-null").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val search = facade.searchMulti(
+            linkedMapOf<String, Any?>(
+                "queries" to listOf("Foo"),
+                "tokenMode" to "idents",
+                "perQueryLimit" to null,
+                "per_query_limit" to 1,
+            ) as Map<String, Any>,
+            access,
+        )
+        search["hitCount"] shouldBe 2
+        search["hitsTruncated"] shouldBe false
+    }
+
+    @Test
     fun `searchMulti accepts per_query_limit alias`() {
         val sources = File(tempDir, "src-alias").apply { mkdirs() }
         File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\n")

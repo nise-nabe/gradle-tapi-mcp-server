@@ -81,8 +81,7 @@ class DependencySourcesFacade(
         val queries = args.requiredStringList("queries")
         val tokenMode = args.optionalString("tokenMode")?.let(TokenMode::parse)
         val limit = args.optionalLimitInt("limit")
-        val perQueryLimit = args.optionalLimitInt("perQueryLimit")
-            ?: args.optionalLimitInt("per_query_limit")
+        val perQueryLimit = args.optionalLimitIntWithAlias("perQueryLimit", "per_query_limit")
         val indexDir = args.optionalString("indexDir")?.let(::File)
 
         val result = store.searchMulti(
@@ -214,6 +213,13 @@ private fun Map<String, Any>.optionalLimitInt(key: String): Int? {
     }
     return parsed
 }
+
+private fun Map<String, Any>.optionalLimitIntWithAlias(primaryKey: String, aliasKey: String): Int? =
+    if (containsKey(primaryKey)) {
+        optionalLimitInt(primaryKey)
+    } else {
+        optionalLimitInt(aliasKey)
+    }
 
 private fun Number.toExactLimitIntOrNull(): Int? {
     val longValue = when (this) {
