@@ -249,13 +249,9 @@ class NameLocateIndex private constructor(
             val totalOccurrences = totalOccurrencesLong.toInt()
             require(totalOccurrences == manifest.occurrenceCount)
             // Eagerly validate posting payloads so corrupt indexes fail at load, not at search.
+            // Stream docIds without materializing full OccPos lists (keeps load GC bounded).
             for ((blob, count) in postings) {
-                val occs = GapEliasDeltaCodec.decodeOccurrences(blob, count)
-                for (occ in occs) {
-                    require(occ.docId in documents.indices) {
-                        "occurrence docId ${occ.docId} out of range for ${documents.size} documents"
-                    }
-                }
+                GapEliasDeltaCodec.validateOccurrences(blob, count, documents.size)
             }
             return NameLocateIndex(
                 tokenMode = tokenMode,

@@ -84,12 +84,38 @@ object GapEliasDeltaCodec {
     internal fun decodeOccurrences(bytes: ByteArray, count: Int): List<OccPos> {
         require(count >= 0) { "occurrence count must be non-negative" }
         if (count == 0) return emptyList()
+        val out = ArrayList<OccPos>(count)
+        forEachOccurrence(bytes, count) { docId, line, column ->
+            out.add(OccPos(docId = docId, line = line, column = column))
+        }
+        return out
+    }
+
+    /**
+     * Walk a posting payload without allocating [OccPos] instances.
+     * Used at index load to validate docId ranges with lower GC pressure.
+     */
+    internal fun validateOccurrences(bytes: ByteArray, count: Int, docCount: Int) {
+        require(docCount >= 0) { "docCount must be non-negative" }
+        forEachOccurrence(bytes, count) { docId, _, _ ->
+            require(docId in 0 until docCount) {
+                "occurrence docId $docId out of range for $docCount documents"
+            }
+        }
+    }
+
+    private inline fun forEachOccurrence(
+        bytes: ByteArray,
+        count: Int,
+        action: (docId: Int, line: Int, column: Int) -> Unit,
+    ) {
+        require(count >= 0) { "occurrence count must be non-negative" }
+        if (count == 0) return
         val maxBits = bytes.size * 8
         require(count <= maxBits) {
             "occurrence count $count exceeds bitstream capacity ($maxBits bits)"
         }
         val reader = BitReader(bytes)
-        val out = ArrayList<OccPos>(count)
         var docId = 0
         for (i in 0 until count) {
             val sameDoc = reader.readBit()
@@ -124,9 +150,8 @@ object GapEliasDeltaCodec {
                 "invalid column value in occurrence posting"
             }
             val column = (colRaw - 1L).toInt()
-            out.add(OccPos(docId = docId, line = line, column = column))
+            action(docId, line, column)
         }
-        return out
     }
 
     private fun isStrictlyIncreasing(positions: IntArray): Boolean {
