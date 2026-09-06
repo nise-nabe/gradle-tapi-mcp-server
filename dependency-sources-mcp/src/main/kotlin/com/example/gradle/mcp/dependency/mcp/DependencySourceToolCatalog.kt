@@ -19,7 +19,7 @@ object DependencySourceToolCatalog {
         "Exact simple-name locate in dependency sources. Requires prior index for tokenMode."
 
     const val SEARCH_MULTI_DESCRIPTION: String =
-        "Multi-name OR locate; dedup hits and tag matched_queries. Requires prior index."
+        "Multi-name OR locate; dedup hits and tag matchedQueries. Requires prior index."
 
     fun specs(): List<DependencySourceToolSpec> =
         listOf(
@@ -76,7 +76,9 @@ object DependencySourceToolCatalog {
                 "queries" to stringArrayProp("Non-empty simple names (OR)."),
                 "tokenMode" to stringProp("Must match an index (all|idents). Prefer all."),
                 "limit" to nullableIntegerProp("Overall max after merge/sort; omit/null=unlimited, 0=empty."),
-                "per_query_limit" to nullableIntegerProp("Per-query cap; omit/null=unlimited, 0=empty."),
+                "perQueryLimit" to nullableIntegerProp(
+                    "Per-query cap; omit/null=unlimited, 0=empty. Alias: per_query_limit.",
+                ),
                 "indexDir" to stringProp("Override dir (reads <dir>/<tokenMode>/)."),
             ),
             required = listOf("queries"),

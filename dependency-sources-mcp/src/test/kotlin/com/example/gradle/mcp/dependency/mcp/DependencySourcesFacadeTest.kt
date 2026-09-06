@@ -131,7 +131,7 @@ class DependencySourcesFacadeTest {
     }
 
     @Test
-    fun `searchMulti returns matched_queries tags`() {
+    fun `searchMulti returns matchedQueries tags`() {
         val sources = File(tempDir, "src-multi-facade").apply { mkdirs() }
         File(sources, "A.kt").writeText("class A { HttpClient a; Foo b; }\n")
         val project = File(tempDir, "proj-multi-facade").apply { mkdirs() }
@@ -152,8 +152,31 @@ class DependencySourcesFacadeTest {
         search["hitCount"] shouldBe 2
         @Suppress("UNCHECKED_CAST")
         val hits = search["hits"] as List<Map<String, Any?>>
-        hits.single { (it["matched_queries"] as List<String>).contains("HttpClient") }["matched_queries"] shouldBe
+        hits.single { (it["matchedQueries"] as List<String>).contains("HttpClient") }["matchedQueries"] shouldBe
             listOf("HttpClient")
+    }
+
+    @Test
+    fun `searchMulti accepts per_query_limit alias`() {
+        val sources = File(tempDir, "src-alias").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\n")
+        val project = File(tempDir, "proj-alias").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+
+        val search = facade.searchMulti(
+            mapOf("queries" to listOf("Foo"), "tokenMode" to "idents", "per_query_limit" to 1),
+            access,
+        )
+        search["hitCount"] shouldBe 1
+        search["hitsTruncated"] shouldBe true
     }
 
     @Test

@@ -81,7 +81,8 @@ class DependencySourcesFacade(
         val queries = args.requiredStringList("queries")
         val tokenMode = args.optionalString("tokenMode")?.let(TokenMode::parse)
         val limit = args.optionalLimitInt("limit")
-        val perQueryLimit = args.optionalLimitInt("per_query_limit")
+        val perQueryLimit = args.optionalLimitInt("perQueryLimit")
+            ?: args.optionalLimitInt("per_query_limit")
         val indexDir = args.optionalString("indexDir")?.let(::File)
 
         val result = store.searchMulti(
@@ -142,7 +143,7 @@ class DependencySourcesFacade(
             "column" to hit.column,
         )
         if (includeMatchedQueries && hit.matchedQueries.isNotEmpty()) {
-            map["matched_queries"] = hit.matchedQueries
+            map["matchedQueries"] = hit.matchedQueries
         }
         return map
     }

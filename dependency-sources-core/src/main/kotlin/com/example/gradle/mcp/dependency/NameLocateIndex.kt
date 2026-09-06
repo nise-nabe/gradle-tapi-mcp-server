@@ -93,7 +93,7 @@ class NameLocateIndex private constructor(
     /**
      * Exact simple-name locate. [limit] null = unlimited; 0 = empty without decode work.
      * Returns hits in posting order (doc_id, line, col). Decodes the full posting list, then
-     * caps returned hits (scode main semantics; no decode-time early-stop).
+     * caps returned hits (scode main semantics; full decode, emit cap only).
      */
     fun locate(query: String, limit: Int? = null): List<LocateHit> {
         requireNonNegativeLimit(limit)
@@ -109,13 +109,15 @@ class NameLocateIndex private constructor(
             }
             return hits
         }
-        val hits = ArrayList<LocateHit>(count)
+        val hits = ArrayList<LocateHit>(minOf(limit, count))
         GapEliasDeltaCodec.forEachOccurrence(blob, count) { docId, line, column ->
-            val doc = documents[docId]
-            hits.add(LocateHit(doc.gav, doc.path, line, column))
+            if (hits.size < limit) {
+                val doc = documents[docId]
+                hits.add(LocateHit(doc.gav, doc.path, line, column))
+            }
             true
         }
-        return hits.take(limit)
+        return hits
     }
 
     /**

@@ -91,7 +91,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_cancel_build` | Cancel a background build via Tooling API `CancellationToken` (`buildId` required) |
 | `gradle_index_dependency_sources` | Index dependency sources for exact simple-name locate. `tokenMode`: `all` (default; includes comments/strings) or `idents`. Keep-set: Idea sources by default, or explicit `artifacts[]` / `sourcePaths[]`. Persists under `.gradle/mcp-dependency-sources/<tokenMode>/` |
 | `gradle_search_dependency_sources` | Exact simple-name locate against a prior index (does not reindex). Optional `limit` (omit = unlimited; `0` = empty) |
-| `gradle_search_dependency_sources_multi` | Multi-name OR locate with dedup and `matched_queries`; optional `limit` and `per_query_limit` |
+| `gradle_search_dependency_sources_multi` | Multi-name OR locate with dedup and `matchedQueries`; optional `limit` and `perQueryLimit` (`per_query_limit` alias) |
 
 ## Modules
 
@@ -107,7 +107,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 2. Call `gradle_search_dependency_sources` with `query` (and matching `tokenMode` when not preferring the default `all` index).
 3. For several names at once, call `gradle_search_dependency_sources_multi` with `queries`.
 
-`limit` / `per_query_limit` are query-time only (no `formatVersion` bump): omit or null = unlimited; `0` = empty. Single search returns hits in posting order; multi search merges, dedups, sorts by `(gav, path, line, column)`, then applies the overall `limit`.
+`limit` / `perQueryLimit` are query-time only (no `formatVersion` bump): omit or null = unlimited; `0` = empty. `per_query_limit` is accepted as an alias for `perQueryLimit`. Single search returns hits in posting order; multi search merges, dedups, sorts by `(gav, path, line, column)`, then applies the overall `limit`.
 
 Index format is versioned (`formatVersion`); incompatible on-disk indexes are rebuilt. Fingerprint includes `tokenMode` and the keep-set so modes never share an index.
 
