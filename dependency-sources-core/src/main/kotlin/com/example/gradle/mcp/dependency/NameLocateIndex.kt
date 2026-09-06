@@ -195,12 +195,12 @@ class NameLocateIndex private constructor(
             val postings = ArrayList<Pair<ByteArray, Int>>(dictionary.size())
             var totalOccurrencesLong = 0L
             for (nameId in 0 until dictionary.size()) {
+                // Docs are scanned in order and the lexer emits tokens in source order, so
+                // each per-name list is already sorted by (docId, line, column).
                 val list = if (nameId < postingBuilder.size) postingBuilder[nameId] else emptyList()
-                val sorted =
-                    list.sortedWith(compareBy({ it.docId }, { it.line }, { it.column }))
-                val blob = GapEliasDeltaCodec.encodeOccurrences(sorted)
-                postings.add(blob to sorted.size)
-                totalOccurrencesLong += sorted.size.toLong()
+                val blob = GapEliasDeltaCodec.encodeOccurrences(list)
+                postings.add(blob to list.size)
+                totalOccurrencesLong += list.size.toLong()
             }
             require(totalOccurrencesLong in 0L..Int.MAX_VALUE.toLong()) {
                 "occurrence count $totalOccurrencesLong does not fit in Int"
@@ -298,6 +298,9 @@ class NameLocateIndex private constructor(
                     require(occCount >= 0) { "occurrence count must be non-negative" }
                     val blobSize = input.readInt()
                     require(blobSize >= 0) { "posting blob size must be non-negative" }
+                    require(occCount > 0 || blobSize == 0) {
+                        "empty occurrence count cannot have a non-empty posting blob"
+                    }
                     require(blobSize.toLong() <= file.length()) {
                         "posting blob size $blobSize exceeds file length ${file.length()}"
                     }

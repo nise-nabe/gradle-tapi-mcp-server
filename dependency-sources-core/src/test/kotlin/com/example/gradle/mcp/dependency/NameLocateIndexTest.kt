@@ -243,4 +243,51 @@ class NameLocateIndexTest {
         NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
     }
 
+
+    @Test
+    fun `rejects empty occCount with non-empty blob`() {
+        val sources = File(tempDir, "src-empty-blob").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}")
+        val members = listOf(KeepSetMember(gav = "g:a:1", sourceRoot = sources))
+        val fingerprint = KeepSetFingerprint.compute(TokenMode.ALL, "explicit", members)
+        val index = NameLocateIndex.build(members, TokenMode.ALL, fingerprint, "explicit")
+        val indexDir = File(tempDir, "idx-empty-blob")
+        index.writeTo(indexDir)
+
+        val postingsFile = File(indexDir, NameLocateIndex.POSTINGS_NAME)
+        data class Posting(val count: Int, val blob: ByteArray)
+        val (magic, version, postings) =
+            DataInputStream(postingsFile.inputStream().buffered()).use { input ->
+                val magic = input.readInt()
+                val version = input.readInt()
+                val nameCount = input.readInt()
+                val entries =
+                    List(nameCount) {
+                        val count = input.readInt()
+                        val blob = ByteArray(input.readInt()).also { input.readFully(it) }
+                        Posting(count, blob)
+                    }
+                Triple(magic, version, entries)
+            }
+        magic shouldBe IndexFormat.MAGIC
+        version shouldBe IndexFormat.VERSION
+        require(postings.isNotEmpty())
+        DataOutputStream(postingsFile.outputStream().buffered()).use { out ->
+            out.writeInt(IndexFormat.MAGIC)
+            out.writeInt(IndexFormat.VERSION)
+            out.writeInt(postings.size)
+            postings.forEachIndexed { index, posting ->
+                if (index == 0) {
+                    out.writeInt(0)
+                    out.writeInt(posting.blob.size.coerceAtLeast(1))
+                    out.write(if (posting.blob.isNotEmpty()) posting.blob else byteArrayOf(0))
+                } else {
+                    out.writeInt(posting.count)
+                    out.writeInt(posting.blob.size)
+                    out.write(posting.blob)
+                }
+            }
+        }
+        NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
+    }
 }
