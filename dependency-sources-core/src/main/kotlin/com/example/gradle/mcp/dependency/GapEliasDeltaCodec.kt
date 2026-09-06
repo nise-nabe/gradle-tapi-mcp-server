@@ -40,7 +40,7 @@ object GapEliasDeltaCodec {
      * Layout per hit: 1-bit same-doc flag; on doc change, Elias-δ docId gap
      * (first gap is docId+1); then Elias-δ (line+1) and (column+1).
      */
-    fun encodeOccurrences(occs: List<OccPos>): ByteArray {
+    internal fun encodeOccurrences(occs: List<OccPos>): ByteArray {
         if (occs.isEmpty()) return ByteArray(0)
         val writer = BitWriter()
         var prevDoc = 0
@@ -81,7 +81,7 @@ object GapEliasDeltaCodec {
         return writer.finish()
     }
 
-    fun decodeOccurrences(bytes: ByteArray, count: Int): List<OccPos> {
+    internal fun decodeOccurrences(bytes: ByteArray, count: Int): List<OccPos> {
         require(count >= 0) { "occurrence count must be non-negative" }
         if (count == 0) return emptyList()
         val maxBits = bytes.size * 8
