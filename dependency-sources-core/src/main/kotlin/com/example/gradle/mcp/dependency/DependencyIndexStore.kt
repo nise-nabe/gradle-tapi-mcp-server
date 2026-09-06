@@ -18,7 +18,16 @@ data class SearchRequest(
     val projectDirectory: File,
     val query: String,
     val tokenMode: TokenMode? = null,
-    val limit: Int = NameLocateIndex.DEFAULT_LIMIT,
+    val limit: Int? = null,
+    val indexDir: File? = null,
+)
+
+data class SearchMultiRequest(
+    val projectDirectory: File,
+    val queries: List<String>,
+    val tokenMode: TokenMode? = null,
+    val limit: Int? = null,
+    val perQueryLimit: Int? = null,
     val indexDir: File? = null,
 )
 
@@ -28,6 +37,13 @@ data class IndexResult(
 )
 
 data class SearchResult(
+    val hits: List<LocateHit>,
+    val stats: IndexStats,
+    val hitCount: Int,
+    val hitsTruncated: Boolean,
+)
+
+data class SearchMultiResult(
     val hits: List<LocateHit>,
     val stats: IndexStats,
     val hitCount: Int,
@@ -123,25 +139,97 @@ class DependencyIndexStore {
                 "No dependency-sources index found for this project/tokenMode. " +
                     "Call gradle_index_dependency_sources first.",
             )
-        val limit = request.limit.coerceAtLeast(0)
-        // Probe limit+1 so hitsTruncated is false when there are exactly `limit` matches.
-        // Only Int.MAX_VALUE skips +1 (signed overflow). limit==0 probes 1 and returns no hits,
-        // matching NameLocateIndex.locate(limit <= 0) while still reporting truncation if matches exist.
-        val probed =
-            if (limit == Int.MAX_VALUE) {
-                index.locate(request.query, limit = Int.MAX_VALUE)
-            } else {
-                index.locate(request.query, limit = limit + 1)
-            }
-        val truncated = limit < Int.MAX_VALUE && probed.size > limit
-        val hits = if (truncated) probed.take(limit) else probed
         val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode, request.indexDir)
-        return SearchResult(
-            hits = hits,
-            stats = index.stats(indexDir, cacheHit = true),
-            hitCount = hits.size,
-            hitsTruncated = truncated,
-        )
+        return when (val limit = request.limit) {
+            null -> {
+                val hits = index.locate(request.query, limit = null)
+                SearchResult(
+                    hits = hits,
+                    stats = index.stats(indexDir, cacheHit = true),
+                    hitCount = hits.size,
+                    hitsTruncated = false,
+                )
+            }
+            0 -> {
+                val probed = index.locate(request.query, limit = 1)
+                SearchResult(
+                    hits = emptyList(),
+                    stats = index.stats(indexDir, cacheHit = true),
+                    hitCount = 0,
+                    hitsTruncated = probed.isNotEmpty(),
+                )
+            }
+            else -> {
+                // Probe limit+1 so hitsTruncated is false when there are exactly `limit` matches.
+                // Only Int.MAX_VALUE skips +1 (signed overflow).
+                val probed =
+                    if (limit == Int.MAX_VALUE) {
+                        index.locate(request.query, limit = Int.MAX_VALUE)
+                    } else {
+                        index.locate(request.query, limit = limit + 1)
+                    }
+                val truncated = limit < Int.MAX_VALUE && probed.size > limit
+                val hits = if (truncated) probed.take(limit) else probed
+                SearchResult(
+                    hits = hits,
+                    stats = index.stats(indexDir, cacheHit = true),
+                    hitCount = hits.size,
+                    hitsTruncated = truncated,
+                )
+            }
+        }
+    }
+
+    fun searchMulti(request: SearchMultiRequest): SearchMultiResult {
+        require(request.queries.isNotEmpty()) { "queries must not be empty" }
+        require(request.queries.all { it.isNotBlank() }) { "queries must not contain blank entries" }
+        val index = loadForSearch(request.projectDirectory, request.tokenMode, request.indexDir)
+            ?: throw IllegalArgumentException(
+                "No dependency-sources index found for this project/tokenMode. " +
+                    "Call gradle_index_dependency_sources first.",
+            )
+        val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode, request.indexDir)
+        return when (val limit = request.limit) {
+            null -> {
+                val hits = index.searchMulti(request.queries, limit = null, perQueryLimit = request.perQueryLimit)
+                SearchMultiResult(
+                    hits = hits,
+                    stats = index.stats(indexDir, cacheHit = true),
+                    hitCount = hits.size,
+                    hitsTruncated = false,
+                )
+            }
+            0 -> SearchMultiResult(
+                hits = emptyList(),
+                stats = index.stats(indexDir, cacheHit = true),
+                hitCount = 0,
+                hitsTruncated = request.queries.any { index.locate(it, limit = 1).isNotEmpty() },
+            )
+            else -> {
+                val probed =
+                    if (limit == Int.MAX_VALUE) {
+                        index.searchMulti(
+                            request.queries,
+                            limit = Int.MAX_VALUE,
+                            perQueryLimit = request.perQueryLimit,
+                        )
+                    } else {
+                        index.searchMulti(
+                            request.queries,
+                            limit = limit + 1,
+                            perQueryLimit = request.perQueryLimit,
+                        )
+                    }
+                val truncated = limit < Int.MAX_VALUE && probed.size > limit
+                val hits = if (truncated) probed.take(limit) else probed
+                SearchMultiResult(
+                    hits = hits,
+                    stats = index.stats(indexDir, cacheHit = true),
+                    hitCount = hits.size,
+                    hitsTruncated = truncated,
+                )
+            }
+        }
     }
 
     private fun loadForSearch(

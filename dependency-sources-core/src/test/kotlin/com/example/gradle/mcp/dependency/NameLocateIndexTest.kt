@@ -143,6 +143,101 @@ class NameLocateIndexTest {
     }
 
     @Test
+    fun `locate limit zero returns empty without hits`() {
+        val sources = File(tempDir, "limit-zero").apply { mkdirs() }
+        File(sources, "Demo.java").writeText("class Demo { HttpClient c; }\n")
+        val members = listOf(KeepSetMember(gav = "demo:lib:1", sourceRoot = sources))
+        val index = NameLocateIndex.build(
+            members,
+            TokenMode.IDENTS,
+            KeepSetFingerprint.compute(TokenMode.IDENTS, "explicit", members),
+            "explicit",
+        )
+        index.locate("HttpClient", limit = 0) shouldContainExactly emptyList()
+        index.locate("Missing", limit = 0) shouldContainExactly emptyList()
+    }
+
+    @Test
+    fun `locate limit one returns first posting-order hit`() {
+        val sources = File(tempDir, "limit-one").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\nfun Foo() {}\n")
+        val members = listOf(KeepSetMember(gav = "demo:lib:1", sourceRoot = sources))
+        val index = NameLocateIndex.build(
+            members,
+            TokenMode.IDENTS,
+            KeepSetFingerprint.compute(TokenMode.IDENTS, "explicit", members),
+            "explicit",
+        )
+        val hits = index.locate("Foo", limit = 1)
+        hits shouldHaveSize 1
+        hits.single().line shouldBe 1
+    }
+
+    @Test
+    fun `searchMulti dedups and tags matched queries`() {
+        val sources = File(tempDir, "multi").apply { mkdirs() }
+        File(sources, "A.java").writeText("class A { HttpClient a; Foo b; }\n")
+        val members = listOf(KeepSetMember(gav = "demo:lib:1", sourceRoot = sources))
+        val index = NameLocateIndex.build(
+            members,
+            TokenMode.IDENTS,
+            KeepSetFingerprint.compute(TokenMode.IDENTS, "explicit", members),
+            "explicit",
+        )
+        val hits = index.searchMulti(
+            queries = listOf("HttpClient", "Foo", "HttpClient"),
+            limit = null,
+            perQueryLimit = null,
+        )
+        hits shouldHaveSize 2
+        val http = hits.single { it.matchedQueries.contains("HttpClient") }
+        http.matchedQueries shouldContainExactly listOf("HttpClient")
+    }
+
+    @Test
+    fun `searchMulti truncates after merge sort`() {
+        val sources = File(tempDir, "multi-limit").apply { mkdirs() }
+        File(sources, "B.java").writeText("class B { Zed z; Alpha a; }\n")
+        val members = listOf(KeepSetMember(gav = "z:lib:1", sourceRoot = sources))
+        val index = NameLocateIndex.build(
+            members,
+            TokenMode.IDENTS,
+            KeepSetFingerprint.compute(TokenMode.IDENTS, "explicit", members),
+            "explicit",
+        )
+        val hits = index.searchMulti(
+            queries = listOf("Zed", "Alpha"),
+            limit = 1,
+            perQueryLimit = null,
+        )
+        hits shouldHaveSize 1
+        hits.single().path shouldBe "B.java"
+        hits.single().line shouldBe 1
+        hits.single().matchedQueries shouldContainExactly listOf("Zed")
+    }
+
+    @Test
+    fun `searchMulti per query limit caps each query before merge`() {
+        val sources = File(tempDir, "per-query").apply { mkdirs() }
+        File(sources, "C.kt").writeText("fun Foo() {}\nfun Foo() {}\nfun Bar() {}\n")
+        val members = listOf(KeepSetMember(gav = "demo:lib:1", sourceRoot = sources))
+        val index = NameLocateIndex.build(
+            members,
+            TokenMode.IDENTS,
+            KeepSetFingerprint.compute(TokenMode.IDENTS, "explicit", members),
+            "explicit",
+        )
+        val hits = index.searchMulti(
+            queries = listOf("Foo", "Bar"),
+            limit = null,
+            perQueryLimit = 1,
+        )
+        hits shouldHaveSize 2
+        hits.count { it.matchedQueries == listOf("Foo") } shouldBe 1
+        hits.single { it.matchedQueries == listOf("Bar") }.line shouldBe 3
+    }
+
+    @Test
     fun `rejects incompatible format version`() {
         val sources = File(tempDir, "src").apply { mkdirs() }
         File(sources, "A.kt").writeText("fun Foo() {}")
