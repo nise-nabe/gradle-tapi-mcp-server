@@ -180,6 +180,48 @@ class DependencySourcesFacadeTest {
     }
 
     @Test
+    fun `negative limit is rejected`() {
+        val sources = File(tempDir, "src-neg").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-neg").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+
+        val error = shouldThrow<IllegalArgumentException> {
+            facade.search(mapOf("query" to "Foo", "tokenMode" to "idents", "limit" to -1), access)
+        }
+        error.message shouldContain "non-negative"
+    }
+
+    @Test
+    fun `fractional limit is rejected`() {
+        val sources = File(tempDir, "src-frac").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-frac").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+
+        val error = shouldThrow<IllegalArgumentException> {
+            facade.search(mapOf("query" to "Foo", "tokenMode" to "idents", "limit" to 1.5), access)
+        }
+        error.message shouldContain "non-negative integer"
+    }
+
+    @Test
     fun `non-array sourcePaths is rejected`() {
         val project = File(tempDir, "proj4").apply { mkdirs() }
         val access = StubAccess(project)

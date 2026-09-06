@@ -196,7 +196,7 @@ class DependencyIndexStore {
                     hits = hits,
                     stats = index.stats(indexDir, cacheHit = true),
                     hitCount = hits.size,
-                    hitsTruncated = false,
+                    hitsTruncated = perQueryHitsTruncated(index, request.queries, request.perQueryLimit),
                 )
             }
             0 -> SearchMultiResult(
@@ -226,11 +226,24 @@ class DependencyIndexStore {
                     hits = hits,
                     stats = index.stats(indexDir, cacheHit = true),
                     hitCount = hits.size,
-                    hitsTruncated = truncated,
+                    hitsTruncated = truncated ||
+                        perQueryHitsTruncated(index, request.queries, request.perQueryLimit),
                 )
             }
         }
     }
+
+    private fun perQueryHitsTruncated(
+        index: NameLocateIndex,
+        queries: List<String>,
+        perQueryLimit: Int?,
+    ): Boolean =
+        when (perQueryLimit) {
+            null -> false
+            0 -> queries.any { index.locate(it, limit = 1).isNotEmpty() }
+            Int.MAX_VALUE -> false
+            else -> queries.any { index.locate(it, limit = perQueryLimit + 1).size > perQueryLimit }
+        }
 
     private fun loadForSearch(
         projectDirectory: File,

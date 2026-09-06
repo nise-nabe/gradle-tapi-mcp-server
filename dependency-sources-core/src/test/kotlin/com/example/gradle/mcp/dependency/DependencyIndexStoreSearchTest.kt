@@ -192,4 +192,58 @@ class DependencyIndexStoreSearchTest {
         result.hitCount shouldBe 0
         result.hitsTruncated shouldBe true
     }
+
+    @Test
+    fun `searchMulti per query limit zero reports truncation when matches exist`() {
+        val sources = File(tempDir, "src-per-query-zero").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-per-query-zero").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+
+        val result = store.searchMulti(
+            SearchMultiRequest(
+                projectDirectory = project,
+                queries = listOf("Foo"),
+                tokenMode = TokenMode.IDENTS,
+                perQueryLimit = 0,
+            ),
+        )
+        result.hitCount shouldBe 0
+        result.hitsTruncated shouldBe true
+    }
+
+    @Test
+    fun `searchMulti per query limit reports truncation when overall limit omitted`() {
+        val sources = File(tempDir, "src-per-query-trunc").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\n")
+        val project = File(tempDir, "proj-per-query-trunc").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+
+        val result = store.searchMulti(
+            SearchMultiRequest(
+                projectDirectory = project,
+                queries = listOf("Foo"),
+                tokenMode = TokenMode.IDENTS,
+                perQueryLimit = 1,
+            ),
+        )
+        result.hitCount shouldBe 1
+        result.hitsTruncated shouldBe true
+    }
 }

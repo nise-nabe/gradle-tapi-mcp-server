@@ -200,12 +200,39 @@ private fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boo
         else -> default
     }
 
-private fun Map<String, Any>.optionalLimitInt(key: String): Int? =
-    when (val value = this[key]) {
-        is Number -> value.toInt().takeIf { it >= 0 }
-        is String -> value.toIntOrNull()?.takeIf { it >= 0 }
+private fun Map<String, Any>.optionalLimitInt(key: String): Int? {
+    if (!containsKey(key)) return null
+    val parsed = when (val value = this[key]) {
+        is Number -> value.toExactLimitIntOrNull()
+        is String -> value.toIntOrNull()
         else -> null
+    } ?: throw IllegalArgumentException("Argument must be a non-negative integer: $key")
+    if (parsed < 0) {
+        throw IllegalArgumentException("Argument must be non-negative: $key")
     }
+    return parsed
+}
+
+private fun Number.toExactLimitIntOrNull(): Int? {
+    val longValue = when (this) {
+        is Int -> return this
+        is Long -> this
+        is Short -> toLong()
+        is Byte -> toLong()
+        else -> {
+            val doubleValue = toDouble()
+            if (!doubleValue.isFinite() || doubleValue != kotlin.math.truncate(doubleValue)) {
+                return null
+            }
+            doubleValue.toLong()
+        }
+    }
+    return if (longValue in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) {
+        longValue.toInt()
+    } else {
+        null
+    }
+}
 
 @Suppress("UNCHECKED_CAST")
 private fun Map<String, Any>.requiredStringList(key: String): List<String> {
