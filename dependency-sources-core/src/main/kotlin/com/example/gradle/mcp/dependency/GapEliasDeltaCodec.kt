@@ -1,7 +1,7 @@
 package com.example.gradle.mcp.dependency
 
 /** One hit inside a name's posting list (sorted by docId, line, column). */
-data class OccPos(
+internal data class OccPos(
     val docId: Int,
     val line: Int,
     val column: Int,
@@ -44,6 +44,8 @@ object GapEliasDeltaCodec {
         if (occs.isEmpty()) return ByteArray(0)
         val writer = BitWriter()
         var prevDoc = 0
+        var prevLine = -1
+        var prevColumn = -1
         for ((index, occ) in occs.withIndex()) {
             require(occ.docId >= 0 && occ.line >= 0 && occ.column >= 0) {
                 "occurrence fields must be non-negative"
@@ -61,16 +63,26 @@ object GapEliasDeltaCodec {
                     }
                 writer.writeDelta(gap)
                 prevDoc = occ.docId
+                prevLine = -1
+                prevColumn = -1
             } else {
                 writer.writeBit(true) // same doc
+                require(
+                    occ.line > prevLine || (occ.line == prevLine && occ.column >= prevColumn),
+                ) {
+                    "occurrences within a document must be sorted by line, then column"
+                }
             }
             writer.writeDelta(occ.line.toLong() + 1L)
             writer.writeDelta(occ.column.toLong() + 1L)
+            prevLine = occ.line
+            prevColumn = occ.column
         }
         return writer.finish()
     }
 
     fun decodeOccurrences(bytes: ByteArray, count: Int): List<OccPos> {
+        require(count >= 0) { "occurrence count must be non-negative" }
         if (count == 0) return emptyList()
         val maxBits = bytes.size * 8
         require(count <= maxBits) {

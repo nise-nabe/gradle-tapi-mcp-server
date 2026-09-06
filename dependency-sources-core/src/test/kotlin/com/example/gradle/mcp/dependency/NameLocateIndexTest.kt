@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.dependency
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -7,6 +8,7 @@ import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.io.File
 
 class GapEliasDeltaCodecTest {
@@ -44,7 +46,27 @@ class GapEliasDeltaCodecTest {
         encoded shouldHaveSize 0
         GapEliasDeltaCodec.decodeOccurrences(encoded, 0) shouldHaveSize 0
     }
+
+    @Test
+    fun `rejects negative occurrence count`() {
+        shouldThrow<IllegalArgumentException> {
+            GapEliasDeltaCodec.decodeOccurrences(ByteArray(0), -1)
+        }
+    }
+
+    @Test
+    fun `rejects unsorted same-doc occurrences on encode`() {
+        shouldThrow<IllegalArgumentException> {
+            GapEliasDeltaCodec.encodeOccurrences(
+                listOf(
+                    OccPos(docId = 0, line = 5, column = 0),
+                    OccPos(docId = 0, line = 3, column = 0),
+                ),
+            )
+        }
+    }
 }
+
 
 class IdentifierLexerTest {
     @Test
@@ -97,7 +119,13 @@ class NameLocateIndexTest {
 
         val loaded = NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL).shouldNotBeNull()
         loaded.stats(indexDir, cacheHit = true).formatVersion shouldBe IndexFormat.VERSION
-        loaded.locate("HttpClient").map { it.line }.sorted() shouldContainExactly listOf(1, 3)
+        val loadedHits = loaded.locate("HttpClient")
+        loadedHits.map { it.line }.sorted() shouldContainExactly listOf(1, 3)
+        loadedHits.forEach { hit ->
+            hit.gav shouldBe "demo:lib:1"
+            hit.path shouldBe "Demo.java"
+        }
+        loadedHits.map { it.column }.all { it >= 0 } shouldBe true
 
         val idents = NameLocateIndex.build(
             members,
@@ -158,5 +186,36 @@ class NameLocateIndexTest {
             path shouldBe "Foo.java"
             input.available() shouldBe 0
         }
+    }
+
+    @Test
+    fun `rejects postings with out-of-range docId`() {
+        val sources = File(tempDir, "src-oob").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}")
+        val members = listOf(KeepSetMember(gav = "g:a:1", sourceRoot = sources))
+        val fingerprint = KeepSetFingerprint.compute(TokenMode.ALL, "explicit", members)
+        val index = NameLocateIndex.build(members, TokenMode.ALL, fingerprint, "explicit")
+        val indexDir = File(tempDir, "idx-oob")
+        index.writeTo(indexDir)
+
+        val forged = GapEliasDeltaCodec.encodeOccurrences(listOf(OccPos(docId = 99, line = 0, column = 0)))
+        val postingsFile = File(indexDir, NameLocateIndex.POSTINGS_NAME)
+        val nameCount =
+            DataInputStream(postingsFile.inputStream().buffered()).use { input ->
+                input.readInt() shouldBe IndexFormat.MAGIC
+                input.readInt() shouldBe IndexFormat.VERSION
+                input.readInt()
+            }
+        DataOutputStream(postingsFile.outputStream().buffered()).use { out ->
+            out.writeInt(IndexFormat.MAGIC)
+            out.writeInt(IndexFormat.VERSION)
+            out.writeInt(nameCount)
+            repeat(nameCount) {
+                out.writeInt(1)
+                out.writeInt(forged.size)
+                out.write(forged)
+            }
+        }
+        NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
     }
 }
