@@ -1,0 +1,427 @@
+package com.example.gradle.mcp.dependency
+
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.File
+import java.nio.file.Files
+import java.security.MessageDigest
+
+object IndexFormat {
+    const val VERSION: Int = 1
+    const val MAGIC: Int = 0x4D445349 // MDSI
+}
+
+data class IndexManifest(
+    val formatVersion: Int,
+    val tokenMode: String,
+    val fingerprint: String,
+    val keepSetMode: String,
+    val docCount: Int,
+    val nameCount: Int,
+    val occurrenceCount: Int,
+    val builtAtEpochMs: Long,
+)
+
+data class LocateHit(
+    val gav: String,
+    val path: String,
+    val line: Int,
+    val column: Int,
+)
+
+data class IndexStats(
+    val formatVersion: Int,
+    val tokenMode: TokenMode,
+    val fingerprint: String,
+    val keepSetMode: String,
+    val docCount: Int,
+    val nameCount: Int,
+    val occurrenceCount: Int,
+    val indexDir: File,
+    val cacheHit: Boolean,
+)
+
+private data class DocMeta(val gav: String, val path: String)
+
+private data class Occurrence(val docId: Int, val line: Int, val column: Int)
+
+class NameLocateIndex private constructor(
+    val tokenMode: TokenMode,
+    val fingerprint: String,
+    val keepSetMode: String,
+    private val dictionary: NameDictionary,
+    private val documents: List<DocMeta>,
+    private val occurrences: List<Occurrence>,
+    private val postings: List<Pair<ByteArray, Int>>,
+) {
+    fun stats(indexDir: File, cacheHit: Boolean): IndexStats =
+        IndexStats(
+            formatVersion = IndexFormat.VERSION,
+            tokenMode = tokenMode,
+            fingerprint = fingerprint,
+            keepSetMode = keepSetMode,
+            docCount = documents.size,
+            nameCount = dictionary.size(),
+            occurrenceCount = occurrences.size,
+            indexDir = indexDir,
+            cacheHit = cacheHit,
+        )
+
+    fun locate(query: String, limit: Int = DEFAULT_LIMIT): List<LocateHit> {
+        if (limit <= 0) return emptyList()
+        val nameId = dictionary.lookup(query) ?: return emptyList()
+        val (blob, count) = postings.getOrNull(nameId) ?: return emptyList()
+        val indices = GapEliasDeltaCodec.decode(blob, count)
+        val hits = ArrayList<LocateHit>(minOf(limit, indices.size))
+        for (occIndex in indices) {
+            val occ = occurrences[occIndex]
+            val doc = documents[occ.docId]
+            hits.add(LocateHit(doc.gav, doc.path, occ.line, occ.column))
+            if (hits.size >= limit) break
+        }
+        return hits
+    }
+
+    fun writeTo(directory: File) {
+        directory.parentFile?.mkdirs()
+        val tmp = File(directory.parentFile, "${directory.name}.tmp-${System.nanoTime()}")
+        tmp.mkdirs()
+        try {
+            File(tmp, MANIFEST_NAME).writeText(
+                ManifestJson.encode(
+                    IndexManifest(
+                        formatVersion = IndexFormat.VERSION,
+                        tokenMode = tokenMode.wireName(),
+                        fingerprint = fingerprint,
+                        keepSetMode = keepSetMode,
+                        docCount = documents.size,
+                        nameCount = dictionary.size(),
+                        occurrenceCount = occurrences.size,
+                        builtAtEpochMs = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+            writeDictionary(tmp)
+            writeDocuments(tmp)
+            writePostings(tmp)
+            // Replace without a bare delete→move gap: move the live dir aside first so
+            // concurrent readers still see a complete tree until the swap completes.
+            if (directory.exists()) {
+                val backup = File(directory.parentFile, "${directory.name}.old-${System.nanoTime()}")
+                Files.move(directory.toPath(), backup.toPath())
+                try {
+                    Files.move(tmp.toPath(), directory.toPath())
+                    backup.deleteRecursively()
+                } catch (error: Exception) {
+                    if (!directory.exists() && backup.exists()) {
+                        runCatching { Files.move(backup.toPath(), directory.toPath()) }
+                    }
+                    throw error
+                }
+            } else {
+                Files.move(tmp.toPath(), directory.toPath())
+            }
+        } catch (error: Exception) {
+            tmp.deleteRecursively()
+            throw error
+        }
+    }
+
+    private fun writeDictionary(directory: File) {
+        DataOutputStream(File(directory, DICTIONARY_NAME).outputStream().buffered()).use { out ->
+            out.writeInt(IndexFormat.MAGIC)
+            out.writeInt(IndexFormat.VERSION)
+            val names = dictionary.names()
+            out.writeInt(names.size)
+            for (name in names) writeUtf(out, name)
+        }
+    }
+
+    private fun writeDocuments(directory: File) {
+        DataOutputStream(File(directory, DOCUMENTS_NAME).outputStream().buffered()).use { out ->
+            out.writeInt(IndexFormat.MAGIC)
+            out.writeInt(IndexFormat.VERSION)
+            out.writeInt(documents.size)
+            for (doc in documents) {
+                writeUtf(out, doc.gav)
+                writeUtf(out, doc.path)
+            }
+            out.writeInt(occurrences.size)
+            for (occ in occurrences) {
+                out.writeInt(occ.docId)
+                out.writeInt(occ.line)
+                out.writeInt(occ.column)
+            }
+        }
+    }
+
+    private fun writePostings(directory: File) {
+        DataOutputStream(File(directory, POSTINGS_NAME).outputStream().buffered()).use { out ->
+            out.writeInt(IndexFormat.MAGIC)
+            out.writeInt(IndexFormat.VERSION)
+            out.writeInt(postings.size)
+            for ((blob, count) in postings) {
+                out.writeInt(count)
+                out.writeInt(blob.size)
+                out.write(blob)
+            }
+        }
+    }
+
+    companion object {
+        const val DEFAULT_LIMIT: Int = 100
+        const val MANIFEST_NAME: String = "manifest.json"
+        const val DICTIONARY_NAME: String = "dictionary.bin"
+        const val DOCUMENTS_NAME: String = "documents.bin"
+        const val POSTINGS_NAME: String = "postings.bin"
+
+        fun build(
+            members: List<KeepSetMember>,
+            tokenMode: TokenMode,
+            fingerprint: String,
+            keepSetMode: String,
+        ): NameLocateIndex {
+            val dictionary = NameDictionary()
+            val documents = ArrayList<DocMeta>()
+            val occurrences = ArrayList<Occurrence>()
+            val postingBuilder = ArrayList<ArrayList<Int>>()
+
+            fun ensurePosting(nameId: Int): ArrayList<Int> {
+                while (postingBuilder.size <= nameId) postingBuilder.add(ArrayList())
+                return postingBuilder[nameId]
+            }
+
+            for (member in members) {
+                for (doc in SourcesJarCorpus.load(member)) {
+                    val docId = documents.size
+                    documents.add(DocMeta(doc.gav, doc.path))
+                    for (token in IdentifierLexer.tokenize(doc.text, tokenMode)) {
+                        val nameId = dictionary.intern(token.name)
+                        val occId = occurrences.size
+                        occurrences.add(Occurrence(docId, token.line, token.column))
+                        ensurePosting(nameId).add(occId)
+                    }
+                }
+            }
+
+            val postings = ArrayList<Pair<ByteArray, Int>>(dictionary.size())
+            for (nameId in 0 until dictionary.size()) {
+                val list = if (nameId < postingBuilder.size) postingBuilder[nameId] else emptyList()
+                val positions = list.toIntArray()
+                postings.add(GapEliasDeltaCodec.encode(positions) to positions.size)
+            }
+
+            return NameLocateIndex(
+                tokenMode = tokenMode,
+                fingerprint = fingerprint,
+                keepSetMode = keepSetMode,
+                dictionary = dictionary,
+                documents = documents,
+                occurrences = occurrences,
+                postings = postings,
+            )
+        }
+
+        fun tryLoad(
+            directory: File,
+            expectedFingerprint: String?,
+            expectedTokenMode: TokenMode?,
+        ): NameLocateIndex? {
+            if (!directory.isDirectory) return null
+            val manifestFile = File(directory, MANIFEST_NAME)
+            if (!manifestFile.isFile) return null
+            val manifest = ManifestJson.decode(manifestFile.readText()) ?: return null
+            if (manifest.formatVersion != IndexFormat.VERSION) return null
+            if (expectedFingerprint != null && manifest.fingerprint != expectedFingerprint) return null
+            val tokenMode = runCatching { TokenMode.parse(manifest.tokenMode) }.getOrNull() ?: return null
+            if (expectedTokenMode != null && tokenMode != expectedTokenMode) return null
+            return runCatching { readBins(directory, manifest, tokenMode) }.getOrNull()
+        }
+
+        private fun readBins(
+            directory: File,
+            manifest: IndexManifest,
+            tokenMode: TokenMode,
+        ): NameLocateIndex {
+            val dictionary = readDictionary(File(directory, DICTIONARY_NAME))
+            val (documents, occurrences) = readDocuments(File(directory, DOCUMENTS_NAME))
+            val postings = readPostings(File(directory, POSTINGS_NAME))
+            require(dictionary.size() == manifest.nameCount)
+            require(documents.size == manifest.docCount)
+            require(occurrences.size == manifest.occurrenceCount)
+            require(postings.size == dictionary.size())
+            return NameLocateIndex(
+                tokenMode = tokenMode,
+                fingerprint = manifest.fingerprint,
+                keepSetMode = manifest.keepSetMode,
+                dictionary = dictionary,
+                documents = documents,
+                occurrences = occurrences,
+                postings = postings,
+            )
+        }
+
+        private fun readDictionary(file: File): NameDictionary {
+            DataInputStream(file.inputStream().buffered()).use { input ->
+                requireMagic(input)
+                val count = input.readInt()
+                val dictionary = NameDictionary()
+                repeat(count) { dictionary.intern(readUtf(input)) }
+                return dictionary
+            }
+        }
+
+        private fun readDocuments(file: File): Pair<List<DocMeta>, List<Occurrence>> {
+            DataInputStream(file.inputStream().buffered()).use { input ->
+                requireMagic(input)
+                val docCount = input.readInt()
+                val documents = ArrayList<DocMeta>(docCount)
+                repeat(docCount) { documents.add(DocMeta(readUtf(input), readUtf(input))) }
+                val occCount = input.readInt()
+                val occurrences = ArrayList<Occurrence>(occCount)
+                repeat(occCount) {
+                    occurrences.add(Occurrence(input.readInt(), input.readInt(), input.readInt()))
+                }
+                return documents to occurrences
+            }
+        }
+
+        private fun readPostings(file: File): List<Pair<ByteArray, Int>> {
+            DataInputStream(file.inputStream().buffered()).use { input ->
+                requireMagic(input)
+                val count = input.readInt()
+                val postings = ArrayList<Pair<ByteArray, Int>>(count)
+                repeat(count) {
+                    val occCount = input.readInt()
+                    val blob = ByteArray(input.readInt())
+                    input.readFully(blob)
+                    postings.add(blob to occCount)
+                }
+                return postings
+            }
+        }
+
+        private fun requireMagic(input: DataInputStream) {
+            require(input.readInt() == IndexFormat.MAGIC)
+            require(input.readInt() == IndexFormat.VERSION)
+        }
+
+        private fun writeUtf(out: DataOutputStream, value: String) {
+            val bytes = value.toByteArray(Charsets.UTF_8)
+            out.writeInt(bytes.size)
+            out.write(bytes)
+        }
+
+        private fun readUtf(input: DataInputStream): String {
+            val bytes = ByteArray(input.readInt())
+            input.readFully(bytes)
+            return String(bytes, Charsets.UTF_8)
+        }
+    }
+}
+
+object KeepSetFingerprint {
+    fun compute(tokenMode: TokenMode, keepSetMode: String, members: List<KeepSetMember>): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(IndexFormat.VERSION.toString().toByteArray(Charsets.UTF_8))
+        digest.update(0)
+        digest.update(tokenMode.wireName().toByteArray(Charsets.UTF_8))
+        digest.update(0)
+        digest.update(keepSetMode.toByteArray(Charsets.UTF_8))
+        digest.update(0)
+        val sorted = members.sortedWith(compareBy({ it.gav }, { it.fingerprintFile.absolutePath }))
+        for (member in sorted) {
+            digest.update(member.gav.toByteArray(Charsets.UTF_8))
+            digest.update(0)
+            appendFileFingerprint(digest, member.fingerprintFile)
+            digest.update(0)
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun appendFileFingerprint(digest: MessageDigest, file: File) {
+        if (!file.exists()) {
+            digest.update("missing".toByteArray(Charsets.UTF_8))
+            return
+        }
+        if (file.isFile) {
+            digest.update(file.absolutePath.toByteArray(Charsets.UTF_8))
+            digest.update(0)
+            digest.update(file.length().toString().toByteArray(Charsets.UTF_8))
+            digest.update(0)
+            digest.update(file.lastModified().toString().toByteArray(Charsets.UTF_8))
+            return
+        }
+        digest.update(file.absolutePath.toByteArray(Charsets.UTF_8))
+        digest.update(0)
+        file.walkTopDown()
+            .filter { it.isFile && SourcesJarCorpus.isSourceFile(it.name) }
+            .sortedBy { it.absolutePath }
+            .forEach { child ->
+                digest.update(child.absolutePath.toByteArray(Charsets.UTF_8))
+                digest.update(0)
+                digest.update(child.length().toString().toByteArray(Charsets.UTF_8))
+                digest.update(0)
+                digest.update(child.lastModified().toString().toByteArray(Charsets.UTF_8))
+                digest.update(0)
+            }
+    }
+}
+
+internal object ManifestJson {
+    fun encode(manifest: IndexManifest): String =
+        buildString {
+            append('{')
+            field("formatVersion", manifest.formatVersion)
+            append(',')
+            field("tokenMode", manifest.tokenMode)
+            append(',')
+            field("fingerprint", manifest.fingerprint)
+            append(',')
+            field("keepSetMode", manifest.keepSetMode)
+            append(',')
+            field("docCount", manifest.docCount)
+            append(',')
+            field("nameCount", manifest.nameCount)
+            append(',')
+            field("occurrenceCount", manifest.occurrenceCount)
+            append(',')
+            field("builtAtEpochMs", manifest.builtAtEpochMs)
+            append('}')
+        }
+
+    fun decode(text: String): IndexManifest? {
+        fun str(key: String): String? =
+            "\"$key\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"".toRegex()
+                .find(text)?.groupValues?.get(1)
+                ?.replace("\\\"", "\"")
+                ?.replace("\\\\", "\\")
+
+        fun num(key: String): Long? =
+            "\"$key\"\\s*:\\s*(-?\\d+)".toRegex().find(text)?.groupValues?.get(1)?.toLongOrNull()
+
+        return IndexManifest(
+            formatVersion = num("formatVersion")?.toInt() ?: return null,
+            tokenMode = str("tokenMode") ?: return null,
+            fingerprint = str("fingerprint") ?: return null,
+            keepSetMode = str("keepSetMode") ?: return null,
+            docCount = num("docCount")?.toInt() ?: return null,
+            nameCount = num("nameCount")?.toInt() ?: return null,
+            occurrenceCount = num("occurrenceCount")?.toInt() ?: return null,
+            builtAtEpochMs = num("builtAtEpochMs") ?: return null,
+        )
+    }
+
+    private fun StringBuilder.field(key: String, value: String) {
+        append('"').append(key).append('"').append(':')
+        append('"').append(value.replace("\\", "\\\\").replace("\"", "\\\"")).append('"')
+    }
+
+    private fun StringBuilder.field(key: String, value: Int) {
+        append('"').append(key).append('"').append(':').append(value)
+    }
+
+    private fun StringBuilder.field(key: String, value: Long) {
+        append('"').append(key).append('"').append(':').append(value)
+    }
+}

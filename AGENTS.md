@@ -18,7 +18,7 @@
 - GitHub repository: `nise-nabe/gradle-tapi-mcp-server` (public, default branch `main`).
 - Stack: Kotlin 2.4.10, Java 17 toolchain, **Kotlin** MCP SDK 0.15.0 (`io.modelcontextprotocol:kotlin-sdk-server`), Gradle Tooling API 9.7.0, kotlinx.serialization（ツール結果 JSON・MCP ワイヤ）。
 - Build uses `gradle/libs.versions.toml`, `dependencyResolutionManagement` with `FAIL_ON_PROJECT_REPOS`, JVM Test Suites (JUnit 5), Configuration Cache, and Isolated Projects (`org.gradle.isolated-projects=true`).
-- Single-module project with feature subpackages (`build`, `cache`, `connection`, `model`, `protocol`, `server`) under `com.example.gradle.mcp`; MCP tool definitions live in each feature package with shared helpers in `protocol`; `build-logic` deferred until multi-module need arises.
+- Multi-module: root MCP server plus `:dependency-sources-core` / `:dependency-sources-mcp` for dependency-sources name locate; feature subpackages (`build`, `cache`, `connection`, `model`, `protocol`, `server`, `dependency`) under `com.example.gradle.mcp`; MCP tool definitions live in each feature package with shared helpers in `protocol`; `build-logic` deferred until further need arises.
 - `gradle-wrapper.jar` is explicitly un-ignored so clones can run `./gradlew`.
 - Cursor Cloud bootstraps via `.cursor/environment.json` → `.cursor/install.sh` (release JAR download, gh symlink, JDK 17/21).
 - Agent skill at `plugins/gradle-tapi-mcp/skills/gradle-tapi-mcp/` (install via Cursor/Codex/Copilot marketplace, or copy to `~/.cursor/skills/` globally) documents token-efficient MCP workflows: prefer `gradle_get_project_overview`; use `gradle_get_build_cache_status` for cache settings; task lists omitted unless `includeTasks=true`; run output omitted by default (`includeOutput=false`; outcome/buildSummary only).
@@ -32,7 +32,7 @@
 
 ## Cursor Cloud specific instructions
 
-Single-module Kotlin/JVM MCP server (stdio). No web UI, Docker, or dedicated lint task.
+Kotlin/JVM MCP server (stdio) with optional `:dependency-sources-*` modules. No web UI, Docker, or dedicated lint task.
 
 ### Bootstrap
 

@@ -18,6 +18,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.gradle.tooling.api)
+    implementation(project(":dependency-sources-mcp"))
     runtimeOnly(libs.slf4j.simple)
 }
 

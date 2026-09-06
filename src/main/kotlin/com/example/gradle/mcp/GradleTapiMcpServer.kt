@@ -6,6 +6,7 @@ import com.example.gradle.mcp.cache.registerCacheTools
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.connection.registerConnectionTools
 import com.example.gradle.mcp.connection.registerJavaRuntimeTools
+import com.example.gradle.mcp.dependency.registerDependencySourceTools
 import com.example.gradle.mcp.model.registerModelTools
 import com.example.gradle.mcp.server.EofSignalingInputStream
 import io.ktor.utils.io.streams.asInput
@@ -55,6 +56,7 @@ fun runGradleTapiMcpServer() {
         server.registerCacheTools(serverScope)
         server.registerModelTools(serverScope)
         server.registerBuildTools(serverScope)
+        server.registerDependencySourceTools(serverScope)
     }
 
     val transport = StdioServerTransport(

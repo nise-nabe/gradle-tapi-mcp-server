@@ -89,6 +89,23 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_list_builds` | List recent MCP builds from memory and `.gradle/mcp-builds/` (no Tooling API required) |
 | `gradle_get_build_status` | Poll status/output for a background build (`buildId` required); set `includeProgress: true` for detailed progress |
 | `gradle_cancel_build` | Cancel a background build via Tooling API `CancellationToken` (`buildId` required) |
+| `gradle_index_dependency_sources` | Index dependency sources for exact simple-name locate. `tokenMode`: `all` (default; includes comments/strings) or `idents`. Keep-set: Idea sources by default, or explicit `artifacts[]` / `sourcePaths[]`. Persists under `.gradle/mcp-dependency-sources/<tokenMode>/` |
+| `gradle_search_dependency_sources` | Exact simple-name locate against a prior index (does not reindex) |
+
+## Modules
+
+| Project | Role |
+|---------|------|
+| root (`gradle-tapi-mcp-server`) | MCP server fat JAR; registers tools |
+| `:dependency-sources-core` | Identifier lexer, δ postings, keep-set resolver, on-disk index |
+| `:dependency-sources-mcp` | Index/search tool schemas and facade (depends on core) |
+
+### Dependency sources name locate
+
+1. Call `gradle_index_dependency_sources` (optional `tokenMode`, `artifacts`, `sourcePaths`, `forceReindex`).
+2. Call `gradle_search_dependency_sources` with `query` (and matching `tokenMode` when not preferring the default `all` index).
+
+Index format is versioned (`formatVersion`); incompatible on-disk indexes are rebuilt. Fingerprint includes `tokenMode` and the keep-set so modes never share an index.
 
 ## Token-efficient usage
 

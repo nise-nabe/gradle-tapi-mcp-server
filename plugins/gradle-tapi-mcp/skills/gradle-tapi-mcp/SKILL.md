@@ -94,6 +94,10 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | `gradle_list_builds` | 直近の MCP ビルド一覧（メモリ + `.gradle/mcp-builds/`、TAPI 不要） |
 | `gradle_get_build_status` | バックグラウンドビルドの進捗確認 |
 | `gradle_cancel_build` | バックグラウンドビルドのキャンセル（CancellationToken） |
+| `gradle_index_dependency_sources` | 依存ソース索引（Idea / `artifacts[]` / `sourcePaths[]`）。`tokenMode=all`（既定・コメント含む）または `idents` |
+| `gradle_search_dependency_sources` | 依存ソース上の単純名 exact locate（要事前 index） |
+
+依存ソース検索: 先に `gradle_index_dependency_sources`、続けて `gradle_search_dependency_sources`。索引は `.gradle/mcp-dependency-sources/<tokenMode>/`（`formatVersion` 付き）。mode 不一致時は暗黙 reindex しない。
 
 詳細な引数は [reference.md](reference.md)。
 
