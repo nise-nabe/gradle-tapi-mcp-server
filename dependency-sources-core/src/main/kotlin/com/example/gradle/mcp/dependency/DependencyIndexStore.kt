@@ -125,14 +125,15 @@ class DependencyIndexStore {
             )
         val limit = request.limit.coerceAtLeast(0)
         // Probe limit+1 so hitsTruncated is false when there are exactly `limit` matches.
-        // Skip the +1 probe at Int.MAX_VALUE to avoid signed overflow (wraps to MIN_VALUE).
+        // Only Int.MAX_VALUE skips +1 (signed overflow). limit==0 probes 1 and returns no hits,
+        // matching NameLocateIndex.locate(limit <= 0) while still reporting truncation if matches exist.
         val probed =
-            if (limit == 0 || limit == Int.MAX_VALUE) {
+            if (limit == Int.MAX_VALUE) {
                 index.locate(request.query, limit = Int.MAX_VALUE)
             } else {
                 index.locate(request.query, limit = limit + 1)
             }
-        val truncated = limit > 0 && limit < Int.MAX_VALUE && probed.size > limit
+        val truncated = limit < Int.MAX_VALUE && probed.size > limit
         val hits = if (truncated) probed.take(limit) else probed
         val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode, request.indexDir)
         return SearchResult(

@@ -72,4 +72,41 @@ class DependencyIndexStoreSearchTest {
         result.hitCount shouldBe 1
         result.hitsTruncated shouldBe false
     }
+
+    @Test
+    fun `limit zero returns no hits and reports truncation when matches exist`() {
+        val sources = File(tempDir, "src-zero").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-zero").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+        val withMatches = store.search(
+            SearchRequest(
+                projectDirectory = project,
+                query = "Foo",
+                tokenMode = TokenMode.IDENTS,
+                limit = 0,
+            ),
+        )
+        withMatches.hitCount shouldBe 0
+        withMatches.hitsTruncated shouldBe true
+
+        val withoutMatches = store.search(
+            SearchRequest(
+                projectDirectory = project,
+                query = "MissingName",
+                tokenMode = TokenMode.IDENTS,
+                limit = 0,
+            ),
+        )
+        withoutMatches.hitCount shouldBe 0
+        withoutMatches.hitsTruncated shouldBe false
+    }
 }
