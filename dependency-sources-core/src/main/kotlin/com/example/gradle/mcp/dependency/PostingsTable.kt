@@ -3,6 +3,7 @@ package com.example.gradle.mcp.dependency
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 
 internal data class PostingMeta(
@@ -12,7 +13,7 @@ internal data class PostingMeta(
 )
 
 /**
- * Posting storage: in-memory blobs after build, mmap-backed offset table after [open].
+ * Posting storage: in-memory blobs after build, mmap-backed offset table after load.
  *
  * On-disk `postings.bin` (v3, little-endian, no magic — version gate is manifest only):
  * ```
@@ -65,7 +66,7 @@ internal sealed class PostingsTable {
             val dataBase = NAME_COUNT_SIZE + nameCount * POSTING_ENTRY_SIZE
             val blobBytes = entries.sumOf { it.first.size }
             val out = ByteArray(dataBase + blobBytes)
-            val table = ByteBuffer.wrap(out)
+            val table = ByteBuffer.wrap(out).order(ByteOrder.LITTLE_ENDIAN)
 
             table.putInt(nameCount)
 
@@ -91,13 +92,14 @@ internal sealed class PostingsTable {
             RandomAccessFile(file, "r").use { raf ->
                 val length = raf.length()
                 require(length >= NAME_COUNT_SIZE) { "truncated postings" }
-                val buffer = raf.channel.map(FileChannel.MapMode.READ_ONLY, 0, length)
+                val buffer =
+                    raf.channel.map(FileChannel.MapMode.READ_ONLY, 0, length).order(ByteOrder.LITTLE_ENDIAN)
                 return parseMmap(buffer)
             }
         }
 
         private fun parseMmap(buffer: ByteBuffer): PostingsTable {
-            val duplicate = buffer.duplicate().order(buffer.order())
+            val duplicate = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
             duplicate.position(0)
             require(duplicate.remaining() >= NAME_COUNT_SIZE) { "truncated postings" }
             val nameCount = duplicate.getInt()

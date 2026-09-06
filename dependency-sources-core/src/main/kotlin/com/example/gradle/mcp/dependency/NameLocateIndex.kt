@@ -119,6 +119,12 @@ class NameLocateIndex private constructor(
         requireNonNegativeLimit(limit)
         requireNonNegativeLimit(perQueryLimit, "perQueryLimit")
         val uniqueQueries = queries.distinct()
+        if (limit == 0) {
+            for (query in uniqueQueries) {
+                locate(query, perQueryLimit ?: 0)
+            }
+            return emptyList()
+        }
         val merged = LinkedHashMap<LocateKey, LocateHit>()
         for (query in uniqueQueries) {
             for (hit in locate(query, perQueryLimit)) {

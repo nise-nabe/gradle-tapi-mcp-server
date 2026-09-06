@@ -151,7 +151,13 @@ object GapEliasDeltaCodec {
             "occurrence count $count exceeds bitstream capacity ($maxBits bits)"
         }
         if (limit == 0) {
-            decodeOccurrence(reader, index = 0, docIdHolder = IntArray(1))
+            val docIdHolder = IntArray(1)
+            val (docId, _, _) = decodeOccurrence(reader, index = 0, docIdHolder)
+            if (docCount != Int.MAX_VALUE) {
+                require(docId in 0 until docCount) {
+                    "occurrence docId $docId out of range for $docCount documents"
+                }
+            }
             return
         }
         val decodeCount =

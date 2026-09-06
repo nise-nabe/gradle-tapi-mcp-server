@@ -11,6 +11,8 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 class GapEliasDeltaCodecTest {
     @Test
@@ -40,7 +42,22 @@ class GapEliasDeltaCodecTest {
     }
 
     @Test
-    fun `decodeOccurrences limit zero returns empty`() {
+    fun `decodeOccurrences limit zero validates first docId range`() {
+        val occs = listOf(OccPos(docId = 5, line = 1, column = 0))
+        val encoded = GapEliasDeltaCodec.encodeOccurrences(occs)
+        val error = shouldThrow<IllegalArgumentException> {
+            GapEliasDeltaCodec.forEachOccurrence(
+                bytes = encoded,
+                count = occs.size,
+                docCount = 1,
+                limit = 0,
+            ) { _, _, _ -> true }
+        }
+        error.message shouldContain "out of range"
+    }
+
+    @Test
+    fun `decodeOccurrences limit zero returns empty for valid first entry`() {
         val occs = listOf(OccPos(docId = 0, line = 1, column = 0))
         val encoded = GapEliasDeltaCodec.encodeOccurrences(occs)
         GapEliasDeltaCodec.decodeOccurrences(encoded, occs.size, limit = 0) shouldContainExactly emptyList()
@@ -173,19 +190,20 @@ class NameLocateIndexTest {
         index.writeTo(indexDir)
 
         val postingsFile = File(indexDir, NameLocateIndex.POSTINGS_NAME)
-        DataInputStream(postingsFile.inputStream().buffered()).use { input ->
-            val nameCount = input.readInt()
-            nameCount shouldBe index.stats(indexDir, cacheHit = false).nameCount
-            var dataOffset = 0
-            repeat(nameCount) {
-                input.readInt() // count
-                val offset = input.readInt()
-                val len = input.readInt()
-                offset shouldBe dataOffset
-                dataOffset += len
-            }
-            postingsFile.length() shouldBe (4L + nameCount * PostingsTable.POSTING_ENTRY_SIZE + dataOffset)
+        val bytes = postingsFile.readBytes()
+        val table = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        val nameCount = table.getInt(0)
+        nameCount shouldBe index.stats(indexDir, cacheHit = false).nameCount
+        var dataOffset = 0
+        repeat(nameCount) { id ->
+            val entryBase = 4 + id * PostingsTable.POSTING_ENTRY_SIZE
+            table.getInt(entryBase) // count
+            val offset = table.getInt(entryBase + 4)
+            val len = table.getInt(entryBase + 8)
+            offset shouldBe dataOffset
+            dataOffset += len
         }
+        postingsFile.length() shouldBe (4L + nameCount * PostingsTable.POSTING_ENTRY_SIZE + dataOffset)
     }
 
     @Test
@@ -425,6 +443,42 @@ class NameLocateIndexTest {
     }
 
     @Test
+    fun `searchMulti limit zero probes without returning hits`() {
+        val sources = File(tempDir, "multi-zero").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\n")
+        val members = listOf(KeepSetMember(gav = "demo:lib:1", sourceRoot = sources))
+        val index = NameLocateIndex.build(
+            members,
+            TokenMode.IDENTS,
+            KeepSetFingerprint.compute(TokenMode.IDENTS, "explicit", members),
+            "explicit",
+        )
+        index.searchMulti(queries = listOf("Foo"), limit = 0, perQueryLimit = null) shouldContainExactly emptyList()
+    }
+
+    @Test
+    fun `locate limit zero rejects out-of-range docId`() {
+        val sources = File(tempDir, "limit-zero-oob").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}")
+        val members = listOf(KeepSetMember(gav = "g:a:1", sourceRoot = sources))
+        val fingerprint = KeepSetFingerprint.compute(TokenMode.ALL, "explicit", members)
+        val index = NameLocateIndex.build(members, TokenMode.ALL, fingerprint, "explicit")
+        val indexDir = File(tempDir, "idx-limit-zero-oob")
+        index.writeTo(indexDir)
+
+        val postings = readV3PostingEntries(File(indexDir, NameLocateIndex.POSTINGS_NAME))
+        require(postings.isNotEmpty())
+        val forgedBlob =
+            GapEliasDeltaCodec.encodeOccurrences(listOf(OccPos(docId = 99, line = 1, column = 0)))
+        val patchedAll = postings.map { (_, count) -> forgedBlob to count }
+        writeV3Postings(File(indexDir, NameLocateIndex.POSTINGS_NAME), patchedAll)
+        val reloaded = NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL).shouldNotBeNull()
+        shouldThrow<IllegalArgumentException> {
+            reloaded.locate("Foo", limit = 0)
+        }
+    }
+
+    @Test
     fun `locate rejects out-of-range docId at search time`() {
         val sources = File(tempDir, "src-oob").apply { mkdirs() }
         File(sources, "A.kt").writeText("fun Foo() {}")
@@ -462,12 +516,12 @@ class NameLocateIndexTest {
 
         val postingsFile = File(indexDir, NameLocateIndex.POSTINGS_NAME)
         val bytes = postingsFile.readBytes().toMutableList()
-        // First offset-table row starts at byte 4: force count=0 with non-zero len.
+        // First offset-table row starts at byte 4: force count=0 with non-zero len (little-endian).
         bytes[4] = 0
         bytes[5] = 0
         bytes[6] = 0
         bytes[7] = 0
-        bytes[15] = 1
+        bytes[12] = 1
         postingsFile.writeBytes(bytes.toByteArray())
         NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
     }
@@ -484,12 +538,12 @@ class NameLocateIndexTest {
 
         val postingsFile = File(indexDir, NameLocateIndex.POSTINGS_NAME)
         val bytes = postingsFile.readBytes()
-        // Overwrite name_count (first u32) with Int.MAX_VALUE.
+        // Overwrite name_count (first u32, little-endian) with Int.MAX_VALUE.
         require(bytes.size >= 4)
-        bytes[0] = 0x7F.toByte()
+        bytes[0] = 0xFF.toByte()
         bytes[1] = 0xFF.toByte()
         bytes[2] = 0xFF.toByte()
-        bytes[3] = 0xFF.toByte()
+        bytes[3] = 0x7F.toByte()
         postingsFile.writeBytes(bytes)
         NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
     }
@@ -497,15 +551,15 @@ class NameLocateIndexTest {
 
 private fun readV3PostingEntries(file: File): List<Pair<ByteArray, Int>> {
     val bytes = file.readBytes()
-    DataInputStream(bytes.inputStream()).use { input ->
-        val nameCount = input.readInt()
-        val metas = List(nameCount) {
-            Triple(input.readInt(), input.readInt(), input.readInt())
-        }
-        val dataBase = 4 + nameCount * PostingsTable.POSTING_ENTRY_SIZE
-        return metas.map { (count, offset, len) ->
-            bytes.copyOfRange(dataBase + offset, dataBase + offset + len) to count
-        }
+    val table = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+    val nameCount = table.getInt(0)
+    val metas = List(nameCount) { id ->
+        val entryBase = 4 + id * PostingsTable.POSTING_ENTRY_SIZE
+        Triple(table.getInt(entryBase), table.getInt(entryBase + 4), table.getInt(entryBase + 8))
+    }
+    val dataBase = 4 + nameCount * PostingsTable.POSTING_ENTRY_SIZE
+    return metas.map { (count, offset, len) ->
+        bytes.copyOfRange(dataBase + offset, dataBase + offset + len) to count
     }
 }
 

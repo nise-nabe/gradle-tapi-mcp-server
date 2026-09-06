@@ -200,9 +200,11 @@ class DependencyIndexStore {
                 )
             }
             0 -> {
-                val hits = index.searchMulti(request.queries, limit = 0, perQueryLimit = request.perQueryLimit)
+                for (query in request.queries.distinct()) {
+                    index.locate(query, limit = 0)
+                }
                 SearchMultiResult(
-                    hits = hits,
+                    hits = emptyList(),
                     stats = index.stats(indexDir, cacheHit = true),
                     hitCount = 0,
                     hitsTruncated = request.queries.any { index.postingCount(it) > 0 } ||
