@@ -1,5 +1,12 @@
 package com.example.gradle.mcp.dependency
 
+/** One hit inside a name's posting list (sorted by docId, line, column). */
+internal data class OccPos(
+    val docId: Int,
+    val line: Int,
+    val column: Int,
+)
+
 object GapEliasDeltaCodec {
     fun encode(positions: IntArray): ByteArray {
         require(isStrictlyIncreasing(positions)) { "positions must be strictly increasing" }
@@ -26,6 +33,132 @@ object GapEliasDeltaCodec {
             prev = position
         }
         return out
+    }
+
+    /**
+     * Encode occurrence payloads for one posting list.
+     * Layout per hit: 1-bit same-doc flag; on doc change, Elias-δ docId gap
+     * (first gap is docId+1); then Elias-δ (line+1) and (column+1).
+     */
+    internal fun encodeOccurrences(occs: List<OccPos>): ByteArray {
+        if (occs.isEmpty()) return ByteArray(0)
+        val writer = BitWriter()
+        var prevDoc = 0
+        var prevLine = -1
+        var prevColumn = -1
+        for ((index, occ) in occs.withIndex()) {
+            require(occ.docId >= 0 && occ.line >= 0 && occ.column >= 0) {
+                "occurrence fields must be non-negative"
+            }
+            if (index == 0 || occ.docId != prevDoc) {
+                require(index == 0 || occ.docId > prevDoc) {
+                    "occurrences must be sorted by ascending docId"
+                }
+                writer.writeBit(false) // doc change
+                val gap =
+                    if (index == 0) {
+                        occ.docId.toLong() + 1L
+                    } else {
+                        (occ.docId - prevDoc).toLong()
+                    }
+                writer.writeDelta(gap)
+                prevDoc = occ.docId
+                prevLine = -1
+                prevColumn = -1
+            } else {
+                writer.writeBit(true) // same doc
+                require(
+                    occ.line > prevLine || (occ.line == prevLine && occ.column >= prevColumn),
+                ) {
+                    "occurrences within a document must be sorted by line, then column"
+                }
+            }
+            writer.writeDelta(occ.line.toLong() + 1L)
+            writer.writeDelta(occ.column.toLong() + 1L)
+            prevLine = occ.line
+            prevColumn = occ.column
+        }
+        return writer.finish()
+    }
+
+    internal fun decodeOccurrences(bytes: ByteArray, count: Int): List<OccPos> {
+        require(count >= 0) { "occurrence count must be non-negative" }
+        if (count == 0) return emptyList()
+        val out = ArrayList<OccPos>(count)
+        forEachOccurrence(bytes, count) { docId, line, column ->
+            out.add(OccPos(docId = docId, line = line, column = column))
+            true
+        }
+        return out
+    }
+
+    /**
+     * Walk a posting payload without allocating [OccPos] instances.
+     * Used at index load to validate docId ranges with lower GC pressure.
+     */
+    internal fun validateOccurrences(bytes: ByteArray, count: Int, docCount: Int) {
+        require(docCount >= 0) { "docCount must be non-negative" }
+        forEachOccurrence(bytes, count) { docId, _, _ ->
+            require(docId in 0 until docCount) {
+                "occurrence docId $docId out of range for $docCount documents"
+            }
+            true
+        }
+    }
+
+    /**
+     * Stream occurrences. [action] should return false to stop early.
+     */
+    internal fun forEachOccurrence(
+        bytes: ByteArray,
+        count: Int,
+        action: (docId: Int, line: Int, column: Int) -> Boolean,
+    ) {
+        require(count >= 0) { "occurrence count must be non-negative" }
+        if (count == 0) return
+        val maxBits = bytes.size.toLong() * 8L
+        require(count.toLong() <= maxBits) {
+            "occurrence count $count exceeds bitstream capacity ($maxBits bits)"
+        }
+        val reader = BitReader(bytes)
+        var docId = 0
+        for (i in 0 until count) {
+            val sameDoc = reader.readBit()
+                ?: throw IllegalArgumentException("truncated occurrence posting at index $i")
+            if (i == 0 && sameDoc) {
+                throw IllegalArgumentException("invalid occurrence posting: first entry cannot set same-doc")
+            }
+            if (!sameDoc) {
+                val gap = reader.readDelta()
+                    ?: throw IllegalArgumentException("truncated docId in occurrence posting")
+                docId =
+                    if (i == 0) {
+                        // First gap is encoded as docId+1, so gap may be Int.MAX_VALUE+1.
+                        require(gap >= 1L && gap - 1L <= Int.MAX_VALUE.toLong()) {
+                            "first docId gap does not fit in Int"
+                        }
+                        (gap - 1L).toInt()
+                    } else {
+                        require(gap <= Int.MAX_VALUE.toLong()) { "docId gap does not fit in Int" }
+                        val next = docId.toLong() + gap
+                        require(next <= Int.MAX_VALUE.toLong()) { "docId overflow in occurrence posting" }
+                        next.toInt()
+                    }
+            }
+            val lineRaw = reader.readDelta()
+                ?: throw IllegalArgumentException("truncated line in occurrence posting")
+            require(lineRaw >= 1L && lineRaw - 1L <= Int.MAX_VALUE.toLong()) {
+                "invalid line value in occurrence posting"
+            }
+            val line = (lineRaw - 1L).toInt()
+            val colRaw = reader.readDelta()
+                ?: throw IllegalArgumentException("truncated column in occurrence posting")
+            require(colRaw >= 1L && colRaw - 1L <= Int.MAX_VALUE.toLong()) {
+                "invalid column value in occurrence posting"
+            }
+            val column = (colRaw - 1L).toInt()
+            if (!action(docId, line, column)) return
+        }
     }
 
     private fun isStrictlyIncreasing(positions: IntArray): Boolean {
