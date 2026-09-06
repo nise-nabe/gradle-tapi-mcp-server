@@ -13,7 +13,9 @@ object DependencySourceToolCatalog {
 
     const val INDEX_DESCRIPTION: String =
         "Index dependency sources (Idea, artifacts[], or sourcePaths[]). " +
-            "tokenMode=all (default) includes comments/strings; idents=code only."
+            "tokenMode=all (default) includes comments/strings; idents=code only. " +
+            "artifacts[] lookup uses gradleUserHome arg, else connected Gradle user home, " +
+            "else process GRADLE_USER_HOME/~/.gradle."
 
     const val SEARCH_DESCRIPTION: String =
         "Exact simple-name locate in dependency sources. Requires prior index for tokenMode."
@@ -51,6 +53,10 @@ object DependencySourceToolCatalog {
                         "version" to stringProp("Optional version label"),
                     ),
                     required = listOf("path"),
+                ),
+                "gradleUserHome" to stringProp(
+                    "Optional Gradle user home for artifacts[] cache lookup. " +
+                        "When omitted, uses the connected project's Gradle user home if connected.",
                 ),
                 "indexDir" to stringProp("Override dir (writes <dir>/<tokenMode>/)."),
                 "forceReindex" to booleanProp("Rebuild on cache hit. Default false."),

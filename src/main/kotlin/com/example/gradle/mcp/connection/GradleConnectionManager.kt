@@ -118,6 +118,17 @@ class GradleConnectionManager {
     fun cachedEnvironment(projectDirectory: File): BuildEnvironmentSnapshot? =
         pool[ProjectDirectoryResolver.canonicalKey(projectDirectory)]?.cachedEnvironment
 
+    /**
+     * Resolved Gradle user home for a connected project, or null when not connected.
+     * Prefers the Tooling API [BuildEnvironment] snapshot, then the connect-time config override.
+     */
+    fun gradleUserHome(projectDirectory: File): File? {
+        val pooled = pool[ProjectDirectoryResolver.canonicalKey(projectDirectory)] ?: return null
+        pooled.cachedEnvironment?.gradleUserHome?.takeIf { it.isNotBlank() }?.let { return File(it) }
+        pooled.config.gradleUserHome?.takeIf { it.isNotBlank() }?.let { return File(it).absoluteFile }
+        return null
+    }
+
     fun cachedHasSubprojects(projectDirectory: File): Boolean? =
         pool[ProjectDirectoryResolver.canonicalKey(projectDirectory)]?.cachedHasSubprojects
 

@@ -293,6 +293,54 @@ class GradleConnectionManagerTest {
     }
 
     @Test
+    fun `gradleUserHome prefers cached environment over connect config`(
+        @TempDir project: File,
+        @TempDir configHome: File,
+        @TempDir envHome: File,
+    ) {
+        manager.seedConnectionForTests(
+            getModelCountingConnection(),
+            projectDirectory = project,
+            environment = BuildEnvironmentSnapshot(
+                gradleVersion = "9.7.1",
+                gradleUserHome = envHome.absolutePath,
+                javaHome = "/jdk",
+                javaVersion = "17",
+                jvmArguments = emptyList(),
+            ),
+            config = ConnectionConfig(
+                projectDirectory = project.path,
+                gradleUserHome = configHome.absolutePath,
+            ),
+        )
+
+        manager.gradleUserHome(project)?.canonicalFile shouldBe envHome.canonicalFile
+    }
+
+    @Test
+    fun `gradleUserHome falls back to connect config when environment missing`(
+        @TempDir project: File,
+        @TempDir configHome: File,
+    ) {
+        manager.seedConnectionForTests(
+            getModelCountingConnection(),
+            projectDirectory = project,
+            environment = null,
+            config = ConnectionConfig(
+                projectDirectory = project.path,
+                gradleUserHome = configHome.absolutePath,
+            ),
+        )
+
+        manager.gradleUserHome(project)?.canonicalFile shouldBe configHome.canonicalFile
+    }
+
+    @Test
+    fun `gradleUserHome is null when project is not connected`(@TempDir project: File) {
+        manager.gradleUserHome(project).shouldBeNull()
+    }
+
+    @Test
     fun `ensureConnected accepts equivalent gradleInstallation paths`(
         @TempDir project: File,
         @TempDir gradleInstallation: File,
