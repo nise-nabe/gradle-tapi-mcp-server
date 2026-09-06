@@ -104,8 +104,23 @@ class NameLocateIndex private constructor(
             writeDictionary(tmp)
             writeDocuments(tmp)
             writePostings(tmp)
-            if (directory.exists()) directory.deleteRecursively()
-            Files.move(tmp.toPath(), directory.toPath())
+            // Replace without a bare delete→move gap: move the live dir aside first so
+            // concurrent readers still see a complete tree until the swap completes.
+            if (directory.exists()) {
+                val backup = File(directory.parentFile, "${directory.name}.old-${System.nanoTime()}")
+                Files.move(directory.toPath(), backup.toPath())
+                try {
+                    Files.move(tmp.toPath(), directory.toPath())
+                    backup.deleteRecursively()
+                } catch (error: Exception) {
+                    if (!directory.exists() && backup.exists()) {
+                        runCatching { Files.move(backup.toPath(), directory.toPath()) }
+                    }
+                    throw error
+                }
+            } else {
+                Files.move(tmp.toPath(), directory.toPath())
+            }
         } catch (error: Exception) {
             tmp.deleteRecursively()
             throw error

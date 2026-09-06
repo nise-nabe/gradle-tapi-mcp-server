@@ -19,7 +19,7 @@ Apply during implementation — not only before opening a PR.
 
 | Package | Owns |
 |---------|------|
-| `com.example.gradle.mcp` (root) | `GradleTapiMcpServer`, `GradleTapiMcpServerLauncher`, `GradleMcpRuntime`, thin `registerDependencySourceTools` wiring only |
+| `com.example.gradle.mcp` (root) | `GradleTapiMcpServer`, `GradleTapiMcpServerLauncher`, `GradleMcpRuntime` only (call `registerDependencySourceTools` from `dependency/`) |
 | `build/` | `BuildExecutionManager`, run/cancel/status tools, output parsing, persistence, test runners |
 | `connection/` | Connection pool, `gradle_connect` / disconnect, build environment snapshots, `gradle_get_java_runtimes` |
 | `protocol/` | `McpToolSchemas`, `McpToolDescriptions`, `McpErrors`, JSON mapping, progress notifications |

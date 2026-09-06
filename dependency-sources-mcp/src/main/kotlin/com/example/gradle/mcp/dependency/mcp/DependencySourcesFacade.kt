@@ -21,22 +21,24 @@ class DependencySourcesFacade(
         val forceReindex = args.optionalBoolean("forceReindex", default = false)
         val needsConnection = artifacts.isEmpty() && sourcePaths.isEmpty()
 
-        val result = access.withNoActiveBuild(projectDirectory) {
-            val request = IndexRequest(
-                projectDirectory = projectDirectory,
-                tokenMode = tokenMode,
-                artifacts = artifacts,
-                sourcePaths = sourcePaths,
-                indexDir = indexDir,
-                forceReindex = forceReindex,
-            )
-            if (needsConnection) {
+        val request = IndexRequest(
+            projectDirectory = projectDirectory,
+            tokenMode = tokenMode,
+            artifacts = artifacts,
+            sourcePaths = sourcePaths,
+            indexDir = indexDir,
+            forceReindex = forceReindex,
+        )
+        // Hold the no-active-build gate only for Idea keep-set resolution (Tooling API).
+        // Explicit artifacts/sourcePaths index locally and must not block unrelated builds.
+        val result = if (needsConnection) {
+            access.withNoActiveBuild(projectDirectory) {
                 access.withConnection(projectDirectory) { connection ->
                     store.index(request, connection)
                 }
-            } else {
-                store.index(request, connection = null)
             }
+        } else {
+            store.index(request, connection = null)
         }
 
         val stats = result.stats
@@ -92,7 +94,9 @@ class DependencySourcesFacade(
     }
 
     private fun parseArtifacts(raw: Any?): List<DependencyArtifactRef> {
-        val list = raw as? List<*> ?: return emptyList()
+        if (raw == null) return emptyList()
+        val list = raw as? List<*>
+            ?: throw IllegalArgumentException("artifacts must be an array of objects")
         return list.mapIndexed { index, item ->
             val map = item as? Map<*, *>
                 ?: throw IllegalArgumentException("artifacts[$index] must be an object")
@@ -105,7 +109,9 @@ class DependencySourcesFacade(
     }
 
     private fun parseSourcePaths(raw: Any?): List<SourcePathRef> {
-        val list = raw as? List<*> ?: return emptyList()
+        if (raw == null) return emptyList()
+        val list = raw as? List<*>
+            ?: throw IllegalArgumentException("sourcePaths must be an array of objects")
         return list.mapIndexed { index, item ->
             val map = item as? Map<*, *>
                 ?: throw IllegalArgumentException("sourcePaths[$index] must be an object")

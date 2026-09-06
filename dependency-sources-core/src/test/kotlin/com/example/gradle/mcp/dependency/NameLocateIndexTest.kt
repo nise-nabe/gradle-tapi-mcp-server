@@ -2,6 +2,7 @@ package com.example.gradle.mcp.dependency
 
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -72,7 +73,7 @@ class NameLocateIndexTest {
         val hitsAll = index.locate("HttpClient")
         hitsAll.map { it.line }.sorted() shouldContainExactly listOf(1, 3)
 
-        val loaded = NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL)!!
+        val loaded = NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL).shouldNotBeNull()
         loaded.stats(indexDir, cacheHit = true).formatVersion shouldBe IndexFormat.VERSION
         loaded.locate("HttpClient").map { it.line }.sorted() shouldContainExactly listOf(1, 3)
 

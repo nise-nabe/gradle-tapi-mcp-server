@@ -47,7 +47,7 @@ object DependencySourceToolCatalog {
                     ),
                     required = listOf("path"),
                 ),
-                "indexDir" to stringProp("Index directory override."),
+                "indexDir" to stringProp("Override dir (writes <dir>/<tokenMode>/)."),
                 "forceReindex" to booleanProp("Rebuild on cache hit. Default false."),
             ),
         )
@@ -59,7 +59,7 @@ object DependencySourceToolCatalog {
                 "query" to stringProp("Exact simple-name to locate"),
                 "tokenMode" to stringProp("Must match an index (all|idents). Prefer all."),
                 "limit" to integerProp("Max hits (default 100)."),
-                "indexDir" to stringProp("Index directory override."),
+                "indexDir" to stringProp("Override dir (writes <dir>/<tokenMode>/)."),
             ),
             required = listOf("query"),
         )

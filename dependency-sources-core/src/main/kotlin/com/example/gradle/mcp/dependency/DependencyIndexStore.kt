@@ -41,7 +41,9 @@ class DependencyIndexStore {
         File(projectDirectory, ".gradle/mcp-dependency-sources/${tokenMode.wireName()}")
 
     fun resolveIndexDir(projectDirectory: File, tokenMode: TokenMode, override: File?): File =
-        override ?: defaultIndexDir(projectDirectory, tokenMode)
+        // Always isolate by tokenMode, including indexDir overrides, so all/idents never share a tree.
+        if (override != null) File(override, tokenMode.wireName())
+        else defaultIndexDir(projectDirectory, tokenMode)
 
     fun index(
         request: IndexRequest,

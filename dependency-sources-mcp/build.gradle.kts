@@ -12,9 +12,7 @@ java {
 
 dependencies {
     api(project(":dependency-sources-core"))
-    implementation(libs.mcp.kotlin.server)
-    implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.kotlinx.serialization.json)
+    // Tooling API types only (ProjectConnection in the access bridge). MCP SDK stays in the root server.
     implementation(libs.gradle.tooling.api)
 }
 

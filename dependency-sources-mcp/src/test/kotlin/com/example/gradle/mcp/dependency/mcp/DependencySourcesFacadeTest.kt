@@ -90,6 +90,32 @@ class DependencySourcesFacadeTest {
         }
         error.message shouldContain "gradle_index_dependency_sources"
     }
+
+    @Test
+    fun `non-array artifacts is rejected instead of falling back to Idea keep-set`() {
+        val project = File(tempDir, "proj3").apply { mkdirs() }
+        val access = StubAccess(project)
+        val error = shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().index(
+                mapOf("artifacts" to "com.example:lib:1.0"),
+                access,
+            )
+        }
+        error.message shouldContain "artifacts must be an array"
+    }
+
+    @Test
+    fun `non-array sourcePaths is rejected`() {
+        val project = File(tempDir, "proj4").apply { mkdirs() }
+        val access = StubAccess(project)
+        val error = shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().index(
+                mapOf("sourcePaths" to mapOf("path" to "/tmp/x")),
+                access,
+            )
+        }
+        error.message shouldContain "sourcePaths must be an array"
+    }
 }
 
 private class StubAccess(
