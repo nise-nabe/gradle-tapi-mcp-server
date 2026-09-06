@@ -7,7 +7,7 @@ import java.nio.file.Files
 import java.security.MessageDigest
 
 object IndexFormat {
-    const val VERSION: Int = 1
+    const val VERSION: Int = 2
     const val MAGIC: Int = 0x4D445349 // MDSI
 }
 
@@ -43,16 +43,14 @@ data class IndexStats(
 
 private data class DocMeta(val gav: String, val path: String)
 
-private data class Occurrence(val docId: Int, val line: Int, val column: Int)
-
 class NameLocateIndex private constructor(
     val tokenMode: TokenMode,
     val fingerprint: String,
     val keepSetMode: String,
     private val dictionary: NameDictionary,
     private val documents: List<DocMeta>,
-    private val occurrences: List<Occurrence>,
     private val postings: List<Pair<ByteArray, Int>>,
+    private val totalOccurrenceCount: Int,
 ) {
     fun stats(indexDir: File, cacheHit: Boolean): IndexStats =
         IndexStats(
@@ -62,7 +60,7 @@ class NameLocateIndex private constructor(
             keepSetMode = keepSetMode,
             docCount = documents.size,
             nameCount = dictionary.size(),
-            occurrenceCount = occurrences.size,
+            occurrenceCount = totalOccurrenceCount,
             indexDir = indexDir,
             cacheHit = cacheHit,
         )
@@ -71,10 +69,9 @@ class NameLocateIndex private constructor(
         if (limit <= 0) return emptyList()
         val nameId = dictionary.lookup(query) ?: return emptyList()
         val (blob, count) = postings.getOrNull(nameId) ?: return emptyList()
-        val indices = GapEliasDeltaCodec.decode(blob, count)
-        val hits = ArrayList<LocateHit>(minOf(limit, indices.size))
-        for (occIndex in indices) {
-            val occ = occurrences[occIndex]
+        val occs = GapEliasDeltaCodec.decodeOccurrences(blob, count)
+        val hits = ArrayList<LocateHit>(minOf(limit, occs.size))
+        for (occ in occs) {
             val doc = documents[occ.docId]
             hits.add(LocateHit(doc.gav, doc.path, occ.line, occ.column))
             if (hits.size >= limit) break
@@ -96,7 +93,7 @@ class NameLocateIndex private constructor(
                         keepSetMode = keepSetMode,
                         docCount = documents.size,
                         nameCount = dictionary.size(),
-                        occurrenceCount = occurrences.size,
+                        occurrenceCount = totalOccurrenceCount,
                         builtAtEpochMs = System.currentTimeMillis(),
                     ),
                 ),
@@ -146,12 +143,6 @@ class NameLocateIndex private constructor(
                 writeUtf(out, doc.gav)
                 writeUtf(out, doc.path)
             }
-            out.writeInt(occurrences.size)
-            for (occ in occurrences) {
-                out.writeInt(occ.docId)
-                out.writeInt(occ.line)
-                out.writeInt(occ.column)
-            }
         }
     }
 
@@ -183,10 +174,9 @@ class NameLocateIndex private constructor(
         ): NameLocateIndex {
             val dictionary = NameDictionary()
             val documents = ArrayList<DocMeta>()
-            val occurrences = ArrayList<Occurrence>()
-            val postingBuilder = ArrayList<ArrayList<Int>>()
+            val postingBuilder = ArrayList<ArrayList<OccPos>>()
 
-            fun ensurePosting(nameId: Int): ArrayList<Int> {
+            fun ensurePosting(nameId: Int): ArrayList<OccPos> {
                 while (postingBuilder.size <= nameId) postingBuilder.add(ArrayList())
                 return postingBuilder[nameId]
             }
@@ -197,18 +187,17 @@ class NameLocateIndex private constructor(
                     documents.add(DocMeta(doc.gav, doc.path))
                     for (token in IdentifierLexer.tokenize(doc.text, tokenMode)) {
                         val nameId = dictionary.intern(token.name)
-                        val occId = occurrences.size
-                        occurrences.add(Occurrence(docId, token.line, token.column))
-                        ensurePosting(nameId).add(occId)
+                        ensurePosting(nameId).add(OccPos(docId, token.line, token.column))
                     }
                 }
             }
 
+            var totalOccurrenceCount = 0
             val postings = ArrayList<Pair<ByteArray, Int>>(dictionary.size())
             for (nameId in 0 until dictionary.size()) {
                 val list = if (nameId < postingBuilder.size) postingBuilder[nameId] else emptyList()
-                val positions = list.toIntArray()
-                postings.add(GapEliasDeltaCodec.encode(positions) to positions.size)
+                totalOccurrenceCount += list.size
+                postings.add(GapEliasDeltaCodec.encodeOccurrences(list) to list.size)
             }
 
             return NameLocateIndex(
@@ -217,8 +206,8 @@ class NameLocateIndex private constructor(
                 keepSetMode = keepSetMode,
                 dictionary = dictionary,
                 documents = documents,
-                occurrences = occurrences,
                 postings = postings,
+                totalOccurrenceCount = totalOccurrenceCount,
             )
         }
 
@@ -244,11 +233,11 @@ class NameLocateIndex private constructor(
             tokenMode: TokenMode,
         ): NameLocateIndex {
             val dictionary = readDictionary(File(directory, DICTIONARY_NAME))
-            val (documents, occurrences) = readDocuments(File(directory, DOCUMENTS_NAME))
+            val documents = readDocuments(File(directory, DOCUMENTS_NAME))
             val postings = readPostings(File(directory, POSTINGS_NAME))
             require(dictionary.size() == manifest.nameCount)
             require(documents.size == manifest.docCount)
-            require(occurrences.size == manifest.occurrenceCount)
+            require(postings.sumOf { it.second } == manifest.occurrenceCount)
             require(postings.size == dictionary.size())
             return NameLocateIndex(
                 tokenMode = tokenMode,
@@ -256,8 +245,8 @@ class NameLocateIndex private constructor(
                 keepSetMode = manifest.keepSetMode,
                 dictionary = dictionary,
                 documents = documents,
-                occurrences = occurrences,
                 postings = postings,
+                totalOccurrenceCount = manifest.occurrenceCount,
             )
         }
 
@@ -271,18 +260,13 @@ class NameLocateIndex private constructor(
             }
         }
 
-        private fun readDocuments(file: File): Pair<List<DocMeta>, List<Occurrence>> {
+        private fun readDocuments(file: File): List<DocMeta> {
             DataInputStream(file.inputStream().buffered()).use { input ->
                 requireMagic(input)
                 val docCount = input.readInt()
                 val documents = ArrayList<DocMeta>(docCount)
                 repeat(docCount) { documents.add(DocMeta(readUtf(input), readUtf(input))) }
-                val occCount = input.readInt()
-                val occurrences = ArrayList<Occurrence>(occCount)
-                repeat(occCount) {
-                    occurrences.add(Occurrence(input.readInt(), input.readInt(), input.readInt()))
-                }
-                return documents to occurrences
+                return documents
             }
         }
 

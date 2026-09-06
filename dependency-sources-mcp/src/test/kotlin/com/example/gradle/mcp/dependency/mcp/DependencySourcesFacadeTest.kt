@@ -35,7 +35,7 @@ class DependencySourcesFacadeTest {
         )
         indexed["cacheHit"] shouldBe false
         indexed["tokenMode"] shouldBe "all"
-        indexed["formatVersion"] shouldBe 1
+        indexed["formatVersion"] shouldBe 2
 
         val searchAll = facade.search(
             mapOf("query" to "Foo", "tokenMode" to "all"),
