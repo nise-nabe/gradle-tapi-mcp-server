@@ -16,7 +16,7 @@
 
 - Standalone MCP server exposing Gradle Tooling API over stdio to MCP clients.
 - GitHub repository: `nise-nabe/gradle-tapi-mcp-server` (public, default branch `main`).
-- Stack: Kotlin 2.4.10, Java 17 toolchain, **Kotlin** MCP SDK 0.15.0 (`io.modelcontextprotocol:kotlin-sdk-server`), Gradle Tooling API 9.7.0, kotlinx.serialization（ツール結果 JSON・MCP ワイヤ）。
+- Stack: Kotlin 2.4.10, Java 17 toolchain, **Kotlin** MCP SDK 0.15.0 (`io.modelcontextprotocol:kotlin-sdk-server`), Gradle Tooling API 9.7.1, kotlinx.serialization（ツール結果 JSON・MCP ワイヤ）。
 - Build uses `gradle/libs.versions.toml`, `dependencyResolutionManagement` with `FAIL_ON_PROJECT_REPOS`, JVM Test Suites (JUnit 5), Configuration Cache, and Isolated Projects (`org.gradle.isolated-projects=true`).
 - Multi-module: root MCP server plus `:dependency-sources-core` / `:dependency-sources-mcp` for dependency-sources name locate; feature subpackages (`build`, `cache`, `connection`, `model`, `protocol`, `server`, `dependency`) under `com.example.gradle.mcp`; MCP tool definitions live in each feature package with shared helpers in `protocol`; `build-logic` deferred until further need arises.
 - `gradle-wrapper.jar` is explicitly un-ignored so clones can run `./gradlew`.
@@ -38,7 +38,7 @@ Kotlin/JVM MCP server (stdio) with optional `:dependency-sources-*` modules. No 
 
 `.cursor/environment.json` runs `.cursor/install.sh` on every Cloud Agent session:
 
-1. Downloads release JAR (version in `.cursor/install.sh` `GRADLE_TAPI_MCP_VERSION`, currently **0.7.1**) with SHA-256 verification to `~/.local/share/gradle-tapi-mcp-server/gradle-tapi-mcp-server.jar` so MCP can drive this repo's build when needed
+1. Downloads release JAR (version in `.cursor/install.sh` `GRADLE_TAPI_MCP_VERSION`, currently **0.8.0**) with SHA-256 verification to `~/.local/share/gradle-tapi-mcp-server/gradle-tapi-mcp-server.jar` so MCP can drive this repo's build when needed
 2. Configures `gh` from `/exec-daemon/gh` (optional `GH_TOKEN` / `GITHUB_TOKEN` login)
 3. Ensures **JDK 17** for `./gradlew` (toolchain in `build.gradle.kts`; JDK 21+ can run the MCP JAR at runtime)
 
@@ -71,17 +71,17 @@ Do not rely on bare `gh` before install completes. Set `GH_TOKEN` in Cursor Clou
 
 | Goal | Command |
 |------|---------|
-| Build JAR | `./gradlew jar` → `build/libs/gradle-tapi-mcp-server-0.7.1.jar` |
+| Build JAR | `./gradlew jar` → `build/libs/gradle-tapi-mcp-server-0.8.0.jar` |
 | Unit tests | `./gradlew test` (JUnit 5; mocked Tooling API, no Gradle daemon) |
 | Full verify | `./gradlew build` (compile + test + assemble) |
 | Lint | Not configured; use `./gradlew build` as compile/test gate |
-| Run MCP server | `GRADLE_PROJECT_DIR=/workspace java -jar build/libs/gradle-tapi-mcp-server-0.7.1.jar` |
+| Run MCP server | `GRADLE_PROJECT_DIR=/workspace java -jar build/libs/gradle-tapi-mcp-server-0.8.0.jar` |
 
 Logging goes to **stderr** only; **stdout** is reserved for MCP JSON-RPC (newline-delimited JSON).
 
 ### E2E smoke test (MCP + Gradle Tooling API)
 
-After `./gradlew jar`, drive the server over stdio: send `initialize` → `notifications/initialized` → `tools/list` → `tools/call` for `gradle_connection_status` and `gradle_get_project_overview` with `GRADLE_PROJECT_DIR` set to a Gradle project (this repo works). Expect `connected: true`, the resolved Gradle version of the connected project (this repo: wrapper **9.7.0**), and project name `gradle-tapi-mcp-server`.
+After `./gradlew jar`, drive the server over stdio: send `initialize` → `notifications/initialized` → `tools/list` → `tools/call` for `gradle_connection_status` and `gradle_get_project_overview` with `GRADLE_PROJECT_DIR` set to a Gradle project (this repo works). Expect `connected: true`, the resolved Gradle version of the connected project (this repo: wrapper **9.7.1**), and project name `gradle-tapi-mcp-server`.
 
 `GradleTapiMcpServerLauncherSmokeTest` runs during `./gradlew build` (jar + initialize smoke). Optional local benchmark: `scripts/measure_startup.py` after `./gradlew jar`.
 

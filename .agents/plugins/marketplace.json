@@ -15,7 +15,7 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Productivity",
-      "version": "0.7.1",
+      "version": "0.8.0",
       "homepage": "https://github.com/nise-nabe/gradle-tapi-mcp-server",
       "repository": "https://github.com/nise-nabe/gradle-tapi-mcp-server"
     }

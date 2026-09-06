@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Gradle Tooling API MCP server plugins",
-    "version": "0.7.1"
+    "version": "0.8.0"
   },
   "plugins": [
     {
       "name": "gradle-tapi-mcp",
       "source": "./plugins/gradle-tapi-mcp",
       "description": "Query and run Gradle builds through the Gradle Tooling API MCP server with token-efficient defaults.",
-      "version": "0.7.1",
+      "version": "0.8.0",
       "author": {
         "name": "nise-nabe"
       },
