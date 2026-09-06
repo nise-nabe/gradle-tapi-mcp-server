@@ -286,27 +286,31 @@ class DependencyIndexStoreSearchTest {
     }
 
     @Test
-    fun `search without tokenMode falls back to idents when all index is stale`() {
-        val sources = File(tempDir, "src-fallback").apply { mkdirs() }
-        File(sources, "A.kt").writeText("fun Foo() {}\n")
+    fun `search without tokenMode falls back past stale ALL to valid IDENTS`() {
+        val sourcesAll = File(tempDir, "src-all-stale").apply { mkdirs() }
+        File(sourcesAll, "A.kt").writeText("fun AllOnly() {}\n")
+        val sourcesIdents = File(tempDir, "src-idents-ok").apply { mkdirs() }
+        File(sourcesIdents, "B.kt").writeText("fun IdentsHit() {}\n")
         val project = File(tempDir, "proj-fallback").apply { mkdirs() }
         val store = DependencyIndexStore()
-        store.index(
-            IndexRequest(
-                projectDirectory = project,
-                tokenMode = TokenMode.IDENTS,
-                sourcePaths = listOf(SourcePathRef(path = sources)),
-            ),
-            connection = null,
-        )
+
         store.index(
             IndexRequest(
                 projectDirectory = project,
                 tokenMode = TokenMode.ALL,
-                sourcePaths = listOf(SourcePathRef(path = sources)),
+                sourcePaths = listOf(SourcePathRef(path = sourcesAll)),
             ),
             connection = null,
         )
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sourcesIdents)),
+            ),
+            connection = null,
+        )
+
         val allManifest = File(store.defaultIndexDir(project, TokenMode.ALL), NameLocateIndex.MANIFEST_NAME)
         allManifest.writeText(
             allManifest.readText().replace(
@@ -315,21 +319,23 @@ class DependencyIndexStoreSearchTest {
             ),
         )
 
-        val result = DependencyIndexStore().search(
+        val fresh = DependencyIndexStore()
+        val result = fresh.search(
             SearchRequest(
                 projectDirectory = project,
-                query = "Foo",
+                query = "IdentsHit",
                 tokenMode = null,
             ),
         )
         result.hitCount shouldBe 1
+        result.hits.single().path shouldBe "B.kt"
         result.stats.tokenMode shouldBe TokenMode.IDENTS
     }
 
     @Test
-    fun `forceReindex evicts cached index before rebuild`() {
+    fun `forceReindex succeeds after mmap-backed search warm cache`() {
         val sources = File(tempDir, "src-reindex").apply { mkdirs() }
-        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        File(sources, "A.kt").writeText("fun ReindexMe() {}\n")
         val project = File(tempDir, "proj-reindex").apply { mkdirs() }
         val store = DependencyIndexStore()
         store.index(
@@ -340,16 +346,19 @@ class DependencyIndexStoreSearchTest {
             ),
             connection = null,
         )
-        val indexDir = store.defaultIndexDir(project, TokenMode.IDENTS)
-        val manifest = File(indexDir, NameLocateIndex.MANIFEST_NAME)
-        manifest.writeText(
-            manifest.readText().replace(
-                "\"formatVersion\":${IndexFormat.VERSION}",
-                "\"formatVersion\":2",
-            ),
-        )
 
-        store.index(
+        // Load mmap-backed index into the store cache.
+        val warm = DependencyIndexStore()
+        warm.search(
+            SearchRequest(
+                projectDirectory = project,
+                query = "ReindexMe",
+                tokenMode = TokenMode.IDENTS,
+            ),
+        ).hitCount shouldBe 1
+
+        File(sources, "A.kt").writeText("fun ReindexMe() {}\nfun AfterRebuild() {}\n")
+        val rebuilt = warm.index(
             IndexRequest(
                 projectDirectory = project,
                 tokenMode = TokenMode.IDENTS,
@@ -358,16 +367,15 @@ class DependencyIndexStoreSearchTest {
             ),
             connection = null,
         )
+        rebuilt.stats.cacheHit shouldBe false
 
-        val result = store.search(
+        warm.search(
             SearchRequest(
                 projectDirectory = project,
-                query = "Foo",
+                query = "AfterRebuild",
                 tokenMode = TokenMode.IDENTS,
             ),
-        )
-        result.hitCount shouldBe 1
-        result.stats.formatVersion shouldBe IndexFormat.VERSION
+        ).hitCount shouldBe 1
     }
 
     @Test

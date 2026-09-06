@@ -96,7 +96,8 @@ object GapEliasDeltaCodec {
 
     /**
      * Walk a posting payload without allocating [OccPos] instances.
-     * Used at index load to validate docId ranges with lower GC pressure.
+     * Optional full-walk helper for docId range checks (search-time validation uses
+     * [forEachOccurrence] instead; call this when eagerly validating an entire blob).
      */
     internal fun validateOccurrences(bytes: ByteArray, count: Int, docCount: Int) {
         require(docCount >= 0) { "docCount must be non-negative" }

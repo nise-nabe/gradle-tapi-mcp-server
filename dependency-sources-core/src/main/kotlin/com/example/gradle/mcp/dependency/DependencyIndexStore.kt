@@ -116,6 +116,9 @@ class DependencyIndexStore {
             fingerprint = fingerprint,
             keepSetMode = keepSet.mode,
         )
+        // Drop any mmap-backed entry before replacing on-disk files (mapped buffers can
+        // block directory moves/deletes, especially on Windows).
+        memory.remove(key)
         built.writeTo(indexDir)
         memory[key] = built
         return IndexResult(
@@ -272,6 +275,8 @@ class DependencyIndexStore {
                         expectedTokenMode = mode,
                     )
                 } catch (error: UnsupportedIndexFormatException) {
+                    // Explicit mode: fail fast. Unspecified mode: try the next candidate
+                    // (e.g. stale v2 ALL must not hide a valid v3 IDENTS index).
                     if (tokenMode != null) throw error
                     staleFormatError = error
                     continue
