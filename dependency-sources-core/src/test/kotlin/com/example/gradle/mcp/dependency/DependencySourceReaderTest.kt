@@ -315,4 +315,27 @@ class DependencySourceReaderTest {
             )
         }
     }
+
+    @Test
+    fun `endLine matches truncated snippet when max snippet chars bind`() {
+        val tree = File(tempDir, "snippet-cap").apply { mkdirs() }
+        // Several medium lines that together exceed MAX_SNIPPET_CHARS
+        val line = "y".repeat(1_000)
+        val body = (1..400).joinToString("\n") { line }
+        File(tree, "Wide.kt").writeText(body)
+        val result = DependencySourceReader.read(
+            ReadSourceRequest(
+                artifact = DependencyArtifactRef("g", "n", "1"),
+                path = "Wide.kt",
+                // omit line → read from start with default maxLines
+                maxLines = 400,
+                sourceRoot = tree,
+            ),
+        )
+        result.truncated shouldBe true
+        val snippetLines = if (result.snippet.isEmpty()) 0 else result.snippet.lines().size
+        result.endLine shouldBe snippetLines
+        result.startLine shouldBe 1
+        (result.snippet.length <= ReadSourceRequest.MAX_SNIPPET_CHARS) shouldBe true
+    }
 }

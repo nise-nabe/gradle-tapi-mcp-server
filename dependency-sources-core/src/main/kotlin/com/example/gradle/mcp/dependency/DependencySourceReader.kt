@@ -231,10 +231,10 @@ object DependencySourceReader {
             if (total == 0) {
                 return ExtractedSnippet(0, 0, 0, "", truncated = false)
             }
-            val endLine = minOf(total, maxLines)
             val snippet = joinBounded(kept)
+            val endLine = snippet.includedLines
             return ExtractedSnippet(
-                startLine = 1,
+                startLine = if (endLine == 0) 0 else 1,
                 endLine = endLine,
                 lineCount = total,
                 snippet = snippet.text,
@@ -261,14 +261,17 @@ object DependencySourceReader {
         if (line > total) {
             return ExtractedSnippet(0, 0, total, "", truncated = false)
         }
-        val endLine = minOf(total, windowEnd)
         val snippet = joinBounded(kept)
+        val endLine =
+            if (snippet.includedLines == 0) 0
+            else windowStart + snippet.includedLines - 1
         return ExtractedSnippet(
-            startLine = windowStart,
+            startLine = if (snippet.includedLines == 0) 0 else windowStart,
             endLine = endLine,
             lineCount = total,
             snippet = snippet.text,
-            truncated = windowStart > 1 || endLine < total || lineTruncated || snippet.truncated,
+            truncated = windowStart > 1 || endLine < minOf(total, windowEnd) ||
+                lineTruncated || snippet.truncated,
         )
     }
 
@@ -303,32 +306,26 @@ object DependencySourceReader {
         return BoundedLine(sb.toString(), truncated)
     }
 
-    private fun joinBounded(lines: List<String>): BoundedLine {
-        if (lines.isEmpty()) return BoundedLine("", truncated = false)
+    private data class BoundedSnippet(val text: String, val truncated: Boolean, val includedLines: Int)
+
+    private fun joinBounded(lines: List<String>): BoundedSnippet {
+        if (lines.isEmpty()) return BoundedSnippet("", truncated = false, includedLines = 0)
         val max = ReadSourceRequest.MAX_SNIPPET_CHARS
         val sb = StringBuilder()
         var truncated = false
+        var included = 0
         for ((index, row) in lines.withIndex()) {
-            if (index > 0) {
-                if (sb.length >= max) {
-                    truncated = true
-                    break
-                }
-                sb.append('\n')
-            }
-            val remaining = max - sb.length
-            if (remaining <= 0) {
+            val needsNl = index > 0
+            val cost = row.length + (if (needsNl) 1 else 0)
+            if (sb.length + cost > max) {
                 truncated = true
                 break
             }
-            if (row.length <= remaining) {
-                sb.append(row)
-            } else {
-                sb.append(row, 0, remaining)
-                truncated = true
-                break
-            }
+            if (needsNl) sb.append('\n')
+            sb.append(row)
+            included += 1
         }
-        return BoundedLine(sb.toString(), truncated)
+        if (included < lines.size) truncated = true
+        return BoundedSnippet(sb.toString(), truncated = truncated, includedLines = included)
     }
 }

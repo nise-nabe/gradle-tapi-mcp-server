@@ -7,6 +7,12 @@ import java.util.zip.ZipFile
  * Side-car mapping of GAV → source roots written next to an index.
  * Does not bump [IndexFormat.VERSION]; older indexes simply lack the file.
  */
+sealed interface SourceRootResolution {
+    data class Found(val root: File) : SourceRootResolution
+    data object Missing : SourceRootResolution
+    data object Ambiguous : SourceRootResolution
+}
+
 object IndexSourceRoots {
     const val FILE_NAME: String = "source-roots.tsv"
 
@@ -53,21 +59,22 @@ object IndexSourceRoots {
         gav: String,
         path: String,
         jarEntriesCache: MutableMap<String, Set<String>>? = null,
-    ): File? {
+    ): SourceRootResolution {
         val roots = rootsByGav[gav].orEmpty().filter { it.exists() }
-        if (roots.isEmpty()) return null
-        val normalized = normalizeRelativePath(path) ?: return null
+        if (roots.isEmpty()) return SourceRootResolution.Missing
+        val normalized = normalizeRelativePath(path) ?: return SourceRootResolution.Missing
         var match: File? = null
         for (root in roots) {
             if (!containsPath(root, normalized, jarEntriesCache)) continue
             if (match != null) {
                 // Multiple roots contain the same relative path — do not guess.
-                return null
+                return SourceRootResolution.Ambiguous
             }
             match = root
         }
-        return match
+        return match?.let { SourceRootResolution.Found(it) } ?: SourceRootResolution.Missing
     }
+
 
     internal fun normalizeRelativePath(path: String): String? {
         val normalized = path.trim().trimStart('/').replace('\\', '/')

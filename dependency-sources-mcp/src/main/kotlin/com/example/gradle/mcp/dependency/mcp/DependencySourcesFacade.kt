@@ -4,6 +4,7 @@ import com.example.gradle.mcp.dependency.DependencyArtifactRef
 import com.example.gradle.mcp.dependency.DependencyIndexStore
 import com.example.gradle.mcp.dependency.DependencySourceReader
 import com.example.gradle.mcp.dependency.IndexSourceRoots
+import com.example.gradle.mcp.dependency.SourceRootResolution
 import com.example.gradle.mcp.dependency.IndexRequest
 import com.example.gradle.mcp.dependency.ReadSourceRequest
 import com.example.gradle.mcp.dependency.SearchMultiRequest
@@ -288,13 +289,21 @@ class DependencySourcesFacade(
         } else {
             listOf(TokenMode.ALL, TokenMode.IDENTS)
         }
+        var sawAmbiguous = false
         for (mode in modes) {
             val dir = store.resolveIndexDir(projectDirectory, mode, indexDir)
             val roots = IndexSourceRoots.load(dir)
-            val resolved = IndexSourceRoots.resolve(roots, artifact.gav(), path)
-            if (resolved != null) {
-                return resolved
+            when (val resolved = IndexSourceRoots.resolve(roots, artifact.gav(), path)) {
+                is SourceRootResolution.Found -> return resolved.root
+                SourceRootResolution.Ambiguous -> sawAmbiguous = true
+                SourceRootResolution.Missing -> Unit
             }
+        }
+        if (sawAmbiguous) {
+            throw IllegalArgumentException(
+                "Multiple indexed source roots contain path '$path' for ${artifact.gav()}. " +
+                    "Pass sourceRoot explicitly to disambiguate.",
+            )
         }
         return null
     }

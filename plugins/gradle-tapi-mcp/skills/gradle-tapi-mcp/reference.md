@@ -287,7 +287,7 @@ Exact simple-name locate against a prior index. Optional `limit` / `perQueryLimi
 
 Returns `snippet`, `startLine`, `endLine`, `lineCount`, `truncated`, and resolved `sourceRoot`.
 
-Search hits may include `sourceRoot` from the index side-car `source-roots.tsv` (written at index time). Hits omit `sourceRoot` when multiple roots contain the same path. `gradle_read_dependency_source` uses that path when `sourceRoot` is omitted (before falling back to cache jar lookup); an explicit `sourceRoot` works without a Gradle connection. `contextLines` max 100; `maxLines` max 2000. Oversized lines/snippets are truncated (`MAX_LINE_CHARS` / `MAX_SNIPPET_CHARS`) and `truncated=true`.
+Search hits may include `sourceRoot` from the index side-car `source-roots.tsv` (written at index time). Hits omit `sourceRoot` when multiple roots contain the same path. `gradle_read_dependency_source` uses that path when `sourceRoot` is omitted (before falling back to cache jar lookup); if the path is ambiguous across indexed roots, read fails and requires an explicit `sourceRoot` (no silent jar fallback). An explicit `sourceRoot` works without a Gradle connection. `contextLines` max 100; `maxLines` max 2000. Oversized lines/snippets are truncated (`MAX_LINE_CHARS` / `MAX_SNIPPET_CHARS`) and `truncated=true`.
 
 ## MCP tool discovery (token-efficient)
 

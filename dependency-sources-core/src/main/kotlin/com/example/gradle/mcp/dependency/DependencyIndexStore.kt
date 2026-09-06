@@ -309,8 +309,10 @@ class DependencyIndexStore {
         val jarEntriesCache = HashMap<String, Set<String>>()
         return hits.map { hit ->
             if (hit.sourceRoot != null) return@map hit
-            val root = IndexSourceRoots.resolve(roots, hit.gav, hit.path, jarEntriesCache) ?: return@map hit
-            hit.copy(sourceRoot = root.absolutePath)
+            when (val resolved = IndexSourceRoots.resolve(roots, hit.gav, hit.path, jarEntriesCache)) {
+                is SourceRootResolution.Found -> hit.copy(sourceRoot = resolved.root.absolutePath)
+                SourceRootResolution.Missing, SourceRootResolution.Ambiguous -> hit
+            }
         }
     }
 

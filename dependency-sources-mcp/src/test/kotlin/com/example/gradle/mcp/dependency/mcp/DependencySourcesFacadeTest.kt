@@ -567,6 +567,35 @@ class DependencySourcesFacadeTest {
         result["truncated"] shouldBe false
     }
 
+    @Test
+    fun `read fails closed when indexed roots are ambiguous for path`() {
+        val a = File(tempDir, "ambig-a").apply { mkdirs() }
+        val b = File(tempDir, "ambig-b").apply { mkdirs() }
+        File(a, "Shared.kt").writeText("class SharedA\n")
+        File(b, "Shared.kt").writeText("class SharedB\n")
+        val project = File(tempDir, "proj-ambig").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(
+                    mapOf("path" to a.absolutePath, "group" to "g", "name" to "n", "version" to "1"),
+                    mapOf("path" to b.absolutePath, "group" to "g", "name" to "n", "version" to "1"),
+                ),
+            ),
+            access,
+        )
+        shouldThrow<IllegalArgumentException> {
+            facade.read(
+                mapOf(
+                    "gav" to "g:n:1",
+                    "path" to "Shared.kt",
+                ),
+                access,
+            )
+        }.message shouldContain "sourceRoot"
+    }
+
     private fun placeSourcesJar(
         gradleUserHome: File,
         group: String,
