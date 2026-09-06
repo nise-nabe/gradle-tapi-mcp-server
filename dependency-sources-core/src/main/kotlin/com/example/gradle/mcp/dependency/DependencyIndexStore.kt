@@ -42,20 +42,37 @@ class DependencyIndexStore {
 
     fun resolveIndexDir(projectDirectory: File, tokenMode: TokenMode, override: File?): File =
         // Always isolate by tokenMode, including indexDir overrides, so all/idents never share a tree.
-        if (override != null) File(override, tokenMode.wireName())
-        else defaultIndexDir(projectDirectory, tokenMode)
+        if (override != null) {
+            File(override, tokenMode.wireName())
+        } else {
+            defaultIndexDir(projectDirectory, tokenMode)
+        }
 
-    fun index(
+    /**
+     * Resolve the keep-set only. Callers that need Idea Tooling API should hold
+     * connection / no-active-build locks around this method, then call [index] unlocked.
+     */
+    fun resolveKeepSet(
         request: IndexRequest,
         connection: ProjectConnection?,
-    ): IndexResult {
+    ): ResolvedKeepSet {
         val explicit = request.artifacts.isNotEmpty() || request.sourcePaths.isNotEmpty()
-        val keepSet = DependencyKeepSetResolver.resolve(
+        return DependencyKeepSetResolver.resolve(
             connection = if (explicit) null else connection,
             artifacts = request.artifacts,
             sourcePaths = request.sourcePaths,
             gradleUserHome = request.gradleUserHome,
         )
+    }
+
+    /**
+     * Build or load the on-disk index for an already-resolved keep-set.
+     * Does not touch Gradle Tooling API — safe outside [ProjectLifecycleGuard].
+     */
+    fun index(
+        request: IndexRequest,
+        keepSet: ResolvedKeepSet,
+    ): IndexResult {
         val fingerprint = KeepSetFingerprint.compute(
             tokenMode = request.tokenMode,
             keepSetMode = keepSet.mode,
@@ -92,6 +109,12 @@ class DependencyIndexStore {
             memberCount = keepSet.members.size,
         )
     }
+
+    /** Convenience for tests: resolve keep-set then index in one call. */
+    fun index(
+        request: IndexRequest,
+        connection: ProjectConnection?,
+    ): IndexResult = index(request, resolveKeepSet(request, connection))
 
     fun search(request: SearchRequest): SearchResult {
         require(request.query.isNotBlank()) { "query must not be blank" }

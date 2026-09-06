@@ -29,17 +29,18 @@ class DependencySourcesFacade(
             indexDir = indexDir,
             forceReindex = forceReindex,
         )
-        // Hold the no-active-build gate only for Idea keep-set resolution (Tooling API).
-        // Explicit artifacts/sourcePaths index locally and must not block unrelated builds.
-        val result = if (needsConnection) {
+        // Hold no-active-build + connection only while resolving the Idea keep-set.
+        // Corpus lex / disk write run unlocked so unrelated builds are not blocked.
+        val keepSet = if (needsConnection) {
             access.withNoActiveBuild(projectDirectory) {
                 access.withConnection(projectDirectory) { connection ->
-                    store.index(request, connection)
+                    store.resolveKeepSet(request, connection)
                 }
             }
         } else {
-            store.index(request, connection = null)
+            store.resolveKeepSet(request, connection = null)
         }
+        val result = store.index(request, keepSet)
 
         val stats = result.stats
         return linkedMapOf(
