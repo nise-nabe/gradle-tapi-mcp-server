@@ -24,7 +24,7 @@ JAR only after you need to test server changes (not during `./gradlew build` of 
 2. `gradle_get_build_environment` — resolved Gradle/Java versions
 3. `gradle_get_project_overview` — project name and task counts (scope with `projectPath` on multi-module repos)
 4. `gradle_run_tasks` with `["build"]` or `gradle_run_tests` when verification is needed
-5. Optional: `gradle_index_dependency_sources` then `gradle_search_dependency_sources` (or `gradle_search_dependency_sources_multi` for several names), then `gradle_read_dependency_source` for a hit snippet (`line` + `contextLines=10`; omit `line` → `maxLines=200`; Idea dirs/`sourcePaths` need `sourceRoot`). `limit` / `perQueryLimit` omit = unlimited; `0` = empty (`per_query_limit` alias; `tokenMode=all` default)
+5. Optional: `gradle_index_dependency_sources` then `gradle_search_dependency_sources` (or `gradle_search_dependency_sources_multi` for several names), then `gradle_read_dependency_source` for a hit snippet (`line` + `contextLines=10`; omit `line` → `maxLines=200`; Idea dirs/`sourcePaths` get `sourceRoot` on hits). `limit` / `perQueryLimit` omit = unlimited; `0` = empty (`per_query_limit` alias; `tokenMode=all` default)
 
 Avoid `includeTasks=true` and heavy model queries unless necessary. On multi-module projects, pass `projectPath` (e.g. `:plugin`) to scope overview/model/invocation queries to a subproject subtree within the connected build only (not included/editable composite builds; use `gradle_get_gradle_build` for those). `gradle_run_tasks` omits stdout/stderr by default (`includeOutput=false`).
 

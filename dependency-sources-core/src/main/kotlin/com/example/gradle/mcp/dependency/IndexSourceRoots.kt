@@ -44,11 +44,13 @@ object IndexSourceRoots {
     fun resolve(rootsByGav: Map<String, List<File>>, gav: String, path: String): File? {
         val roots = rootsByGav[gav].orEmpty().filter { it.exists() }
         if (roots.isEmpty()) return null
+        // Common case: one root per GAV — skip jar entry probes on every search hit.
+        if (roots.size == 1) return roots[0]
         val normalized = path.trim().trimStart('/').replace('\\', '/')
         for (root in roots) {
             if (containsPath(root, normalized)) return root
         }
-        return roots.singleOrNull()
+        return null
     }
 
     private fun containsPath(root: File, path: String): Boolean =

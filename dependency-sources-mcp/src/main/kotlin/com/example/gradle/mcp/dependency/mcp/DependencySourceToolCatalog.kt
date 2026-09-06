@@ -24,7 +24,7 @@ object DependencySourceToolCatalog {
 
     const val READ_DESCRIPTION: String =
         "Read UTF-8 snippet from dependency sources jar/dir. " +
-            "Need gav|group+name+version + path. Cache jars by coords; Idea/sourcePaths use hit sourceRoot or arg. " +
+            "Need gav|group+name+version + path. Cache jars by coords; Idea/sourcePaths: prefer hit sourceRoot. " +
             "line+contextLines=10; omit line → maxLines=200."
 
     fun specs(): List<DependencySourceToolSpec> =
@@ -108,7 +108,7 @@ object DependencySourceToolCatalog {
                 "line" to integerProp("Optional 1-based anchor; must be within file."),
                 "contextLines" to integerProp("Lines before/after line (default 10, max 100)."),
                 "maxLines" to integerProp("Whole-file cap when line omitted (default 200, max 2000)."),
-                "sourceRoot" to stringProp("Jar/zip/dir/file; required for Idea dirs / sourcePaths."),
+                "sourceRoot" to stringProp("Jar/zip/dir/file override; else hit/index/cache."),
                 "gradleUserHome" to stringProp("Cache home for *-sources.jar; else connected."),
             ),
             required = listOf("path"),
