@@ -48,11 +48,7 @@ internal sealed class PostingsTable {
 
         override fun postingAt(nameId: Int): PostingSlice? {
             val entry = meta.getOrNull(nameId) ?: return null
-            val start = dataBase + entry.offset
-            val end = start + entry.len
-            require(start >= dataBase && end <= buffer.limit()) {
-                "corrupt postings: name id $nameId blob out of range"
-            }
+            val start = validatedBlobStart(dataBase, entry.offset, entry.len, buffer.limit(), nameId)
             return PostingSlice(buffer = buffer, offset = start, length = entry.len, count = entry.count)
         }
     }
@@ -132,14 +128,28 @@ internal sealed class PostingsTable {
                 require(count > 0 || len == 0) {
                     "empty occurrence count cannot have a non-empty posting blob"
                 }
-                val start = dataBase + offset
-                val end = start + len
-                require(start >= dataBase && end <= duplicate.limit()) {
-                    "corrupt postings: name id $id blob out of range"
-                }
+                validatedBlobStart(dataBase, offset, len, duplicate.limit(), id)
                 meta.add(PostingMeta(count = count, offset = offset, len = len))
             }
             return Mmap(buffer = buffer, meta = meta, dataBase = dataBase)
+        }
+
+        private fun validatedBlobStart(
+            dataBase: Int,
+            offset: Int,
+            len: Int,
+            bufferLimit: Int,
+            nameId: Int,
+        ): Int {
+            val startLong = dataBase.toLong() + offset.toLong()
+            val endLong = startLong + len.toLong()
+            require(startLong >= dataBase.toLong() && endLong <= bufferLimit.toLong()) {
+                "corrupt postings: name id $nameId blob out of range"
+            }
+            require(startLong <= Int.MAX_VALUE.toLong()) {
+                "corrupt postings: name id $nameId blob out of range"
+            }
+            return startLong.toInt()
         }
     }
 }

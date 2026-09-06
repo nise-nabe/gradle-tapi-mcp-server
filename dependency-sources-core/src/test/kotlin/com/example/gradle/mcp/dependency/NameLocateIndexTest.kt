@@ -64,6 +64,21 @@ class GapEliasDeltaCodecTest {
     }
 
     @Test
+    fun `forEachOccurrence rejects negative limit`() {
+        val occs = listOf(OccPos(docId = 0, line = 1, column = 0))
+        val encoded = GapEliasDeltaCodec.encodeOccurrences(occs)
+        val error = shouldThrow<IllegalArgumentException> {
+            GapEliasDeltaCodec.forEachOccurrence(
+                bytes = encoded,
+                count = occs.size,
+                docCount = 1,
+                limit = -1,
+            ) { _, _, _ -> true }
+        }
+        error.message shouldContain "non-negative"
+    }
+
+    @Test
     fun `round-trips occurrence payloads with same-doc and doc-change`() {
         val occs =
             listOf(

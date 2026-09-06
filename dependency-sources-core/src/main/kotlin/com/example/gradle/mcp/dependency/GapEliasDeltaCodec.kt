@@ -145,6 +145,7 @@ object GapEliasDeltaCodec {
         action: (docId: Int, line: Int, column: Int) -> Boolean,
     ) {
         require(count >= 0) { "occurrence count must be non-negative" }
+        require(limit == null || limit >= 0) { "limit must be non-negative" }
         if (count == 0) return
         val maxBits = reader.remainingBits()
         require(count.toLong() <= maxBits) {

@@ -98,7 +98,13 @@ class NameLocateIndex private constructor(
         requireNonNegativeLimit(limit)
         val nameId = dictionary.lookup(query) ?: return emptyList()
         val posting = postings.postingAt(nameId) ?: return emptyList()
-        val hits = ArrayList<LocateHit>()
+        val expectedHits =
+            when (limit) {
+                null -> posting.count
+                0 -> 0
+                else -> minOf(limit, posting.count)
+            }
+        val hits = ArrayList<LocateHit>(expectedHits)
         posting.forEachOccurrence(documents.size, limit) { docId, line, column ->
             val doc = documents[docId]
             hits.add(LocateHit(doc.gav, doc.path, line, column))
