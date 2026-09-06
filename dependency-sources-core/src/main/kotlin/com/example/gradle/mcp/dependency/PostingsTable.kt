@@ -125,8 +125,8 @@ internal sealed class PostingsTable {
                 val len = duplicate.getInt()
                 require(count >= 0) { "occurrence count must be non-negative" }
                 require(len >= 0) { "posting blob size must be non-negative" }
-                require(count > 0 || len == 0) {
-                    "empty occurrence count cannot have a non-empty posting blob"
+                require((count == 0) == (len == 0)) {
+                    "occurrence count and posting blob size are inconsistent"
                 }
                 validatedBlobStart(dataBase, offset, len, duplicate.limit(), id)
                 meta.add(PostingMeta(count = count, offset = offset, len = len))

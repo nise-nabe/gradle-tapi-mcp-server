@@ -542,6 +542,31 @@ class NameLocateIndexTest {
     }
 
     @Test
+    fun `rejects positive occCount with empty blob`() {
+        val sources = File(tempDir, "src-empty-blob-positive-count").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}")
+        val members = listOf(KeepSetMember(gav = "g:a:1", sourceRoot = sources))
+        val fingerprint = KeepSetFingerprint.compute(TokenMode.ALL, "explicit", members)
+        val index = NameLocateIndex.build(members, TokenMode.ALL, fingerprint, "explicit")
+        val indexDir = File(tempDir, "idx-empty-blob-positive-count")
+        index.writeTo(indexDir)
+
+        val postingsFile = File(indexDir, NameLocateIndex.POSTINGS_NAME)
+        val bytes = postingsFile.readBytes().toMutableList()
+        // First offset-table row: keep count=1, force len=0 (little-endian).
+        bytes[4] = 1
+        bytes[5] = 0
+        bytes[6] = 0
+        bytes[7] = 0
+        bytes[12] = 0
+        bytes[13] = 0
+        bytes[14] = 0
+        bytes[15] = 0
+        postingsFile.writeBytes(bytes.toByteArray())
+        NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
+    }
+
+    @Test
     fun `rejects absurd posting entry count`() {
         val sources = File(tempDir, "src-huge-count").apply { mkdirs() }
         File(sources, "A.kt").writeText("fun Foo() {}")
