@@ -68,6 +68,14 @@ class GapEliasDeltaCodecTest {
 }
 
 
+
+    @Test
+    fun `round-trips first docId at Int MAX_VALUE`() {
+        val occs = listOf(OccPos(docId = Int.MAX_VALUE, line = 0, column = 0))
+        val encoded = GapEliasDeltaCodec.encodeOccurrences(occs)
+        GapEliasDeltaCodec.decodeOccurrences(encoded, occs.size) shouldContainExactly occs
+    }
+
 class IdentifierLexerTest {
     @Test
     fun `idents skips comments and strings but all keeps them`() {
@@ -146,7 +154,7 @@ class NameLocateIndexTest {
         val indexDir = File(tempDir, "idx")
         index.writeTo(indexDir)
         val manifest = File(indexDir, NameLocateIndex.MANIFEST_NAME)
-        manifest.writeText(manifest.readText().replace("\"formatVersion\":2", "\"formatVersion\":99"))
+        manifest.writeText(manifest.readText().replace("\"formatVersion\":${IndexFormat.VERSION}", "\"formatVersion\":99"))
         NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
     }
 
@@ -160,7 +168,7 @@ class NameLocateIndexTest {
         val indexDir = File(tempDir, "idx-v1")
         index.writeTo(indexDir)
         val manifest = File(indexDir, NameLocateIndex.MANIFEST_NAME)
-        manifest.writeText(manifest.readText().replace("\"formatVersion\":2", "\"formatVersion\":1"))
+        manifest.writeText(manifest.readText().replace("\"formatVersion\":${IndexFormat.VERSION}", "\"formatVersion\":1"))
         NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
     }
 
@@ -184,7 +192,7 @@ class NameLocateIndexTest {
             val pathLen = input.readInt()
             val path = ByteArray(pathLen).also { input.readFully(it) }.toString(Charsets.UTF_8)
             path shouldBe "Foo.java"
-            input.available() shouldBe 0
+            input.read() shouldBe -1
         }
     }
 

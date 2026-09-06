@@ -292,12 +292,16 @@ class NameLocateIndex private constructor(
             DataInputStream(file.inputStream().buffered()).use { input ->
                 requireMagic(input)
                 val count = input.readInt()
+                require(count >= 0) { "posting entry count must be non-negative" }
                 val postings = ArrayList<Pair<ByteArray, Int>>(count)
                 repeat(count) {
                     val occCount = input.readInt()
                     require(occCount >= 0) { "occurrence count must be non-negative" }
                     val blobSize = input.readInt()
                     require(blobSize >= 0) { "posting blob size must be non-negative" }
+                    require(blobSize.toLong() <= file.length()) {
+                        "posting blob size $blobSize exceeds file length ${file.length()}"
+                    }
                     val blob = ByteArray(blobSize)
                     input.readFully(blob)
                     postings.add(blob to occCount)

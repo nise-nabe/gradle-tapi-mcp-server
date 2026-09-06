@@ -126,13 +126,15 @@ object GapEliasDeltaCodec {
             if (!sameDoc) {
                 val gap = reader.readDelta()
                     ?: throw IllegalArgumentException("truncated docId in occurrence posting")
-                require(gap <= Int.MAX_VALUE.toLong()) { "docId gap does not fit in Int" }
                 docId =
                     if (i == 0) {
-                        (gap - 1L).toInt().also {
-                            require(it >= 0) { "bad first docId gap" }
+                        // First gap is encoded as docId+1, so gap may be Int.MAX_VALUE+1.
+                        require(gap >= 1L && gap - 1L <= Int.MAX_VALUE.toLong()) {
+                            "first docId gap does not fit in Int"
                         }
+                        (gap - 1L).toInt()
                     } else {
+                        require(gap <= Int.MAX_VALUE.toLong()) { "docId gap does not fit in Int" }
                         val next = docId.toLong() + gap
                         require(next <= Int.MAX_VALUE.toLong()) { "docId overflow in occurrence posting" }
                         next.toInt()
