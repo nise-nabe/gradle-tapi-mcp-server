@@ -3,7 +3,7 @@ package com.example.gradle.mcp.dependency.mcp
 import com.example.gradle.mcp.dependency.DependencyArtifactRef
 import com.example.gradle.mcp.dependency.DependencyIndexStore
 import com.example.gradle.mcp.dependency.IndexRequest
-import com.example.gradle.mcp.dependency.NameLocateIndex
+import com.example.gradle.mcp.dependency.SearchMultiRequest
 import com.example.gradle.mcp.dependency.SearchRequest
 import com.example.gradle.mcp.dependency.SourcePathRef
 import com.example.gradle.mcp.dependency.TokenMode
@@ -61,7 +61,7 @@ class DependencySourcesFacade(
         val projectDirectory = access.resolveProjectDirectory(args)
         val query = args.requiredString("query")
         val tokenMode = args.optionalString("tokenMode")?.let(TokenMode::parse)
-        val limit = args.optionalPositiveInt("limit") ?: NameLocateIndex.DEFAULT_LIMIT
+        val limit = args.optionalLimitInt("limit")
         val indexDir = args.optionalString("indexDir")?.let(::File)
 
         val result = store.search(
@@ -73,6 +73,35 @@ class DependencySourcesFacade(
                 indexDir = indexDir,
             ),
         )
+        return searchResponse(query = query, result = result, includeMatchedQueries = false)
+    }
+
+    fun searchMulti(args: Map<String, Any>, access: DependencySourcesGradleAccess): Map<String, Any?> {
+        val projectDirectory = access.resolveProjectDirectory(args)
+        val queries = args.requiredStringList("queries")
+        val tokenMode = args.optionalString("tokenMode")?.let(TokenMode::parse)
+        val limit = args.optionalLimitInt("limit")
+        val perQueryLimit = args.optionalLimitInt("per_query_limit")
+        val indexDir = args.optionalString("indexDir")?.let(::File)
+
+        val result = store.searchMulti(
+            SearchMultiRequest(
+                projectDirectory = projectDirectory,
+                queries = queries,
+                tokenMode = tokenMode,
+                limit = limit,
+                perQueryLimit = perQueryLimit,
+                indexDir = indexDir,
+            ),
+        )
+        return searchMultiResponse(queries = queries, result = result)
+    }
+
+    private fun searchResponse(
+        query: String,
+        result: com.example.gradle.mcp.dependency.SearchResult,
+        includeMatchedQueries: Boolean,
+    ): Map<String, Any?> {
         val stats = result.stats
         return linkedMapOf(
             "query" to query,
@@ -83,15 +112,39 @@ class DependencySourcesFacade(
             "hitsTruncated" to result.hitsTruncated,
             "docCount" to stats.docCount,
             "nameCount" to stats.nameCount,
-            "hits" to result.hits.map { hit ->
-                linkedMapOf(
-                    "gav" to hit.gav,
-                    "path" to hit.path,
-                    "line" to hit.line,
-                    "column" to hit.column,
-                )
-            },
+            "hits" to result.hits.map { hit -> hitToMap(hit, includeMatchedQueries) },
         )
+    }
+
+    private fun searchMultiResponse(
+        queries: List<String>,
+        result: com.example.gradle.mcp.dependency.SearchMultiResult,
+    ): Map<String, Any?> {
+        val stats = result.stats
+        return linkedMapOf(
+            "queries" to queries,
+            "tokenMode" to stats.tokenMode.wireName(),
+            "formatVersion" to stats.formatVersion,
+            "indexDir" to stats.indexDir.absolutePath,
+            "hitCount" to result.hitCount,
+            "hitsTruncated" to result.hitsTruncated,
+            "docCount" to stats.docCount,
+            "nameCount" to stats.nameCount,
+            "hits" to result.hits.map { hit -> hitToMap(hit, includeMatchedQueries = true) },
+        )
+    }
+
+    private fun hitToMap(hit: com.example.gradle.mcp.dependency.LocateHit, includeMatchedQueries: Boolean): Map<String, Any?> {
+        val map = linkedMapOf<String, Any?>(
+            "gav" to hit.gav,
+            "path" to hit.path,
+            "line" to hit.line,
+            "column" to hit.column,
+        )
+        if (includeMatchedQueries && hit.matchedQueries.isNotEmpty()) {
+            map["matched_queries"] = hit.matchedQueries
+        }
+        return map
     }
 
     private fun parseArtifacts(raw: Any?): List<DependencyArtifactRef> {
@@ -147,12 +200,30 @@ private fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boo
         else -> default
     }
 
-private fun Map<String, Any>.optionalPositiveInt(key: String): Int? =
+private fun Map<String, Any>.optionalLimitInt(key: String): Int? =
     when (val value = this[key]) {
-        is Number -> value.toInt().takeIf { it > 0 }
-        is String -> value.toIntOrNull()?.takeIf { it > 0 }
+        is Number -> value.toInt().takeIf { it >= 0 }
+        is String -> value.toIntOrNull()?.takeIf { it >= 0 }
         else -> null
     }
+
+@Suppress("UNCHECKED_CAST")
+private fun Map<String, Any>.requiredStringList(key: String): List<String> {
+    val value = this[key]
+        ?: throw IllegalArgumentException("Missing required argument: $key")
+    val list = value as? List<*>
+        ?: throw IllegalArgumentException("Required argument must be a string array: $key")
+    if (list.isEmpty()) {
+        throw IllegalArgumentException("Required argument must be a non-empty string array: $key")
+    }
+    return list.mapIndexed { index, item ->
+        val string = item as? String
+        if (string == null || string.isBlank()) {
+            throw IllegalArgumentException("Required argument must contain only non-blank strings: $key[$index]")
+        }
+        string
+    }
+}
 
 private fun Map<*, *>.mapString(key: String): String? =
     (this[key] as? String)?.takeIf { it.isNotBlank() }

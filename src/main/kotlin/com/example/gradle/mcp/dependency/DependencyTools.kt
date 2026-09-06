@@ -47,6 +47,19 @@ fun Server.registerDependencySourceTools(scope: CoroutineScope) {
                 .getOrElse { throw mapDependencySourcesError(it) },
         )
     }
+
+    registerTool(
+        scope,
+        name = DependencySourceToolCatalog.SEARCH_MULTI_TOOL,
+        description = DependencySourceToolCatalog.SEARCH_MULTI_DESCRIPTION,
+        schema = DependencySourceToolCatalog.searchMultiSchema(),
+    ) { args ->
+        rejectUnsupportedProjectPath(args, DependencySourceToolCatalog.SEARCH_MULTI_TOOL)
+        jsonResult(
+            runCatching { dependencySourcesFacade.searchMulti(args, access) }
+                .getOrElse { throw mapDependencySourcesError(it) },
+        )
+    }
 }
 
 private class RuntimeDependencySourcesAccess(

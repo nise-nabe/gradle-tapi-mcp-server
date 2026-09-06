@@ -9,6 +9,7 @@ data class DependencySourceToolSpec(
 object DependencySourceToolCatalog {
     const val INDEX_TOOL: String = "gradle_index_dependency_sources"
     const val SEARCH_TOOL: String = "gradle_search_dependency_sources"
+    const val SEARCH_MULTI_TOOL: String = "gradle_search_dependency_sources_multi"
 
     const val INDEX_DESCRIPTION: String =
         "Index dependency sources (Idea, artifacts[], or sourcePaths[]). " +
@@ -17,10 +18,14 @@ object DependencySourceToolCatalog {
     const val SEARCH_DESCRIPTION: String =
         "Exact simple-name locate in dependency sources. Requires prior index for tokenMode."
 
+    const val SEARCH_MULTI_DESCRIPTION: String =
+        "Multi-name OR locate; dedup hits and tag matched_queries. Requires prior index."
+
     fun specs(): List<DependencySourceToolSpec> =
         listOf(
             DependencySourceToolSpec(INDEX_TOOL, INDEX_DESCRIPTION, indexSchema()),
             DependencySourceToolSpec(SEARCH_TOOL, SEARCH_DESCRIPTION, searchSchema()),
+            DependencySourceToolSpec(SEARCH_MULTI_TOOL, SEARCH_MULTI_DESCRIPTION, searchMultiSchema()),
         )
 
     fun indexSchema(): Map<String, Any> =
@@ -58,10 +63,23 @@ object DependencySourceToolCatalog {
                 "projectDirectory" to stringProp("Project root; omit for default/GRADLE_PROJECT_DIR."),
                 "query" to stringProp("Exact simple-name to locate"),
                 "tokenMode" to stringProp("Must match an index (all|idents). Prefer all."),
-                "limit" to integerProp("Max hits (default 100)."),
+                "limit" to integerProp("Max hits; omit=unlimited, 0=empty."),
                 "indexDir" to stringProp("Override dir (reads <dir>/<tokenMode>/)."),
             ),
             required = listOf("query"),
+        )
+
+    fun searchMultiSchema(): Map<String, Any> =
+        objectSchema(
+            properties = mapOf(
+                "projectDirectory" to stringProp("Project root; omit for default/GRADLE_PROJECT_DIR."),
+                "queries" to stringArrayProp("Non-empty simple names (OR)."),
+                "tokenMode" to stringProp("Must match an index (all|idents). Prefer all."),
+                "limit" to integerProp("Overall max after merge/sort; omit=unlimited, 0=empty."),
+                "per_query_limit" to integerProp("Per-query cap; omit=unlimited, 0=empty."),
+                "indexDir" to stringProp("Override dir (reads <dir>/<tokenMode>/)."),
+            ),
+            required = listOf("queries"),
         )
 
     private fun objectSchema(
@@ -82,6 +100,9 @@ object DependencySourceToolCatalog {
 
     private fun integerProp(description: String): Map<String, String> =
         mapOf("type" to "integer", "description" to description)
+
+    private fun stringArrayProp(description: String): Map<String, Any> =
+        mapOf("type" to "array", "description" to description, "items" to mapOf("type" to "string"))
 
     private fun arrayOfObjects(
         description: String,
