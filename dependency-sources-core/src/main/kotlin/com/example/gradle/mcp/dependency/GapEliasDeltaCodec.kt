@@ -1,5 +1,12 @@
 package com.example.gradle.mcp.dependency
 
+/** One hit inside a name's posting list (sorted by docId, line, column). */
+data class OccPos(
+    val docId: Int,
+    val line: Int,
+    val column: Int,
+)
+
 object GapEliasDeltaCodec {
     fun encode(positions: IntArray): ByteArray {
         require(isStrictlyIncreasing(positions)) { "positions must be strictly increasing" }
@@ -24,6 +31,88 @@ object GapEliasDeltaCodec {
             val position = prev + gap.toInt()
             out[i] = position
             prev = position
+        }
+        return out
+    }
+
+    /**
+     * Encode occurrence payloads for one posting list.
+     * Layout per hit: 1-bit same-doc flag; on doc change, Elias-δ docId gap
+     * (first gap is docId+1); then Elias-δ (line+1) and (column+1).
+     */
+    fun encodeOccurrences(occs: List<OccPos>): ByteArray {
+        if (occs.isEmpty()) return ByteArray(0)
+        val writer = BitWriter()
+        var prevDoc = 0
+        for ((index, occ) in occs.withIndex()) {
+            require(occ.docId >= 0 && occ.line >= 0 && occ.column >= 0) {
+                "occurrence fields must be non-negative"
+            }
+            if (index == 0 || occ.docId != prevDoc) {
+                require(index == 0 || occ.docId > prevDoc) {
+                    "occurrences must be sorted by ascending docId"
+                }
+                writer.writeBit(false) // doc change
+                val gap =
+                    if (index == 0) {
+                        occ.docId.toLong() + 1L
+                    } else {
+                        (occ.docId - prevDoc).toLong()
+                    }
+                writer.writeDelta(gap)
+                prevDoc = occ.docId
+            } else {
+                writer.writeBit(true) // same doc
+            }
+            writer.writeDelta(occ.line.toLong() + 1L)
+            writer.writeDelta(occ.column.toLong() + 1L)
+        }
+        return writer.finish()
+    }
+
+    fun decodeOccurrences(bytes: ByteArray, count: Int): List<OccPos> {
+        if (count == 0) return emptyList()
+        val maxBits = bytes.size * 8
+        require(count <= maxBits) {
+            "occurrence count $count exceeds bitstream capacity ($maxBits bits)"
+        }
+        val reader = BitReader(bytes)
+        val out = ArrayList<OccPos>(count)
+        var docId = 0
+        for (i in 0 until count) {
+            val sameDoc = reader.readBit()
+                ?: throw IllegalArgumentException("truncated occurrence posting at index $i")
+            if (i == 0 && sameDoc) {
+                throw IllegalArgumentException("invalid occurrence posting: first entry cannot set same-doc")
+            }
+            if (!sameDoc) {
+                val gap = reader.readDelta()
+                    ?: throw IllegalArgumentException("truncated docId in occurrence posting")
+                require(gap <= Int.MAX_VALUE.toLong()) { "docId gap does not fit in Int" }
+                docId =
+                    if (i == 0) {
+                        (gap - 1L).toInt().also {
+                            require(it >= 0) { "bad first docId gap" }
+                        }
+                    } else {
+                        val next = docId.toLong() + gap
+                        require(next <= Int.MAX_VALUE.toLong()) { "docId overflow in occurrence posting" }
+                        next.toInt()
+                    }
+            }
+            val lineRaw = reader.readDelta()
+                ?: throw IllegalArgumentException("truncated line in occurrence posting")
+            require(lineRaw >= 1L && lineRaw - 1L <= Int.MAX_VALUE.toLong()) {
+                "invalid line value in occurrence posting"
+            }
+            val line = (lineRaw - 1L).toInt()
+            val colRaw = reader.readDelta()
+                ?: throw IllegalArgumentException("truncated column in occurrence posting")
+            require(colRaw >= 1L && colRaw - 1L <= Int.MAX_VALUE.toLong()) {
+                "invalid column value in occurrence posting"
+            }
+            val column = (colRaw - 1L).toInt()
+            out.add(OccPos(docId = docId, line = line, column = column))
         }
         return out
     }
