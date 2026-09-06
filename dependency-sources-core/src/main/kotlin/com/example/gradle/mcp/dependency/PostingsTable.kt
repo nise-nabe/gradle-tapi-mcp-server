@@ -132,6 +132,11 @@ internal sealed class PostingsTable {
                 require((count == 0) == (len == 0)) {
                     "occurrence count and posting blob size are inconsistent"
                 }
+                if (len > 0) {
+                    require(count.toLong() <= len.toLong() * 8L) {
+                        "occurrence count $count exceeds plausible maximum for blob length $len"
+                    }
+                }
                 validatedBlobStart(dataBase, offset, len, duplicate.limit(), id)
                 meta.add(PostingMeta(count = count, offset = offset, len = len))
             }
