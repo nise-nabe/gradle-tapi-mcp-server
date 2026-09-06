@@ -7,8 +7,8 @@ import java.nio.file.Files
 import java.security.MessageDigest
 
 object IndexFormat {
-    /** v2: occurrence payloads live in postings.bin; documents.bin is docs-only. */
-    const val VERSION: Int = 2
+    /** v3: postings.bin uses offset table + mmap-backed blobs; occurrence payloads unchanged. */
+    const val VERSION: Int = 3
     const val MAGIC: Int = 0x4D445349 // MDSI
 }
 
@@ -66,7 +66,7 @@ class NameLocateIndex private constructor(
     val keepSetMode: String,
     private val dictionary: NameDictionary,
     private val documents: List<DocMeta>,
-    private val postings: List<Pair<ByteArray, Int>>,
+    private val postings: PostingsTable,
     private val occurrenceCount: Int,
 ) {
     fun stats(indexDir: File, cacheHit: Boolean): IndexStats =
@@ -87,35 +87,28 @@ class NameLocateIndex private constructor(
      */
     fun postingCount(query: String): Int {
         val nameId = dictionary.lookup(query) ?: return 0
-        return postings.getOrNull(nameId)?.second ?: 0
+        return postings.postingAt(nameId)?.count ?: 0
     }
 
     /**
-     * Exact simple-name locate. [limit] null = unlimited; 0 = empty without decode work.
-     * Returns hits in posting order (doc_id, line, col). Decodes the full posting list, then
-     * caps returned hits (scode main semantics; full decode, emit cap only).
+     * Exact simple-name locate. [limit] null = unlimited; 0 = decode first entry then discard.
+     * Unknown names return empty without decode. Hits follow posting order (docId, line, column).
      */
     fun locate(query: String, limit: Int? = null): List<LocateHit> {
         requireNonNegativeLimit(limit)
-        if (limit == 0) return emptyList()
         val nameId = dictionary.lookup(query) ?: return emptyList()
-        val (blob, count) = postings.getOrNull(nameId) ?: return emptyList()
-        if (limit == null) {
-            val hits = ArrayList<LocateHit>(count)
-            GapEliasDeltaCodec.forEachOccurrence(blob, count) { docId, line, column ->
-                val doc = documents[docId]
-                hits.add(LocateHit(doc.gav, doc.path, line, column))
-                true
+        val posting = postings.postingAt(nameId) ?: return emptyList()
+        val expectedHits =
+            when (limit) {
+                null -> posting.count
+                0 -> 0
+                else -> minOf(limit, posting.count)
             }
-            return hits
-        }
-        val hits = ArrayList<LocateHit>(minOf(limit, count))
-        GapEliasDeltaCodec.forEachOccurrence(blob, count) { docId, line, column ->
-            if (hits.size < limit) {
-                val doc = documents[docId]
-                hits.add(LocateHit(doc.gav, doc.path, line, column))
-            }
-            true
+        val hits = ArrayList<LocateHit>(expectedHits)
+        posting.forEachOccurrence(documents.size, limit) { docId, line, column ->
+            val doc = documents[docId]
+            hits.add(LocateHit(doc.gav, doc.path, line, column))
+            limit == null || hits.size < limit
         }
         return hits
     }
@@ -131,8 +124,13 @@ class NameLocateIndex private constructor(
     ): List<LocateHit> {
         requireNonNegativeLimit(limit)
         requireNonNegativeLimit(perQueryLimit, "perQueryLimit")
-        if (limit == 0) return emptyList()
         val uniqueQueries = queries.distinct()
+        if (limit == 0) {
+            for (query in uniqueQueries) {
+                locate(query, limit = 0)
+            }
+            return emptyList()
+        }
         val merged = LinkedHashMap<LocateKey, LocateHit>()
         for (query in uniqueQueries) {
             for (hit in locate(query, perQueryLimit)) {
@@ -171,8 +169,6 @@ class NameLocateIndex private constructor(
             writeDictionary(tmp)
             writeDocuments(tmp)
             writePostings(tmp)
-            // Replace without a bare delete→move gap: move the live dir aside first so
-            // concurrent readers still see a complete tree until the swap completes.
             if (directory.exists()) {
                 val backup = File(directory.parentFile, "${directory.name}.old-${System.nanoTime()}")
                 Files.move(directory.toPath(), backup.toPath())
@@ -217,16 +213,22 @@ class NameLocateIndex private constructor(
     }
 
     private fun writePostings(directory: File) {
-        DataOutputStream(File(directory, POSTINGS_NAME).outputStream().buffered()).use { out ->
-            out.writeInt(IndexFormat.MAGIC)
-            out.writeInt(IndexFormat.VERSION)
-            out.writeInt(postings.size)
-            for ((blob, count) in postings) {
-                out.writeInt(count)
-                out.writeInt(blob.size)
-                out.write(blob)
+        val entries =
+            (0 until postings.size).map { nameId ->
+                val slice = postings.postingAt(nameId)
+                    ?: error("missing posting for name id $nameId during write")
+                val blob =
+                    when {
+                        slice.bytes != null -> slice.bytes
+                        else -> ByteArray(slice.length).also { bytes ->
+                            val buffer = slice.buffer!!.duplicate()
+                            buffer.position(slice.offset)
+                            buffer.get(bytes)
+                        }
+                    }
+                blob to slice.count
             }
-        }
+        PostingsTable.writePacked(directory, entries)
     }
 
     companion object {
@@ -261,20 +263,17 @@ class NameLocateIndex private constructor(
                 }
             }
 
-            val postings = ArrayList<Pair<ByteArray, Int>>(dictionary.size())
+            val inMemoryEntries = ArrayList<Pair<ByteArray, Int>>(dictionary.size())
             var totalOccurrencesLong = 0L
             for (nameId in 0 until dictionary.size()) {
-                // Docs are scanned in order and the lexer emits tokens in source order, so
-                // each per-name list is already sorted by (docId, line, column).
                 val list = if (nameId < postingBuilder.size) postingBuilder[nameId] else emptyList()
                 val blob = GapEliasDeltaCodec.encodeOccurrences(list)
-                postings.add(blob to list.size)
+                inMemoryEntries.add(blob to list.size)
                 totalOccurrencesLong += list.size.toLong()
             }
             require(totalOccurrencesLong in 0L..Int.MAX_VALUE.toLong()) {
                 "occurrence count $totalOccurrencesLong does not fit in Int"
             }
-            val totalOccurrences = totalOccurrencesLong.toInt()
 
             return NameLocateIndex(
                 tokenMode = tokenMode,
@@ -282,11 +281,18 @@ class NameLocateIndex private constructor(
                 keepSetMode = keepSetMode,
                 dictionary = dictionary,
                 documents = documents,
-                postings = postings,
-                occurrenceCount = totalOccurrences,
+                postings = PostingsTable.InMemory(inMemoryEntries),
+                occurrenceCount = totalOccurrencesLong.toInt(),
             )
         }
 
+        /**
+         * Load an on-disk index when present and compatible.
+         *
+         * Returns null when the directory or manifest is missing, or when fingerprint/tokenMode
+         * constraints do not match. Throws [UnsupportedIndexFormatException] when the manifest
+         * [IndexManifest.formatVersion] does not match [IndexFormat.VERSION].
+         */
         fun tryLoad(
             directory: File,
             expectedFingerprint: String?,
@@ -296,7 +302,9 @@ class NameLocateIndex private constructor(
             val manifestFile = File(directory, MANIFEST_NAME)
             if (!manifestFile.isFile) return null
             val manifest = ManifestJson.decode(manifestFile.readText()) ?: return null
-            if (manifest.formatVersion != IndexFormat.VERSION) return null
+            if (manifest.formatVersion != IndexFormat.VERSION) {
+                throw UnsupportedIndexFormatException(manifest.formatVersion, IndexFormat.VERSION)
+            }
             if (expectedFingerprint != null && manifest.fingerprint != expectedFingerprint) return null
             val tokenMode = runCatching { TokenMode.parse(manifest.tokenMode) }.getOrNull() ?: return null
             if (expectedTokenMode != null && tokenMode != expectedTokenMode) return null
@@ -310,21 +318,19 @@ class NameLocateIndex private constructor(
         ): NameLocateIndex {
             val dictionary = readDictionary(File(directory, DICTIONARY_NAME))
             val documents = readDocuments(File(directory, DOCUMENTS_NAME))
-            val postings = readPostings(File(directory, POSTINGS_NAME))
+            val postings = PostingsTable.mmap(File(directory, POSTINGS_NAME))
             require(dictionary.size() == manifest.nameCount)
             require(documents.size == manifest.docCount)
             require(postings.size == dictionary.size())
-            val totalOccurrencesLong = postings.fold(0L) { acc, posting -> acc + posting.second.toLong() }
+            val totalOccurrencesLong =
+                (0 until postings.size).fold(0L) { acc, nameId ->
+                    acc + (postings.postingAt(nameId)?.count?.toLong() ?: 0L)
+                }
             require(totalOccurrencesLong in 0L..Int.MAX_VALUE.toLong()) {
                 "occurrence count $totalOccurrencesLong does not fit in Int"
             }
             val totalOccurrences = totalOccurrencesLong.toInt()
             require(totalOccurrences == manifest.occurrenceCount)
-            // Eagerly validate posting payloads so corrupt indexes fail at load, not at search.
-            // Stream docIds without materializing full OccPos lists (keeps load GC bounded).
-            for ((blob, count) in postings) {
-                GapEliasDeltaCodec.validateOccurrences(blob, count, documents.size)
-            }
             return NameLocateIndex(
                 tokenMode = tokenMode,
                 fingerprint = manifest.fingerprint,
@@ -353,37 +359,6 @@ class NameLocateIndex private constructor(
                 val documents = ArrayList<DocMeta>(docCount)
                 repeat(docCount) { documents.add(DocMeta(readUtf(input), readUtf(input))) }
                 return documents
-            }
-        }
-
-        private fun readPostings(file: File): List<Pair<ByteArray, Int>> {
-            DataInputStream(file.inputStream().buffered()).use { input ->
-                requireMagic(input)
-                val count = input.readInt()
-                require(count >= 0) { "posting entry count must be non-negative" }
-                // Header is MAGIC+VERSION+count (12 bytes). Each entry needs at least
-                // occCount+blobSize (8 bytes), so reject impossible counts before allocating.
-                val maxEntriesByFile = ((file.length() - 12L) / 8L).coerceAtLeast(0L)
-                require(count.toLong() <= maxEntriesByFile) {
-                    "posting entry count $count exceeds file capacity (max $maxEntriesByFile for ${file.length()} bytes)"
-                }
-                val postings = ArrayList<Pair<ByteArray, Int>>(count)
-                repeat(count) {
-                    val occCount = input.readInt()
-                    require(occCount >= 0) { "occurrence count must be non-negative" }
-                    val blobSize = input.readInt()
-                    require(blobSize >= 0) { "posting blob size must be non-negative" }
-                    require(occCount > 0 || blobSize == 0) {
-                        "empty occurrence count cannot have a non-empty posting blob"
-                    }
-                    require(blobSize.toLong() <= file.length()) {
-                        "posting blob size $blobSize exceeds file length ${file.length()}"
-                    }
-                    val blob = ByteArray(blobSize)
-                    input.readFully(blob)
-                    postings.add(blob to occCount)
-                }
-                return postings
             }
         }
 

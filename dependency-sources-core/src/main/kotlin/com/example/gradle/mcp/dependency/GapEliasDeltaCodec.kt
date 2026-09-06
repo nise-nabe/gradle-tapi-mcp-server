@@ -1,5 +1,7 @@
 package com.example.gradle.mcp.dependency
 
+import java.nio.ByteBuffer
+
 /** One hit inside a name's posting list (sorted by docId, line, column). */
 internal data class OccPos(
     val docId: Int,
@@ -22,7 +24,7 @@ object GapEliasDeltaCodec {
 
     fun decode(bytes: ByteArray, count: Int): IntArray {
         if (count == 0) return IntArray(0)
-        val reader = BitReader(bytes)
+        val reader = BitReader.fromBytes(bytes)
         val out = IntArray(count)
         var prev = -1
         for (i in 0 until count) {
@@ -81,11 +83,17 @@ object GapEliasDeltaCodec {
         return writer.finish()
     }
 
-    internal fun decodeOccurrences(bytes: ByteArray, count: Int): List<OccPos> {
+    internal fun decodeOccurrences(bytes: ByteArray, count: Int, limit: Int? = null): List<OccPos> {
         require(count >= 0) { "occurrence count must be non-negative" }
         if (count == 0) return emptyList()
-        val out = ArrayList<OccPos>(count)
-        forEachOccurrence(bytes, count) { docId, line, column ->
+        val expectedSize =
+            when (limit) {
+                null -> count
+                0 -> 0
+                else -> minOf(limit, count)
+            }
+        val out = ArrayList<OccPos>(expectedSize)
+        forEachOccurrence(bytes, count, docCount = Int.MAX_VALUE, limit = limit) { docId, line, column ->
             out.add(OccPos(docId = docId, line = line, column = column))
             true
         }
@@ -94,11 +102,12 @@ object GapEliasDeltaCodec {
 
     /**
      * Walk a posting payload without allocating [OccPos] instances.
-     * Used at index load to validate docId ranges with lower GC pressure.
+     * Optional full-walk helper for docId range checks (search-time validation uses
+     * [forEachOccurrence] instead; call this when eagerly validating an entire blob).
      */
     internal fun validateOccurrences(bytes: ByteArray, count: Int, docCount: Int) {
         require(docCount >= 0) { "docCount must be non-negative" }
-        forEachOccurrence(bytes, count) { docId, _, _ ->
+        forEachOccurrence(bytes, count, docCount, limit = null) { docId, _, _ ->
             require(docId in 0 until docCount) {
                 "occurrence docId $docId out of range for $docCount documents"
             }
@@ -106,59 +115,111 @@ object GapEliasDeltaCodec {
         }
     }
 
-    /**
-     * Stream occurrences. [action] should return false to stop early.
-     */
     internal fun forEachOccurrence(
         bytes: ByteArray,
         count: Int,
+        docCount: Int,
+        limit: Int?,
+        action: (docId: Int, line: Int, column: Int) -> Boolean,
+    ) {
+        forEachOccurrence(BitReader.fromBytes(bytes), count, docCount, limit, action)
+    }
+
+    internal fun forEachOccurrence(
+        buffer: ByteBuffer,
+        offset: Int,
+        length: Int,
+        count: Int,
+        docCount: Int,
+        limit: Int?,
+        action: (docId: Int, line: Int, column: Int) -> Boolean,
+    ) {
+        val slice = buffer.duplicate().order(buffer.order())
+        slice.position(offset)
+        slice.limit(offset + length)
+        forEachOccurrence(BitReader.fromBuffer(slice), count, docCount, limit, action)
+    }
+
+    /**
+     * Stream occurrences. [limit] null = unlimited; 0 = validate first entry only.
+     * [action] should return false to stop early.
+     */
+    private fun forEachOccurrence(
+        reader: BitReader,
+        count: Int,
+        docCount: Int,
+        limit: Int?,
         action: (docId: Int, line: Int, column: Int) -> Boolean,
     ) {
         require(count >= 0) { "occurrence count must be non-negative" }
+        require(limit == null || limit >= 0) { "limit must be non-negative" }
         if (count == 0) return
-        val maxBits = bytes.size.toLong() * 8L
+        val maxBits = reader.remainingBits()
         require(count.toLong() <= maxBits) {
             "occurrence count $count exceeds bitstream capacity ($maxBits bits)"
         }
-        val reader = BitReader(bytes)
-        var docId = 0
-        for (i in 0 until count) {
-            val sameDoc = reader.readBit()
-                ?: throw IllegalArgumentException("truncated occurrence posting at index $i")
-            if (i == 0 && sameDoc) {
-                throw IllegalArgumentException("invalid occurrence posting: first entry cannot set same-doc")
+        if (limit == 0) {
+            val docIdHolder = IntArray(1)
+            val (docId, _, _) = decodeOccurrence(reader, index = 0, docIdHolder)
+            if (docCount != Int.MAX_VALUE) {
+                require(docId in 0 until docCount) {
+                    "occurrence docId $docId out of range for $docCount documents"
+                }
             }
-            if (!sameDoc) {
-                val gap = reader.readDelta()
-                    ?: throw IllegalArgumentException("truncated docId in occurrence posting")
-                docId =
-                    if (i == 0) {
-                        // First gap is encoded as docId+1, so gap may be Int.MAX_VALUE+1.
-                        require(gap >= 1L && gap - 1L <= Int.MAX_VALUE.toLong()) {
-                            "first docId gap does not fit in Int"
-                        }
-                        (gap - 1L).toInt()
-                    } else {
-                        require(gap <= Int.MAX_VALUE.toLong()) { "docId gap does not fit in Int" }
-                        val next = docId.toLong() + gap
-                        require(next <= Int.MAX_VALUE.toLong()) { "docId overflow in occurrence posting" }
-                        next.toInt()
-                    }
+            return
+        }
+        val decodeCount =
+            when (limit) {
+                null -> count
+                else -> minOf(limit, count)
             }
-            val lineRaw = reader.readDelta()
-                ?: throw IllegalArgumentException("truncated line in occurrence posting")
-            require(lineRaw >= 1L && lineRaw - 1L <= Int.MAX_VALUE.toLong()) {
-                "invalid line value in occurrence posting"
+        val docIdHolder = IntArray(1)
+        for (i in 0 until decodeCount) {
+            val (docId, line, column) = decodeOccurrence(reader, i, docIdHolder)
+            if (docCount != Int.MAX_VALUE) {
+                require(docId in 0 until docCount) {
+                    "occurrence docId $docId out of range for $docCount documents"
+                }
             }
-            val line = (lineRaw - 1L).toInt()
-            val colRaw = reader.readDelta()
-                ?: throw IllegalArgumentException("truncated column in occurrence posting")
-            require(colRaw >= 1L && colRaw - 1L <= Int.MAX_VALUE.toLong()) {
-                "invalid column value in occurrence posting"
-            }
-            val column = (colRaw - 1L).toInt()
             if (!action(docId, line, column)) return
         }
+    }
+
+    private fun decodeOccurrence(reader: BitReader, index: Int, docIdHolder: IntArray): OccPos {
+        val sameDoc = reader.readBit()
+            ?: throw IllegalArgumentException("truncated occurrence posting at index $index")
+        if (index == 0 && sameDoc) {
+            throw IllegalArgumentException("invalid occurrence posting: first entry cannot set same-doc")
+        }
+        if (!sameDoc) {
+            val gap = reader.readDelta()
+                ?: throw IllegalArgumentException("truncated docId in occurrence posting")
+            docIdHolder[0] =
+                if (index == 0) {
+                    require(gap >= 1L && gap - 1L <= Int.MAX_VALUE.toLong()) {
+                        "first docId gap does not fit in Int"
+                    }
+                    (gap - 1L).toInt()
+                } else {
+                    require(gap <= Int.MAX_VALUE.toLong()) { "docId gap does not fit in Int" }
+                    val next = docIdHolder[0].toLong() + gap
+                    require(next <= Int.MAX_VALUE.toLong()) { "docId overflow in occurrence posting" }
+                    next.toInt()
+                }
+        }
+        val lineRaw = reader.readDelta()
+            ?: throw IllegalArgumentException("truncated line in occurrence posting")
+        require(lineRaw >= 1L && lineRaw - 1L <= Int.MAX_VALUE.toLong()) {
+            "invalid line value in occurrence posting"
+        }
+        val line = (lineRaw - 1L).toInt()
+        val colRaw = reader.readDelta()
+            ?: throw IllegalArgumentException("truncated column in occurrence posting")
+        require(colRaw >= 1L && colRaw - 1L <= Int.MAX_VALUE.toLong()) {
+            "invalid column value in occurrence posting"
+        }
+        val column = (colRaw - 1L).toInt()
+        return OccPos(docId = docIdHolder[0], line = line, column = column)
     }
 
     private fun isStrictlyIncreasing(positions: IntArray): Boolean {
@@ -207,14 +268,51 @@ private class BitWriter {
     fun finish(): ByteArray = bytes.toByteArray()
 }
 
-private class BitReader(private val bytes: ByteArray) {
+private class BitReader private constructor(
+    private val bytes: ByteArray?,
+    private val buffer: ByteBuffer?,
+    private val bufferBase: Int,
+    private val bitLimit: Int,
+) {
     private var pos = 0
 
+    companion object {
+        fun fromBytes(bytes: ByteArray): BitReader =
+            BitReader(bytes = bytes, buffer = null, bufferBase = 0, bitLimit = bitLimitFromByteCount(bytes.size))
+
+        fun fromBuffer(buffer: ByteBuffer): BitReader =
+            BitReader(
+                bytes = null,
+                buffer = buffer,
+                bufferBase = buffer.position(),
+                bitLimit = bitLimitFromByteCount(buffer.remaining()),
+            )
+
+        private fun bitLimitFromByteCount(byteCount: Int): Int {
+            val bitLimitLong = byteCount.toLong() * 8L
+            require(bitLimitLong <= Int.MAX_VALUE) {
+                "posting bitstream size $bitLimitLong bits exceeds Int.MAX_VALUE"
+            }
+            return bitLimitLong.toInt()
+        }
+    }
+
+    fun position(): Int = pos
+
+    fun remainingBits(): Long = (bitLimit - pos).toLong().coerceAtLeast(0L)
+
     fun readBit(): Boolean? {
+        if (pos >= bitLimit) return null
         val byteIndex = pos / 8
-        if (byteIndex >= bytes.size) return null
         val bitIndex = pos % 8
-        val bit = ((bytes[byteIndex].toInt() ushr (7 - bitIndex)) and 1) == 1
+        val byteValue =
+            if (bytes != null) {
+                bytes[byteIndex].toInt() and 0xFF
+            } else {
+                val buf = buffer!!
+                buf.get(bufferBase + byteIndex).toInt() and 0xFF
+            }
+        val bit = ((byteValue ushr (7 - bitIndex)) and 1) == 1
         pos += 1
         return bit
     }
