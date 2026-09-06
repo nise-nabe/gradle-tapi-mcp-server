@@ -286,6 +286,91 @@ class DependencyIndexStoreSearchTest {
     }
 
     @Test
+    fun `search without tokenMode falls back to idents when all index is stale`() {
+        val sources = File(tempDir, "src-fallback").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-fallback").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.ALL,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+        val allManifest = File(store.defaultIndexDir(project, TokenMode.ALL), NameLocateIndex.MANIFEST_NAME)
+        allManifest.writeText(
+            allManifest.readText().replace(
+                "\"formatVersion\":${IndexFormat.VERSION}",
+                "\"formatVersion\":2",
+            ),
+        )
+
+        val result = DependencyIndexStore().search(
+            SearchRequest(
+                projectDirectory = project,
+                query = "Foo",
+                tokenMode = null,
+            ),
+        )
+        result.hitCount shouldBe 1
+        result.stats.tokenMode shouldBe TokenMode.IDENTS
+    }
+
+    @Test
+    fun `forceReindex evicts cached index before rebuild`() {
+        val sources = File(tempDir, "src-reindex").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-reindex").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+        val indexDir = store.defaultIndexDir(project, TokenMode.IDENTS)
+        val manifest = File(indexDir, NameLocateIndex.MANIFEST_NAME)
+        manifest.writeText(
+            manifest.readText().replace(
+                "\"formatVersion\":${IndexFormat.VERSION}",
+                "\"formatVersion\":2",
+            ),
+        )
+
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+                forceReindex = true,
+            ),
+            connection = null,
+        )
+
+        val result = store.search(
+            SearchRequest(
+                projectDirectory = project,
+                query = "Foo",
+                tokenMode = TokenMode.IDENTS,
+            ),
+        )
+        result.hitCount shouldBe 1
+        result.stats.formatVersion shouldBe IndexFormat.VERSION
+    }
+
+    @Test
     fun `negative limit is rejected at store layer`() {
         val sources = File(tempDir, "src-neg-store").apply { mkdirs() }
         File(sources, "A.kt").writeText("fun Foo() {}\n")

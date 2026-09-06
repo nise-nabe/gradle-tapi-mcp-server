@@ -88,7 +88,9 @@ class DependencyIndexStore {
         val indexDir = resolveIndexDir(request.projectDirectory, request.tokenMode, request.indexDir)
         val key = cacheKey(request.projectDirectory, request.tokenMode, indexDir)
 
-        if (!request.forceReindex) {
+        if (request.forceReindex) {
+            memory.remove(key)
+        } else {
             val loaded =
                 try {
                     NameLocateIndex.tryLoad(
@@ -257,6 +259,7 @@ class DependencyIndexStore {
         indexDirOverride: File?,
     ): NameLocateIndex? {
         val modes = if (tokenMode != null) listOf(tokenMode) else listOf(TokenMode.ALL, TokenMode.IDENTS)
+        var staleFormatError: UnsupportedIndexFormatException? = null
         for (mode in modes) {
             val indexDir = resolveIndexDir(projectDirectory, mode, indexDirOverride)
             val key = cacheKey(projectDirectory, mode, indexDir)
@@ -269,11 +272,14 @@ class DependencyIndexStore {
                         expectedTokenMode = mode,
                     )
                 } catch (error: UnsupportedIndexFormatException) {
-                    throw error
+                    if (tokenMode != null) throw error
+                    staleFormatError = error
+                    continue
                 } ?: continue
             memory[key] = loaded
             return loaded
         }
+        if (staleFormatError != null) throw staleFormatError
         return null
     }
 
