@@ -21,6 +21,10 @@ data class ReadSourceRequest(
         const val DEFAULT_MAX_LINES: Int = 200
         const val MAX_CONTEXT_LINES: Int = 100
         const val MAX_MAX_LINES: Int = 2_000
+        /** Soft cap per source line to bound memory on minified/generated files. */
+        const val MAX_LINE_CHARS: Int = 16_384
+        /** Soft cap for returned snippet size (UTF-16 code units). */
+        const val MAX_SNIPPET_CHARS: Int = 262_144
     }
 }
 
@@ -136,8 +140,15 @@ object DependencySourceReader {
         return LocalSourcesJarLocator.find(request.artifact, request.gradleUserHome)
     }
 
-    private fun normalizeEntryPath(path: String): String =
-        path.trim().trimStart('/').replace('\\', '/')
+    private fun normalizeEntryPath(path: String): String {
+        val normalized = path.trim().trimStart('/').replace('\\', '/')
+        require(normalized.isNotBlank()) { "path must not be blank" }
+        val segments = normalized.split('/')
+        require(segments.none { it.isEmpty() || it == "." || it == ".." }) {
+            "path must not contain empty or '..' segments: $path"
+        }
+        return normalized
+    }
 
     private fun extractSnippet(
         root: File,
@@ -208,23 +219,26 @@ object DependencySourceReader {
         if (line == null) {
             val kept = ArrayList<String>(minOf(maxLines, 256))
             var total = 0
+            var lineTruncated = false
             while (true) {
-                val row = reader.readLine() ?: break
+                val row = readBoundedLine(reader) ?: break
                 total += 1
+                if (row.truncated) lineTruncated = true
                 if (kept.size < maxLines) {
-                    kept.add(row)
+                    kept.add(row.text)
                 }
             }
             if (total == 0) {
                 return ExtractedSnippet(0, 0, 0, "", truncated = false)
             }
-            val end = minOf(total, maxLines)
+            val endLine = minOf(total, maxLines)
+            val snippet = joinBounded(kept)
             return ExtractedSnippet(
                 startLine = 1,
-                endLine = end,
+                endLine = endLine,
                 lineCount = total,
-                snippet = kept.joinToString("\n"),
-                truncated = end < total,
+                snippet = snippet.text,
+                truncated = endLine < total || lineTruncated || snippet.truncated,
             )
         }
 
@@ -232,11 +246,13 @@ object DependencySourceReader {
         val windowEnd = (line.toLong() + contextLines.toLong()).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
         val kept = ArrayList<String>(contextLines * 2 + 1)
         var total = 0
+        var lineTruncated = false
         while (true) {
-            val row = reader.readLine() ?: break
+            val row = readBoundedLine(reader) ?: break
             total += 1
+            if (row.truncated) lineTruncated = true
             if (total in windowStart..windowEnd) {
-                kept.add(row)
+                kept.add(row.text)
             }
         }
         if (total == 0) {
@@ -245,13 +261,74 @@ object DependencySourceReader {
         if (line > total) {
             return ExtractedSnippet(0, 0, total, "", truncated = false)
         }
-        val end = minOf(total, windowEnd)
+        val endLine = minOf(total, windowEnd)
+        val snippet = joinBounded(kept)
         return ExtractedSnippet(
             startLine = windowStart,
-            endLine = end,
+            endLine = endLine,
             lineCount = total,
-            snippet = kept.joinToString("\n"),
-            truncated = windowStart > 1 || end < total,
+            snippet = snippet.text,
+            truncated = windowStart > 1 || endLine < total || lineTruncated || snippet.truncated,
         )
+    }
+
+    private data class BoundedLine(val text: String, val truncated: Boolean)
+
+    private fun readBoundedLine(reader: BufferedReader): BoundedLine? {
+        val max = ReadSourceRequest.MAX_LINE_CHARS
+        val sb = StringBuilder()
+        var truncated = false
+        while (true) {
+            val ch = reader.read()
+            if (ch < 0) {
+                return if (sb.isEmpty()) null else BoundedLine(sb.toString(), truncated)
+            }
+            if (ch == '\n'.code) {
+                break
+            }
+            if (ch == '\r'.code) {
+                reader.mark(1)
+                val next = reader.read()
+                if (next != '\n'.code && next >= 0) {
+                    reader.reset()
+                }
+                break
+            }
+            if (sb.length < max) {
+                sb.append(ch.toChar())
+            } else {
+                truncated = true
+            }
+        }
+        return BoundedLine(sb.toString(), truncated)
+    }
+
+    private fun joinBounded(lines: List<String>): BoundedLine {
+        if (lines.isEmpty()) return BoundedLine("", truncated = false)
+        val max = ReadSourceRequest.MAX_SNIPPET_CHARS
+        val sb = StringBuilder()
+        var truncated = false
+        for ((index, row) in lines.withIndex()) {
+            if (index > 0) {
+                if (sb.length >= max) {
+                    truncated = true
+                    break
+                }
+                sb.append('\n')
+            }
+            val remaining = max - sb.length
+            if (remaining <= 0) {
+                truncated = true
+                break
+            }
+            if (row.length <= remaining) {
+                sb.append(row)
+            } else {
+                sb.append(row, 0, remaining)
+                truncated = true
+                break
+            }
+        }
+        return BoundedLine(sb.toString(), truncated)
     }
 }

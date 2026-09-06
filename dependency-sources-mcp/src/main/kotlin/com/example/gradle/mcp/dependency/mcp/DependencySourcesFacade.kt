@@ -108,7 +108,6 @@ class DependencySourcesFacade(
     }
 
     fun read(args: Map<String, Any>, access: DependencySourcesGradleAccess): Map<String, Any?> {
-        val projectDirectory = access.resolveProjectDirectory(args)
         val artifact = parseReadArtifact(args)
         val path = args.requiredString("path")
         val line = args.optionalPositiveInt("line")
@@ -120,6 +119,9 @@ class DependencySourcesFacade(
             "maxLines",
         ) ?: ReadSourceRequest.DEFAULT_MAX_LINES
         var sourceRoot = args.optionalString("sourceRoot")?.let(::File)
+        // Explicit sourceRoot can be read without a Gradle connection (offline / hit replay).
+        val projectDirectory =
+            if (sourceRoot != null) null else access.resolveProjectDirectory(args)
         val gradleUserHome = resolveGradleUserHome(
             explicit = args.optionalString("gradleUserHome")?.let(::File),
             projectDirectory = projectDirectory,
@@ -129,7 +131,7 @@ class DependencySourcesFacade(
         if (sourceRoot == null) {
             val tokenMode = args.optionalString("tokenMode")?.let(TokenMode::parse)
             sourceRoot = resolveIndexedSourceRoot(
-                projectDirectory = projectDirectory,
+                projectDirectory = projectDirectory!!,
                 artifact = artifact,
                 path = path,
                 indexDir = args.optionalString("indexDir")?.let(::File),
@@ -234,12 +236,12 @@ class DependencySourcesFacade(
 
     private fun resolveGradleUserHome(
         explicit: File?,
-        projectDirectory: File,
+        projectDirectory: File?,
         access: DependencySourcesGradleAccess,
         needsArtifactsLookup: Boolean,
     ): File? {
         if (explicit != null) return explicit
-        if (!needsArtifactsLookup) return null
+        if (!needsArtifactsLookup || projectDirectory == null) return null
         return access.gradleUserHome(projectDirectory)
     }
 

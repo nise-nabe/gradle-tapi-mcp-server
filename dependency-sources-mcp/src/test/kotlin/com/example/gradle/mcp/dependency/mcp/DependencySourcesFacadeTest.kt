@@ -539,6 +539,34 @@ class DependencySourcesFacadeTest {
         }
         """.trimIndent()
 
+    @Test
+    fun `read with explicit sourceRoot does not require project directory resolution`() {
+        val tree = File(tempDir, "offline-read").apply { mkdirs() }
+        File(tree, "Offline.kt").writeText("class Offline\n")
+        val access = object : DependencySourcesGradleAccess {
+            override fun resolveProjectDirectory(args: Map<String, Any>): File =
+                error("resolveProjectDirectory must not be called when sourceRoot is explicit")
+
+            override fun gradleUserHome(projectDirectory: File): File? =
+                error("gradleUserHome must not be called when sourceRoot is explicit")
+
+            override fun <T> withConnection(projectDirectory: File, block: (ProjectConnection) -> T): T =
+                error("connection must not be required")
+
+            override fun <T> withNoActiveBuild(projectDirectory: File, block: () -> T): T = block()
+        }
+        val result = DependencySourcesFacade().read(
+            mapOf(
+                "gav" to "local:offline:0",
+                "path" to "Offline.kt",
+                "sourceRoot" to tree.absolutePath,
+            ),
+            access,
+        )
+        result["snippet"] shouldBe "class Offline"
+        result["truncated"] shouldBe false
+    }
+
     private fun placeSourcesJar(
         gradleUserHome: File,
         group: String,

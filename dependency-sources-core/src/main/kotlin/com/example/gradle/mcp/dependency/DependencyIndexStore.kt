@@ -103,7 +103,18 @@ class DependencyIndexStore {
                 }
             if (loaded != null) {
                 memory[key] = loaded
-                runCatching { IndexSourceRoots.write(indexDir, keepSet.members) }
+                val sideCar = File(indexDir, IndexSourceRoots.FILE_NAME)
+                try {
+                    IndexSourceRoots.write(indexDir, keepSet.members)
+                } catch (error: Exception) {
+                    if (!sideCar.isFile) {
+                        throw IllegalStateException(
+                            "Failed to write ${IndexSourceRoots.FILE_NAME} for cached index at " +
+                                "${indexDir.absolutePath}: ${error.message}",
+                            error,
+                        )
+                    }
+                }
                 return IndexResult(
                     stats = loaded.stats(indexDir, cacheHit = true),
                     memberCount = keepSet.members.size,

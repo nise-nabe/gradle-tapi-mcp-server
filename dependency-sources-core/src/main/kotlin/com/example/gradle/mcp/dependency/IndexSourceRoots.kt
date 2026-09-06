@@ -57,10 +57,16 @@ object IndexSourceRoots {
         val roots = rootsByGav[gav].orEmpty().filter { it.exists() }
         if (roots.isEmpty()) return null
         val normalized = normalizeRelativePath(path) ?: return null
+        var match: File? = null
         for (root in roots) {
-            if (containsPath(root, normalized, jarEntriesCache)) return root
+            if (!containsPath(root, normalized, jarEntriesCache)) continue
+            if (match != null) {
+                // Multiple roots contain the same relative path — do not guess.
+                return null
+            }
+            match = root
         }
-        return null
+        return match
     }
 
     internal fun normalizeRelativePath(path: String): String? {

@@ -103,7 +103,7 @@ class DependencySourceReaderTest {
                     sourceRoot = tree,
                 ),
             )
-        }.message shouldContain "escapes"
+        }.message shouldContain ".."
     }
 
     @Test
@@ -268,6 +268,51 @@ class DependencySourceReaderTest {
             zip.putNextEntry(ZipEntry(entryPath))
             zip.write(content.toByteArray(Charsets.UTF_8))
             zip.closeEntry()
+        }
+    }
+
+
+    @Test
+    fun `truncates oversized lines and marks snippet truncated`() {
+        val tree = File(tempDir, "long-line").apply { mkdirs() }
+        val long = "x".repeat(ReadSourceRequest.MAX_LINE_CHARS + 50)
+        File(tree, "Huge.kt").writeText("class Huge {\n    val s = \"$long\"\n}\n")
+        val result = DependencySourceReader.read(
+            ReadSourceRequest(
+                artifact = DependencyArtifactRef("g", "n", "1"),
+                path = "Huge.kt",
+                line = 2,
+                contextLines = 1,
+                sourceRoot = tree,
+            ),
+        )
+        result.truncated shouldBe true
+        (result.snippet.length <= ReadSourceRequest.MAX_SNIPPET_CHARS) shouldBe true
+        val mid = result.snippet.lines().first { "val s" in it || it.startsWith("x") || "xxxx" in it }
+        (mid.length <= ReadSourceRequest.MAX_LINE_CHARS) shouldBe true
+    }
+
+    @Test
+    fun `rejects empty and parent path segments`() {
+        val tree = File(tempDir, "seg").apply { mkdirs() }
+        File(tree, "Ok.kt").writeText("class Ok\n")
+        shouldThrow<IllegalArgumentException> {
+            DependencySourceReader.read(
+                ReadSourceRequest(
+                    artifact = DependencyArtifactRef("g", "n", "1"),
+                    path = "foo/../Ok.kt",
+                    sourceRoot = tree,
+                ),
+            )
+        }
+        shouldThrow<IllegalArgumentException> {
+            DependencySourceReader.read(
+                ReadSourceRequest(
+                    artifact = DependencyArtifactRef("g", "n", "1"),
+                    path = "foo//Ok.kt",
+                    sourceRoot = tree,
+                ),
+            )
         }
     }
 }

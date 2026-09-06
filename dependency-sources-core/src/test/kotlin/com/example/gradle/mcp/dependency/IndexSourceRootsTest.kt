@@ -65,4 +65,14 @@ class IndexSourceRootsTest {
         cache.size shouldBe 1
         cache.values.single().shouldContain("B.kt")
     }
+
+    @Test
+    fun `ambiguous roots with same path return null`() {
+        val a = File(tempDir, "root-a").apply { mkdirs() }
+        val b = File(tempDir, "root-b").apply { mkdirs() }
+        File(a, "Shared.kt").writeText("class SharedA")
+        File(b, "Shared.kt").writeText("class SharedB")
+        val roots = mapOf("g:n:1" to listOf(a, b))
+        IndexSourceRoots.resolve(roots, "g:n:1", "Shared.kt").shouldBeNull()
+    }
 }
