@@ -46,4 +46,30 @@ class DependencyIndexStoreSearchTest {
         truncated.hitCount shouldBe 2
         truncated.hitsTruncated shouldBe true
     }
+
+    @Test
+    fun `Int MAX_VALUE limit does not overflow probe and still returns hits`() {
+        val sources = File(tempDir, "src-max").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-max").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+        val result = store.search(
+            SearchRequest(
+                projectDirectory = project,
+                query = "Foo",
+                tokenMode = TokenMode.IDENTS,
+                limit = Int.MAX_VALUE,
+            ),
+        )
+        result.hitCount shouldBe 1
+        result.hitsTruncated shouldBe false
+    }
 }
