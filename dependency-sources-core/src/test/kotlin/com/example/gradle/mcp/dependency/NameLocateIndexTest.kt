@@ -65,9 +65,6 @@ class GapEliasDeltaCodecTest {
             )
         }
     }
-}
-
-
 
     @Test
     fun `round-trips first docId at Int MAX_VALUE`() {
@@ -75,6 +72,7 @@ class GapEliasDeltaCodecTest {
         val encoded = GapEliasDeltaCodec.encodeOccurrences(occs)
         GapEliasDeltaCodec.decodeOccurrences(encoded, occs.size) shouldContainExactly occs
     }
+}
 
 class IdentifierLexerTest {
     @Test

@@ -87,6 +87,7 @@ object GapEliasDeltaCodec {
         val out = ArrayList<OccPos>(count)
         forEachOccurrence(bytes, count) { docId, line, column ->
             out.add(OccPos(docId = docId, line = line, column = column))
+            true
         }
         return out
     }
@@ -101,13 +102,17 @@ object GapEliasDeltaCodec {
             require(docId in 0 until docCount) {
                 "occurrence docId $docId out of range for $docCount documents"
             }
+            true
         }
     }
 
-    private inline fun forEachOccurrence(
+    /**
+     * Stream occurrences. [action] should return false to stop early.
+     */
+    internal fun forEachOccurrence(
         bytes: ByteArray,
         count: Int,
-        action: (docId: Int, line: Int, column: Int) -> Unit,
+        action: (docId: Int, line: Int, column: Int) -> Boolean,
     ) {
         require(count >= 0) { "occurrence count must be non-negative" }
         if (count == 0) return
@@ -152,7 +157,7 @@ object GapEliasDeltaCodec {
                 "invalid column value in occurrence posting"
             }
             val column = (colRaw - 1L).toInt()
-            action(docId, line, column)
+            if (!action(docId, line, column)) return
         }
     }
 

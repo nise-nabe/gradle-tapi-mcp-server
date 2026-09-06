@@ -70,12 +70,11 @@ class NameLocateIndex private constructor(
         if (limit <= 0) return emptyList()
         val nameId = dictionary.lookup(query) ?: return emptyList()
         val (blob, count) = postings.getOrNull(nameId) ?: return emptyList()
-        val occs = GapEliasDeltaCodec.decodeOccurrences(blob, count)
-        val hits = ArrayList<LocateHit>(minOf(limit, occs.size))
-        for (occ in occs) {
-            val doc = documents[occ.docId]
-            hits.add(LocateHit(doc.gav, doc.path, occ.line, occ.column))
-            if (hits.size >= limit) break
+        val hits = ArrayList<LocateHit>(minOf(limit, count))
+        GapEliasDeltaCodec.forEachOccurrence(blob, count) { docId, line, column ->
+            val doc = documents[docId]
+            hits.add(LocateHit(doc.gav, doc.path, line, column))
+            hits.size < limit
         }
         return hits
     }
