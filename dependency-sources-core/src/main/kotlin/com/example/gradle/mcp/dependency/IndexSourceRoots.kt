@@ -39,21 +39,34 @@ object IndexSourceRoots {
     }
 
     /**
-     * Prefer a root that actually contains [path]; otherwise the sole root for [gav].
+     * Return a root that contains [path]. Never returns a root that fails the containment
+     * check (so callers can fall back to cache jar lookup).
+     *
+     * [containsCache] memoizes jar/dir probes across many hits in one search.
      */
-    fun resolve(rootsByGav: Map<String, List<File>>, gav: String, path: String): File? {
+    fun resolve(
+        rootsByGav: Map<String, List<File>>,
+        gav: String,
+        path: String,
+        containsCache: MutableMap<String, Boolean>? = null,
+    ): File? {
         val roots = rootsByGav[gav].orEmpty().filter { it.exists() }
         if (roots.isEmpty()) return null
-        // Common case: one root per GAV — skip jar entry probes on every search hit.
-        if (roots.size == 1) return roots[0]
         val normalized = path.trim().trimStart('/').replace('\\', '/')
         for (root in roots) {
-            if (containsPath(root, normalized)) return root
+            val cacheKey = root.absolutePath + '\u0000' + normalized
+            val contains =
+                if (containsCache != null) {
+                    containsCache.getOrPut(cacheKey) { containsPath(root, normalized) }
+                } else {
+                    containsPath(root, normalized)
+                }
+            if (contains) return root
         }
         return null
     }
 
-    private fun containsPath(root: File, path: String): Boolean =
+    internal fun containsPath(root: File, path: String): Boolean =
         when {
             root.isDirectory -> File(root, path).isFile
             root.isFile && (root.name.endsWith(".jar", ignoreCase = true) ||

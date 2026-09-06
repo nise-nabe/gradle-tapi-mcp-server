@@ -280,7 +280,9 @@ Exact simple-name locate against a prior index. Optional `limit` / `perQueryLimi
 | `line` | no | 1-based anchor; must be within the file |
 | `contextLines` | no | Window around `line` (default 10) |
 | `maxLines` | no | Cap when `line` omitted (default 200) |
-| `sourceRoot` | sometimes | Explicit jar/zip/dir/file. **Required** for Idea directory sources and `sourcePaths` keep-sets (coordinate cache lookup only finds `*-sources.jar` under Maven local / Gradle caches) |
+| `sourceRoot` | no | Explicit jar/zip/dir/file. Optional when search hit / `source-roots.tsv` provides it, or a `*-sources.jar` exists in Maven local / Gradle caches. Pass when neither index nor cache can resolve the root |
+| `tokenMode` | no | Which index side-car to consult (`all`/`idents`; omit tries `all` then `idents`) |
+| `indexDir` | no | Override index directory |
 | `gradleUserHome` | no | Cache home for jar lookup; else connected project |
 
 Returns `snippet`, `startLine`, `endLine`, `lineCount`, `truncated`, and resolved `sourceRoot`.

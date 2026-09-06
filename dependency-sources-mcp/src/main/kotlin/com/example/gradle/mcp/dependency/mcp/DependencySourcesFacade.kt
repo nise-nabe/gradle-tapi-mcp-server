@@ -3,6 +3,7 @@ package com.example.gradle.mcp.dependency.mcp
 import com.example.gradle.mcp.dependency.DependencyArtifactRef
 import com.example.gradle.mcp.dependency.DependencyIndexStore
 import com.example.gradle.mcp.dependency.DependencySourceReader
+import com.example.gradle.mcp.dependency.IndexSourceRoots
 import com.example.gradle.mcp.dependency.IndexRequest
 import com.example.gradle.mcp.dependency.ReadSourceRequest
 import com.example.gradle.mcp.dependency.SearchMultiRequest
@@ -126,11 +127,13 @@ class DependencySourcesFacade(
             needsArtifactsLookup = sourceRoot == null,
         )
         if (sourceRoot == null) {
+            val tokenMode = args.optionalString("tokenMode")?.let(TokenMode::parse)
             sourceRoot = resolveIndexedSourceRoot(
                 projectDirectory = projectDirectory,
                 artifact = artifact,
                 path = path,
                 indexDir = args.optionalString("indexDir")?.let(::File),
+                tokenMode = tokenMode,
             )
         }
 
@@ -276,19 +279,17 @@ class DependencySourcesFacade(
         artifact: DependencyArtifactRef,
         path: String,
         indexDir: File?,
+        tokenMode: TokenMode?,
     ): File? {
-        val modes = listOf(
-            com.example.gradle.mcp.dependency.TokenMode.ALL,
-            com.example.gradle.mcp.dependency.TokenMode.IDENTS,
-        )
+        val modes = if (tokenMode != null) {
+            listOf(tokenMode)
+        } else {
+            listOf(TokenMode.ALL, TokenMode.IDENTS)
+        }
         for (mode in modes) {
             val dir = store.resolveIndexDir(projectDirectory, mode, indexDir)
-            val roots = com.example.gradle.mcp.dependency.IndexSourceRoots.load(dir)
-            val resolved = com.example.gradle.mcp.dependency.IndexSourceRoots.resolve(
-                roots,
-                artifact.gav(),
-                path,
-            )
+            val roots = IndexSourceRoots.load(dir)
+            val resolved = IndexSourceRoots.resolve(roots, artifact.gav(), path)
             if (resolved != null) {
                 return resolved
             }

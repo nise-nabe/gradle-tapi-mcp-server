@@ -228,6 +228,23 @@ class DependencySourceReaderTest {
         }.message shouldContain "maxLines"
     }
 
+
+    @Test
+    fun `rejects line on empty file`() {
+        val jar = File(tempDir, "empty.jar")
+        writeJar(jar, "Empty.kt", "")
+        shouldThrow<IllegalArgumentException> {
+            DependencySourceReader.read(
+                ReadSourceRequest(
+                    artifact = DependencyArtifactRef("g", "n", "1"),
+                    path = "Empty.kt",
+                    line = 1,
+                    sourceRoot = jar,
+                ),
+            )
+        }.message shouldContain "past end of file"
+    }
+
     private fun placeSourcesJar(
         gradleUserHome: File,
         group: String,

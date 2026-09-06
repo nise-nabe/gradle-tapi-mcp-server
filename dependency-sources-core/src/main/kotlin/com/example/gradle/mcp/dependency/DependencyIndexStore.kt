@@ -295,9 +295,11 @@ class DependencyIndexStore {
         if (hits.isEmpty()) return hits
         val roots = IndexSourceRoots.load(indexDir)
         if (roots.isEmpty()) return hits
+        val containsCache = HashMap<String, Boolean>()
         return hits.map { hit ->
-            val root = IndexSourceRoots.resolve(roots, hit.gav, hit.path) ?: return@map hit
-            if (hit.sourceRoot != null) hit else hit.copy(sourceRoot = root.absolutePath)
+            if (hit.sourceRoot != null) return@map hit
+            val root = IndexSourceRoots.resolve(roots, hit.gav, hit.path, containsCache) ?: return@map hit
+            hit.copy(sourceRoot = root.absolutePath)
         }
     }
 

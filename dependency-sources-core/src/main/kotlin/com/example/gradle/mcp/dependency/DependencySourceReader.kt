@@ -86,7 +86,7 @@ object DependencySourceReader {
                 )
             }
 
-        if (request.line != null && extracted.lineCount > 0 && request.line > extracted.lineCount) {
+        if (request.line != null && request.line > extracted.lineCount) {
             throw IllegalArgumentException(
                 "line ${request.line} is past end of file (${extracted.lineCount} lines)",
             )

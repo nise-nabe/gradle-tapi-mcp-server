@@ -109,6 +109,8 @@ object DependencySourceToolCatalog {
                 "contextLines" to integerProp("Lines before/after line (default 10, max 100)."),
                 "maxLines" to integerProp("Whole-file cap when line omitted (default 200, max 2000)."),
                 "sourceRoot" to stringProp("Jar/zip/dir/file override; else hit/index/cache."),
+                "tokenMode" to stringProp("Index mode for roots lookup (all|idents)."),
+                "indexDir" to stringProp("Override index dir (<dir>/<tokenMode>/)."),
                 "gradleUserHome" to stringProp("Cache home for *-sources.jar; else connected."),
             ),
             required = listOf("path"),
