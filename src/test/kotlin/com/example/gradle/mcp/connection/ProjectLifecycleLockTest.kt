@@ -4,6 +4,7 @@ import com.example.gradle.mcp.DefaultGradleMcpRuntime
 import com.example.gradle.mcp.build.BuildExecutionManager
 import com.example.gradle.mcp.build.registerBuildTools
 import com.example.gradle.mcp.cache.registerCacheTools
+import com.example.gradle.mcp.dependency.registerDependencySourceTools
 import com.example.gradle.mcp.model.registerModelTools
 import com.example.gradle.mcp.protocol.allMcpToolSpecs
 import com.example.gradle.mcp.protocol.registeredMcpToolNames
@@ -146,6 +147,7 @@ class McpToolRegistrationCatalogTest {
             server.registerCacheTools(scope)
             server.registerModelTools(scope)
             server.registerBuildTools(scope)
+            server.registerDependencySourceTools(scope)
         }
 
         val catalogNames = allMcpToolSpecs().map { it.name }
@@ -157,6 +159,6 @@ class McpToolRegistrationCatalogTest {
         missingFromCatalog.shouldBeEmpty()
         missingFromRegistration.shouldBeEmpty()
         catalogNames.size shouldBe registeredNames.size
-        catalogNameSet.size shouldBe 17
+        catalogNameSet.size shouldBe 19
     }
 }
