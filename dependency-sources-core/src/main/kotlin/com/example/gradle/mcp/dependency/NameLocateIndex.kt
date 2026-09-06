@@ -77,11 +77,19 @@ class NameLocateIndex private constructor(
         )
 
     /**
+     * Occurrence count for [query] without decoding postings payloads.
+     */
+    fun postingCount(query: String): Int {
+        val nameId = dictionary.lookup(query) ?: return 0
+        return postings.getOrNull(nameId)?.second ?: 0
+    }
+
+    /**
      * Exact simple-name locate. [limit] null = unlimited; 0 = empty without decode work.
      * Returns hits in posting order (doc_id, line, col). Caps returned hit count, not decoded rows.
      */
     fun locate(query: String, limit: Int? = null): List<LocateHit> {
-        if (limit == 0) return emptyList()
+        if (limit != null && limit <= 0) return emptyList()
         val nameId = dictionary.lookup(query) ?: return emptyList()
         val (blob, count) = postings.getOrNull(nameId) ?: return emptyList()
         if (limit == null) {
@@ -112,8 +120,9 @@ class NameLocateIndex private constructor(
         perQueryLimit: Int? = null,
     ): List<LocateHit> {
         if (limit == 0) return emptyList()
+        val uniqueQueries = queries.distinct()
         val merged = LinkedHashMap<LocateKey, LocateHit>()
-        for (query in queries) {
+        for (query in uniqueQueries) {
             for (hit in locate(query, perQueryLimit)) {
                 val key = hit.locateKey()
                 val existing = merged[key]

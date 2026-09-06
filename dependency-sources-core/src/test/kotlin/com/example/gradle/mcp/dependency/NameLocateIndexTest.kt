@@ -155,6 +155,22 @@ class NameLocateIndexTest {
         )
         index.locate("HttpClient", limit = 0) shouldContainExactly emptyList()
         index.locate("Missing", limit = 0) shouldContainExactly emptyList()
+        index.locate("HttpClient", limit = -1) shouldContainExactly emptyList()
+    }
+
+    @Test
+    fun `postingCount reports occurrences without locate decode`() {
+        val sources = File(tempDir, "posting-count").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\n")
+        val members = listOf(KeepSetMember(gav = "demo:lib:1", sourceRoot = sources))
+        val index = NameLocateIndex.build(
+            members,
+            TokenMode.IDENTS,
+            KeepSetFingerprint.compute(TokenMode.IDENTS, "explicit", members),
+            "explicit",
+        )
+        index.postingCount("Foo") shouldBe 2
+        index.postingCount("Missing") shouldBe 0
     }
 
     @Test

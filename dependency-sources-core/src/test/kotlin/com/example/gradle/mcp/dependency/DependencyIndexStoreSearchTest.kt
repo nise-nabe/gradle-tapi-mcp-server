@@ -1,7 +1,9 @@
 package com.example.gradle.mcp.dependency
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -245,5 +247,33 @@ class DependencyIndexStoreSearchTest {
         )
         result.hitCount shouldBe 1
         result.hitsTruncated shouldBe true
+    }
+
+    @Test
+    fun `negative limit is rejected at store layer`() {
+        val sources = File(tempDir, "src-neg-store").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\n")
+        val project = File(tempDir, "proj-neg-store").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+
+        val error = shouldThrow<IllegalArgumentException> {
+            store.search(
+                SearchRequest(
+                    projectDirectory = project,
+                    query = "Foo",
+                    tokenMode = TokenMode.IDENTS,
+                    limit = -1,
+                ),
+            )
+        }
+        error.message shouldContain "non-negative"
     }
 }

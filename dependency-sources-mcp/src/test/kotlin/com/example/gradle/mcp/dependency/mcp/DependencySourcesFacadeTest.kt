@@ -222,6 +222,32 @@ class DependencySourcesFacadeTest {
     }
 
     @Test
+    fun `explicit null limit behaves as unlimited`() {
+        val sources = File(tempDir, "src-null-limit").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}\nfun Foo() {}\n")
+        val project = File(tempDir, "proj-null-limit").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+        facade.index(
+            mapOf(
+                "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val args = linkedMapOf<String, Any?>(
+            "query" to "Foo",
+            "tokenMode" to "idents",
+            "limit" to null,
+        ) as Map<String, Any>
+        val search = facade.search(args, access)
+        search["hitCount"] shouldBe 2
+        search["hitsTruncated"] shouldBe false
+    }
+
+    @Test
     fun `non-array sourcePaths is rejected`() {
         val project = File(tempDir, "proj4").apply { mkdirs() }
         val access = StubAccess(project)

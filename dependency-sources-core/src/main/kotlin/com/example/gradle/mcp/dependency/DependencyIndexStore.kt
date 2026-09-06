@@ -134,6 +134,7 @@ class DependencyIndexStore {
 
     fun search(request: SearchRequest): SearchResult {
         require(request.query.isNotBlank()) { "query must not be blank" }
+        require(request.limit == null || request.limit >= 0) { "limit must be non-negative" }
         val index = loadForSearch(request.projectDirectory, request.tokenMode, request.indexDir)
             ?: throw IllegalArgumentException(
                 "No dependency-sources index found for this project/tokenMode. " +
@@ -151,12 +152,11 @@ class DependencyIndexStore {
                 )
             }
             0 -> {
-                val probed = index.locate(request.query, limit = 1)
                 SearchResult(
                     hits = emptyList(),
                     stats = index.stats(indexDir, cacheHit = true),
                     hitCount = 0,
-                    hitsTruncated = probed.isNotEmpty(),
+                    hitsTruncated = index.postingCount(request.query) > 0,
                 )
             }
             else -> {
@@ -183,6 +183,10 @@ class DependencyIndexStore {
     fun searchMulti(request: SearchMultiRequest): SearchMultiResult {
         require(request.queries.isNotEmpty()) { "queries must not be empty" }
         require(request.queries.all { it.isNotBlank() }) { "queries must not contain blank entries" }
+        require(request.limit == null || request.limit >= 0) { "limit must be non-negative" }
+        require(request.perQueryLimit == null || request.perQueryLimit >= 0) {
+            "perQueryLimit must be non-negative"
+        }
         val index = loadForSearch(request.projectDirectory, request.tokenMode, request.indexDir)
             ?: throw IllegalArgumentException(
                 "No dependency-sources index found for this project/tokenMode. " +
@@ -203,7 +207,7 @@ class DependencyIndexStore {
                 hits = emptyList(),
                 stats = index.stats(indexDir, cacheHit = true),
                 hitCount = 0,
-                hitsTruncated = request.queries.any { index.locate(it, limit = 1).isNotEmpty() },
+                hitsTruncated = request.queries.any { index.postingCount(it) > 0 },
             )
             else -> {
                 val probed =
@@ -240,9 +244,9 @@ class DependencyIndexStore {
     ): Boolean =
         when (perQueryLimit) {
             null -> false
-            0 -> queries.any { index.locate(it, limit = 1).isNotEmpty() }
+            0 -> queries.any { index.postingCount(it) > 0 }
             Int.MAX_VALUE -> false
-            else -> queries.any { index.locate(it, limit = perQueryLimit + 1).size > perQueryLimit }
+            else -> queries.any { index.postingCount(it) > perQueryLimit }
         }
 
     private fun loadForSearch(

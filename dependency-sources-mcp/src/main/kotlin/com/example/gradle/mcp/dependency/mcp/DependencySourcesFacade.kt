@@ -203,6 +203,7 @@ private fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boo
 private fun Map<String, Any>.optionalLimitInt(key: String): Int? {
     if (!containsKey(key)) return null
     val parsed = when (val value = this[key]) {
+        null -> return null
         is Number -> value.toExactLimitIntOrNull()
         is String -> value.toIntOrNull()
         else -> null

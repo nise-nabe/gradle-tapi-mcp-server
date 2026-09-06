@@ -63,7 +63,7 @@ object DependencySourceToolCatalog {
                 "projectDirectory" to stringProp("Project root; omit for default/GRADLE_PROJECT_DIR."),
                 "query" to stringProp("Exact simple-name to locate"),
                 "tokenMode" to stringProp("Must match an index (all|idents). Prefer all."),
-                "limit" to integerProp("Max hits; omit=unlimited, 0=empty."),
+                "limit" to nullableIntegerProp("Max hits; omit/null=unlimited, 0=empty."),
                 "indexDir" to stringProp("Override dir (reads <dir>/<tokenMode>/)."),
             ),
             required = listOf("query"),
@@ -75,8 +75,8 @@ object DependencySourceToolCatalog {
                 "projectDirectory" to stringProp("Project root; omit for default/GRADLE_PROJECT_DIR."),
                 "queries" to stringArrayProp("Non-empty simple names (OR)."),
                 "tokenMode" to stringProp("Must match an index (all|idents). Prefer all."),
-                "limit" to integerProp("Overall max after merge/sort; omit=unlimited, 0=empty."),
-                "per_query_limit" to integerProp("Per-query cap; omit=unlimited, 0=empty."),
+                "limit" to nullableIntegerProp("Overall max after merge/sort; omit/null=unlimited, 0=empty."),
+                "per_query_limit" to nullableIntegerProp("Per-query cap; omit/null=unlimited, 0=empty."),
                 "indexDir" to stringProp("Override dir (reads <dir>/<tokenMode>/)."),
             ),
             required = listOf("queries"),
@@ -100,6 +100,9 @@ object DependencySourceToolCatalog {
 
     private fun integerProp(description: String): Map<String, String> =
         mapOf("type" to "integer", "description" to description)
+
+    private fun nullableIntegerProp(description: String): Map<String, Any> =
+        mapOf("type" to listOf("integer", "null"), "description" to description)
 
     private fun stringArrayProp(description: String): Map<String, Any> =
         mapOf("type" to "array", "description" to description, "items" to mapOf("type" to "string"))
