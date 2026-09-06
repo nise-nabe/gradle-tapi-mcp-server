@@ -383,11 +383,89 @@ class DependencySourcesFacadeTest {
         error.message shouldContain "com.example:wrong-home:3.0.0"
     }
 
+    @Test
+    fun `read returns snippet from sources jar using gav and connected gradle home`() {
+        val home = File(tempDir, "read-home")
+        placeSourcesJar(home, "com.example", "readable", "1.2.3", sourceBody = multilineDemoSource())
+        val project = File(tempDir, "proj-read").apply { mkdirs() }
+        val access = StubAccess(project, connectedGradleUserHome = home)
+        val facade = DependencySourcesFacade()
+
+        val result = facade.read(
+            mapOf(
+                "gav" to "com.example:readable:1.2.3",
+                "path" to "Readable.kt",
+                "line" to 3,
+                "contextLines" to 1,
+            ),
+            access,
+        )
+
+        result["gav"] shouldBe "com.example:readable:1.2.3"
+        result["path"] shouldBe "Readable.kt"
+        result["startLine"] shouldBe 2
+        result["endLine"] shouldBe 4
+        result["truncated"] shouldBe true
+        (result["snippet"] as String) shouldContain "class Readable"
+        (result["snippet"] as String) shouldContain "fun hit()"
+    }
+
+    @Test
+    fun `read accepts group name version and explicit sourceRoot`() {
+        val tree = File(tempDir, "read-tree").apply { mkdirs() }
+        File(tree, "Demo.java").writeText("class Demo {}")
+        val project = File(tempDir, "proj-read-root").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+
+        val result = facade.read(
+            mapOf(
+                "group" to "local",
+                "name" to "demo",
+                "version" to "0",
+                "path" to "Demo.java",
+                "sourceRoot" to tree.absolutePath,
+            ),
+            access,
+        )
+
+        result["snippet"] shouldBe "class Demo {}"
+        result["truncated"] shouldBe false
+        result["startLine"] shouldBe 1
+        result["endLine"] shouldBe 1
+    }
+
+    @Test
+    fun `read rejects gav mixed with group fields`() {
+        val project = File(tempDir, "proj-read-mixed").apply { mkdirs() }
+        val error = shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().read(
+                mapOf(
+                    "gav" to "g:n:1",
+                    "group" to "g",
+                    "path" to "A.kt",
+                ),
+                StubAccess(project),
+            )
+        }
+        error.message shouldContain "either gav or group/name/version"
+    }
+
+    private fun multilineDemoSource(): String =
+        """
+        package demo
+        class Readable {
+            fun hit() {}
+            fun other() {}
+        }
+        """.trimIndent()
+
     private fun placeSourcesJar(
         gradleUserHome: File,
         group: String,
         name: String,
         version: String,
+        sourceBody: String? = null,
     ): File {
         val moduleDir = File(
             gradleUserHome,
@@ -398,9 +476,10 @@ class DependencySourcesFacadeTest {
         val simpleName = name.split('-').joinToString("") { part ->
             part.replaceFirstChar { it.uppercase() }
         }
+        val body = sourceBody ?: "class $simpleName\n"
         java.util.zip.ZipOutputStream(jar.outputStream()).use { zip ->
             zip.putNextEntry(java.util.zip.ZipEntry("$simpleName.kt"))
-            zip.write("class $simpleName\n".toByteArray())
+            zip.write(body.toByteArray())
             zip.closeEntry()
         }
         return jar

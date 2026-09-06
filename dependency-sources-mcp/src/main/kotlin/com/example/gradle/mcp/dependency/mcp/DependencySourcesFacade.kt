@@ -2,7 +2,9 @@ package com.example.gradle.mcp.dependency.mcp
 
 import com.example.gradle.mcp.dependency.DependencyArtifactRef
 import com.example.gradle.mcp.dependency.DependencyIndexStore
+import com.example.gradle.mcp.dependency.DependencySourceReader
 import com.example.gradle.mcp.dependency.IndexRequest
+import com.example.gradle.mcp.dependency.ReadSourceRequest
 import com.example.gradle.mcp.dependency.SearchMultiRequest
 import com.example.gradle.mcp.dependency.SearchRequest
 import com.example.gradle.mcp.dependency.SourcePathRef
@@ -102,6 +104,64 @@ class DependencySourcesFacade(
             ),
         )
         return searchMultiResponse(queries = queries, result = result)
+    }
+
+    fun read(args: Map<String, Any>, access: DependencySourcesGradleAccess): Map<String, Any?> {
+        val projectDirectory = access.resolveProjectDirectory(args)
+        val artifact = parseReadArtifact(args)
+        val path = args.requiredString("path")
+        val line = args.optionalPositiveInt("line")
+        val contextLines = args.optionalNonNegativeInt(
+            "contextLines",
+            default = ReadSourceRequest.DEFAULT_CONTEXT_LINES,
+        )
+        val sourceRoot = args.optionalString("sourceRoot")?.let(::File)
+        val gradleUserHome = resolveGradleUserHome(
+            explicit = args.optionalString("gradleUserHome")?.let(::File),
+            projectDirectory = projectDirectory,
+            access = access,
+            needsArtifactsLookup = sourceRoot == null,
+        )
+
+        val result = DependencySourceReader.read(
+            ReadSourceRequest(
+                artifact = artifact,
+                path = path,
+                line = line,
+                contextLines = contextLines,
+                sourceRoot = sourceRoot,
+                gradleUserHome = gradleUserHome,
+            ),
+        )
+        return linkedMapOf(
+            "gav" to result.gav,
+            "path" to result.path,
+            "sourceRoot" to result.sourceRoot,
+            "startLine" to result.startLine,
+            "endLine" to result.endLine,
+            "lineCount" to result.lineCount,
+            "truncated" to result.truncated,
+            "snippet" to result.snippet,
+        )
+    }
+
+    private fun parseReadArtifact(args: Map<String, Any>): DependencyArtifactRef {
+        val gav = args.optionalString("gav")
+        if (gav != null) {
+            if (args.containsKey("group") || args.containsKey("name") || args.containsKey("version")) {
+                throw IllegalArgumentException("Provide either gav or group/name/version, not both")
+            }
+            return DependencySourceReader.parseGav(gav)
+        }
+        val group = args.optionalString("group")
+        val name = args.optionalString("name")
+        val version = args.optionalString("version")
+        if (group == null || name == null || version == null) {
+            throw IllegalArgumentException(
+                "Missing artifact coordinates: provide gav or group+name+version",
+            )
+        }
+        return DependencyArtifactRef(group = group, name = name, version = version).also { it.validate() }
     }
 
     private fun searchResponse(
@@ -238,6 +298,33 @@ private fun Map<String, Any>.optionalLimitIntWithAlias(primaryKey: String, alias
     } else {
         optionalLimitInt(aliasKey)
     }
+
+private fun Map<String, Any>.optionalPositiveInt(key: String): Int? {
+    if (!containsKey(key)) return null
+    val parsed = optionalExactInt(key) ?: throw IllegalArgumentException("Argument must be an integer: $key")
+    if (parsed < 1) {
+        throw IllegalArgumentException("Argument must be >= 1: $key")
+    }
+    return parsed
+}
+
+private fun Map<String, Any>.optionalNonNegativeInt(key: String, default: Int): Int {
+    if (!containsKey(key)) return default
+    val parsed = optionalExactInt(key) ?: throw IllegalArgumentException("Argument must be an integer: $key")
+    if (parsed < 0) {
+        throw IllegalArgumentException("Argument must be non-negative: $key")
+    }
+    return parsed
+}
+
+private fun Map<String, Any>.optionalExactInt(key: String): Int? {
+    return when (val value = this[key]) {
+        null -> null
+        is Number -> value.toExactLimitIntOrNull()
+        is String -> value.toIntOrNull()
+        else -> null
+    }
+}
 
 private fun Number.toExactLimitIntOrNull(): Int? {
     val longValue = when (this) {

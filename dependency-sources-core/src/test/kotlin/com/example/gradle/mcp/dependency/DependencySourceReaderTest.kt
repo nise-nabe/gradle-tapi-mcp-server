@@ -1,0 +1,142 @@
+package com.example.gradle.mcp.dependency
+
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.assertions.throwables.shouldThrow
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+
+class DependencySourceReaderTest {
+    @TempDir
+    lateinit var tempDir: File
+
+    @Test
+    fun `reads snippet around line from sources jar via gradle cache`() {
+        val home = File(tempDir, "gradle-home")
+        placeSourcesJar(
+            gradleUserHome = home,
+            group = "org.example",
+            name = "lib",
+            version = "1.0.0",
+            entryPath = "org/example/Demo.java",
+            content =
+                """
+                package org.example;
+
+                public class Demo {
+                    // line 4
+                    public void run() {}
+                }
+                """.trimIndent(),
+        )
+
+        val result = DependencySourceReader.read(
+            ReadSourceRequest(
+                artifact = DependencyArtifactRef("org.example", "lib", "1.0.0"),
+                path = "org/example/Demo.java",
+                line = 4,
+                contextLines = 1,
+                gradleUserHome = home,
+            ),
+        )
+
+        result.startLine shouldBe 3
+        result.endLine shouldBe 5
+        result.truncated shouldBe true
+        result.lineCount shouldBe 6
+        result.snippet shouldContain "public class Demo"
+        result.snippet shouldContain "// line 4"
+        result.snippet shouldContain "public void run"
+    }
+
+    @Test
+    fun `reads whole file when line omitted`() {
+        val jar = File(tempDir, "plain-sources.jar")
+        writeJar(jar, "A.kt", "fun one()\nfun two()")
+
+        val result = DependencySourceReader.read(
+            ReadSourceRequest(
+                artifact = DependencyArtifactRef("g", "n", "1"),
+                path = "A.kt",
+                sourceRoot = jar,
+            ),
+        )
+
+        result.startLine shouldBe 1
+        result.endLine shouldBe 2
+        result.truncated shouldBe false
+        result.snippet shouldBe "fun one()\nfun two()"
+    }
+
+    @Test
+    fun `reads from source directory via sourceRoot`() {
+        val tree = File(tempDir, "src").apply { mkdirs() }
+        File(tree, "pkg").mkdirs()
+        File(tree, "pkg/Hello.kt").writeText("class Hello\n")
+
+        val result = DependencySourceReader.read(
+            ReadSourceRequest(
+                artifact = DependencyArtifactRef("local", "tree", "0"),
+                path = "pkg/Hello.kt",
+                sourceRoot = tree,
+            ),
+        )
+
+        result.snippet shouldBe "class Hello\n"
+        result.truncated shouldBe false
+    }
+
+    @Test
+    fun `rejects path traversal under directory sourceRoot`() {
+        val tree = File(tempDir, "safe").apply { mkdirs() }
+        File(tree, "Ok.kt").writeText("ok\n")
+        File(tempDir, "secret.kt").writeText("secret\n")
+
+        shouldThrow<IllegalArgumentException> {
+            DependencySourceReader.read(
+                ReadSourceRequest(
+                    artifact = DependencyArtifactRef("g", "n", "1"),
+                    path = "../secret.kt",
+                    sourceRoot = tree,
+                ),
+            )
+        }.message shouldContain "escapes"
+    }
+
+    @Test
+    fun `parseGav requires three parts`() {
+        shouldThrow<IllegalArgumentException> {
+            DependencySourceReader.parseGav("only:two")
+        }
+        DependencySourceReader.parseGav("a.b:c:1.2.3").gav() shouldBe "a.b:c:1.2.3"
+    }
+
+    private fun placeSourcesJar(
+        gradleUserHome: File,
+        group: String,
+        name: String,
+        version: String,
+        entryPath: String,
+        content: String,
+    ): File {
+        val moduleDir = File(
+            gradleUserHome,
+            "caches/modules-2/files-2.1/$group/$name/$version/hash",
+        )
+        moduleDir.mkdirs()
+        val jar = File(moduleDir, "$name-$version-sources.jar")
+        writeJar(jar, entryPath, content)
+        return jar
+    }
+
+    private fun writeJar(jar: File, entryPath: String, content: String) {
+        ZipOutputStream(jar.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry(entryPath))
+            zip.write(content.toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+        }
+    }
+}
