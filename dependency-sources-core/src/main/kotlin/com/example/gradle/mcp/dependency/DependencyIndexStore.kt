@@ -103,7 +103,7 @@ class DependencyIndexStore {
                 }
             if (loaded != null) {
                 memory[key] = loaded
-                IndexSourceRoots.write(indexDir, keepSet.members)
+                runCatching { IndexSourceRoots.write(indexDir, keepSet.members) }
                 return IndexResult(
                     stats = loaded.stats(indexDir, cacheHit = true),
                     memberCount = keepSet.members.size,
@@ -295,10 +295,10 @@ class DependencyIndexStore {
         if (hits.isEmpty()) return hits
         val roots = IndexSourceRoots.load(indexDir)
         if (roots.isEmpty()) return hits
-        val containsCache = HashMap<String, Boolean>()
+        val jarEntriesCache = HashMap<String, Set<String>>()
         return hits.map { hit ->
             if (hit.sourceRoot != null) return@map hit
-            val root = IndexSourceRoots.resolve(roots, hit.gav, hit.path, containsCache) ?: return@map hit
+            val root = IndexSourceRoots.resolve(roots, hit.gav, hit.path, jarEntriesCache) ?: return@map hit
             hit.copy(sourceRoot = root.absolutePath)
         }
     }

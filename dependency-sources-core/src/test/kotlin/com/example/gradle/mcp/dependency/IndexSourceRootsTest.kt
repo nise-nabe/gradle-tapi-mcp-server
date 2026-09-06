@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.dependency
 
 import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -9,6 +10,16 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 class IndexSourceRootsTest {
+    @Test
+    fun `rejects path traversal segments`() {
+        val root = File(tempDir, "safe").apply { mkdirs() }
+        File(root, "Ok.kt").writeText("ok")
+        File(tempDir, "secret.kt").writeText("secret")
+        val roots = mapOf("g:n:1" to listOf(root))
+        IndexSourceRoots.resolve(roots, "g:n:1", "../secret.kt").shouldBeNull()
+        IndexSourceRoots.resolve(roots, "g:n:1", "Ok.kt")!!.name shouldBe "safe"
+    }
+
     @TempDir
     lateinit var tempDir: File
 
@@ -40,13 +51,18 @@ class IndexSourceRootsTest {
     }
 
     @Test
-    fun `memoized resolve does not change results`() {
-        val root = File(tempDir, "tree").apply { mkdirs() }
-        File(root, "B.kt").writeText("class B")
-        val roots = mapOf("g:n:1" to listOf(root))
-        val cache = HashMap<String, Boolean>()
-        IndexSourceRoots.resolve(roots, "g:n:1", "B.kt", cache)!!.name shouldBe "tree"
-        IndexSourceRoots.resolve(roots, "g:n:1", "B.kt", cache)!!.name shouldBe "tree"
-        cache.isNotEmpty() shouldBe true
+    fun `jar entry cache is reused across resolves`() {
+        val jar = File(tempDir, "cached-sources.jar")
+        ZipOutputStream(jar.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("B.kt"))
+            zip.write("class B".toByteArray())
+            zip.closeEntry()
+        }
+        val roots = mapOf("g:n:1" to listOf(jar))
+        val cache = HashMap<String, Set<String>>()
+        IndexSourceRoots.resolve(roots, "g:n:1", "B.kt", cache)!!.name shouldBe "cached-sources.jar"
+        IndexSourceRoots.resolve(roots, "g:n:1", "Missing.kt", cache).shouldBeNull()
+        cache.size shouldBe 1
+        cache.values.single().shouldContain("B.kt")
     }
 }

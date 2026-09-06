@@ -18,9 +18,13 @@ object IndexSourceRoots {
             .sortedWith(compareBy({ it.first }, { it.second }))
             .map { (gav, root) -> "${escape(gav)}\t${escape(root)}" }
             .toList()
-        File(directory, FILE_NAME).writeText(
-            if (lines.isEmpty()) "" else lines.joinToString("\n", postfix = "\n"),
-        )
+        val target = File(directory, FILE_NAME)
+        val tmp = File(directory, "$FILE_NAME.tmp-${System.nanoTime()}")
+        tmp.writeText(if (lines.isEmpty()) "" else lines.joinToString("\n", postfix = "\n"))
+        if (!tmp.renameTo(target)) {
+            tmp.copyTo(target, overwrite = true)
+            tmp.delete()
+        }
     }
 
     fun load(directory: File): Map<String, List<File>> {
@@ -39,48 +43,62 @@ object IndexSourceRoots {
     }
 
     /**
-     * Return a root that contains [path]. Never returns a root that fails the containment
-     * check (so callers can fall back to cache jar lookup).
+     * Return a root that contains [path], or null.
      *
-     * [containsCache] memoizes jar/dir probes across many hits in one search.
+     * [jarEntriesCache] maps absolute jar/zip path → entry names (without leading `/`).
+     * Callers enriching many hits should reuse one cache so each jar is opened once.
      */
     fun resolve(
         rootsByGav: Map<String, List<File>>,
         gav: String,
         path: String,
-        containsCache: MutableMap<String, Boolean>? = null,
+        jarEntriesCache: MutableMap<String, Set<String>>? = null,
     ): File? {
         val roots = rootsByGav[gav].orEmpty().filter { it.exists() }
         if (roots.isEmpty()) return null
-        val normalized = path.trim().trimStart('/').replace('\\', '/')
+        val normalized = normalizeRelativePath(path) ?: return null
         for (root in roots) {
-            val cacheKey = root.absolutePath + '\u0000' + normalized
-            val contains =
-                if (containsCache != null) {
-                    containsCache.getOrPut(cacheKey) { containsPath(root, normalized) }
-                } else {
-                    containsPath(root, normalized)
-                }
-            if (contains) return root
+            if (containsPath(root, normalized, jarEntriesCache)) return root
         }
         return null
     }
 
-    internal fun containsPath(root: File, path: String): Boolean =
+    internal fun normalizeRelativePath(path: String): String? {
+        val normalized = path.trim().trimStart('/').replace('\\', '/')
+        if (normalized.isEmpty()) return null
+        val segments = normalized.split('/')
+        if (segments.any { it.isEmpty() || it == "." || it == ".." }) return null
+        return normalized
+    }
+
+    internal fun containsPath(
+        root: File,
+        path: String,
+        jarEntriesCache: MutableMap<String, Set<String>>? = null,
+    ): Boolean =
         when {
             root.isDirectory -> File(root, path).isFile
             root.isFile && (root.name.endsWith(".jar", ignoreCase = true) ||
                 root.name.endsWith(".zip", ignoreCase = true)) -> {
-                runCatching {
-                    ZipFile(root).use { zip ->
-                        zip.getEntry(path) != null || zip.getEntry("/$path") != null
+                val entries =
+                    if (jarEntriesCache != null) {
+                        jarEntriesCache.getOrPut(root.absolutePath) { loadJarEntries(root) }
+                    } else {
+                        loadJarEntries(root)
                     }
-                }.getOrDefault(false)
+                path in entries || "/$path" in entries
             }
             root.isFile && SourcesJarCorpus.isSourceFile(root.name) ->
                 path == root.name || path.endsWith("/${root.name}")
             else -> false
         }
+
+    private fun loadJarEntries(root: File): Set<String> =
+        runCatching {
+            ZipFile(root).use { zip ->
+                zip.entries().asSequence().map { it.name }.toHashSet()
+            }
+        }.getOrDefault(emptySet())
 
     private fun escape(value: String): String =
         value.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n")
