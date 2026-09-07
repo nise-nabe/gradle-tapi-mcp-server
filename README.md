@@ -137,7 +137,7 @@ By default the index uses the Idea project dependency sources keep-set (can be s
 #### Search semantics
 
 - Query is an **exact simple name** match only (for example `SpringBootApplication`).
-- Not FQN (`org.springframework.boot.SpringBootApplication`), not prefix, and not wildcard.
+- Not FQN (`org.springframework.boot.autoconfigure.SpringBootApplication`), not prefix, and not wildcard.
 - `limit` / `perQueryLimit` are query-time only (no `formatVersion` bump): omit or null = unlimited; `0` = empty. `per_query_limit` is an alias for `perQueryLimit`.
 - Single search returns hits in posting order; multi search merges, dedups, sorts by `(gav, path, line, column)`, then applies the overall `limit`.
 
@@ -151,7 +151,7 @@ Index one artifact, then search one simple name:
   "arguments": {
     "tokenMode": "idents",
     "artifacts": [
-      { "group": "org.springframework.boot", "name": "spring-boot", "version": "3.3.0" }
+      { "group": "org.springframework.boot", "name": "spring-boot-autoconfigure", "version": "3.3.0" }
     ]
   }
 }
@@ -174,8 +174,8 @@ Example search hit shape (fields may vary):
 {
   "hits": [
     {
-      "gav": "org.springframework.boot:spring-boot:3.3.0",
-      "path": "org/springframework/boot/SpringBootApplication.java",
+      "gav": "org.springframework.boot:spring-boot-autoconfigure:3.3.0",
+      "path": "org/springframework/boot/autoconfigure/SpringBootApplication.java",
       "line": 42,
       "column": 1
     }
@@ -190,8 +190,8 @@ Then read a snippet:
 {
   "name": "gradle_read_dependency_source",
   "arguments": {
-    "gav": "org.springframework.boot:spring-boot:3.3.0",
-    "path": "org/springframework/boot/SpringBootApplication.java",
+    "gav": "org.springframework.boot:spring-boot-autoconfigure:3.3.0",
+    "path": "org/springframework/boot/autoconfigure/SpringBootApplication.java",
     "line": 42,
     "contextLines": 10
   }
