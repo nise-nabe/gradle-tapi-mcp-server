@@ -27,7 +27,7 @@ Apply during implementation — not only before opening a PR.
 | `cache/` | Build cache status and local cache inspection tools |
 | `server/` | Stdio transport helpers (e.g. `EofSignalingInputStream`) |
 | `:dependency-sources-core` (`…dependency`) | Lexer, δ codec, keep-set, name-locate index I/O (no MCP SDK) |
-| `:dependency-sources-mcp` (`…dependency.mcp`) | `gradle_index_dependency_sources` / `gradle_search_dependency_sources` / `gradle_search_dependency_sources_multi` / `gradle_read_dependency_source` catalog + facade |
+| `:dependency-sources-mcp` (`…dependency.mcp`) | `gradle_index_dependency_sources` / `gradle_get_dependency_sources_index_status` / `gradle_search_dependency_sources` / `gradle_search_dependency_sources_multi` / `gradle_read_dependency_source` catalog + facade |
 | `:resolution-model` (`…resolution`) | Serializable `McpDependencyResolution` tooling model + `ToolingModelBuilder` (init-script jar) |
 | `model/resolution/` | `gradle_get_dependency_resolution` MCP tool (BuildAction + init script; no task execution) |
 
