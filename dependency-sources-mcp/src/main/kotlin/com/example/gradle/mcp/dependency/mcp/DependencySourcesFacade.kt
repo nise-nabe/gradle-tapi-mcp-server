@@ -6,23 +6,29 @@ import com.example.gradle.mcp.dependency.DependencySourceReader
 import com.example.gradle.mcp.dependency.IndexSourceRoots
 import com.example.gradle.mcp.dependency.SourceRootResolution
 import com.example.gradle.mcp.dependency.IndexRequest
+import com.example.gradle.mcp.dependency.MavenCentralSourcesJarFetcher
 import com.example.gradle.mcp.dependency.ReadSourceRequest
 import com.example.gradle.mcp.dependency.SearchMultiRequest
 import com.example.gradle.mcp.dependency.SearchRequest
 import com.example.gradle.mcp.dependency.SourcePathRef
+import com.example.gradle.mcp.dependency.SourcesJarCacheLayout
+import com.example.gradle.mcp.dependency.SourcesJarFetcher
 import com.example.gradle.mcp.dependency.TokenMode
 import java.io.File
 
 class DependencySourcesFacade(
     private val store: DependencyIndexStore = DependencyIndexStore(),
+    private val sourcesJarFetcher: SourcesJarFetcher = MavenCentralSourcesJarFetcher,
 ) {
     fun index(args: Map<String, Any>, access: DependencySourcesGradleAccess): Map<String, Any?> {
         val projectDirectory = access.resolveProjectDirectory(args)
         val tokenMode = TokenMode.parse(args.optionalString("tokenMode"))
         val artifacts = parseArtifacts(args["artifacts"])
         val sourcePaths = parseSourcePaths(args["sourcePaths"])
+        val sourcesRepositories = parseSourcesRepositories(args["sourcesRepositories"])
         val indexDir = args.optionalString("indexDir")?.let(::File)
         val forceReindex = args.optionalBoolean("forceReindex", default = false)
+        val downloadSources = args.optionalBoolean("downloadSources", default = false)
         val needsConnection = artifacts.isEmpty() && sourcePaths.isEmpty()
         val gradleUserHome = resolveGradleUserHome(
             explicit = args.optionalString("gradleUserHome")?.let(::File),
@@ -39,6 +45,10 @@ class DependencySourcesFacade(
             indexDir = indexDir,
             forceReindex = forceReindex,
             gradleUserHome = gradleUserHome,
+            downloadSources = downloadSources,
+            sourcesRepositories = sourcesRepositories,
+            // Explicit repos win; otherwise honor constructor injection (tests / Central default).
+            sourcesJarFetcher = if (sourcesRepositories.isEmpty()) sourcesJarFetcher else null,
         )
         // Hold no-active-build + connection only while resolving the Idea keep-set.
         // Corpus lex / disk write run unlocked so unrelated builds are not blocked.
@@ -65,6 +75,7 @@ class DependencySourcesFacade(
             "nameCount" to stats.nameCount,
             "occurrenceCount" to stats.occurrenceCount,
             "memberCount" to result.memberCount,
+            "downloadedSources" to keepSet.downloadedGavs,
         )
     }
 
@@ -149,6 +160,7 @@ class DependencySourcesFacade(
                 maxLines = maxLines,
                 sourceRoot = sourceRoot,
                 gradleUserHome = gradleUserHome,
+                sourcesJarCacheDir = projectDirectory?.let(SourcesJarCacheLayout::defaultDir),
             ),
         )
         return linkedMapOf(
@@ -277,6 +289,24 @@ class DependencySourcesFacade(
         }
     }
 
+    private fun parseSourcesRepositories(raw: Any?): List<String> {
+        if (raw == null) return emptyList()
+        val list = raw as? List<*>
+            ?: throw IllegalArgumentException("sourcesRepositories must be an array of strings")
+        if (list.isEmpty()) {
+            throw IllegalArgumentException("sourcesRepositories must not be empty when provided")
+        }
+        return list.mapIndexed { index, item ->
+            val value = item as? String
+            if (value == null || value.isBlank()) {
+                throw IllegalArgumentException(
+                    "sourcesRepositories[$index] must be a non-blank string",
+                )
+            }
+            value
+        }
+    }
+
     private fun resolveIndexedSourceRoot(
         projectDirectory: File,
         artifact: DependencyArtifactRef,
@@ -326,8 +356,14 @@ private fun Map<String, Any>.optionalString(key: String): String? =
 
 private fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boolean =
     when (val value = this[key]) {
+        null -> default
         is Boolean -> value
-        else -> default
+        is String -> when (value.lowercase()) {
+            "true" -> true
+            "false" -> false
+            else -> throw IllegalArgumentException("Argument must be a boolean: $key")
+        }
+        else -> throw IllegalArgumentException("Argument must be a boolean: $key")
     }
 
 private fun Map<String, Any>.optionalLimitInt(key: String): Int? {

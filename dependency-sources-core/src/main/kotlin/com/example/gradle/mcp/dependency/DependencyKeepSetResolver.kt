@@ -4,6 +4,7 @@ import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.model.idea.IdeaProject
 import org.gradle.tooling.model.idea.IdeaSingleEntryLibraryDependency
 import java.io.File
+import java.io.IOException
 
 data class DependencyArtifactRef(
     val group: String,
@@ -16,8 +17,35 @@ data class DependencyArtifactRef(
         require(group.isNotBlank() && name.isNotBlank() && version.isNotBlank()) {
             "artifact group/name/version must not be blank"
         }
-        require(!group.contains('/') && !name.contains('/') && !version.contains('/')) {
-            "artifact coordinates must not contain path separators"
+        validateGroup(group)
+        validatePathSegment(name, "name")
+        validatePathSegment(version, "version")
+    }
+
+    companion object {
+        private fun validateGroup(value: String) {
+            require(!value.contains('/') && !value.contains('\\')) {
+                "artifact coordinates must not contain path separators"
+            }
+            require(!value.contains(':') && !value.contains('?') && !value.contains('#') && !value.contains('@')) {
+                "artifact group contains illegal URI characters"
+            }
+            val segments = value.split('.')
+            require(segments.isNotEmpty() && segments.all { it.isNotEmpty() }) {
+                "artifact group must not contain empty path segments"
+            }
+        }
+
+        private fun validatePathSegment(value: String, label: String) {
+            require(value != "." && value != "..") {
+                "artifact $label must not be '.' or '..'"
+            }
+            require(!value.contains('/') && !value.contains('\\')) {
+                "artifact coordinates must not contain path separators"
+            }
+            require(!value.contains(':') && !value.contains('?') && !value.contains('#') && !value.contains('@')) {
+                "artifact $label contains illegal URI characters"
+            }
         }
     }
 }
@@ -39,6 +67,7 @@ data class SourcePathRef(
 data class ResolvedKeepSet(
     val mode: String,
     val members: List<KeepSetMember>,
+    val downloadedGavs: List<String> = emptyList(),
 )
 
 object DependencyKeepSetResolver {
@@ -47,6 +76,9 @@ object DependencyKeepSetResolver {
         artifacts: List<DependencyArtifactRef>,
         sourcePaths: List<SourcePathRef>,
         gradleUserHome: File? = null,
+        downloadSources: Boolean = false,
+        sourcesJarCacheDir: File? = null,
+        sourcesJarFetcher: SourcesJarFetcher = MavenCentralSourcesJarFetcher,
     ): ResolvedKeepSet {
         val explicit = artifacts.isNotEmpty() || sourcePaths.isNotEmpty()
         if (!explicit) {
@@ -57,7 +89,8 @@ object DependencyKeepSetResolver {
             if (members.isEmpty()) {
                 throw IllegalArgumentException(
                     "No dependency sources found via IdeaProject. " +
-                        "Download sources, or pass sourcePaths / artifacts.",
+                        "Download sources, or pass sourcePaths / artifacts" +
+                        (if (downloadSources) " (downloadSources applies only to artifacts[])." else "."),
                 )
             }
             return ResolvedKeepSet(mode = "idea", members = members)
@@ -65,9 +98,28 @@ object DependencyKeepSetResolver {
 
         val members = ArrayList<KeepSetMember>()
         val missing = ArrayList<String>()
+        val downloadFailed = ArrayList<String>()
+        val downloaded = ArrayList<String>()
         for (artifact in artifacts) {
             artifact.validate()
-            val jar = LocalSourcesJarLocator.find(artifact, gradleUserHome)
+            var jar = LocalSourcesJarLocator.find(artifact, gradleUserHome, sourcesJarCacheDir)
+            if (jar == null && downloadSources) {
+                val cacheDir = sourcesJarCacheDir
+                    ?: throw IllegalArgumentException(
+                        "downloadSources=true requires a sources jar cache directory",
+                    )
+                val destination = SourcesJarCacheLayout.jarFile(cacheDir, artifact)
+                try {
+                    jar = sourcesJarFetcher.fetch(artifact, destination)
+                    if (jar != null) {
+                        downloaded.add(artifact.gav())
+                    } else {
+                        downloadFailed.add(artifact.gav())
+                    }
+                } catch (error: IOException) {
+                    downloadFailed.add("${artifact.gav()} (${error.message})")
+                }
+            }
             if (jar == null) {
                 missing.add(artifact.gav())
             } else {
@@ -76,9 +128,13 @@ object DependencyKeepSetResolver {
         }
         if (missing.isNotEmpty()) {
             throw IllegalArgumentException(
-                "Could not find sources jars in local Maven/Gradle caches for: " +
-                    missing.joinToString(", ") +
-                    ". Pass sourcePaths for local trees, or download sources first.",
+                MissingSourcesMessage.build(
+                    missingGavs = missing,
+                    downloadFailedGavs = downloadFailed,
+                    downloadSources = downloadSources,
+                    gradleUserHome = gradleUserHome,
+                    sourcesJarCacheDir = sourcesJarCacheDir,
+                ),
             )
         }
         for (sourcePath in sourcePaths) {
@@ -93,7 +149,11 @@ object DependencyKeepSetResolver {
                     "or omit both to use IdeaProject dependency sources.",
             )
         }
-        return ResolvedKeepSet(mode = "explicit", members = members)
+        return ResolvedKeepSet(
+            mode = "explicit",
+            members = members,
+            downloadedGavs = downloaded,
+        )
     }
 
     fun resolveFromIdea(connection: ProjectConnection): List<KeepSetMember> {
@@ -120,20 +180,67 @@ object DependencyKeepSetResolver {
     }
 }
 
+object MissingSourcesMessage {
+    fun build(
+        missingGavs: List<String>,
+        downloadFailedGavs: List<String> = emptyList(),
+        downloadSources: Boolean,
+        gradleUserHome: File?,
+        sourcesJarCacheDir: File?,
+    ): String {
+        val searched = LocalSourcesJarLocator.searchedLocations(gradleUserHome, sourcesJarCacheDir)
+        val builder = StringBuilder()
+        builder.append("Could not find sources jars in local caches for: ")
+        builder.append(missingGavs.joinToString(", "))
+        builder.append('.')
+        builder.append(" Searched: ").append(searched.joinToString("; ")).append('.')
+        if (downloadSources) {
+            if (downloadFailedGavs.isNotEmpty()) {
+                builder.append(" Maven repository download did not succeed for: ")
+                builder.append(downloadFailedGavs.joinToString(", "))
+                builder.append('.')
+            } else {
+                builder.append(" downloadSources=true was set but jars were still unavailable.")
+            }
+            builder.append(" Pass sourcesRepositories for corporate mirrors, pass sourcePaths ")
+            builder.append("for local trees, or place *-sources.jar under ")
+            builder.append("Maven local / Gradle cache / MCP jars cache.")
+        } else {
+            builder.append(" Pass downloadSources=true to fetch into the ")
+            builder.append("project MCP jars cache (.gradle/mcp-dependency-sources/jars/) ")
+            builder.append("(optional sourcesRepositories for corporate Maven mirrors; ")
+            builder.append("default Maven Central), pass sourcePaths for local trees, ")
+            builder.append("or download sources first.")
+        }
+        return builder.toString()
+    }
+}
+
 object LocalSourcesJarLocator {
-    fun find(artifact: DependencyArtifactRef, gradleUserHome: File? = null): File? {
+    fun find(
+        artifact: DependencyArtifactRef,
+        gradleUserHome: File? = null,
+        sourcesJarCacheDir: File? = null,
+    ): File? {
         findInMavenLocal(artifact)?.let { return it }
         findInGradleCache(artifact, gradleUserHome)?.let { return it }
+        findInMcpCache(artifact, sourcesJarCacheDir)?.let { return it }
         return null
     }
 
+    fun searchedLocations(gradleUserHome: File?, sourcesJarCacheDir: File?): List<String> {
+        val locations = ArrayList<String>(3)
+        locations.add("Maven local (${mavenLocalBase().absolutePath})")
+        locations.add("Gradle modules cache (${gradleModulesBase(gradleUserHome).absolutePath})")
+        if (sourcesJarCacheDir != null) {
+            locations.add("MCP jars cache (${sourcesJarCacheDir.absolutePath})")
+        }
+        return locations
+    }
+
     private fun findInMavenLocal(artifact: DependencyArtifactRef): File? {
-        val base = File(
-            System.getenv("M2_REPO")
-                ?: File(System.getProperty("user.home"), ".m2/repository").path,
-        )
         val jar = File(
-            base,
+            mavenLocalBase(),
             artifact.group.replace('.', '/') + "/" +
                 artifact.name + "/" + artifact.version + "/" +
                 "${artifact.name}-${artifact.version}-sources.jar",
@@ -142,15 +249,30 @@ object LocalSourcesJarLocator {
     }
 
     private fun findInGradleCache(artifact: DependencyArtifactRef, gradleUserHome: File?): File? {
-        val userHome = gradleUserHome
-            ?: System.getenv("GRADLE_USER_HOME")?.let(::File)
-            ?: File(System.getProperty("user.home"), ".gradle")
         val moduleDir = File(
-            userHome,
-            "caches/modules-2/files-2.1/${artifact.group}/${artifact.name}/${artifact.version}",
+            gradleModulesBase(gradleUserHome),
+            "${artifact.group}/${artifact.name}/${artifact.version}",
         )
         if (!moduleDir.isDirectory) return null
         return moduleDir.walkTopDown()
             .firstOrNull { it.isFile && it.name == "${artifact.name}-${artifact.version}-sources.jar" }
+    }
+
+    private fun findInMcpCache(artifact: DependencyArtifactRef, sourcesJarCacheDir: File?): File? {
+        if (sourcesJarCacheDir == null) return null
+        return SourcesJarCacheLayout.jarFile(sourcesJarCacheDir, artifact).takeIf { it.isFile }
+    }
+
+    private fun mavenLocalBase(): File =
+        File(
+            System.getenv("M2_REPO")
+                ?: File(System.getProperty("user.home"), ".m2/repository").path,
+        )
+
+    private fun gradleModulesBase(gradleUserHome: File?): File {
+        val userHome = gradleUserHome
+            ?: System.getenv("GRADLE_USER_HOME")?.let(::File)
+            ?: File(System.getProperty("user.home"), ".gradle")
+        return File(userHome, "caches/modules-2/files-2.1")
     }
 }

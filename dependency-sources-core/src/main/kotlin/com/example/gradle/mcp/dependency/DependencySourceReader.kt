@@ -14,6 +14,7 @@ data class ReadSourceRequest(
     val maxLines: Int = DEFAULT_MAX_LINES,
     val sourceRoot: File? = null,
     val gradleUserHome: File? = null,
+    val sourcesJarCacheDir: File? = null,
 ) {
     companion object {
         const val DEFAULT_CONTEXT_LINES: Int = 10
@@ -137,7 +138,11 @@ object DependencySourceReader {
             }
             return explicit
         }
-        return LocalSourcesJarLocator.find(request.artifact, request.gradleUserHome)
+        return LocalSourcesJarLocator.find(
+            request.artifact,
+            request.gradleUserHome,
+            request.sourcesJarCacheDir,
+        )
     }
 
     private fun normalizeEntryPath(path: String): String {

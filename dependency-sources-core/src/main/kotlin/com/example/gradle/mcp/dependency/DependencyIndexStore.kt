@@ -12,6 +12,9 @@ data class IndexRequest(
     val indexDir: File? = null,
     val forceReindex: Boolean = false,
     val gradleUserHome: File? = null,
+    val downloadSources: Boolean = false,
+    val sourcesRepositories: List<String> = emptyList(),
+    val sourcesJarFetcher: SourcesJarFetcher? = null,
 )
 
 data class SearchRequest(
@@ -68,11 +71,17 @@ class DependencyIndexStore {
         connection: ProjectConnection?,
     ): ResolvedKeepSet {
         val explicit = request.artifacts.isNotEmpty() || request.sourcePaths.isNotEmpty()
+        val sourcesJarCacheDir = SourcesJarCacheLayout.defaultDir(request.projectDirectory)
+        val fetcher = request.sourcesJarFetcher
+            ?: MavenRepositorySourcesJarFetcher.defaultOr(request.sourcesRepositories)
         return DependencyKeepSetResolver.resolve(
             connection = if (explicit) null else connection,
             artifacts = request.artifacts,
             sourcePaths = request.sourcePaths,
             gradleUserHome = request.gradleUserHome,
+            downloadSources = request.downloadSources,
+            sourcesJarCacheDir = sourcesJarCacheDir,
+            sourcesJarFetcher = fetcher,
         )
     }
 

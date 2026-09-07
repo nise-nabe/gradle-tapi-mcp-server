@@ -1,6 +1,8 @@
 package com.example.gradle.mcp.dependency.mcp
 
+import com.example.gradle.mcp.dependency.SourcesJarFetcher
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldNotBeEmpty
@@ -382,6 +384,142 @@ class DependencySourcesFacadeTest {
             )
         }
         error.message shouldContain "com.example:wrong-home:3.0.0"
+        error.message shouldContain "downloadSources=true"
+        error.message shouldContain "Searched:"
+    }
+
+    @Test
+    fun `downloadSources indexes jar fetched into MCP cache`() {
+        val project = File(tempDir, "proj-download").apply { mkdirs() }
+        val access = StubAccess(project, connectedGradleUserHome = File(tempDir, "empty-dl-home").apply { mkdirs() })
+        val fetcher = SourcesJarFetcher { artifact, destination ->
+            destination.parentFile.mkdirs()
+            java.util.zip.ZipOutputStream(destination.outputStream()).use { zip ->
+                zip.putNextEntry(java.util.zip.ZipEntry("DownloadedLib.kt"))
+                zip.write("class DownloadedLib\n".toByteArray())
+                zip.closeEntry()
+            }
+            destination
+        }
+        val facade = DependencySourcesFacade(sourcesJarFetcher = fetcher)
+
+        val indexed = facade.index(
+            mapOf(
+                "artifacts" to listOf(
+                    mapOf("group" to "com.example", "name" to "downloaded-lib", "version" to "4.0.0"),
+                ),
+                "downloadSources" to true,
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+        indexed["memberCount"] shouldBe 1
+        @Suppress("UNCHECKED_CAST")
+        (indexed["downloadedSources"] as List<String>) shouldContain "com.example:downloaded-lib:4.0.0"
+
+        val search = facade.search(mapOf("query" to "DownloadedLib", "tokenMode" to "idents"), access)
+        @Suppress("UNCHECKED_CAST")
+        val hits = search["hits"] as List<Map<String, Any?>>
+        hits.shouldHaveSize(1)
+
+        val cacheJar = File(
+            project,
+            ".gradle/mcp-dependency-sources/jars/com/example/downloaded-lib/4.0.0/downloaded-lib-4.0.0-sources.jar",
+        )
+        cacheJar.isFile shouldBe true
+    }
+
+    @Test
+    fun `sourcesRepositories rejects empty array`() {
+        val project = File(tempDir, "proj-repos").apply { mkdirs() }
+        val access = StubAccess(project)
+        val error = shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().index(
+                mapOf(
+                    "artifacts" to listOf(
+                        mapOf("group" to "com.example", "name" to "x", "version" to "1"),
+                    ),
+                    "downloadSources" to true,
+                    "sourcesRepositories" to emptyList<String>(),
+                ),
+                access,
+            )
+        }
+        error.message shouldContain "sourcesRepositories"
+    }
+
+    @Test
+    fun `downloadSources string true is accepted`() {
+        val project = File(tempDir, "proj-bool-string").apply { mkdirs() }
+        val access = StubAccess(project, connectedGradleUserHome = File(tempDir, "bool-home").apply { mkdirs() })
+        val fetcher = SourcesJarFetcher { _, destination ->
+            destination.parentFile.mkdirs()
+            java.util.zip.ZipOutputStream(destination.outputStream()).use { zip ->
+                zip.putNextEntry(java.util.zip.ZipEntry("BoolLib.kt"))
+                zip.write("class BoolLib\n".toByteArray())
+                zip.closeEntry()
+            }
+            destination
+        }
+        val indexed = DependencySourcesFacade(sourcesJarFetcher = fetcher).index(
+            mapOf(
+                "artifacts" to listOf(
+                    mapOf("group" to "com.example", "name" to "bool-lib", "version" to "1.0.0"),
+                ),
+                "downloadSources" to "true",
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+        indexed["memberCount"] shouldBe 1
+    }
+
+    @Test
+    fun `downloadSources non-boolean is rejected`() {
+        val project = File(tempDir, "proj-bool-bad").apply { mkdirs() }
+        val access = StubAccess(project)
+        shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().index(
+                mapOf(
+                    "artifacts" to listOf(
+                        mapOf("group" to "com.example", "name" to "x", "version" to "1"),
+                    ),
+                    "downloadSources" to 1,
+                ),
+                access,
+            )
+        }.message shouldContain "boolean"
+    }
+
+    @Test
+    fun `sourcesRepositories with corporate base is accepted in index args`() {
+        val project = File(tempDir, "proj-corp").apply { mkdirs() }
+        val access = StubAccess(project, connectedGradleUserHome = File(tempDir, "corp-home").apply { mkdirs() })
+        // Pre-seed MCP jars cache so indexing succeeds without a network fetch.
+        val artifactPath = File(
+            project,
+            ".gradle/mcp-dependency-sources/jars/com/acme/core/1.0.0/core-1.0.0-sources.jar",
+        )
+        artifactPath.parentFile.mkdirs()
+        java.util.zip.ZipOutputStream(artifactPath.outputStream()).use { zip ->
+            zip.putNextEntry(java.util.zip.ZipEntry("Core.kt"))
+            zip.write("class Core\n".toByteArray())
+            zip.closeEntry()
+        }
+        val indexed = DependencySourcesFacade().index(
+            mapOf(
+                "artifacts" to listOf(
+                    mapOf("group" to "com.acme", "name" to "core", "version" to "1.0.0"),
+                ),
+                "downloadSources" to true,
+                "sourcesRepositories" to listOf("https://nexus.example.com/repository/maven-public/"),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+        indexed["memberCount"] shouldBe 1
+        @Suppress("UNCHECKED_CAST")
+        (indexed["downloadedSources"] as List<String>).shouldHaveSize(0)
     }
 
     @Test
