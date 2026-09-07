@@ -452,10 +452,7 @@ class DependencySourcesFacadeTest {
     fun `sourcesRepositories with corporate base is accepted in index args`() {
         val project = File(tempDir, "proj-corp").apply { mkdirs() }
         val access = StubAccess(project, connectedGradleUserHome = File(tempDir, "corp-home").apply { mkdirs() })
-        // Injected fetcher is ignored when sourcesRepositories is set; provide a 404-like null
-        // by not injecting — real HTTP would fail. Instead place jar after building request path
-        // via fake: use downloadSources false path... Actually we need the store to use URLs.
-        // For unit test without HTTP: put jar in MCP cache so download is skipped.
+        // Pre-seed MCP jars cache so indexing succeeds without a network fetch.
         val artifactPath = File(
             project,
             ".gradle/mcp-dependency-sources/jars/com/acme/core/1.0.0/core-1.0.0-sources.jar",
