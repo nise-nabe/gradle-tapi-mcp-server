@@ -19,16 +19,19 @@ import java.io.File
 class DependencySourcesFacade(
     private val store: DependencyIndexStore = DependencyIndexStore(),
     private val sourcesJarFetcher: SourcesJarFetcher = MavenCentralSourcesJarFetcher,
+    private val indexJobs: DependencySourcesIndexJobs = DependencySourcesIndexJobs(),
 ) {
     fun index(args: Map<String, Any>, access: DependencySourcesGradleAccess): Map<String, Any?> {
         val projectDirectory = access.resolveProjectDirectory(args)
         val tokenMode = TokenMode.parse(args.optionalString("tokenMode"))
         val artifacts = parseArtifacts(args["artifacts"])
         val sourcePaths = parseSourcePaths(args["sourcePaths"])
+        val projectPath = args.optionalString("projectPath")
         val sourcesRepositories = parseSourcesRepositories(args["sourcesRepositories"])
         val indexDir = args.optionalString("indexDir")?.let(::File)
         val forceReindex = args.optionalBoolean("forceReindex", default = false)
         val downloadSources = args.optionalBoolean("downloadSources", default = false)
+        val background = args.optionalBoolean("background", default = false)
         val needsConnection = artifacts.isEmpty() && sourcePaths.isEmpty()
         val gradleUserHome = resolveGradleUserHome(
             explicit = args.optionalString("gradleUserHome")?.let(::File),
@@ -42,6 +45,7 @@ class DependencySourcesFacade(
             tokenMode = tokenMode,
             artifacts = artifacts,
             sourcePaths = sourcePaths,
+            projectPath = projectPath,
             indexDir = indexDir,
             forceReindex = forceReindex,
             gradleUserHome = gradleUserHome,
@@ -50,17 +54,52 @@ class DependencySourcesFacade(
             // Explicit repos win; otherwise honor constructor injection (tests / Central default).
             sourcesJarFetcher = if (sourcesRepositories.isEmpty()) sourcesJarFetcher else null,
         )
+
+        val job =
+            indexJobs.start(
+                projectDirectory = projectDirectory,
+                tokenMode = tokenMode.wireName(),
+                projectPath = projectPath,
+            ) { job ->
+                indexSync(
+                    request = request,
+                    needsConnection = needsConnection,
+                    access = access,
+                    jobHint = job,
+                )
+            }
+
+        return if (background) {
+            indexJobs.acceptedBackgroundResponse(job)
+        } else {
+            indexJobs.awaitOrDetach(job)
+        }
+    }
+
+    fun indexStatus(args: Map<String, Any>): Map<String, Any?> {
+        val indexId = args.requiredString("indexId")
+        return indexJobs.statusResponse(indexId)
+    }
+
+    private fun indexSync(
+        request: IndexRequest,
+        needsConnection: Boolean,
+        access: DependencySourcesGradleAccess,
+        jobHint: IndexJob? = null,
+    ): Map<String, Any?> {
+        jobHint?.markPhase("resolving_keep_set")
         // Hold no-active-build + connection only while resolving the Idea keep-set.
         // Corpus lex / disk write run unlocked so unrelated builds are not blocked.
         val keepSet = if (needsConnection) {
-            access.withNoActiveBuild(projectDirectory) {
-                access.withConnection(projectDirectory) { connection ->
+            access.withNoActiveBuild(request.projectDirectory) {
+                access.withConnection(request.projectDirectory) { connection ->
                     store.resolveKeepSet(request, connection)
                 }
             }
         } else {
             store.resolveKeepSet(request, connection = null)
         }
+        jobHint?.markPhase("indexing", members = keepSet.members.size)
         val result = store.index(request, keepSet)
 
         val stats = result.stats
@@ -76,6 +115,7 @@ class DependencySourcesFacade(
             "occurrenceCount" to stats.occurrenceCount,
             "memberCount" to result.memberCount,
             "downloadedSources" to keepSet.downloadedGavs,
+            "projectPath" to request.projectPath,
         )
     }
 

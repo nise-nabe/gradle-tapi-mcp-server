@@ -734,6 +734,90 @@ class DependencySourcesFacadeTest {
         }.message shouldContain "sourceRoot"
     }
 
+    @Test
+    fun `background index returns indexId and status poll reaches succeeded`() {
+        val sources = File(tempDir, "src-bg").apply { mkdirs() }
+        File(sources, "Bg.kt").writeText("class BgToken\n")
+        val project = File(tempDir, "proj-bg").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+
+        val started =
+            facade.index(
+                mapOf(
+                    "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                    "tokenMode" to "idents",
+                    "background" to true,
+                ),
+                access,
+            )
+        started["background"] shouldBe true
+        listOf("queued", "running").shouldContain(started["status"])
+        val indexId = started["indexId"] as String
+
+        var status: Map<String, Any?> = emptyMap()
+        val deadline = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < deadline) {
+            status = facade.indexStatus(mapOf("indexId" to indexId))
+            if (status["status"] == "succeeded" || status["status"] == "failed") {
+                break
+            }
+            Thread.sleep(20)
+        }
+        status["status"] shouldBe "succeeded"
+        status["docCount"] shouldBe 1
+        status["tokenMode"] shouldBe "idents"
+    }
+
+    @Test
+    fun `foreground index detaches when detach timeout elapses`() {
+        val project = File(tempDir, "proj-detach").apply { mkdirs() }
+        val jobs = DependencySourcesIndexJobs(foregroundDetachTimeoutMs = 30)
+        val job =
+            jobs.start(
+                projectDirectory = project,
+                tokenMode = "idents",
+                projectPath = null,
+            ) {
+                Thread.sleep(150)
+                mapOf("docCount" to 1, "memberCount" to 1)
+            }
+        val detached = jobs.awaitOrDetach(job)
+        detached["detached"] shouldBe true
+        val indexId = detached["indexId"] as String
+
+        var status: Map<String, Any?> = emptyMap()
+        val deadline = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < deadline) {
+            status = jobs.statusResponse(indexId)
+            if (status["status"] == "succeeded" || status["status"] == "failed") {
+                break
+            }
+            Thread.sleep(20)
+        }
+        status["status"] shouldBe "succeeded"
+        status["docCount"] shouldBe 1
+    }
+
+    @Test
+    fun `projectPath with sourcePaths is rejected`() {
+        val sources = File(tempDir, "src-path").apply { mkdirs() }
+        File(sources, "A.kt").writeText("class A\n")
+        val project = File(tempDir, "proj-path").apply { mkdirs() }
+        val access = StubAccess(project)
+        val error =
+            shouldThrow<IllegalArgumentException> {
+                DependencySourcesFacade().index(
+                    mapOf(
+                        "projectPath" to ":worker",
+                        "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                    ),
+                    access,
+                )
+            }
+        error.message shouldContain "projectPath applies only to the Idea keep-set"
+    }
+
     private fun placeSourcesJar(
         gradleUserHome: File,
         group: String,

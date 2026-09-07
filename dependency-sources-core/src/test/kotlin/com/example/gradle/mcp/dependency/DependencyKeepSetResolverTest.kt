@@ -214,3 +214,50 @@ class DependencyKeepSetResolverTest {
         return destination
     }
 }
+
+class IdeaProjectPathScopeTest {
+    @Test
+    fun `normalizeOrNull treats blank and root as unscoped`() {
+        IdeaProjectPathScope.normalizeOrNull(null).shouldBeNull()
+        IdeaProjectPathScope.normalizeOrNull("").shouldBeNull()
+        IdeaProjectPathScope.normalizeOrNull("  ").shouldBeNull()
+        IdeaProjectPathScope.normalizeOrNull(":").shouldBeNull()
+    }
+
+    @Test
+    fun `normalizeOrNull adds leading colon`() {
+        IdeaProjectPathScope.normalizeOrNull("worker") shouldBe ":worker"
+        IdeaProjectPathScope.normalizeOrNull(":app") shouldBe ":app"
+    }
+
+    @Test
+    fun `normalizeOrNull rejects invalid paths`() {
+        shouldThrow<IllegalArgumentException> {
+            IdeaProjectPathScope.normalizeOrNull(":app:")
+        }
+        shouldThrow<IllegalArgumentException> {
+            IdeaProjectPathScope.normalizeOrNull("::app")
+        }
+    }
+
+    @Test
+    fun `matchesSubtree includes descendants`() {
+        IdeaProjectPathScope.matchesSubtree(":worker", ":worker") shouldBe true
+        IdeaProjectPathScope.matchesSubtree(":worker:nested", ":worker") shouldBe true
+        IdeaProjectPathScope.matchesSubtree(":workerx", ":worker") shouldBe false
+        IdeaProjectPathScope.matchesSubtree(":other", ":worker") shouldBe false
+    }
+
+    @Test
+    fun `projectPath with artifacts keep-set is rejected`() {
+        val error = shouldThrow<IllegalArgumentException> {
+            DependencyKeepSetResolver.resolve(
+                connection = null,
+                artifacts = listOf(DependencyArtifactRef("org.demo", "widget", "0.1.0")),
+                sourcePaths = emptyList(),
+                projectPath = ":worker",
+            )
+        }
+        error.message shouldContain "projectPath applies only to the Idea keep-set"
+    }
+}
