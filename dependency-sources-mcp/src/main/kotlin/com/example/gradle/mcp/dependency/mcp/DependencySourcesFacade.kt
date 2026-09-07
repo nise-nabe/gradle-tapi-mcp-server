@@ -3,6 +3,7 @@ package com.example.gradle.mcp.dependency.mcp
 import com.example.gradle.mcp.dependency.DependencyArtifactRef
 import com.example.gradle.mcp.dependency.DependencyIndexStore
 import com.example.gradle.mcp.dependency.DependencySourceReader
+import com.example.gradle.mcp.dependency.IdeaProjectPathScope
 import com.example.gradle.mcp.dependency.IndexSourceRoots
 import com.example.gradle.mcp.dependency.SourceRootResolution
 import com.example.gradle.mcp.dependency.IndexRequest
@@ -26,7 +27,10 @@ class DependencySourcesFacade(
         val tokenMode = TokenMode.parse(args.optionalString("tokenMode"))
         val artifacts = parseArtifacts(args["artifacts"])
         val sourcePaths = parseSourcePaths(args["sourcePaths"])
-        val projectPath = args.optionalString("projectPath")
+        val projectPath = validateProjectPathArg(
+            raw = args.optionalString("projectPath"),
+            hasExplicitKeepSet = artifacts.isNotEmpty() || sourcePaths.isNotEmpty(),
+        )
         val sourcesRepositories = parseSourcesRepositories(args["sourcesRepositories"])
         val indexDir = args.optionalString("indexDir")?.let(::File)
         val forceReindex = args.optionalBoolean("forceReindex", default = false)
@@ -74,6 +78,22 @@ class DependencySourcesFacade(
         } else {
             indexJobs.awaitOrDetach(job)
         }
+    }
+
+    /**
+     * Fail fast before scheduling a background job so malformed `projectPath` / keep-set
+     * conflicts return `INVALID_ARGUMENT` on the index call itself (not only on status poll).
+     */
+    private fun validateProjectPathArg(raw: String?, hasExplicitKeepSet: Boolean): String? {
+        val normalized = IdeaProjectPathScope.normalizeOrNull(raw)
+        if (normalized != null && hasExplicitKeepSet) {
+            throw IllegalArgumentException(
+                "projectPath applies only to the Idea keep-set. " +
+                    "Omit artifacts[] / sourcePaths[] when scoping with projectPath, " +
+                    "or omit projectPath when using an explicit keep-set.",
+            )
+        }
+        return normalized
     }
 
     fun indexStatus(args: Map<String, Any>): Map<String, Any?> {

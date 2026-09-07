@@ -818,6 +818,60 @@ class DependencySourcesFacadeTest {
         error.message shouldContain "projectPath applies only to the Idea keep-set"
     }
 
+    @Test
+    fun `malformed projectPath fails synchronously on background index`() {
+        val project = File(tempDir, "proj-bad-path").apply { mkdirs() }
+        val access = StubAccess(project)
+        val error =
+            shouldThrow<IllegalArgumentException> {
+                DependencySourcesFacade().index(
+                    mapOf(
+                        "projectPath" to "::app",
+                        "background" to true,
+                    ),
+                    access,
+                )
+            }
+        error.message shouldContain "Invalid project path"
+    }
+
+    @Test
+    fun `second index start for same project is rejected while first is running`() {
+        val project = File(tempDir, "proj-busy").apply { mkdirs() }
+        val jobs = DependencySourcesIndexJobs(foregroundDetachTimeoutMs = 5_000)
+        val first =
+            jobs.start(
+                projectDirectory = project,
+                tokenMode = "idents",
+                projectPath = null,
+            ) {
+                Thread.sleep(300)
+                mapOf("docCount" to 1)
+            }
+        val error =
+            shouldThrow<IllegalStateException> {
+                jobs.start(
+                    projectDirectory = project,
+                    tokenMode = "idents",
+                    projectPath = null,
+                ) {
+                    mapOf("docCount" to 2)
+                }
+            }
+        error.message shouldContain "already running"
+        error.message shouldContain first.indexId
+
+        val deadline = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < deadline) {
+            val status = jobs.statusResponse(first.indexId)
+            if (status["status"] == "succeeded" || status["status"] == "failed") {
+                break
+            }
+            Thread.sleep(20)
+        }
+        jobs.statusResponse(first.indexId)["status"] shouldBe "succeeded"
+    }
+
     private fun placeSourcesJar(
         gradleUserHome: File,
         group: String,
