@@ -13,8 +13,8 @@ object DependencySourceToolCatalog {
     const val READ_TOOL: String = "gradle_read_dependency_source"
 
     const val INDEX_DESCRIPTION: String =
-        "Index dependency sources (Idea, artifacts[], or sourcePaths[]). " +
-            "tokenMode=all (default) includes comments/strings; idents=code only."
+        "Index dependency sources (Idea/artifacts[]/sourcePaths[]). " +
+            "tokenMode=all|idents. downloadSources fetches missing jars from Maven Central."
 
     const val SEARCH_DESCRIPTION: String =
         "Exact simple-name locate in dependency sources. Requires prior index for tokenMode."
@@ -38,10 +38,10 @@ object DependencySourceToolCatalog {
     fun indexSchema(): Map<String, Any> =
         objectSchema(
             properties = mapOf(
-                "projectDirectory" to stringProp("Project root; omit for default/GRADLE_PROJECT_DIR."),
+                "projectDirectory" to stringProp("Project root; omit for GRADLE_PROJECT_DIR."),
                 "tokenMode" to stringProp("all (default) or idents."),
                 "artifacts" to arrayOfObjects(
-                    description = "GAVs; skips Idea keep-set when set.",
+                    description = "GAVs; skips Idea keep-set.",
                     itemProperties = mapOf(
                         "group" to stringProp("Group"),
                         "name" to stringProp("Name"),
@@ -50,7 +50,7 @@ object DependencySourceToolCatalog {
                     required = listOf("group", "name", "version"),
                 ),
                 "sourcePaths" to arrayOfObjects(
-                    description = "Local trees/jars when sources missing.",
+                    description = "Local trees/jars.",
                     itemProperties = mapOf(
                         "path" to stringProp("Directory, jar, or zip"),
                         "group" to stringProp("Group label"),
@@ -59,8 +59,11 @@ object DependencySourceToolCatalog {
                     ),
                     required = listOf("path"),
                 ),
-                "gradleUserHome" to stringProp("Artifacts[] cache home; else connected."),
-                "indexDir" to stringProp("Override dir (<dir>/<tokenMode>/)."),
+                "downloadSources" to booleanProp(
+                    "Fetch missing artifacts[] jars from Maven Central (default false).",
+                ),
+                "gradleUserHome" to stringProp("Cache home; else connected."),
+                "indexDir" to stringProp("Override (<dir>/<tokenMode>/)."),
                 "forceReindex" to booleanProp("Rebuild on hit."),
             ),
         )

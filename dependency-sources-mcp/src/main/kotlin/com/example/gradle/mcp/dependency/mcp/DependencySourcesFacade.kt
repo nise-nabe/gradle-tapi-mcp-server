@@ -6,15 +6,19 @@ import com.example.gradle.mcp.dependency.DependencySourceReader
 import com.example.gradle.mcp.dependency.IndexSourceRoots
 import com.example.gradle.mcp.dependency.SourceRootResolution
 import com.example.gradle.mcp.dependency.IndexRequest
+import com.example.gradle.mcp.dependency.MavenCentralSourcesJarFetcher
 import com.example.gradle.mcp.dependency.ReadSourceRequest
 import com.example.gradle.mcp.dependency.SearchMultiRequest
 import com.example.gradle.mcp.dependency.SearchRequest
 import com.example.gradle.mcp.dependency.SourcePathRef
+import com.example.gradle.mcp.dependency.SourcesJarCacheLayout
+import com.example.gradle.mcp.dependency.SourcesJarFetcher
 import com.example.gradle.mcp.dependency.TokenMode
 import java.io.File
 
 class DependencySourcesFacade(
     private val store: DependencyIndexStore = DependencyIndexStore(),
+    private val sourcesJarFetcher: SourcesJarFetcher = MavenCentralSourcesJarFetcher,
 ) {
     fun index(args: Map<String, Any>, access: DependencySourcesGradleAccess): Map<String, Any?> {
         val projectDirectory = access.resolveProjectDirectory(args)
@@ -23,6 +27,7 @@ class DependencySourcesFacade(
         val sourcePaths = parseSourcePaths(args["sourcePaths"])
         val indexDir = args.optionalString("indexDir")?.let(::File)
         val forceReindex = args.optionalBoolean("forceReindex", default = false)
+        val downloadSources = args.optionalBoolean("downloadSources", default = false)
         val needsConnection = artifacts.isEmpty() && sourcePaths.isEmpty()
         val gradleUserHome = resolveGradleUserHome(
             explicit = args.optionalString("gradleUserHome")?.let(::File),
@@ -39,6 +44,8 @@ class DependencySourcesFacade(
             indexDir = indexDir,
             forceReindex = forceReindex,
             gradleUserHome = gradleUserHome,
+            downloadSources = downloadSources,
+            sourcesJarFetcher = sourcesJarFetcher,
         )
         // Hold no-active-build + connection only while resolving the Idea keep-set.
         // Corpus lex / disk write run unlocked so unrelated builds are not blocked.
@@ -65,6 +72,7 @@ class DependencySourcesFacade(
             "nameCount" to stats.nameCount,
             "occurrenceCount" to stats.occurrenceCount,
             "memberCount" to result.memberCount,
+            "downloadedSources" to keepSet.downloadedGavs,
         )
     }
 
@@ -149,6 +157,7 @@ class DependencySourcesFacade(
                 maxLines = maxLines,
                 sourceRoot = sourceRoot,
                 gradleUserHome = gradleUserHome,
+                sourcesJarCacheDir = projectDirectory?.let(SourcesJarCacheLayout::defaultDir),
             ),
         )
         return linkedMapOf(
