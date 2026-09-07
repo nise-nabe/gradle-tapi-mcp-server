@@ -37,8 +37,11 @@ object MavenCentralSourcesJarFetcher : SourcesJarFetcher {
         val uri = mavenCentralUri(artifact)
         require(uri.host == HOST) { "unexpected Maven Central host: ${uri.host}" }
 
-        destination.parentFile?.mkdirs()
-        val temp = File(destination.parentFile, "${destination.name}.part")
+        val parent = destination.parentFile
+            ?: throw IOException("destination has no parent: ${destination.path}")
+        parent.mkdirs()
+        // Unique per attempt so concurrent downloads of the same GAV cannot share a .part file.
+        val temp = Files.createTempFile(parent.toPath(), "${destination.name}.", ".part").toFile()
         try {
             val request =
                 HttpRequest.newBuilder(uri)
@@ -77,7 +80,20 @@ object MavenCentralSourcesJarFetcher : SourcesJarFetcher {
             if (temp.length() < 4L || !looksLikeZip(temp)) {
                 throw IOException("downloaded sources jar for ${artifact.gav()} is not a ZIP/JAR")
             }
-            Files.move(temp.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            try {
+                Files.move(
+                    temp.toPath(),
+                    destination.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE,
+                )
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                Files.move(
+                    temp.toPath(),
+                    destination.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            }
             return destination
         } catch (error: InterruptedException) {
             Thread.currentThread().interrupt()
