@@ -169,19 +169,21 @@ object MissingSourcesMessage {
         builder.append(" Searched: ").append(searched.joinToString("; ")).append('.')
         if (downloadSources) {
             if (downloadFailedGavs.isNotEmpty()) {
-                builder.append(" Maven Central download did not succeed for: ")
+                builder.append(" Maven repository download did not succeed for: ")
                 builder.append(downloadFailedGavs.joinToString(", "))
                 builder.append('.')
             } else {
                 builder.append(" downloadSources=true was set but jars were still unavailable.")
             }
-            builder.append(" Pass sourcePaths for local trees, or place *-sources.jar under ")
+            builder.append(" Pass sourcesRepositories for corporate mirrors, pass sourcePaths ")
+            builder.append("for local trees, or place *-sources.jar under ")
             builder.append("Maven local / Gradle cache / MCP jars cache.")
         } else {
-            builder.append(" Pass downloadSources=true to fetch from Maven Central into the ")
-            builder.append("project MCP jars cache (.gradle/mcp-dependency-sources/jars/), ")
-            builder.append("pass sourcePaths for local trees, or download sources first ")
-            builder.append("(IDE Download Sources, or curl the Maven Central *-sources.jar URL).")
+            builder.append(" Pass downloadSources=true to fetch into the ")
+            builder.append("project MCP jars cache (.gradle/mcp-dependency-sources/jars/) ")
+            builder.append("(optional sourcesRepositories for corporate Maven mirrors; ")
+            builder.append("default Maven Central), pass sourcePaths for local trees, ")
+            builder.append("or download sources first.")
         }
         return builder.toString()
     }

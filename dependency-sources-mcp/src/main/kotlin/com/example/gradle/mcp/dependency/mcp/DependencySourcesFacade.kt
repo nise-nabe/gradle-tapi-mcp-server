@@ -25,6 +25,7 @@ class DependencySourcesFacade(
         val tokenMode = TokenMode.parse(args.optionalString("tokenMode"))
         val artifacts = parseArtifacts(args["artifacts"])
         val sourcePaths = parseSourcePaths(args["sourcePaths"])
+        val sourcesRepositories = parseSourcesRepositories(args["sourcesRepositories"])
         val indexDir = args.optionalString("indexDir")?.let(::File)
         val forceReindex = args.optionalBoolean("forceReindex", default = false)
         val downloadSources = args.optionalBoolean("downloadSources", default = false)
@@ -45,7 +46,9 @@ class DependencySourcesFacade(
             forceReindex = forceReindex,
             gradleUserHome = gradleUserHome,
             downloadSources = downloadSources,
-            sourcesJarFetcher = sourcesJarFetcher,
+            sourcesRepositories = sourcesRepositories,
+            // Explicit repos win; otherwise honor constructor injection (tests / Central default).
+            sourcesJarFetcher = if (sourcesRepositories.isEmpty()) sourcesJarFetcher else null,
         )
         // Hold no-active-build + connection only while resolving the Idea keep-set.
         // Corpus lex / disk write run unlocked so unrelated builds are not blocked.
@@ -283,6 +286,24 @@ class DependencySourcesFacade(
                 name = map.mapString("name"),
                 version = map.mapString("version"),
             )
+        }
+    }
+
+    private fun parseSourcesRepositories(raw: Any?): List<String> {
+        if (raw == null) return emptyList()
+        val list = raw as? List<*>
+            ?: throw IllegalArgumentException("sourcesRepositories must be an array of strings")
+        if (list.isEmpty()) {
+            throw IllegalArgumentException("sourcesRepositories must not be empty when provided")
+        }
+        return list.mapIndexed { index, item ->
+            val value = item as? String
+            if (value == null || value.isBlank()) {
+                throw IllegalArgumentException(
+                    "sourcesRepositories[$index] must be a non-blank string",
+                )
+            }
+            value
         }
     }
 

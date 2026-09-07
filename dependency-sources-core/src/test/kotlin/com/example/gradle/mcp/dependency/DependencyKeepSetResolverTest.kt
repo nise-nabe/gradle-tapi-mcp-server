@@ -7,6 +7,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -87,7 +88,7 @@ class DependencyKeepSetResolverTest {
     }
 
     @Test
-    fun `downloadSources failure includes Maven Central guidance`() {
+    fun `downloadSources failure includes repository guidance`() {
         val artifact = DependencyArtifactRef("org.demo", "gone", "9.9.9")
         val fetcher = SourcesJarFetcher { _, _ -> null }
 
@@ -103,7 +104,8 @@ class DependencyKeepSetResolverTest {
             )
         }
         error.message shouldContain artifact.gav()
-        error.message shouldContain "Maven Central download did not succeed"
+        error.message shouldContain "Maven repository download did not succeed"
+        error.message shouldContain "sourcesRepositories"
         error.message shouldContain "Searched:"
     }
 
@@ -122,8 +124,31 @@ class DependencyKeepSetResolverTest {
     @Test
     fun `maven central uri uses coordinate path`() {
         val artifact = DependencyArtifactRef("com.example", "lib", "1.2.3")
-        MavenCentralSourcesJarFetcher.mavenCentralUri(artifact).toString() shouldBe
+        MavenRepositoryBase.MAVEN_CENTRAL.sourcesJarUri(artifact).toString() shouldBe
             "https://repo1.maven.org/maven2/com/example/lib/1.2.3/lib-1.2.3-sources.jar"
+    }
+
+    @Test
+    fun `corporate repository base builds maven layout uri`() {
+        val repo = MavenRepositoryBase.parse("https://nexus.example.com/repository/maven-public")
+        val artifact = DependencyArtifactRef("com.acme", "core", "2.0.0")
+        repo.sourcesJarUri(artifact).toString() shouldBe
+            "https://nexus.example.com/repository/maven-public/com/acme/core/2.0.0/core-2.0.0-sources.jar"
+    }
+
+    @Test
+    fun `sourcesRepositories parse rejects non-http schemes`() {
+        shouldThrow<IllegalArgumentException> {
+            MavenRepositoryBase.parse("ftp://files.example/maven/")
+        }.message shouldContain "http"
+    }
+
+    @Test
+    fun `defaultOr uses only provided corporate repositories`() {
+        val fetcher = MavenRepositorySourcesJarFetcher.defaultOr(
+            listOf("https://nexus.example.com/repository/maven-public/"),
+        )
+        fetcher.shouldBeInstanceOf<MavenRepositorySourcesJarFetcher>()
     }
 
     @Test

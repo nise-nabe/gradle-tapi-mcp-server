@@ -430,6 +430,59 @@ class DependencySourcesFacadeTest {
     }
 
     @Test
+    fun `sourcesRepositories rejects empty array`() {
+        val project = File(tempDir, "proj-repos").apply { mkdirs() }
+        val access = StubAccess(project)
+        val error = shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().index(
+                mapOf(
+                    "artifacts" to listOf(
+                        mapOf("group" to "com.example", "name" to "x", "version" to "1"),
+                    ),
+                    "downloadSources" to true,
+                    "sourcesRepositories" to emptyList<String>(),
+                ),
+                access,
+            )
+        }
+        error.message shouldContain "sourcesRepositories"
+    }
+
+    @Test
+    fun `sourcesRepositories with corporate base is accepted in index args`() {
+        val project = File(tempDir, "proj-corp").apply { mkdirs() }
+        val access = StubAccess(project, connectedGradleUserHome = File(tempDir, "corp-home").apply { mkdirs() })
+        // Injected fetcher is ignored when sourcesRepositories is set; provide a 404-like null
+        // by not injecting — real HTTP would fail. Instead place jar after building request path
+        // via fake: use downloadSources false path... Actually we need the store to use URLs.
+        // For unit test without HTTP: put jar in MCP cache so download is skipped.
+        val artifactPath = File(
+            project,
+            ".gradle/mcp-dependency-sources/jars/com/acme/core/1.0.0/core-1.0.0-sources.jar",
+        )
+        artifactPath.parentFile.mkdirs()
+        java.util.zip.ZipOutputStream(artifactPath.outputStream()).use { zip ->
+            zip.putNextEntry(java.util.zip.ZipEntry("Core.kt"))
+            zip.write("class Core\n".toByteArray())
+            zip.closeEntry()
+        }
+        val indexed = DependencySourcesFacade().index(
+            mapOf(
+                "artifacts" to listOf(
+                    mapOf("group" to "com.acme", "name" to "core", "version" to "1.0.0"),
+                ),
+                "downloadSources" to true,
+                "sourcesRepositories" to listOf("https://nexus.example.com/repository/maven-public/"),
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+        indexed["memberCount"] shouldBe 1
+        @Suppress("UNCHECKED_CAST")
+        (indexed["downloadedSources"] as List<String>).shouldHaveSize(0)
+    }
+
+    @Test
     fun `read returns snippet from sources jar using gav and connected gradle home`() {
         val home = File(tempDir, "read-home")
         placeSourcesJar(home, "com.example", "readable", "1.2.3", sourceBody = multilineDemoSource())

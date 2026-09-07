@@ -13,8 +13,7 @@ object DependencySourceToolCatalog {
     const val READ_TOOL: String = "gradle_read_dependency_source"
 
     const val INDEX_DESCRIPTION: String =
-        "Index dependency sources (Idea/artifacts[]/sourcePaths[]). " +
-            "tokenMode=all|idents. downloadSources fetches missing jars from Maven Central."
+        "Index dependency sources. tokenMode=all|idents; optional downloadSources."
 
     const val SEARCH_DESCRIPTION: String =
         "Exact simple-name locate in dependency sources. Requires prior index for tokenMode."
@@ -23,8 +22,7 @@ object DependencySourceToolCatalog {
         "Multi-name OR locate; dedup hits and tag matchedQueries. Requires prior index."
 
     const val READ_DESCRIPTION: String =
-        "Read UTF-8 snippet from dependency sources jar/dir. " +
-            "Need gav|group+name+version + path. Cache jars by coords; Idea/sourcePaths: prefer hit sourceRoot. " +
+        "Read UTF-8 snippet from sources jar/dir. Need gav|GAV + path. " +
             "line+contextLines=10; omit line → maxLines=200."
 
     fun specs(): List<DependencySourceToolSpec> =
@@ -60,7 +58,10 @@ object DependencySourceToolCatalog {
                     required = listOf("path"),
                 ),
                 "downloadSources" to booleanProp(
-                    "Fetch missing artifacts[] jars from Maven Central (default false).",
+                    "Fetch missing artifacts[] jars (default false).",
+                ),
+                "sourcesRepositories" to stringArrayProp(
+                    description = "Maven bases for downloadSources (omit=Central).",
                 ),
                 "gradleUserHome" to stringProp("Cache home; else connected."),
                 "indexDir" to stringProp("Override (<dir>/<tokenMode>/)."),
