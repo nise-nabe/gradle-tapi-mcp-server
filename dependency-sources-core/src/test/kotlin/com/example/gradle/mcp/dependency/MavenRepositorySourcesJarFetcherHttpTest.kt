@@ -6,6 +6,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -179,15 +180,19 @@ class MavenRepositorySourcesJarFetcherHttpTest {
     @Test
     fun `does not follow redirects to other hosts`() {
         server.createContext(artifactPath) { exchange ->
-            exchange.responseHeaders.add("Location", "http://127.0.0.1:${server.address.port}/evil")
+            exchange.responseHeaders.add("Location", "http://169.254.169.254/evil-sources.jar")
             exchange.sendResponseHeaders(302, -1)
             exchange.close()
         }
 
+        // Use the production default client (Redirect.NEVER), not a test override.
         val error = shouldThrow<IOException> {
-            newFetcher().fetch(artifact, File(tempDir, "redir.jar"))
+            MavenRepositorySourcesJarFetcher(
+                repositories = listOf(MavenRepositoryBase.parse(baseUrl)),
+            ).fetch(artifact, File(tempDir, "redir.jar"))
         }
         error.message shouldContain "HTTP 302"
+        error.message.shouldNotContain("169.254.169.254/evil")
     }
 
     private fun newFetcher(maxBytes: Long = MavenRepositorySourcesJarFetcher.DEFAULT_MAX_BYTES) =
@@ -199,6 +204,7 @@ class MavenRepositorySourcesJarFetcherHttpTest {
 
     private fun testClient(): HttpClient =
         HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NEVER)
             .connectTimeout(Duration.ofSeconds(2))
             .build()
 
