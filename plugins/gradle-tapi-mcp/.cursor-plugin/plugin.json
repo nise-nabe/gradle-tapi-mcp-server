@@ -1,6 +1,6 @@
 {
   "name": "gradle-tapi-mcp",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Query and run Gradle builds through the Gradle Tooling API MCP server with token-efficient defaults.",
   "author": {
     "name": "nise-nabe"
