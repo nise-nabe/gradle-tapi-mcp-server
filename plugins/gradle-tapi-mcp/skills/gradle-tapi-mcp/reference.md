@@ -298,7 +298,7 @@ Configuration-scoped indexing: call `gradle_get_dependency_resolution` with `con
 |----------|----------|-------------|
 | `indexId` | yes | From `gradle_index_dependency_sources` (`background` or detached) |
 
-Returns `status` (`running` / `succeeded` / `failed`), `phase`, `elapsedMs`, and on success the same index stats as a foreground completion (`docCount`, `fingerprint`, …). On failure includes `error`.
+Returns `status` (`queued` / `running` / `succeeded` / `failed`), `phase`, `elapsedMs`, and on success the same index stats as a foreground completion (`docCount`, `fingerprint`, …). On failure includes `error`. A newly started background job may briefly report `queued` before the executor flips it to `running`.
 
 ### gradle_search_dependency_sources / gradle_search_dependency_sources_multi
 
