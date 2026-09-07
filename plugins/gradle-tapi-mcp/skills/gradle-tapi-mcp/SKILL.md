@@ -97,12 +97,12 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | `gradle_list_builds` | 直近の MCP ビルド一覧（メモリ + `.gradle/mcp-builds/`、TAPI 不要） |
 | `gradle_get_build_status` | バックグラウンドビルドの進捗確認 |
 | `gradle_cancel_build` | バックグラウンドビルドのキャンセル（CancellationToken） |
-| `gradle_index_dependency_sources` | 依存ソース索引（Idea / `artifacts[]` / `sourcePaths[]`）。`tokenMode=all`（既定・コメント含む）または `idents`。`downloadSources=true` で不足分を Maven Central から取得 |
+| `gradle_index_dependency_sources` | 依存ソース索引（Idea / `artifacts[]` / `sourcePaths[]`）。`tokenMode=all`（既定・コメント含む）または `idents`。`downloadSources=true` で不足分を取得（既定 Maven Central、社内は `sourcesRepositories`） |
 | `gradle_search_dependency_sources` | 依存ソース上の単純名 exact locate（要事前 index）。`limit` 省略=無制限、`0`=空 |
 | `gradle_search_dependency_sources_multi` | 複数名 OR locate（dedup + `matchedQueries`）。`limit` / `perQueryLimit` 対応（`per_query_limit` エイリアス） |
 | `gradle_read_dependency_source` | 検索ヒットの `gav`+`path`（任意で `line`）から UTF-8 スニペット。`contextLines` 既定 10。`line` 省略は先頭から `maxLines`（既定 200）。Idea ディレクトリ / `sourcePaths` はヒットの `sourceRoot` を利用 |
 
-依存ソース検索: 先に `gradle_index_dependency_sources`、続けて `gradle_search_dependency_sources` または `gradle_search_dependency_sources_multi`、必要なら `gradle_read_dependency_source`。索引は `.gradle/mcp-dependency-sources/<tokenMode>/`（`manifest.json` / `formatVersion`）。mode 不一致時は暗黙 reindex しない。大規模リポジトリでは Idea 既定 keep-set の代わりに `artifacts[]` / `sourcePaths[]` を優先。`artifacts[]` でローカルに無い `*-sources.jar` は `downloadSources=true` で Maven Central から `.gradle/mcp-dependency-sources/jars/` へ取得（私有リポジトリは `sourcePaths`）。検索は単純名の exact match のみ（FQN / プレフィックス / ワイルドカード不可）。
+依存ソース検索: 先に `gradle_index_dependency_sources`、続けて `gradle_search_dependency_sources` または `gradle_search_dependency_sources_multi`、必要なら `gradle_read_dependency_source`。索引は `.gradle/mcp-dependency-sources/<tokenMode>/`（`manifest.json` / `formatVersion`）。mode 不一致時は暗黙 reindex しない。大規模リポジトリでは Idea 既定 keep-set の代わりに `artifacts[]` / `sourcePaths[]` を優先。`artifacts[]` でローカルに無い `*-sources.jar` は `downloadSources=true` で取得（既定 Maven Central。社内ミラーは `sourcesRepositories` に Maven レイアウトの base URL のみを渡し Central は試さない。`user:token@` で Basic 認証可）。検索は単純名の exact match のみ（FQN / プレフィックス / ワイルドカード不可）。
 
 エンドユーザー向けの正規ワークフロー（JSON 例付き）はリポジトリ [README.md](../../../../README.md) の **Dependency sources name locate**。詳細な引数は [reference.md](reference.md)。
 
