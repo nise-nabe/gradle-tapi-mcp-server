@@ -99,9 +99,11 @@ data class MavenRepositoryBase(
 class MavenRepositorySourcesJarFetcher(
     private val repositories: List<MavenRepositoryBase>,
     private val client: HttpClient = defaultClient,
+    private val maxBytes: Long = DEFAULT_MAX_BYTES,
 ) : SourcesJarFetcher {
     init {
         require(repositories.isNotEmpty()) { "repositories must not be empty" }
+        require(maxBytes > 0L) { "maxBytes must be positive" }
     }
 
     override fun fetch(artifact: DependencyArtifactRef, destination: File): File? {
@@ -112,6 +114,7 @@ class MavenRepositorySourcesJarFetcher(
 
         val failures = ArrayList<String>()
         for (repository in repositories) {
+            // Unique per attempt so concurrent downloads of the same GAV cannot share a .part file.
             val temp = Files.createTempFile(parent.toPath(), "${destination.name}.", ".part").toFile()
             try {
                 when (val outcome = downloadOnce(repository, artifact, temp)) {
@@ -175,8 +178,8 @@ class MavenRepositorySourcesJarFetcher(
                     val read = input.read(buffer)
                     if (read < 0) break
                     total += read
-                    if (total > MAX_BYTES) {
-                        throw IOException("sources jar for ${artifact.gav()} exceeds $MAX_BYTES bytes")
+                    if (total > maxBytes) {
+                        throw IOException("sources jar for ${artifact.gav()} exceeds $maxBytes bytes")
                     }
                     output.write(buffer, 0, read)
                 }
@@ -211,7 +214,7 @@ class MavenRepositorySourcesJarFetcher(
     }
 
     companion object {
-        private const val MAX_BYTES: Long = 64L * 1024L * 1024L
+        internal const val DEFAULT_MAX_BYTES: Long = 64L * 1024L * 1024L
 
         private val defaultClient: HttpClient =
             HttpClient.newBuilder()
