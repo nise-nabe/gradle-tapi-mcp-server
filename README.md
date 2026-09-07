@@ -106,14 +106,99 @@ Add to `.cursor/mcp.json` in your Gradle project:
 
 ### Dependency sources name locate
 
-1. Call `gradle_index_dependency_sources` (optional `tokenMode`, `artifacts`, `sourcePaths`, `gradleUserHome`, `forceReindex`).
-2. Call `gradle_search_dependency_sources` with `query` (and matching `tokenMode` when not preferring the default `all` index).
-3. For several names at once, call `gradle_search_dependency_sources_multi` with `queries`.
-4. Call `gradle_read_dependency_source` with a hit's `gav` + `path` (and optional `line`) to read the surrounding source without shelling out to `unzip`. For Idea directory / `sourcePaths` keep-sets, search hits include `sourceRoot` when indexed; pass it explicitly only if needed.
+Canonical agent workflow for finding types/symbols in dependency sources (index → search → read). Tool schemas alone omit several operational constraints; use this section as the source of truth.
 
-`limit` / `perQueryLimit` are query-time only (no `formatVersion` bump): omit or null = unlimited; `0` = empty. `per_query_limit` is accepted as an alias for `perQueryLimit`. Single search returns hits in posting order; multi search merges, dedups, sorts by `(gav, path, line, column)`, then applies the overall `limit`.
+#### Workflow
 
-Index format is versioned (`formatVersion`); incompatible on-disk indexes are rebuilt. Fingerprint includes `tokenMode` and the keep-set so modes never share an index.
+1. **Index** — `gradle_index_dependency_sources` (required before any search for that `tokenMode`).
+2. **Search** — `gradle_search_dependency_sources` (`query`) or `gradle_search_dependency_sources_multi` (`queries`).
+3. **Read** — `gradle_read_dependency_source` with a hit's `gav` + `path` (and optional `line`) for a UTF-8 snippet. Idea directory / `sourcePaths` hits may include `sourceRoot`; pass it explicitly only when needed.
+
+`tokenMode` on search **must match** the index. The server does **not** silently reindex when modes differ. Prefer omitting `tokenMode` on search only when you indexed with the default `all`.
+
+#### `tokenMode`
+
+| Mode | Behavior | When to use |
+|------|----------|-------------|
+| `all` (default) | Indexes code identifiers **and** comments/strings | Broader recall; preferred default |
+| `idents` | Code identifiers only (skips comments/strings) | Faster / smaller indexes when you only need declared names |
+
+Each mode has its own on-disk index under `.gradle/mcp-dependency-sources/<tokenMode>/` (includes `manifest.json` with `formatVersion` and fingerprint). Modes never share an index. Pass `forceReindex: true` to rebuild even on a fingerprint cache hit. Incompatible `formatVersion` values trigger a rebuild.
+
+#### Keep-set and large projects
+
+By default the index uses the Idea project dependency sources keep-set (can be slow or time out on large monorepos). Prefer an explicit keep-set:
+
+- `artifacts[]` — GAV list; resolves local `*-sources.jar` under Gradle user home / Maven local (optional `gradleUserHome`)
+- `sourcePaths[]` — local jars, zips, or source trees (with optional GAV labels)
+
+**Sources jars are not auto-downloaded.** They must already exist locally (or be supplied via `sourcePaths`). If indexing reports missing sources, download them outside MCP (for example `./gradlew dependencies` with sources enabled, or IDE “Download Sources”) and re-index.
+
+#### Search semantics
+
+- Query is an **exact simple name** match only (for example `SpringBootApplication`).
+- Not FQN (`org.springframework.boot.SpringBootApplication`), not prefix, and not wildcard.
+- `limit` / `perQueryLimit` are query-time only (no `formatVersion` bump): omit or null = unlimited; `0` = empty. `per_query_limit` is an alias for `perQueryLimit`.
+- Single search returns hits in posting order; multi search merges, dedups, sorts by `(gav, path, line, column)`, then applies the overall `limit`.
+
+#### Minimal JSON example
+
+Index one artifact, then search one simple name:
+
+```json
+{
+  "name": "gradle_index_dependency_sources",
+  "arguments": {
+    "tokenMode": "idents",
+    "artifacts": [
+      { "group": "org.springframework.boot", "name": "spring-boot", "version": "3.3.0" }
+    ]
+  }
+}
+```
+
+```json
+{
+  "name": "gradle_search_dependency_sources",
+  "arguments": {
+    "query": "SpringBootApplication",
+    "tokenMode": "idents",
+    "limit": 5
+  }
+}
+```
+
+Example search hit shape (fields may vary):
+
+```json
+{
+  "hits": [
+    {
+      "gav": "org.springframework.boot:spring-boot:3.3.0",
+      "path": "org/springframework/boot/SpringBootApplication.java",
+      "line": 42,
+      "column": 1
+    }
+  ],
+  "hitCount": 1
+}
+```
+
+Then read a snippet:
+
+```json
+{
+  "name": "gradle_read_dependency_source",
+  "arguments": {
+    "gav": "org.springframework.boot:spring-boot:3.3.0",
+    "path": "org/springframework/boot/SpringBootApplication.java",
+    "line": 42,
+    "contextLines": 10
+  }
+}
+```
+
+Agent skill summaries: `plugins/gradle-tapi-mcp/skills/gradle-tapi-mcp/SKILL.md` and `reference.md`.
 
 ## Token-efficient usage
 
