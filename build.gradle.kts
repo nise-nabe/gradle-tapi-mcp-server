@@ -19,7 +19,24 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.gradle.tooling.api)
     implementation(project(":dependency-sources-mcp"))
+    implementation(project(":resolution-model"))
     runtimeOnly(libs.slf4j.simple)
+}
+
+val resolutionModelEmbed = configurations.create("resolutionModelEmbed") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+
+dependencies {
+    resolutionModelEmbed(project(path = ":resolution-model", configuration = "runtimeElements"))
+}
+
+tasks.processResources {
+    from(resolutionModelEmbed) {
+        into("META-INF/mcp")
+        rename { "resolution-model.jar" }
+    }
 }
 
 application {

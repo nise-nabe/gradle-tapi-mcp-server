@@ -84,6 +84,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_get_project_model` | Project model; tasks omitted by default; optional `projectPath` to scope a subproject subtree |
 | `gradle_get_build_invocations` | Runnable tasks; selectors omitted by default; optional `projectPath` to scope task collection |
 | `gradle_get_project_publications` | Publications |
+| `gradle_get_dependency_resolution` | Resolved dependency graph via Tooling API `ResolutionResult` (no task run). Requires `configuration`; optional `projectPath`, `dependency` filter (dependencyInsight-like), `maxDependencies` / `maxComponents` (default 500) |
 | `gradle_run_tasks` | Execute tasks; stdout/stderr truncated by default |
 | `gradle_run_tests` | Execute JVM tests by class, method, pattern, or task scope; stdout/stderr truncated by default |
 | `gradle_list_builds` | List recent MCP builds from memory and `.gradle/mcp-builds/` (no Tooling API required) |
@@ -101,6 +102,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | root (`gradle-tapi-mcp-server`) | MCP server fat JAR; registers tools |
 | `:dependency-sources-core` | Identifier lexer, δ postings, keep-set resolver, on-disk index, source snippet reader |
 | `:dependency-sources-mcp` | Index/search/read tool schemas and facade (depends on core) |
+| `:resolution-model` | Thin ToolingModelBuilder jar for `ResolutionResult` graphs (embedded under `META-INF/mcp/`) |
 
 ### Dependency sources name locate
 
@@ -119,7 +121,8 @@ Prefer this order for agent workflows such as project context ingestion:
 
 1. `gradle_get_build_environment` for resolved Gradle/Java versions
 2. `gradle_get_project_overview` for module hierarchy and task counts (or `gradle_get_gradle_build` for composite/includeBuild repositories)
-3. `gradle_run_tasks` with `["build"]` or `["test"]` when verification is needed
+3. `gradle_get_dependency_resolution` with a resolvable `configuration` when you need the resolved graph (optional `dependency` filter) without running report tasks
+4. `gradle_run_tasks` with `["build"]` or `["test"]` when verification is needed
 
 Use heavier tools only when required:
 

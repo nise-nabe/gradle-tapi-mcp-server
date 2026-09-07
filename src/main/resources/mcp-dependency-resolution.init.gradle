@@ -1,0 +1,9 @@
+initscript {
+    dependencies {
+        classpath files('@@RESOLUTION_MODEL_JAR@@')
+    }
+}
+
+gradle.rootProject {
+    apply plugin: com.example.gradle.mcp.resolution.McpDependencyResolutionPlugin
+}
