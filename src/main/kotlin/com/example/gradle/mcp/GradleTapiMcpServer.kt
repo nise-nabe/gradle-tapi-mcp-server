@@ -8,6 +8,7 @@ import com.example.gradle.mcp.connection.registerConnectionTools
 import com.example.gradle.mcp.connection.registerJavaRuntimeTools
 import com.example.gradle.mcp.dependency.registerDependencySourceTools
 import com.example.gradle.mcp.model.registerModelTools
+import com.example.gradle.mcp.model.resolution.registerDependencyResolutionTools
 import com.example.gradle.mcp.server.EofSignalingInputStream
 import io.ktor.utils.io.streams.asInput
 import io.modelcontextprotocol.kotlin.sdk.server.Server
@@ -55,6 +56,7 @@ fun runGradleTapiMcpServer() {
         server.registerJavaRuntimeTools(serverScope)
         server.registerCacheTools(serverScope)
         server.registerModelTools(serverScope)
+        server.registerDependencyResolutionTools(serverScope)
         server.registerBuildTools(serverScope)
         server.registerDependencySourceTools(serverScope)
     }

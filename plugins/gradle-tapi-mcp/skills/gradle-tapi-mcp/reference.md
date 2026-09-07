@@ -252,6 +252,22 @@ Returns `status` (`queued`, `running`, `succeeded`, `failed`, `cancelled`, or `n
 | `includeDownloads` | `false` | `activeDownloadCount`, `recentDownloads` (requires in-memory live record) |
 | `includeTestDetails` | `false` | Terminal `failedTests`; with `includeProgress=true`, adds `progress.recentEvents[].test` on `TEST_*` events. Disk polls restore `failedTests` from `events.ndjson` (`className`, `methodName`, `failureMessage`; `sourcePath`/`sourceLine` need live Tooling API) |
 
+## Dependency resolution
+
+### gradle_get_dependency_resolution
+
+Fetches a configuration's `ResolutionResult` via a custom Tooling model (init-script plugin + BuildAction). Does **not** run `dependencies` / `dependencyInsight` tasks; still configures the project and resolves the graph (not artifact downloads).
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `configuration` | yes | Resolvable configuration name (`runtimeClasspath`, `compileClasspath`, …) |
+| `projectPath` | no | Subproject path (default root `:`) |
+| `dependency` | no | Case-insensitive substring filter on requested/selected (dependencyInsight-like) |
+| `maxDependencies` | no | Cap on edges (default 500) |
+| `maxComponents` | no | Cap on components (default 500) |
+| `prepareTasks` | no | Optional tasks before the model action |
+
+Returns `root`, `components[]`, `dependencies[]` (with `selectionReason`), truncation flags, and totals.
 
 ## Dependency sources
 

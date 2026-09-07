@@ -17,6 +17,7 @@ import com.example.gradle.mcp.model.helpSchema
 import com.example.gradle.mcp.model.modelQuerySchema
 import com.example.gradle.mcp.model.projectTreeSchema
 import com.example.gradle.mcp.model.publicationsSchema
+import com.example.gradle.mcp.model.resolution.dependencyResolutionSchema
 import com.example.gradle.mcp.model.scopedProjectTreeSchema
 
 internal data class McpToolSpec(
@@ -38,6 +39,11 @@ internal fun allMcpToolSpecs(): List<McpToolSpec> =
         McpToolSpec("gradle_get_project_model", McpToolDescriptions.PROJECT_MODEL, modelQuerySchema()),
         McpToolSpec("gradle_get_build_invocations", McpToolDescriptions.BUILD_INVOCATIONS, buildInvocationsQuerySchema()),
         McpToolSpec("gradle_get_project_publications", McpToolDescriptions.PROJECT_PUBLICATIONS, publicationsSchema()),
+        McpToolSpec(
+            "gradle_get_dependency_resolution",
+            McpToolDescriptions.DEPENDENCY_RESOLUTION,
+            dependencyResolutionSchema(),
+        ),
         McpToolSpec("gradle_get_help", McpToolDescriptions.HELP, helpSchema()),
         McpToolSpec("gradle_list_builds", McpToolDescriptions.LIST_BUILDS, listBuildsSchema()),
         McpToolSpec("gradle_cancel_build", McpToolDescriptions.CANCEL_BUILD, cancelBuildSchema()),

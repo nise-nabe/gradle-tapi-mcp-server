@@ -47,6 +47,7 @@ Gradle プロジェクトの**実行時状態**を MCP 経由で取得・実行�
 | 絞り込み | 同上 / `gradle_get_build_invocations` | `projectPath`, `taskGroup`, `taskNamePrefix`, `maxTasks` |
 | セレクタ | `gradle_get_build_invocations` | `includeTaskSelectors=true` |
 | Publications | `gradle_get_project_publications` | — |
+| 依存解決グラフ | `gradle_get_dependency_resolution` | `configuration` 必須。任意で `dependency` フィルタ、`projectPath` |
 
 `gradle_get_project_model` と `gradle_get_build_invocations` を引数なしで連続呼び出ししない。大規模プロジェクトでは `projectPath`（例: `:plugin`）でサブツリーに絞る（接続ビルド内のみ。composite は `gradle_get_gradle_build`）。
 
@@ -67,6 +68,7 @@ Cursor の `mcp_get_tools` 利用時:
 | 宣言バージョン（Kotlin, Boot, plugins） | `libs.versions.toml`, `build.gradle.kts` | — |
 | 解決済み Gradle/Java | — | `gradle_get_build_environment` |
 | モジュール構成 | `settings.gradle.kts` | `gradle_get_project_overview` |
+| 解決済み依存グラフ | — | `gradle_get_dependency_resolution` |
 | composite / includeBuild | `settings.gradle.kts` | `gradle_get_gradle_build` |
 | ビルド成否 | — | `gradle_run_tasks` |
 | 全タスク探索 | 通常は不要 | `includeTasks` + フィルタ |
@@ -89,6 +91,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | `gradle_get_project_model` | プロジェクトモデル（タスクはデフォルト省略、`projectPath` 可） |
 | `gradle_get_build_invocations` | 実行可能タスク（セレクタはデフォルト省略、`projectPath` 可） |
 | `gradle_get_project_publications` | Publications |
+| `gradle_get_dependency_resolution` | `ResolutionResult` 依存グラフ（タスクなし）。`configuration` 必須。任意 `dependency` / `projectPath`。既定 cap 500 |
 | `gradle_run_tasks` | タスク実行 |
 | `gradle_run_tests` | JVM テスト実行（クラス / メソッド / パターン） |
 | `gradle_list_builds` | 直近の MCP ビルド一覧（メモリ + `.gradle/mcp-builds/`、TAPI 不要） |
