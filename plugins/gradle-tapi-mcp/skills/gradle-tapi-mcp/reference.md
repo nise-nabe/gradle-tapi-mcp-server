@@ -277,7 +277,8 @@ Canonical end-user workflow (index → search → read, `tokenMode`, keep-set ti
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `tokenMode` | no | `all` (default) or `idents` |
+| `tokenMode` | no | `all` (default) or `idents` (prefer on large first-time indexes) |
+| `projectPath` | no | Idea keep-set only: scope to a Gradle project subtree (e.g. `:worker`) |
 | `artifacts[]` | no | Explicit GAVs; skips Idea keep-set |
 | `sourcePaths[]` | no | Local trees/jars with optional GAV labels |
 | `downloadSources` | no | If true with `artifacts[]`, fetch missing `*-sources.jar` into `.gradle/mcp-dependency-sources/jars/` (default false) |
@@ -285,8 +286,19 @@ Canonical end-user workflow (index → search → read, `tokenMode`, keep-set ti
 | `gradleUserHome` | no | Cache home for `artifacts[]` jar lookup |
 | `indexDir` | no | Override index directory |
 | `forceReindex` | no | Rebuild even on fingerprint hit |
+| `background` | no | Return `indexId` immediately; poll `gradle_get_dependency_sources_index_status` |
 
-Index cache: `<project>/.gradle/mcp-dependency-sources/<tokenMode>/` (`manifest.json`). With `artifacts[]`, missing jars can be fetched via `downloadSources=true` (Maven Central by default, or `sourcesRepositories` for corporate mirrors). On large monorepos prefer `artifacts[]` / `sourcePaths[]` over the default Idea keep-set.
+Index cache: `<project>/.gradle/mcp-dependency-sources/<tokenMode>/` (`manifest.json`). With `artifacts[]`, missing jars can be fetched via `downloadSources=true` (Maven Central by default, or `sourcesRepositories` for corporate mirrors). On large monorepos prefer `background: true`, `projectPath`, `artifacts[]` / `sourcePaths[]`, and/or `tokenMode: idents` over an unscoped foreground Idea keep-set. Foreground Idea indexing auto-detaches after ~45s (`detached: true` + `indexId`).
+
+Configuration-scoped indexing: call `gradle_get_dependency_resolution` with `configuration` (optional `projectPath`), then pass resolved GAVs as `artifacts[]`.
+
+### gradle_get_dependency_sources_index_status
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `indexId` | yes | From `gradle_index_dependency_sources` (`background` or detached) |
+
+Returns `status` (`queued` / `running` / `succeeded` / `failed`), `phase`, `elapsedMs`, and on success the same index stats as a foreground completion (`docCount`, `fingerprint`, …). On failure includes `error`. A newly started background job may briefly report `queued` before the executor flips it to `running`.
 
 ### gradle_search_dependency_sources / gradle_search_dependency_sources_multi
 

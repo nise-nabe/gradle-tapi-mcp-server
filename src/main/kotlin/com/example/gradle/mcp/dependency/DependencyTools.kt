@@ -28,9 +28,21 @@ fun Server.registerDependencySourceTools(scope: CoroutineScope) {
         description = DependencySourceToolCatalog.INDEX_DESCRIPTION,
         schema = DependencySourceToolCatalog.indexSchema(),
     ) { args ->
-        rejectUnsupportedProjectPath(args, DependencySourceToolCatalog.INDEX_TOOL)
         jsonResult(
             runCatching { dependencySourcesFacade.index(args, access) }
+                .getOrElse { throw mapDependencySourcesError(it) },
+        )
+    }
+
+    registerTool(
+        scope,
+        name = DependencySourceToolCatalog.INDEX_STATUS_TOOL,
+        description = DependencySourceToolCatalog.INDEX_STATUS_DESCRIPTION,
+        schema = DependencySourceToolCatalog.indexStatusSchema(),
+    ) { args ->
+        rejectUnsupportedProjectPath(args, DependencySourceToolCatalog.INDEX_STATUS_TOOL)
+        jsonResult(
+            runCatching { dependencySourcesFacade.indexStatus(args) }
                 .getOrElse { throw mapDependencySourcesError(it) },
         )
     }
@@ -103,7 +115,13 @@ private fun mapDependencySourcesError(error: Throwable): Throwable =
         is McpException -> error
         is IllegalArgumentException ->
             McpException(McpErrorCode.INVALID_ARGUMENT, error.message ?: "Invalid argument", error)
-        is IllegalStateException ->
-            McpException(McpErrorCode.INTERNAL_ERROR, error.message ?: "Internal error", error)
+        is IllegalStateException -> {
+            val message = error.message ?: "Internal error"
+            if (message.contains("already running", ignoreCase = true)) {
+                McpException(McpErrorCode.BUILD_ALREADY_RUNNING, message, error)
+            } else {
+                McpException(McpErrorCode.INTERNAL_ERROR, message, error)
+            }
+        }
         else -> error
     }

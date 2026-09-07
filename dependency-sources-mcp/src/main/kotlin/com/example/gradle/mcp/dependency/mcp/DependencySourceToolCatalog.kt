@@ -8,12 +8,17 @@ data class DependencySourceToolSpec(
 
 object DependencySourceToolCatalog {
     const val INDEX_TOOL: String = "gradle_index_dependency_sources"
+    const val INDEX_STATUS_TOOL: String = "gradle_get_dependency_sources_index_status"
     const val SEARCH_TOOL: String = "gradle_search_dependency_sources"
     const val SEARCH_MULTI_TOOL: String = "gradle_search_dependency_sources_multi"
     const val READ_TOOL: String = "gradle_read_dependency_source"
 
     const val INDEX_DESCRIPTION: String =
-        "Index dependency sources. tokenMode=all|idents; optional downloadSources."
+        "Index dependency sources. background→indexId; foreground detaches ~45s. " +
+            "Idea (projectPath) or artifacts[]/sourcePaths[]. Prefer idents on large repos."
+
+    const val INDEX_STATUS_DESCRIPTION: String =
+        "Poll dependency-sources index job by indexId."
 
     const val SEARCH_DESCRIPTION: String =
         "Exact simple-name locate in dependency sources. Requires prior index for tokenMode."
@@ -28,6 +33,7 @@ object DependencySourceToolCatalog {
     fun specs(): List<DependencySourceToolSpec> =
         listOf(
             DependencySourceToolSpec(INDEX_TOOL, INDEX_DESCRIPTION, indexSchema()),
+            DependencySourceToolSpec(INDEX_STATUS_TOOL, INDEX_STATUS_DESCRIPTION, indexStatusSchema()),
             DependencySourceToolSpec(SEARCH_TOOL, SEARCH_DESCRIPTION, searchSchema()),
             DependencySourceToolSpec(SEARCH_MULTI_TOOL, SEARCH_MULTI_DESCRIPTION, searchMultiSchema()),
             DependencySourceToolSpec(READ_TOOL, READ_DESCRIPTION, readSchema()),
@@ -38,6 +44,7 @@ object DependencySourceToolCatalog {
             properties = mapOf(
                 "projectDirectory" to stringProp("Project root; omit for GRADLE_PROJECT_DIR."),
                 "tokenMode" to stringProp("all (default) or idents."),
+                "projectPath" to stringProp("Idea only: scope subtree (e.g. :worker)."),
                 "artifacts" to arrayOfObjects(
                     description = "GAVs; skips Idea keep-set.",
                     itemProperties = mapOf(
@@ -66,7 +73,16 @@ object DependencySourceToolCatalog {
                 "gradleUserHome" to stringProp("Cache home; else connected."),
                 "indexDir" to stringProp("Override (<dir>/<tokenMode>/)."),
                 "forceReindex" to booleanProp("Rebuild on hit."),
+                "background" to booleanProp("Return indexId immediately (default false)."),
             ),
+        )
+
+    fun indexStatusSchema(): Map<String, Any> =
+        objectSchema(
+            properties = mapOf(
+                "indexId" to stringProp("Job id from gradle_index_dependency_sources."),
+            ),
+            required = listOf("indexId"),
         )
 
     fun searchSchema(): Map<String, Any> =

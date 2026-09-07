@@ -9,6 +9,8 @@ data class IndexRequest(
     val tokenMode: TokenMode = TokenMode.ALL,
     val artifacts: List<DependencyArtifactRef> = emptyList(),
     val sourcePaths: List<SourcePathRef> = emptyList(),
+    /** When set (Idea keep-set only), index dependencies for this project subtree. */
+    val projectPath: String? = null,
     val indexDir: File? = null,
     val forceReindex: Boolean = false,
     val gradleUserHome: File? = null,
@@ -78,6 +80,7 @@ class DependencyIndexStore {
             connection = if (explicit) null else connection,
             artifacts = request.artifacts,
             sourcePaths = request.sourcePaths,
+            projectPath = request.projectPath,
             gradleUserHome = request.gradleUserHome,
             downloadSources = request.downloadSources,
             sourcesJarCacheDir = sourcesJarCacheDir,

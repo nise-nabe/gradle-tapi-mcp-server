@@ -75,25 +75,41 @@ object DependencyKeepSetResolver {
         connection: ProjectConnection?,
         artifacts: List<DependencyArtifactRef>,
         sourcePaths: List<SourcePathRef>,
+        projectPath: String? = null,
         gradleUserHome: File? = null,
         downloadSources: Boolean = false,
         sourcesJarCacheDir: File? = null,
         sourcesJarFetcher: SourcesJarFetcher = MavenCentralSourcesJarFetcher,
     ): ResolvedKeepSet {
         val explicit = artifacts.isNotEmpty() || sourcePaths.isNotEmpty()
+        if (explicit && !projectPath.isNullOrBlank()) {
+            throw IllegalArgumentException(
+                "projectPath applies only to the Idea keep-set. " +
+                    "Omit artifacts[] / sourcePaths[] when scoping with projectPath, " +
+                    "or omit projectPath when using an explicit keep-set.",
+            )
+        }
         if (!explicit) {
             requireNotNull(connection) {
                 "project connection is required when artifacts/sourcePaths are omitted"
             }
-            val members = resolveFromIdea(connection)
+            val scope = IdeaProjectPathScope.normalizeOrNull(projectPath)
+            val members = resolveFromIdea(connection, scope)
             if (members.isEmpty()) {
+                val scopeHint = if (scope != null) " for projectPath '$scope'" else ""
                 throw IllegalArgumentException(
-                    "No dependency sources found via IdeaProject. " +
+                    "No dependency sources found via IdeaProject$scopeHint. " +
                         "Download sources, or pass sourcePaths / artifacts" +
-                        (if (downloadSources) " (downloadSources applies only to artifacts[])." else "."),
+                        (if (downloadSources) " (downloadSources applies only to artifacts[])." else ".") +
+                        (if (scope != null) {
+                            " Check that projectPath matches a Gradle project in the Idea model."
+                        } else {
+                            ""
+                        }),
                 )
             }
-            return ResolvedKeepSet(mode = "idea", members = members)
+            val mode = if (scope != null) "idea:$scope" else "idea"
+            return ResolvedKeepSet(mode = mode, members = members)
         }
 
         val members = ArrayList<KeepSetMember>()
@@ -156,10 +172,26 @@ object DependencyKeepSetResolver {
         )
     }
 
-    fun resolveFromIdea(connection: ProjectConnection): List<KeepSetMember> {
+    fun resolveFromIdea(
+        connection: ProjectConnection,
+        projectPath: String? = null,
+    ): List<KeepSetMember> {
+        val scope = IdeaProjectPathScope.normalizeOrNull(projectPath)
         val idea = connection.getModel(IdeaProject::class.java)
         val members = LinkedHashMap<String, KeepSetMember>()
+        var matchedModules = 0
         for (module in idea.modules) {
+            val modulePath = try {
+                module.gradleProject.path
+            } catch (_: Exception) {
+                null
+            }
+            if (scope != null) {
+                if (modulePath == null || !IdeaProjectPathScope.matchesSubtree(modulePath, scope)) {
+                    continue
+                }
+                matchedModules++
+            }
             for (dependency in module.dependencies) {
                 val library = dependency as? IdeaSingleEntryLibraryDependency ?: continue
                 val source = library.source ?: continue
@@ -176,8 +208,34 @@ object DependencyKeepSetResolver {
                 )
             }
         }
+        if (scope != null && matchedModules == 0) {
+            throw IllegalArgumentException(
+                "Project path '$scope' was not found in the Idea project model. " +
+                    "Use a Gradle path like :app or :worker.",
+            )
+        }
         return members.values.toList()
     }
+}
+
+/**
+ * Normalizes Gradle-style project paths for Idea keep-set scoping.
+ * Blank / ":" means the whole build (no filter).
+ */
+object IdeaProjectPathScope {
+    fun normalizeOrNull(input: String?): String? {
+        if (input.isNullOrBlank()) return null
+        val trimmed = input.trim()
+        if (trimmed == ":") return null
+        val normalized = if (trimmed.startsWith(":")) trimmed else ":$trimmed"
+        require(!normalized.contains("::") && !normalized.endsWith(":")) {
+            "Invalid project path '$input'. Use Gradle paths like :plugin or plugin."
+        }
+        return normalized
+    }
+
+    fun matchesSubtree(modulePath: String, scopePath: String): Boolean =
+        modulePath == scopePath || modulePath.startsWith("$scopePath:")
 }
 
 object MissingSourcesMessage {

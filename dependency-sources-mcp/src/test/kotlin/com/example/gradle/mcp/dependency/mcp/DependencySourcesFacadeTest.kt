@@ -734,6 +734,144 @@ class DependencySourcesFacadeTest {
         }.message shouldContain "sourceRoot"
     }
 
+    @Test
+    fun `background index returns indexId and status poll reaches succeeded`() {
+        val sources = File(tempDir, "src-bg").apply { mkdirs() }
+        File(sources, "Bg.kt").writeText("class BgToken\n")
+        val project = File(tempDir, "proj-bg").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+
+        val started =
+            facade.index(
+                mapOf(
+                    "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                    "tokenMode" to "idents",
+                    "background" to true,
+                ),
+                access,
+            )
+        started["background"] shouldBe true
+        listOf("queued", "running").shouldContain(started["status"])
+        val indexId = started["indexId"] as String
+
+        var status: Map<String, Any?> = emptyMap()
+        val deadline = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < deadline) {
+            status = facade.indexStatus(mapOf("indexId" to indexId))
+            if (status["status"] == "succeeded" || status["status"] == "failed") {
+                break
+            }
+            Thread.sleep(20)
+        }
+        status["status"] shouldBe "succeeded"
+        status["docCount"] shouldBe 1
+        status["tokenMode"] shouldBe "idents"
+    }
+
+    @Test
+    fun `foreground index detaches when detach timeout elapses`() {
+        val project = File(tempDir, "proj-detach").apply { mkdirs() }
+        val jobs = DependencySourcesIndexJobs(foregroundDetachTimeoutMs = 30)
+        val job =
+            jobs.start(
+                projectDirectory = project,
+                tokenMode = "idents",
+                projectPath = null,
+            ) {
+                Thread.sleep(150)
+                mapOf("docCount" to 1, "memberCount" to 1)
+            }
+        val detached = jobs.awaitOrDetach(job)
+        detached["detached"] shouldBe true
+        val indexId = detached["indexId"] as String
+
+        var status: Map<String, Any?> = emptyMap()
+        val deadline = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < deadline) {
+            status = jobs.statusResponse(indexId)
+            if (status["status"] == "succeeded" || status["status"] == "failed") {
+                break
+            }
+            Thread.sleep(20)
+        }
+        status["status"] shouldBe "succeeded"
+        status["docCount"] shouldBe 1
+    }
+
+    @Test
+    fun `projectPath with sourcePaths is rejected`() {
+        val sources = File(tempDir, "src-path").apply { mkdirs() }
+        File(sources, "A.kt").writeText("class A\n")
+        val project = File(tempDir, "proj-path").apply { mkdirs() }
+        val access = StubAccess(project)
+        val error =
+            shouldThrow<IllegalArgumentException> {
+                DependencySourcesFacade().index(
+                    mapOf(
+                        "projectPath" to ":worker",
+                        "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                    ),
+                    access,
+                )
+            }
+        error.message shouldContain "projectPath applies only to the Idea keep-set"
+    }
+
+    @Test
+    fun `malformed projectPath fails synchronously on background index`() {
+        val project = File(tempDir, "proj-bad-path").apply { mkdirs() }
+        val access = StubAccess(project)
+        val error =
+            shouldThrow<IllegalArgumentException> {
+                DependencySourcesFacade().index(
+                    mapOf(
+                        "projectPath" to "::app",
+                        "background" to true,
+                    ),
+                    access,
+                )
+            }
+        error.message shouldContain "Invalid project path"
+    }
+
+    @Test
+    fun `second index start for same project is rejected while first is running`() {
+        val project = File(tempDir, "proj-busy").apply { mkdirs() }
+        val jobs = DependencySourcesIndexJobs(foregroundDetachTimeoutMs = 5_000)
+        val first =
+            jobs.start(
+                projectDirectory = project,
+                tokenMode = "idents",
+                projectPath = null,
+            ) {
+                Thread.sleep(300)
+                mapOf("docCount" to 1)
+            }
+        val error =
+            shouldThrow<IllegalStateException> {
+                jobs.start(
+                    projectDirectory = project,
+                    tokenMode = "idents",
+                    projectPath = null,
+                ) {
+                    mapOf("docCount" to 2)
+                }
+            }
+        error.message shouldContain "already running"
+        error.message shouldContain first.indexId
+
+        val deadline = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < deadline) {
+            val status = jobs.statusResponse(first.indexId)
+            if (status["status"] == "succeeded" || status["status"] == "failed") {
+                break
+            }
+            Thread.sleep(20)
+        }
+        jobs.statusResponse(first.indexId)["status"] shouldBe "succeeded"
+    }
+
     private fun placeSourcesJar(
         gradleUserHome: File,
         group: String,

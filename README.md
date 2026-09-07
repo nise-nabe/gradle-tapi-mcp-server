@@ -90,7 +90,8 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_list_builds` | List recent MCP builds from memory and `.gradle/mcp-builds/` (no Tooling API required) |
 | `gradle_get_build_status` | Poll status/output for a background build (`buildId` required); set `includeProgress: true` for detailed progress |
 | `gradle_cancel_build` | Cancel a background build via Tooling API `CancellationToken` (`buildId` required) |
-| `gradle_index_dependency_sources` | Index dependency sources for exact simple-name locate. `tokenMode`: `all` (default; includes comments/strings) or `idents`. Keep-set: Idea sources by default, or explicit `artifacts[]` / `sourcePaths[]`. `artifacts[]` lookup uses optional `gradleUserHome`, else the connected project's Gradle user home, else process `GRADLE_USER_HOME`/`~/.gradle`. Optional `downloadSources: true` fetches missing `*-sources.jar` (default Maven Central; override with `sourcesRepositories` for corporate mirrors) into `.gradle/mcp-dependency-sources/jars/`. Persists under `.gradle/mcp-dependency-sources/<tokenMode>/` |
+| `gradle_index_dependency_sources` | Index dependency sources for exact simple-name locate. `tokenMode`: `all` (default; includes comments/strings) or `idents`. Keep-set: Idea sources by default (optional `projectPath` to scope a Gradle project subtree), or explicit `artifacts[]` / `sourcePaths[]`. `background: true` returns `indexId` immediately; foreground auto-detaches after ~45s with `detached: true` + `indexId`. Poll with `gradle_get_dependency_sources_index_status`. `artifacts[]` lookup uses optional `gradleUserHome`, else the connected project's Gradle user home, else process `GRADLE_USER_HOME`/`~/.gradle`. Optional `downloadSources: true` fetches missing `*-sources.jar` (default Maven Central; override with `sourcesRepositories` for corporate mirrors) into `.gradle/mcp-dependency-sources/jars/`. Persists under `.gradle/mcp-dependency-sources/<tokenMode>/` |
+| `gradle_get_dependency_sources_index_status` | Poll a background/detached dependency-sources index job (`indexId` required) |
 | `gradle_search_dependency_sources` | Exact simple-name locate against a prior index (does not reindex). Optional `limit` (omit = unlimited; `0` = empty) |
 | `gradle_search_dependency_sources_multi` | Multi-name OR locate with dedup and `matchedQueries`; optional `limit` and `perQueryLimit` (`per_query_limit` alias) |
 | `gradle_read_dependency_source` | Read a UTF-8 snippet from a dependency `*-sources.jar` **or** dir/file via `sourceRoot`, using `gav`/`group`+`name`+`version` and `path`. Optional `line` + `contextLines` (default 10, max 100); omit `line` to read from the start up to `maxLines` (default 200, max 2000). Cache jars resolve by coordinates; Idea directories / `sourcePaths` use indexed `sourceRoot` (or an explicit arg) |
@@ -127,12 +128,17 @@ Each mode has its own on-disk index under `.gradle/mcp-dependency-sources/<token
 
 #### Keep-set and large projects
 
-By default the index uses the Idea project dependency sources keep-set (can be slow or time out on large monorepos). Prefer an explicit keep-set:
+By default the index uses the Idea project dependency sources keep-set (can be slow or time out on large monorepos). Prefer one of:
 
+- `background: true` — return `indexId` immediately and poll `gradle_get_dependency_sources_index_status` (foreground calls auto-detach after ~45s with `detached: true`)
+- `projectPath` — scope the Idea keep-set to one Gradle project subtree (for example `:worker`)
 - `artifacts[]` — GAV list; resolves local `*-sources.jar` under Gradle user home / Maven local / MCP jars cache (optional `gradleUserHome`)
 - `sourcePaths[]` — local jars, zips, or source trees (with optional GAV labels)
+- `tokenMode: idents` — smaller/faster first-time indexes when you only need declared names
 
-When `artifacts[]` jars are missing locally, pass **`downloadSources: true`** to fetch `*-sources.jar` into `.gradle/mcp-dependency-sources/jars/` (response field `downloadedSources` lists GAVs fetched in that call). Default repository is **Maven Central**. On corporate / air-gapped networks, pass **`sourcesRepositories`** with Maven-layout base URL(s) for your mirror (for example Nexus/Artifactory); when set, only those bases are tried (Central is not appended). Optional `user:token@` in the URL is sent as HTTP Basic auth. Missing-sources errors list searched cache roots and suggest `downloadSources` / `sourcesRepositories` / `sourcePaths`. Do not expect `./gradlew dependencies` alone to fetch sources (it only prints the resolved binary graph).
+For a configuration-scoped keep-set, resolve GAVs with `gradle_get_dependency_resolution` (`configuration` required, optional `projectPath`), then pass them as `artifacts[]` to `gradle_index_dependency_sources`.
+
+When `artifacts[]` jars are missing locally, pass **`downloadSources: true`** to fetch `*-sources.jar` into `.gradle/mcp-dependency-sources/jars/` (response field `downloadedSources` lists GAVs fetched in that call). Default repository is **Maven Central**. On corporate / air-gapped networks, pass **`sourcesRepositories`** with Maven-layout base URL(s) for your mirror (for example Nexus/Artifactory); when set, only those bases are tried (Central is not appended). Optional `user:token@` in the URL is sent as HTTP Basic auth. Missing-sources errors list searched cache roots and suggest `downloadSources` / `sourcesRepositories` / `sourcePaths`. Do not expect `./gradlew dependencies` alone to fetch sources (it only prints the resolved binary graph). Idea keep-set still requires sources already attached in the Idea model (or use `sourcePaths` / `artifacts`).
 
 #### Search semantics
 
