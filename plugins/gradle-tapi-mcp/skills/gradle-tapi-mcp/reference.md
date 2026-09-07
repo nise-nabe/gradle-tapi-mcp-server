@@ -271,6 +271,8 @@ Returns `root`, `components[]`, `dependencies[]` (with `selectionReason`), trunc
 
 ## Dependency sources
 
+Canonical end-user workflow (index → search → read, `tokenMode`, keep-set tips, JSON examples): repository `README.md` section **Dependency sources name locate**.
+
 ### gradle_index_dependency_sources
 
 | Argument | Required | Description |
@@ -282,9 +284,11 @@ Returns `root`, `components[]`, `dependencies[]` (with `selectionReason`), trunc
 | `indexDir` | no | Override index directory |
 | `forceReindex` | no | Rebuild even on fingerprint hit |
 
+Index cache: `<project>/.gradle/mcp-dependency-sources/<tokenMode>/` (`manifest.json`). Sources jars must already exist locally or be passed via `sourcePaths` (not auto-downloaded). On large monorepos prefer `artifacts[]` / `sourcePaths[]` over the default Idea keep-set.
+
 ### gradle_search_dependency_sources / gradle_search_dependency_sources_multi
 
-Exact simple-name locate against a prior index. Optional `limit` / `perQueryLimit` (`per_query_limit` alias): omit = unlimited; `0` = empty.
+Exact simple-name locate against a prior index (`tokenMode` must match; no silent reindex). Not FQN / prefix / wildcard. Optional `limit` / `perQueryLimit` (`per_query_limit` alias): omit = unlimited; `0` = empty.
 
 ### gradle_read_dependency_source
 
