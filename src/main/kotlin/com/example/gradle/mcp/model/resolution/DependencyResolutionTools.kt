@@ -3,13 +3,13 @@ package com.example.gradle.mcp.model.resolution
 import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.connection.ProjectLifecycleGuard
-import com.example.gradle.mcp.model.requireNoActiveBuildForPrepareTasks
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.integerProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
+import com.example.gradle.mcp.protocol.optionalNonNegativeInt
 import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.optionalStringList
 import com.example.gradle.mcp.protocol.prepareTasksProperty
@@ -56,13 +56,12 @@ fun Server.registerDependencyResolutionTools(scope: CoroutineScope) {
         }
         val projectPath = args.optionalString("projectPath")?.trim()?.takeIf { it.isNotEmpty() }
         val dependency = args.optionalString("dependency")?.trim()?.takeIf { it.isNotEmpty() }
-        val maxDependencies = optionalPositiveInt(args, "maxDependencies")
-        val maxComponents = optionalPositiveInt(args, "maxComponents")
+        val maxDependencies = args.nonNegativeIntOrDefault("maxDependencies")
+        val maxComponents = args.nonNegativeIntOrDefault("maxComponents")
         val prepareTasks = args.optionalStringList("prepareTasks").orEmpty()
             .filter { it.isNotBlank() }
             .distinct()
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-        requireNoActiveBuildForPrepareTasks(prepareTasks, projectDirectory, runtime.buildExecutionManager)
 
         val model = ProjectLifecycleGuard.withNoActiveBuild(
             projectDirectory = projectDirectory,
@@ -88,18 +87,19 @@ fun Server.registerDependencyResolutionTools(scope: CoroutineScope) {
     }
 }
 
-private fun optionalPositiveInt(args: Map<String, Any>, key: String): Int {
-    val raw = args[key] ?: return 0
-    val value = when (raw) {
-        is Number -> raw.toInt()
-        is String -> raw.toIntOrNull()
-            ?: throw McpException(McpErrorCode.INVALID_ARGUMENT, "$key must be an integer")
-        else -> throw McpException(McpErrorCode.INVALID_ARGUMENT, "$key must be an integer")
+/**
+ * Uses [optionalNonNegativeInt] (exact Int conversion). Missing key → 0 (builder default).
+ * Present but invalid / negative / overflowing → [McpErrorCode.INVALID_ARGUMENT].
+ */
+internal fun Map<String, Any>.nonNegativeIntOrDefault(key: String, default: Int = 0): Int {
+    if (!containsKey(key)) {
+        return default
     }
-    if (value < 0) {
-        throw McpException(McpErrorCode.INVALID_ARGUMENT, "$key must be >= 0")
-    }
-    return value
+    return optionalNonNegativeInt(key)
+        ?: throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "$key must be a non-negative integer within Int range",
+        )
 }
 
 internal fun fetchDependencyResolution(
