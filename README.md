@@ -90,7 +90,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_list_builds` | List recent MCP builds from memory and `.gradle/mcp-builds/` (no Tooling API required) |
 | `gradle_get_build_status` | Poll status/output for a background build (`buildId` required); set `includeProgress: true` for detailed progress |
 | `gradle_cancel_build` | Cancel a background build via Tooling API `CancellationToken` (`buildId` required) |
-| `gradle_index_dependency_sources` | Index dependency sources for exact simple-name locate. `tokenMode`: `all` (default; includes comments/strings) or `idents`. Keep-set: Idea sources by default, or explicit `artifacts[]` / `sourcePaths[]`. `artifacts[]` lookup uses optional `gradleUserHome`, else the connected project's Gradle user home, else process `GRADLE_USER_HOME`/`~/.gradle`. Persists under `.gradle/mcp-dependency-sources/<tokenMode>/` |
+| `gradle_index_dependency_sources` | Index dependency sources for exact simple-name locate. `tokenMode`: `all` (default; includes comments/strings) or `idents`. Keep-set: Idea sources by default, or explicit `artifacts[]` / `sourcePaths[]`. `artifacts[]` lookup uses optional `gradleUserHome`, else the connected project's Gradle user home, else process `GRADLE_USER_HOME`/`~/.gradle`. Optional `downloadSources: true` fetches missing `*-sources.jar` from Maven Central into `.gradle/mcp-dependency-sources/jars/`. Persists under `.gradle/mcp-dependency-sources/<tokenMode>/` |
 | `gradle_search_dependency_sources` | Exact simple-name locate against a prior index (does not reindex). Optional `limit` (omit = unlimited; `0` = empty) |
 | `gradle_search_dependency_sources_multi` | Multi-name OR locate with dedup and `matchedQueries`; optional `limit` and `perQueryLimit` (`per_query_limit` alias) |
 | `gradle_read_dependency_source` | Read a UTF-8 snippet from a dependency `*-sources.jar` **or** dir/file via `sourceRoot`, using `gav`/`group`+`name`+`version` and `path`. Optional `line` + `contextLines` (default 10, max 100); omit `line` to read from the start up to `maxLines` (default 200, max 2000). Cache jars resolve by coordinates; Idea directories / `sourcePaths` use indexed `sourceRoot` (or an explicit arg) |
@@ -129,10 +129,10 @@ Each mode has its own on-disk index under `.gradle/mcp-dependency-sources/<token
 
 By default the index uses the Idea project dependency sources keep-set (can be slow or time out on large monorepos). Prefer an explicit keep-set:
 
-- `artifacts[]` — GAV list; resolves local `*-sources.jar` under Gradle user home / Maven local (optional `gradleUserHome`)
+- `artifacts[]` — GAV list; resolves local `*-sources.jar` under Gradle user home / Maven local / MCP jars cache (optional `gradleUserHome`)
 - `sourcePaths[]` — local jars, zips, or source trees (with optional GAV labels)
 
-**Sources jars are not auto-downloaded.** They must already exist locally (or be supplied via `sourcePaths`). If indexing reports missing sources, obtain the jars outside MCP — for example IDE “Download Sources”, or place/download `*-sources.jar` files and pass them with `sourcePaths[]` — then re-index. Do not expect `./gradlew dependencies` to fetch sources (it only prints the resolved binary graph).
+When `artifacts[]` jars are missing locally, pass **`downloadSources: true`** to fetch `*-sources.jar` from **Maven Central** into `.gradle/mcp-dependency-sources/jars/` (response field `downloadedSources` lists GAVs fetched in that call). Private/custom repos are out of scope — use `sourcePaths` or pre-populate caches. Missing-sources errors list searched cache roots and suggest `downloadSources` / `sourcePaths`. Do not expect `./gradlew dependencies` alone to fetch sources (it only prints the resolved binary graph).
 
 #### Search semantics
 

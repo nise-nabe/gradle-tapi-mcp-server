@@ -280,11 +280,12 @@ Canonical end-user workflow (index → search → read, `tokenMode`, keep-set ti
 | `tokenMode` | no | `all` (default) or `idents` |
 | `artifacts[]` | no | Explicit GAVs; skips Idea keep-set |
 | `sourcePaths[]` | no | Local trees/jars with optional GAV labels |
+| `downloadSources` | no | If true with `artifacts[]`, fetch missing `*-sources.jar` from Maven Central into `.gradle/mcp-dependency-sources/jars/` (default false) |
 | `gradleUserHome` | no | Cache home for `artifacts[]` jar lookup |
 | `indexDir` | no | Override index directory |
 | `forceReindex` | no | Rebuild even on fingerprint hit |
 
-Index cache: `<project>/.gradle/mcp-dependency-sources/<tokenMode>/` (`manifest.json`). Sources jars must already exist locally or be passed via `sourcePaths` (not auto-downloaded). On large monorepos prefer `artifacts[]` / `sourcePaths[]` over the default Idea keep-set.
+Index cache: `<project>/.gradle/mcp-dependency-sources/<tokenMode>/` (`manifest.json`). With `artifacts[]`, missing jars can be fetched via `downloadSources=true` (Maven Central only; private repos need `sourcePaths` or pre-populated caches). On large monorepos prefer `artifacts[]` / `sourcePaths[]` over the default Idea keep-set.
 
 ### gradle_search_dependency_sources / gradle_search_dependency_sources_multi
 
