@@ -176,6 +176,20 @@ class MavenRepositorySourcesJarFetcherHttpTest {
         error.message shouldContain "HTTP 500"
     }
 
+    @Test
+    fun `does not follow redirects to other hosts`() {
+        server.createContext(artifactPath) { exchange ->
+            exchange.responseHeaders.add("Location", "http://127.0.0.1:${server.address.port}/evil")
+            exchange.sendResponseHeaders(302, -1)
+            exchange.close()
+        }
+
+        val error = shouldThrow<IOException> {
+            newFetcher().fetch(artifact, File(tempDir, "redir.jar"))
+        }
+        error.message shouldContain "HTTP 302"
+    }
+
     private fun newFetcher(maxBytes: Long = MavenRepositorySourcesJarFetcher.DEFAULT_MAX_BYTES) =
         MavenRepositorySourcesJarFetcher(
             repositories = listOf(MavenRepositoryBase.parse(baseUrl)),

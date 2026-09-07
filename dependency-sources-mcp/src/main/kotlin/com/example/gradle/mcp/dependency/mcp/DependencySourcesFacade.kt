@@ -356,8 +356,14 @@ private fun Map<String, Any>.optionalString(key: String): String? =
 
 private fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boolean =
     when (val value = this[key]) {
+        null -> default
         is Boolean -> value
-        else -> default
+        is String -> when (value.lowercase()) {
+            "true" -> true
+            "false" -> false
+            else -> throw IllegalArgumentException("Argument must be a boolean: $key")
+        }
+        else -> throw IllegalArgumentException("Argument must be a boolean: $key")
     }
 
 private fun Map<String, Any>.optionalLimitInt(key: String): Int? {

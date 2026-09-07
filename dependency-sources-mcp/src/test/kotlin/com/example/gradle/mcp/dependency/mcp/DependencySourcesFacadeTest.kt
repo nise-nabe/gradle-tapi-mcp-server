@@ -449,6 +449,49 @@ class DependencySourcesFacadeTest {
     }
 
     @Test
+    fun `downloadSources string true is accepted`() {
+        val project = File(tempDir, "proj-bool-string").apply { mkdirs() }
+        val access = StubAccess(project, connectedGradleUserHome = File(tempDir, "bool-home").apply { mkdirs() })
+        val fetcher = SourcesJarFetcher { _, destination ->
+            destination.parentFile.mkdirs()
+            java.util.zip.ZipOutputStream(destination.outputStream()).use { zip ->
+                zip.putNextEntry(java.util.zip.ZipEntry("BoolLib.kt"))
+                zip.write("class BoolLib\n".toByteArray())
+                zip.closeEntry()
+            }
+            destination
+        }
+        val indexed = DependencySourcesFacade(sourcesJarFetcher = fetcher).index(
+            mapOf(
+                "artifacts" to listOf(
+                    mapOf("group" to "com.example", "name" to "bool-lib", "version" to "1.0.0"),
+                ),
+                "downloadSources" to "true",
+                "tokenMode" to "idents",
+            ),
+            access,
+        )
+        indexed["memberCount"] shouldBe 1
+    }
+
+    @Test
+    fun `downloadSources non-boolean is rejected`() {
+        val project = File(tempDir, "proj-bool-bad").apply { mkdirs() }
+        val access = StubAccess(project)
+        shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().index(
+                mapOf(
+                    "artifacts" to listOf(
+                        mapOf("group" to "com.example", "name" to "x", "version" to "1"),
+                    ),
+                    "downloadSources" to 1,
+                ),
+                access,
+            )
+        }.message shouldContain "boolean"
+    }
+
+    @Test
     fun `sourcesRepositories with corporate base is accepted in index args`() {
         val project = File(tempDir, "proj-corp").apply { mkdirs() }
         val access = StubAccess(project, connectedGradleUserHome = File(tempDir, "corp-home").apply { mkdirs() })

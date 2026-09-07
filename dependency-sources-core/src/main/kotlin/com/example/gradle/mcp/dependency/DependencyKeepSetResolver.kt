@@ -17,8 +17,35 @@ data class DependencyArtifactRef(
         require(group.isNotBlank() && name.isNotBlank() && version.isNotBlank()) {
             "artifact group/name/version must not be blank"
         }
-        require(!group.contains('/') && !name.contains('/') && !version.contains('/')) {
-            "artifact coordinates must not contain path separators"
+        validateGroup(group)
+        validatePathSegment(name, "name")
+        validatePathSegment(version, "version")
+    }
+
+    companion object {
+        private fun validateGroup(value: String) {
+            require(!value.contains('/') && !value.contains('\\')) {
+                "artifact coordinates must not contain path separators"
+            }
+            require(!value.contains(':') && !value.contains('?') && !value.contains('#') && !value.contains('@')) {
+                "artifact group contains illegal URI characters"
+            }
+            val segments = value.split('.')
+            require(segments.isNotEmpty() && segments.all { it.isNotEmpty() }) {
+                "artifact group must not contain empty path segments"
+            }
+        }
+
+        private fun validatePathSegment(value: String, label: String) {
+            require(value != "." && value != "..") {
+                "artifact $label must not be '.' or '..'"
+            }
+            require(!value.contains('/') && !value.contains('\\')) {
+                "artifact coordinates must not contain path separators"
+            }
+            require(!value.contains(':') && !value.contains('?') && !value.contains('#') && !value.contains('@')) {
+                "artifact $label contains illegal URI characters"
+            }
         }
     }
 }

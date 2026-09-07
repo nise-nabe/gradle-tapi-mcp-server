@@ -33,16 +33,30 @@ data class MavenRepositoryBase(
         validate(baseUri)
     }
 
-    fun displayHost(): String = baseUri.host ?: baseUri.toString()
+    fun displayHost(): String = baseUri.host ?: "repository"
 
     fun sourcesJarUri(artifact: DependencyArtifactRef): URI {
         artifact.validate()
-        val relative =
-            artifact.group.replace('.', '/') + "/" +
-                artifact.name + "/" +
-                artifact.version + "/" +
-                "${artifact.name}-${artifact.version}-sources.jar"
-        return baseUri.resolve(relative)
+        val segments = ArrayList<String>().apply {
+            addAll(artifact.group.split('.'))
+            add(artifact.name)
+            add(artifact.version)
+            add("${artifact.name}-${artifact.version}-sources.jar")
+        }
+        require(segments.all { it.isNotEmpty() && it != "." && it != ".." }) {
+            "artifact coordinates must not produce empty or '.'/'..' path segments"
+        }
+        val basePath = (baseUri.rawPath ?: "/").let { if (it.endsWith("/")) it else "$it/" }
+        // Build an absolute URI without URI.resolve(String), which treats leading "//" as authority.
+        return URI(
+            baseUri.scheme,
+            baseUri.userInfo,
+            baseUri.host,
+            baseUri.port,
+            basePath + segments.joinToString("/"),
+            null,
+            null,
+        )
     }
 
     companion object {
@@ -57,7 +71,10 @@ data class MavenRepositoryBase(
                 try {
                     URI(withSlash)
                 } catch (error: Exception) {
-                    throw IllegalArgumentException("invalid sourcesRepositories URL: $raw", error)
+                    throw IllegalArgumentException(
+                        "invalid sourcesRepositories URL: ${redactUserInfo(withSlash)}",
+                        error,
+                    )
                 }
             return MavenRepositoryBase(uri)
         }
@@ -76,16 +93,28 @@ data class MavenRepositoryBase(
             }
         }
 
+        fun redactUserInfo(raw: String): String =
+            try {
+                val uri = URI(raw)
+                if (uri.userInfo.isNullOrEmpty()) {
+                    raw
+                } else {
+                    URI(uri.scheme, "***", uri.host, uri.port, uri.path, uri.query, uri.fragment).toString()
+                }
+            } catch (_: Exception) {
+                raw.replace(Regex("://[^/]+@"), "://***@")
+            }
+
         private fun validate(uri: URI) {
             val scheme = uri.scheme?.lowercase()
             require(scheme == "https" || scheme == "http") {
-                "sourcesRepositories must use http or https: $uri"
+                "sourcesRepositories must use http or https: ${redactUserInfo(uri.toString())}"
             }
             require(!uri.host.isNullOrBlank()) {
-                "sourcesRepositories must include a host: $uri"
+                "sourcesRepositories must include a host: ${redactUserInfo(uri.toString())}"
             }
             require(uri.rawQuery == null && uri.rawFragment == null) {
-                "sourcesRepositories must not include query or fragment: $uri"
+                "sourcesRepositories must not include query or fragment: ${redactUserInfo(uri.toString())}"
             }
         }
     }
@@ -218,7 +247,7 @@ class MavenRepositorySourcesJarFetcher(
 
         private val defaultClient: HttpClient =
             HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .connectTimeout(Duration.ofSeconds(15))
                 .build()
 
@@ -259,12 +288,17 @@ object SourcesJarCacheLayout {
 
     fun jarFile(cacheDir: File, artifact: DependencyArtifactRef): File {
         artifact.validate()
-        return File(
-            cacheDir,
+        val relative =
             artifact.group.replace('.', '/') + "/" +
                 artifact.name + "/" +
                 artifact.version + "/" +
-                "${artifact.name}-${artifact.version}-sources.jar",
-        )
+                "${artifact.name}-${artifact.version}-sources.jar"
+        val jar = File(cacheDir, relative)
+        val cacheCanonical = cacheDir.canonicalFile
+        val jarCanonical = jar.canonicalFile
+        require(jarCanonical.path.startsWith(cacheCanonical.path + File.separator)) {
+            "sources jar path escapes cache directory for ${artifact.gav()}"
+        }
+        return jar
     }
 }

@@ -7,6 +7,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -134,6 +135,37 @@ class DependencyKeepSetResolverTest {
         val artifact = DependencyArtifactRef("com.acme", "core", "2.0.0")
         repo.sourcesJarUri(artifact).toString() shouldBe
             "https://nexus.example.com/repository/maven-public/com/acme/core/2.0.0/core-2.0.0-sources.jar"
+    }
+
+    @Test
+    fun `rejects group with empty path segments`() {
+        shouldThrow<IllegalArgumentException> {
+            DependencyArtifactRef("com..example", "lib", "1.0.0").validate()
+        }.message shouldContain "empty path segments"
+    }
+
+    @Test
+    fun `rejects name that would escape cache directory`() {
+        shouldThrow<IllegalArgumentException> {
+            DependencyArtifactRef("com.example", "..", "1.0.0").validate()
+        }.message shouldContain ".."
+    }
+
+    @Test
+    fun `rejects coordinates with URI special characters`() {
+        shouldThrow<IllegalArgumentException> {
+            DependencyArtifactRef("com.example", "lib", "1.0.0@evil").validate()
+        }.message shouldContain "illegal URI"
+    }
+
+    @Test
+    fun `redactUserInfo hides credentials in messages`() {
+        val redacted = MavenRepositoryBase.redactUserInfo(
+            "https://alice:s3cret@nexus.example.com/repository/maven-public/",
+        )
+        redacted shouldContain "***"
+        redacted.shouldNotContain("s3cret")
+        redacted.shouldNotContain("alice:s3cret")
     }
 
     @Test
