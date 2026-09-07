@@ -132,7 +132,7 @@ By default the index uses the Idea project dependency sources keep-set (can be s
 - `artifacts[]` — GAV list; resolves local `*-sources.jar` under Gradle user home / Maven local (optional `gradleUserHome`)
 - `sourcePaths[]` — local jars, zips, or source trees (with optional GAV labels)
 
-**Sources jars are not auto-downloaded.** They must already exist locally (or be supplied via `sourcePaths`). If indexing reports missing sources, download them outside MCP (for example `./gradlew dependencies` with sources enabled, or IDE “Download Sources”) and re-index.
+**Sources jars are not auto-downloaded.** They must already exist locally (or be supplied via `sourcePaths`). If indexing reports missing sources, obtain the jars outside MCP — for example IDE “Download Sources”, or place/download `*-sources.jar` files and pass them with `sourcePaths[]` — then re-index. Do not expect `./gradlew dependencies` to fetch sources (it only prints the resolved binary graph).
 
 #### Search semantics
 
