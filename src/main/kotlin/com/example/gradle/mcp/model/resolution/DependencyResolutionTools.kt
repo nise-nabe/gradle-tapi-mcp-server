@@ -37,9 +37,9 @@ internal fun dependencyResolutionSchema(): Map<String, Any> =
             "dependency" to stringProperty("Optional substring filter (insight-like)"),
             "maxDependencies" to integerProperty("Edge cap (default 500)"),
             "maxComponents" to integerProperty("Component cap (default 500)"),
-            "includeAttributes" to booleanProperty("List-mode attributes. Default false."),
-            "includeOutgoingVariants" to booleanProperty("List-mode outgoing variants. Default false."),
-            "maxConfigurations" to integerProperty("List cap (default 200)."),
+            "includeAttributes" to booleanProperty("Catalog attributes. Default false."),
+            "includeOutgoingVariants" to booleanProperty("Catalog variants. Default false."),
+            "maxConfigurations" to integerProperty("Catalog cap (default 200)."),
         ),
     )
 
