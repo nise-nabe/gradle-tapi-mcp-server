@@ -6,6 +6,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeSameInstanceAs
 import org.gradle.tooling.GradleConnectionException
 import org.gradle.tooling.Supplier
 import org.gradle.tooling.model.GradleProject
@@ -177,7 +178,7 @@ class ResilientModelFetcherTest {
         )
 
         result.usedFallback shouldBe true
-        result.model shouldBe project
+        result.model.shouldBeSameInstanceAs(project)
         harness.calls.shouldContainExactly(listOf("action", "buildFinished", "build", "run", "getModel:GradleProject"))
     }
 
@@ -214,7 +215,7 @@ class ResilientModelFetcherTest {
         val result = harness.connection.fetchResilientProjectAndInvocations(emptyList(), "9.7.1")
 
         result.model.project.path shouldBe ":"
-        result.model.invocations shouldBe payload.invocations
+        result.model.invocations.shouldBeSameInstanceAs(payload.invocations)
         harness.calls.shouldContainExactly(listOf("action", "buildFinished", "build", "run"))
     }
 

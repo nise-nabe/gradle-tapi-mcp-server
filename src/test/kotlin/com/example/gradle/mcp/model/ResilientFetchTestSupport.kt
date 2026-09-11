@@ -16,6 +16,14 @@ import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.gradle.BuildInvocations
 import java.lang.reflect.Proxy
 
+internal fun proxyIdentity(proxy: Any, methodName: String, args: Array<out Any?>?): Any? =
+    when (methodName) {
+        "equals" -> args?.getOrNull(0) === proxy
+        "hashCode" -> System.identityHashCode(proxy)
+        "toString" -> "${proxy.javaClass.simpleName}@${System.identityHashCode(proxy)}"
+        else -> null
+    }
+
 internal fun toolingFailureProxy(
     message: String?,
     description: String? = null,
@@ -25,8 +33,8 @@ internal fun toolingFailureProxy(
     Proxy.newProxyInstance(
         Failure::class.java.classLoader,
         arrayOf(Failure::class.java),
-    ) { _, method, _ ->
-        when (method.name) {
+    ) { proxy, method, args ->
+        proxyIdentity(proxy, method.name, args) ?: when (method.name) {
             "getMessage" -> message
             "getDescription" -> description
             "getCauses" -> causes
@@ -42,8 +50,8 @@ internal fun fetchModelResultProxy(model: Any?, failures: List<Failure> = emptyL
     Proxy.newProxyInstance(
         FetchModelResult::class.java.classLoader,
         arrayOf(FetchModelResult::class.java),
-    ) { _, method, _ ->
-        when (method.name) {
+    ) { proxy, method, args ->
+        proxyIdentity(proxy, method.name, args) ?: when (method.name) {
             "getModel" -> model
             "getFailures" -> failures
             else -> defaultProxyReturn(method)
@@ -54,8 +62,8 @@ internal fun buildControllerProxy(resultsByType: Map<Class<*>, FetchModelResult<
     Proxy.newProxyInstance(
         BuildController::class.java.classLoader,
         arrayOf(BuildController::class.java),
-    ) { _, method, args ->
-        when (method.name) {
+    ) { proxy, method, args ->
+        proxyIdentity(proxy, method.name, args) ?: when (method.name) {
             "fetch" -> {
                 val modelType = args?.getOrNull(0) as? Class<*>
                 resultsByType[modelType] ?: fetchModelResultProxy(null)
@@ -83,8 +91,8 @@ internal fun phasedConnection(
     executer = Proxy.newProxyInstance(
         BuildActionExecuter::class.java.classLoader,
         arrayOf(BuildActionExecuter::class.java),
-    ) { _, method, args ->
-        when (method.name) {
+    ) { proxy, method, args ->
+        proxyIdentity(proxy, method.name, args) ?: when (method.name) {
             "forTasks" -> {
                 val tasks = when (val first = args?.getOrNull(0)) {
                     is Array<*> -> first.filterIsInstance<String>()
@@ -112,8 +120,8 @@ internal fun phasedConnection(
     builder = Proxy.newProxyInstance(
         BuildActionExecuter.Builder::class.java.classLoader,
         arrayOf(BuildActionExecuter.Builder::class.java),
-    ) { _, method, args ->
-        when (method.name) {
+    ) { proxy, method, args ->
+        proxyIdentity(proxy, method.name, args) ?: when (method.name) {
             "projectsLoaded" -> {
                 calls += "projectsLoaded"
                 @Suppress("UNCHECKED_CAST")
@@ -138,8 +146,8 @@ internal fun phasedConnection(
     modelBuilder = Proxy.newProxyInstance(
         ModelBuilder::class.java.classLoader,
         arrayOf(ModelBuilder::class.java),
-    ) { _, method, args ->
-        when (method.name) {
+    ) { proxy, method, args ->
+        proxyIdentity(proxy, method.name, args) ?: when (method.name) {
             "forTasks" -> {
                 val tasks = (args?.getOrNull(0) as? Array<*>)?.filterIsInstance<String>().orEmpty()
                 calls += "modelForTasks:${tasks.joinToString(",")}"
@@ -156,8 +164,8 @@ internal fun phasedConnection(
     val connection = Proxy.newProxyInstance(
         ProjectConnection::class.java.classLoader,
         arrayOf(ProjectConnection::class.java),
-    ) { _, method, args ->
-        when (method.name) {
+    ) { proxy, method, args ->
+        proxyIdentity(proxy, method.name, args) ?: when (method.name) {
             "action" -> {
                 if (args == null || args.isEmpty()) {
                     calls += "action"
@@ -190,8 +198,8 @@ internal fun sampleBuildInvocations(): BuildInvocations =
     Proxy.newProxyInstance(
         BuildInvocations::class.java.classLoader,
         arrayOf(BuildInvocations::class.java),
-    ) { _, method, _ ->
-        when (method.name) {
+    ) { proxy, method, args ->
+        proxyIdentity(proxy, method.name, args) ?: when (method.name) {
             "getTaskSelectors" -> emptyList<Any>()
             "getTasks" -> emptyList<Any>()
             else -> defaultProxyReturn(method)

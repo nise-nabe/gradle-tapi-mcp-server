@@ -17,8 +17,8 @@ internal enum class ModelFetchPhase {
 }
 
 internal data class FailureSnapshot(
-    val message: String?,
-    val description: String?,
+    val message: String? = null,
+    val description: String? = null,
     val causes: List<String> = emptyList(),
     val problems: List<String> = emptyList(),
 ) {

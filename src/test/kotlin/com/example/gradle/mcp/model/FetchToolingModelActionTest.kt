@@ -3,6 +3,7 @@ package com.example.gradle.mcp.model
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.kotest.matchers.types.shouldBeSameInstanceAs
 import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.gradle.BuildInvocations
 import org.junit.jupiter.api.Test
@@ -22,7 +23,7 @@ class FetchToolingModelActionTest {
 
         val payload = FetchToolingModelAction(GradleProject::class.java).execute(controller)
 
-        payload.model shouldBe project
+        payload.model.shouldBeSameInstanceAs(project)
         payload.failures.shouldHaveSize(1)
         payload.failures.single().message shouldBe "included build failed"
         payload.failures.single().description shouldBe "buildSrc"
