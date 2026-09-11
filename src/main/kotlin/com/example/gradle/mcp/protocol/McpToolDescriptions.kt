@@ -36,7 +36,7 @@ internal object McpToolDescriptions {
         "Publications declared by the build. No projectPath."
 
     const val DEPENDENCY_RESOLUTION =
-        "ResolutionResult graph or config catalog (omit configuration to list). Optional dependency filter. Caps 500."
+        "ResolutionResult graph or config catalog (omit configuration to list). Optional dependency filter. Caps 500/200."
 
     const val HELP =
         "Gradle CLI help (--help). No projectPath. Requires Gradle 9.4+."

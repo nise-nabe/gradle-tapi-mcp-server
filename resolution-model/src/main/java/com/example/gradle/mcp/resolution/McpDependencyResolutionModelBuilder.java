@@ -90,32 +90,31 @@ final class McpDependencyResolutionModelBuilder
 
     private static Configuration findResolvableConfiguration(Project project, String configurationName) {
         Configuration configuration = project.getConfigurations().findByName(configurationName);
-        List<McpConfigurationSummary> catalog = summariesForSuggestions(project);
-        String suffix = ConfigurationCatalogMapper.resolvableSuffix(
-                ConfigurationCatalogMapper.resolvableNames(catalog)
-        );
         if (configuration == null) {
             throw new IllegalArgumentException(
                     "Unknown configuration '" + configurationName + "' on project " + project.getPath() +
-                            ". Omit configuration to list names. " + suffix
+                            ". Omit configuration to list names. " + resolvableSuffix(project)
             );
         }
         if (!configuration.isCanBeResolved()) {
             throw new IllegalArgumentException(
                     "Configuration '" + configurationName + "' on " + project.getPath() +
                             " is not resolvable (canBeResolved=false). " +
-                            "Omit configuration to list names. " + suffix
+                            "Omit configuration to list names. " + resolvableSuffix(project)
             );
         }
         return configuration;
     }
 
-    private static List<McpConfigurationSummary> summariesForSuggestions(Project project) {
-        List<McpConfigurationSummary> all = new ArrayList<>();
+    private static String resolvableSuffix(Project project) {
+        List<String> names = new ArrayList<>();
         for (Configuration configuration : project.getConfigurations()) {
-            all.add(ConfigurationSnapshots.from(configuration, false, false));
+            if (configuration.isCanBeResolved()) {
+                names.add(configuration.getName());
+            }
         }
-        return all;
+        names.sort(String.CASE_INSENSITIVE_ORDER);
+        return ConfigurationCatalogMapper.resolvableSuffix(names);
     }
 
     private static String trimToNull(String value) {
