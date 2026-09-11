@@ -7,8 +7,8 @@
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `projectDirectory` | yes | Gradle project root |
-| `gradleUserHome` | no | `GRADLE_USER_HOME` override |
-| `gradleVersion` | no | Pin Gradle version |
+| `gradleUserHome` | no | Server-side `GRADLE_USER_HOME` override (cache home for the daemon). Not a path for the agent to list or read |
+| `gradleVersion` | no | Pin Gradle version for this connection (use after `gradle_disconnect` if the project is already connected with a different version). Then call `gradle_get_build_environment` — do not inspect `wrapper/dists` |
 | `gradleInstallation` | no | Local Gradle install path |
 
 ### gradle_connection_status / gradle_disconnect
@@ -44,7 +44,7 @@ Tools that accept `projectPath` (`gradle_get_project_overview`, `gradle_get_proj
 
 `projectPath` is not supported on this tool; a non-blank value returns `INVALID_ARGUMENT`.
 
-Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `gradle.versionInfo` (Gradle 9.4+; same text as `gradle --version`; omitted on older Gradle), `java.javaHome`, `java.javaVersion`, `java.jvmArguments`.
+Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `gradle.versionInfo` (Gradle 9.4+; same text as `gradle --version`; omitted on older Gradle), `java.javaHome`, `java.javaVersion`, `java.jvmArguments`. Use these fields as the resolved stack snapshot. Do not list `gradleUserHome` (or `~/.gradle/caches`, `wrapper/dists`, `jdks`) to discover versions or sources — the server consults those caches internally.
 
 ### gradle_get_java_runtimes
 
@@ -54,7 +54,7 @@ Returns `gradle.gradleVersion`, `gradle.gradleUserHome`, `gradle.versionInfo` (G
 
 `projectPath` is not supported on this tool; a non-blank value returns `INVALID_ARGUMENT`.
 
-Returns daemon Java from the connected project (`javaHome`, `javaVersion`, `jvmArguments`) and, when `includeToolchains=true`, toolchain metadata from `javaToolchains`. Prefer `gradle_get_build_environment` for a lightweight stack snapshot; use this tool when selecting or comparing JDK installations for toolchain configuration.
+Returns daemon Java from the connected project (`javaHome`, `javaVersion`, `jvmArguments`) and, when `includeToolchains=true`, toolchain metadata from `javaToolchains`. Prefer `gradle_get_build_environment` for a lightweight stack snapshot; use this tool when selecting or comparing JDK installations for toolchain configuration. Do not list `~/.gradle/jdks` or `gradleUserHome` to discover JDKs.
 
 ### gradle_get_help
 
@@ -279,18 +279,20 @@ Canonical end-user workflow (index → search → read, `tokenMode`, keep-set ti
 |----------|----------|-------------|
 | `tokenMode` | no | `all` (default) or `idents` (prefer on large first-time indexes) |
 | `projectPath` | no | Idea keep-set only: scope to a Gradle project subtree (e.g. `:worker`) |
-| `artifacts[]` | no | Explicit GAVs; skips Idea keep-set |
-| `sourcePaths[]` | no | Local trees/jars with optional GAV labels |
+| `artifacts[]` | no | Explicit GAVs; skips Idea keep-set. May be versions not in the current project graph |
+| `sourcePaths[]` | no | Local trees/jars with optional GAV labels. Use only when the path is already known (workspace or a zip you have). Do not discover paths by listing Gradle user home |
 | `downloadSources` | no | If true with `artifacts[]`, fetch missing `*-sources.jar` into `.gradle/mcp-dependency-sources/jars/` (default false) |
 | `sourcesRepositories` | no | Maven-layout base URL(s) for `downloadSources`. Default: Maven Central. Corporate/air-gapped: pass only the internal mirror (Central is not appended). Optional `user:token@` → HTTP Basic auth |
-| `gradleUserHome` | no | Cache home for `artifacts[]` jar lookup |
+| `gradleUserHome` | no | Server-side cache home for `artifacts[]` jar lookup. Override only; do not browse this directory |
 | `indexDir` | no | Override index directory |
 | `forceReindex` | no | Rebuild even on fingerprint hit |
 | `background` | no | Return `indexId` immediately; poll `gradle_get_dependency_sources_index_status` |
 
-Index cache: `<project>/.gradle/mcp-dependency-sources/<tokenMode>/` (`manifest.json`). With `artifacts[]`, missing jars can be fetched via `downloadSources=true` (Maven Central by default, or `sourcesRepositories` for corporate mirrors). On large monorepos prefer `background: true`, `projectPath`, `artifacts[]` / `sourcePaths[]`, and/or `tokenMode: idents` over an unscoped foreground Idea keep-set. Foreground Idea indexing auto-detaches after ~45s (`detached: true` + `indexId`).
+Index cache: `<project>/.gradle/mcp-dependency-sources/<tokenMode>/` (`manifest.json`). With `artifacts[]`, missing jars can be fetched via `downloadSources: true` (Maven Central by default, or `sourcesRepositories` for corporate mirrors). On large monorepos prefer `background: true`, `projectPath`, `artifacts[]` / `sourcePaths[]`, and/or `tokenMode: idents` over an unscoped foreground Idea keep-set. Foreground Idea indexing auto-detaches after ~45s (`detached: true` + `indexId`).
 
 Configuration-scoped indexing: call `gradle_get_dependency_resolution` with `configuration` (optional `projectPath`), then pass resolved GAVs as `artifacts[]`.
+
+`artifacts[]` is not limited to the project's current graph. To inspect another version (or a Maven-coordinate Kotlin/plugin artifact the Idea keep-set does not attach), pass that GAV and `downloadSources: true`. The server looks up Maven local / the connected Gradle user home modules cache / the MCP jars cache — agents must not `ls` those directories. Idea keep-set (omit `artifacts[]` / `sourcePaths[]`) only indexes sources already attached on the current Idea model.
 
 ### gradle_get_dependency_sources_index_status
 
@@ -317,7 +319,7 @@ Exact simple-name locate against a prior index (`tokenMode` must match; no silen
 | `sourceRoot` | no | Explicit jar/zip/dir/file. Optional when search hit / `source-roots.tsv` provides it, or a `*-sources.jar` exists in Maven local / Gradle caches. Pass when neither index nor cache can resolve the root |
 | `tokenMode` | no | Which index side-car to consult (`all`/`idents`; omit tries `all` then `idents`) |
 | `indexDir` | no | Override index directory |
-| `gradleUserHome` | no | Cache home for jar lookup; else connected project |
+| `gradleUserHome` | no | Server-side cache home for jar lookup; else connected project. Not a path to browse |
 
 Returns `snippet`, `startLine`, `endLine`, `lineCount`, `truncated`, and resolved `sourceRoot`.
 
