@@ -84,7 +84,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_get_project_model` | Project model; tasks omitted by default; optional `projectPath` to scope a subproject subtree |
 | `gradle_get_build_invocations` | Runnable tasks; selectors omitted by default; optional `projectPath` to scope task collection |
 | `gradle_get_project_publications` | Publications |
-| `gradle_get_dependency_resolution` | Resolved dependency graph via Tooling API `ResolutionResult` (no task run). Requires `configuration`; optional `projectPath`, `dependency` filter (dependencyInsight-like), `maxDependencies` / `maxComponents` (default 500) |
+| `gradle_get_dependency_resolution` | Resolved dependency graph via Tooling API `ResolutionResult` (no task run). Omit `configuration` to list resolvable/consumable names (`includeAttributes` / `includeOutgoingVariants` optional). With `configuration`: optional `projectPath`, `dependency` filter, `maxDependencies` / `maxComponents` (default 500) |
 | `gradle_run_tasks` | Execute tasks; stdout/stderr truncated by default |
 | `gradle_run_tests` | Execute JVM tests by class, method, pattern, or task scope; stdout/stderr truncated by default |
 | `gradle_list_builds` | List recent MCP builds from memory and `.gradle/mcp-builds/` (no Tooling API required) |
@@ -140,7 +140,7 @@ By default the index uses the Idea project dependency sources keep-set (can be s
 
 For the connected Gradle/Java runtime, use `gradle_get_build_environment` / `gradle_get_java_runtimes`. To query a different Gradle **runtime** (Tooling API models for that version), `gradle_disconnect` if needed, then `gradle_connect` with `gradleVersion` and re-read the build environment — do not inspect wrapper dists. Do not change the session's connected Gradle version merely to read sources; use `artifacts[]` for Maven-coordinate sources instead.
 
-For a configuration-scoped keep-set, resolve GAVs with `gradle_get_dependency_resolution` (`configuration` required, optional `projectPath`), then pass them as `artifacts[]` to `gradle_index_dependency_sources`.
+For a configuration-scoped keep-set, omit `configuration` on `gradle_get_dependency_resolution` to list resolvable names, then resolve with `configuration` (optional `projectPath`) and pass GAVs as `artifacts[]`.
 
 When `artifacts[]` jars are missing locally, pass **`downloadSources: true`** to fetch `*-sources.jar` into `.gradle/mcp-dependency-sources/jars/` (response field `downloadedSources` lists GAVs fetched in that call). Default repository is **Maven Central**. On corporate / air-gapped networks, pass **`sourcesRepositories`** with Maven-layout base URL(s) for your mirror (for example Nexus/Artifactory); when set, only those bases are tried (Central is not appended). Optional `user:token@` in the URL is sent as HTTP Basic auth. Missing-sources errors list searched cache roots and suggest `downloadSources` / `sourcesRepositories` / `sourcePaths`. Do not expect `./gradlew dependencies` alone to fetch sources (it only prints the resolved binary graph). Idea keep-set still requires sources already attached in the Idea model (or use `sourcePaths` / `artifacts`).
 
@@ -217,7 +217,7 @@ Prefer this order for agent workflows such as project context ingestion:
 
 1. `gradle_get_build_environment` for resolved Gradle/Java versions
 2. `gradle_get_project_overview` for module hierarchy and task counts (or `gradle_get_gradle_build` for composite/includeBuild repositories)
-3. `gradle_get_dependency_resolution` with a resolvable `configuration` when you need the resolved graph (optional `dependency` filter) without running report tasks
+3. `gradle_get_dependency_resolution` — omit `configuration` to list resolvable/consumable names, or pass a resolvable `configuration` for the resolved graph (optional `dependency` filter) without running report tasks
 4. `gradle_run_tasks` with `["build"]` or `["test"]` when verification is needed
 
 Use heavier tools only when required:

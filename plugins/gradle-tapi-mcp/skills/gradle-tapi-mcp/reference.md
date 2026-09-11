@@ -256,18 +256,23 @@ Returns `status` (`queued`, `running`, `succeeded`, `failed`, `cancelled`, or `n
 
 ### gradle_get_dependency_resolution
 
-Fetches a configuration's `ResolutionResult` via a custom Tooling model (init-script plugin + BuildAction). Does **not** run `dependencies` / `dependencyInsight` tasks; still configures the project and resolves the graph (not artifact downloads).
+Fetches a configuration's `ResolutionResult` via a custom Tooling model (init-script plugin + BuildAction), or a configuration catalog when `configuration` is omitted. Does **not** run `dependencies` / `dependencyInsight` / `outgoingVariants` tasks; still configures the project. Graph mode resolves the selected configuration (not artifact downloads).
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `configuration` | yes | Resolvable configuration name (`runtimeClasspath`, `compileClasspath`, …) |
+| `configuration` | no | Resolvable configuration name (`runtimeClasspath`, `compileClasspath`, …). **Omit to list** resolvable and consumable names (declarable-only configs such as `implementation` are omitted) |
 | `projectPath` | no | Subproject path (default root `:`) |
-| `dependency` | no | Case-insensitive substring filter on requested/selected (dependencyInsight-like) |
-| `maxDependencies` | no | Cap on edges (default 500) |
-| `maxComponents` | no | Cap on components (default 500) |
+| `dependency` | no | Graph mode: case-insensitive substring filter on requested/selected (dependencyInsight-like) |
+| `maxDependencies` | no | Graph mode: cap on edges (default 500) |
+| `maxComponents` | no | Graph mode: cap on components (default 500) |
+| `includeAttributes` | no | List mode: include configuration attributes (default false) |
+| `includeOutgoingVariants` | no | List mode: include outgoing variants and artifact coordinates, no local file paths (default false) |
+| `maxConfigurations` | no | List mode: cap on catalog entries (default 200) |
 | `prepareTasks` | no | Optional tasks before the model action |
 
-Returns `root`, `components[]`, `dependencies[]` (with `selectionReason`), truncation flags, and totals.
+**List mode** (omit `configuration`): returns `configurations[]` (`name`, `canBeResolved`, `canBeConsumed`, optional `description` / `attributes` / `outgoingVariants`), `configurationCount`, and `configurationsTruncated`.
+
+**Graph mode** (`configuration` set): returns `root`, `components[]`, `dependencies[]` (with `selectionReason`), truncation flags, and totals. Unknown or non-resolvable names return `INVALID_ARGUMENT` with `suggestedConfigurations` (resolvable names, capped) and `hint` to omit `configuration`.
 
 ## Dependency sources
 
@@ -290,7 +295,7 @@ Canonical end-user workflow (index → search → read, `tokenMode`, keep-set ti
 
 Index cache: `<project>/.gradle/mcp-dependency-sources/<tokenMode>/` (`manifest.json`). With `artifacts[]`, missing jars can be fetched via `downloadSources: true` (Maven Central by default, or `sourcesRepositories` for corporate mirrors). On large monorepos prefer `background: true`, `projectPath`, `artifacts[]` / `sourcePaths[]`, and/or `tokenMode: idents` over an unscoped foreground Idea keep-set. Foreground Idea indexing auto-detaches after ~45s (`detached: true` + `indexId`).
 
-Configuration-scoped indexing: call `gradle_get_dependency_resolution` with `configuration` (optional `projectPath`), then pass resolved GAVs as `artifacts[]`.
+Configuration-scoped indexing: omit `configuration` on `gradle_get_dependency_resolution` to list resolvable names, then call again with `configuration` (optional `projectPath`) and pass resolved GAVs as `artifacts[]`.
 
 `artifacts[]` is not limited to the project's current graph. To inspect another version (or a Maven-coordinate Kotlin/plugin artifact the Idea keep-set does not attach), pass that GAV and `downloadSources: true`. The server looks up Maven local / the connected Gradle user home modules cache / the MCP jars cache — agents must not `ls` those directories. Idea keep-set (omit `artifacts[]` / `sourcePaths[]`) only indexes sources already attached on the current Idea model.
 
