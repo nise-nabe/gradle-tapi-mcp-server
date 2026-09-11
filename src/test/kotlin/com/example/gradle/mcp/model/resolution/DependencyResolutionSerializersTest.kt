@@ -1,6 +1,9 @@
 package com.example.gradle.mcp.model.resolution
 
+import com.example.gradle.mcp.resolution.DefaultMcpConfigurationSummary
 import com.example.gradle.mcp.resolution.DefaultMcpDependencyResolution
+import com.example.gradle.mcp.resolution.DefaultMcpOutgoingArtifact
+import com.example.gradle.mcp.resolution.DefaultMcpOutgoingVariant
 import com.example.gradle.mcp.resolution.DefaultMcpResolvedComponent
 import com.example.gradle.mcp.resolution.DefaultMcpResolvedComponentIdentity
 import com.example.gradle.mcp.resolution.DefaultMcpResolvedDependencyEdge
@@ -58,5 +61,56 @@ class DependencyResolutionSerializersTest {
         @Suppress("UNCHECKED_CAST")
         val deps = map["dependencies"] as List<Map<String, Any?>>
         deps.single()["requested"] shouldBe "com.example:lib:1.0"
+        map.containsKey("configurations") shouldBe false
+    }
+
+    @Test
+    fun `serializes catalog without graph fields`() {
+        val model = DefaultMcpDependencyResolution.catalog(
+            ":",
+            listOf(
+                DefaultMcpConfigurationSummary(
+                    "runtimeClasspath",
+                    true,
+                    false,
+                    "Runtime classpath of source set 'main'.",
+                    mapOf("org.gradle.usage" to "java-runtime"),
+                    listOf(
+                        DefaultMcpOutgoingVariant(
+                            "runtimeElements",
+                            mapOf("org.gradle.usage" to "java-runtime"),
+                            listOf("com.example:app:1.0"),
+                            listOf(DefaultMcpOutgoingArtifact("app", "jar", null, "jar")),
+                        ),
+                    ),
+                ),
+                DefaultMcpConfigurationSummary(
+                    "apiElements",
+                    false,
+                    true,
+                    null,
+                    emptyMap(),
+                    emptyList(),
+                ),
+            ),
+            false,
+            2,
+        )
+
+        val map = DependencyResolutionSerializers.toMap(model)
+        map["projectPath"] shouldBe ":"
+        map.containsKey("configuration") shouldBe false
+        map.containsKey("root") shouldBe false
+        map["configurationCount"] shouldBe 2
+        map["configurationsTruncated"] shouldBe false
+        @Suppress("UNCHECKED_CAST")
+        val configurations = map["configurations"] as List<Map<String, Any?>>
+        configurations[0]["name"] shouldBe "runtimeClasspath"
+        configurations[0]["canBeResolved"] shouldBe true
+        configurations[0]["description"] shouldBe "Runtime classpath of source set 'main'."
+        configurations[0]["attributes"] shouldBe mapOf("org.gradle.usage" to "java-runtime")
+        configurations[1]["name"] shouldBe "apiElements"
+        configurations[1].containsKey("attributes") shouldBe false
+        configurations[1].containsKey("outgoingVariants") shouldBe false
     }
 }
