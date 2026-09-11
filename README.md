@@ -90,7 +90,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_list_builds` | List recent MCP builds from memory and `.gradle/mcp-builds/` (no Tooling API required) |
 | `gradle_get_build_status` | Poll status/output for a background build (`buildId` required); set `includeProgress: true` for detailed progress |
 | `gradle_cancel_build` | Cancel a background build via Tooling API `CancellationToken` (`buildId` required) |
-| `gradle_index_dependency_sources` | Index dependency sources for exact simple-name locate. `tokenMode`: `all` (default; includes comments/strings) or `idents`. Keep-set: Idea sources by default (optional `projectPath` to scope a Gradle project subtree), or explicit `artifacts[]` / `sourcePaths[]`. `background: true` returns `indexId` immediately; foreground auto-detaches after ~45s with `detached: true` + `indexId`. Poll with `gradle_get_dependency_sources_index_status`. `artifacts[]` lookup uses optional `gradleUserHome`, else the connected project's Gradle user home, else process `GRADLE_USER_HOME`/`~/.gradle`. Optional `downloadSources: true` fetches missing `*-sources.jar` (default Maven Central; override with `sourcesRepositories` for corporate mirrors) into `.gradle/mcp-dependency-sources/jars/`. Persists under `.gradle/mcp-dependency-sources/<tokenMode>/` |
+| `gradle_index_dependency_sources` | Index sources for exact simple-name locate (project Idea keep-set **or** any Maven GAV via `artifacts[]`, including versions not in the graph). `tokenMode`: `all` (default; includes comments/strings) or `idents`. Keep-set: Idea sources by default (optional `projectPath` to scope a Gradle project subtree), or explicit `artifacts[]` / `sourcePaths[]`. `background: true` returns `indexId` immediately; foreground auto-detaches after ~45s with `detached: true` + `indexId`. Poll with `gradle_get_dependency_sources_index_status`. The **server** looks up `artifacts[]` jars via optional `gradleUserHome`, else the connected project's Gradle user home, else process `GRADLE_USER_HOME`/`~/.gradle` — do not list those directories. Optional `downloadSources: true` fetches missing `*-sources.jar` (default Maven Central; override with `sourcesRepositories` for corporate mirrors) into `.gradle/mcp-dependency-sources/jars/`. Persists under `.gradle/mcp-dependency-sources/<tokenMode>/` |
 | `gradle_get_dependency_sources_index_status` | Poll a background/detached dependency-sources index job (`indexId` required) |
 | `gradle_search_dependency_sources` | Exact simple-name locate against a prior index (does not reindex). Optional `limit` (omit = unlimited; `0` = empty) |
 | `gradle_search_dependency_sources_multi` | Multi-name OR locate with dedup and `matchedQueries`; optional `limit` and `perQueryLimit` (`per_query_limit` alias) |
@@ -132,9 +132,13 @@ By default the index uses the Idea project dependency sources keep-set (can be s
 
 - `background: true` — return `indexId` immediately and poll `gradle_get_dependency_sources_index_status` (foreground calls auto-detach after ~45s with `detached: true`)
 - `projectPath` — scope the Idea keep-set to one Gradle project subtree (for example `:worker`)
-- `artifacts[]` — GAV list; resolves local `*-sources.jar` under Gradle user home / Maven local / MCP jars cache (optional `gradleUserHome`)
-- `sourcePaths[]` — local jars, zips, or source trees (with optional GAV labels)
+- `artifacts[]` — GAV list (any version, not only the project's graph). The **server** resolves `*-sources.jar` under Gradle user home / Maven local / MCP jars cache (optional `gradleUserHome` override). Prefer `downloadSources: true` instead of listing those caches
+- `sourcePaths[]` — local jars, zips, or source trees (with optional GAV labels). Use only when the path is already known (workspace or a zip you have). Do not discover paths by listing Gradle user home / `wrapper/dists`
 - `tokenMode: idents` — smaller/faster first-time indexes when you only need declared names
+
+`artifacts[]` is **not** limited to the project's current dependency graph. To inspect another version, or a Maven-coordinate Kotlin / plugin / compiler artifact the Idea keep-set does not attach, pass that GAV (the version need not be in use) and `downloadSources: true`. The server looks up Maven local, the connected project's Gradle user home modules cache (`caches/modules-2/files-2.1`), and the MCP jars cache. **Do not** `ls` / Read `gradleUserHome`, `~/.gradle/caches`, `wrapper/dists`, or `jdks` to discover versions or sources. The `gradleUserHome` tool argument is a server-side cache-home override, not a directory for the agent to walk.
+
+For the connected Gradle/Java runtime, use `gradle_get_build_environment` / `gradle_get_java_runtimes`. To query a different Gradle **runtime** (Tooling API models for that version), `gradle_disconnect` if needed, then `gradle_connect` with `gradleVersion` and re-read the build environment — do not inspect wrapper dists. Do not change the session's connected Gradle version merely to read sources; use `artifacts[]` for Maven-coordinate sources instead.
 
 For a configuration-scoped keep-set, resolve GAVs with `gradle_get_dependency_resolution` (`configuration` required, optional `projectPath`), then pass them as `artifacts[]` to `gradle_index_dependency_sources`.
 
@@ -149,13 +153,14 @@ When `artifacts[]` jars are missing locally, pass **`downloadSources: true`** to
 
 #### Minimal JSON example
 
-Index one artifact, then search one simple name:
+Index one artifact (any version; need not match the connected project), then search one simple name. Prefer `downloadSources: true` over listing Gradle caches:
 
 ```json
 {
   "name": "gradle_index_dependency_sources",
   "arguments": {
     "tokenMode": "idents",
+    "downloadSources": true,
     "artifacts": [
       { "group": "org.springframework.boot", "name": "spring-boot-autoconfigure", "version": "3.3.0" }
     ]

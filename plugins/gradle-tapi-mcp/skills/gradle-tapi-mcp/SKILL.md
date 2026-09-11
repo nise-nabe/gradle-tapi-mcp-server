@@ -9,7 +9,7 @@ description: >-
 
 # Gradle Tooling API MCP
 
-Gradle プロジェクトの**実行時状態**を MCP 経由で取得・実行する。宣言（`build.gradle.kts` 等）は `project-context-ingestion` を先に使い、MCP は解決済みバージョン・ビルド成否・タスク実行に使う。
+Gradle プロジェクトの**実行時状態**を MCP 経由で取得・実行する。宣言（`build.gradle.kts` 等）は `project-context-ingestion` を先に使い、MCP は解決済みバージョン・ビルド成否・タスク実行・ソース locate に使う。Idea keep-set 以外のバージョン（Kotlin / plugin など）は `artifacts[]` + `downloadSources` で索引し、`gradleUserHome` を直接読まない。
 
 ## 前提
 
@@ -65,8 +65,10 @@ Cursor の `mcp_get_tools` 利用時:
 
 | 情報 | 先に読む場所 | MCP で補う |
 |------|-------------|-----------|
-| 宣言バージョン（Kotlin, Boot, plugins） | `libs.versions.toml`, `build.gradle.kts` | — |
-| 解決済み Gradle/Java | — | `gradle_get_build_environment` |
+| 宣言バージョン（Kotlin, Boot, plugins） | `libs.versions.toml`, `build.gradle.kts` | —（制約の数字だけ。ソースは次行） |
+| 任意 GAV のソース（依存に無いバージョン・Kotlin / plugin 本体含む） | — | `gradle_index_dependency_sources` の `artifacts[]` + `downloadSources: true` |
+| 解決済み Gradle/Java | — | `gradle_get_build_environment` / `gradle_get_java_runtimes` |
+| 別 Gradle ランタイム | — | `gradle_connect` の `gradleVersion` のあと `gradle_get_build_environment` |
 | モジュール構成 | `settings.gradle.kts` | `gradle_get_project_overview` |
 | 解決済み依存グラフ | — | `gradle_get_dependency_resolution` |
 | composite / includeBuild | `settings.gradle.kts` | `gradle_get_gradle_build` |
@@ -74,6 +76,8 @@ Cursor の `mcp_get_tools` 利用時:
 | 全タスク探索 | 通常は不要 | `includeTasks` + フィルタ |
 
 MCP の結果で brief を作るときは、ファイルから得た **宣言** と MCP の **実行時** を混同しない。
+
+**`gradleUserHome` をエージェントが歩かない。** `gradle_get_build_environment` が返すパスや `~/.gradle/caches` / `wrapper/dists` / `jdks` を `ls` / Read してバージョンやソースを探さない。キャッシュ探索はサーバーが行う。ツール引数 `gradleUserHome` はサーバーのキャッシュホーム上書きであり、調査対象ディレクトリではない。詳細は [別バージョン・非依存のソース](#別バージョン非依存のソース)。
 
 ## ツール早見表
 
@@ -106,6 +110,33 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 依存ソース検索: 先に `gradle_index_dependency_sources`、続けて `gradle_search_dependency_sources` または `gradle_search_dependency_sources_multi`、必要なら `gradle_read_dependency_source`。索引は `.gradle/mcp-dependency-sources/<tokenMode>/`（`manifest.json` / `formatVersion`）。mode 不一致時は暗黙 reindex しない。大規模リポジトリでは `background: true` + `gradle_get_dependency_sources_index_status`、または `projectPath` / `artifacts[]` / `sourcePaths[]`、初回は `tokenMode: idents` を優先。`artifacts[]` でローカルに無い `*-sources.jar` は `downloadSources=true` で取得（既定 Maven Central。社内ミラーは `sourcesRepositories` に Maven レイアウトの base URL のみを渡し Central は試さない。`user:token@` で Basic 認証可）。検索は単純名の exact match のみ（FQN / プレフィックス / ワイルドカード不可）。
 
 エンドユーザー向けの正規ワークフロー（JSON 例付き）はリポジトリ [README.md](../../../../README.md) の **Dependency sources name locate**。詳細な引数は [reference.md](reference.md)。
+
+## 別バージョン・非依存のソース
+
+Idea keep-set（引数なし / `projectPath` のみ）は **今のプロジェクトの Idea モデルに付いている依存ソース** だけを索引する。次の調査は Idea keep-set では足りない:
+
+| 調べたいもの | MCP |
+|--------------|-----|
+| プロジェクトに無いバージョンのライブラリ / Kotlin stdlib / plugin 本体（Maven 座標があるもの） | `artifacts[]` に GAV を明示（グラフに無くてよい）+ `downloadSources: true` |
+| 現在接続中の Gradle / Java | `gradle_get_build_environment` / `gradle_get_java_runtimes` |
+| 別 Gradle バージョンの実行時スタック | 必要なら `gradle_disconnect` のあと `gradle_connect` で `gradleVersion` を指定し、`gradle_get_build_environment`。ソース調査のためだけにセッションの接続 Gradle を切り替えない |
+| ワークスペースや手元 zip など **既知パス** の tree/jar | `sourcePaths[]`（任意で GAV ラベル） |
+
+`artifacts[]` はプロジェクトの解決グラフに載っている必要はない。サーバーが Maven local / 接続中プロジェクトの Gradle user home（`caches/modules-2/files-2.1`）/ MCP jars cache を内部参照し、無ければ `downloadSources` で取る。エージェントが `gradleUserHome` 配下を列挙しない。
+
+`sourcePaths[]` はパスが既に分かっているときだけ使う。`gradleUserHome` や `wrapper/dists` を探索してパスを発見する用途ではない。
+
+```json
+{
+  "tokenMode": "idents",
+  "downloadSources": true,
+  "artifacts": [
+    { "group": "org.jetbrains.kotlin", "name": "kotlin-stdlib", "version": "2.0.21" }
+  ]
+}
+```
+
+→ `gradle_index_dependency_sources`（プロジェクトが別の Kotlin でも可）。続けて `gradle_search_dependency_sources` / `gradle_read_dependency_source`。
 
 ## 実行系の出力
 
@@ -368,6 +399,7 @@ MCP だけでなくファイルも読んだうえで、次の形式で要約す�
 | `gradle_disconnect` で MCP が cancelled 確定 | ディスクの `gradle-result.json` を優先して再ポーリング；Gradle がまだ走っていれば `running` に戻る |
 | 応答が巨大 | `includeTasks` / `includeTaskSelectors` を false のままにする |
 | ファイルと Java バージョン不一致 | toolchain 宣言（ファイル）と daemon の Java（MCP）を両方記載 |
+| 依存に無いバージョンを `~/.gradle` から探す | `artifacts[]` + `downloadSources: true`。Gradle/Java は `gradle_get_build_environment`。`gradleUserHome` を Read しない |
 
 ## 関連スキル
 
