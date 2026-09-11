@@ -84,7 +84,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_get_project_model` | Project model; tasks omitted by default; optional `projectPath` to scope a subproject subtree |
 | `gradle_get_build_invocations` | Runnable tasks; selectors omitted by default; optional `projectPath` to scope task collection |
 | `gradle_get_project_publications` | Publications |
-| `gradle_get_dependency_resolution` | Resolved dependency graph via Tooling API `ResolutionResult` (no task run). Omit `configuration` to list resolvable/consumable names (`includeAttributes` / `includeOutgoingVariants` optional). With `configuration`: optional `projectPath`, `dependency` filter, `maxDependencies` / `maxComponents` (default 500) |
+| `gradle_get_dependency_resolution` | Resolved dependency graph via Tooling API `ResolutionResult` (no task run). Omit `configuration` to list resolvable/consumable names (optional `includeAttributes` / `includeOutgoingVariants`; catalog cap 200). With `configuration`: optional `projectPath`, `dependency` filter, `maxDependencies` / `maxComponents` (default 500). Unknown names return `suggestedConfigurations` |
 | `gradle_run_tasks` | Execute tasks; stdout/stderr truncated by default |
 | `gradle_run_tests` | Execute JVM tests by class, method, pattern, or task scope; stdout/stderr truncated by default |
 | `gradle_list_builds` | List recent MCP builds from memory and `.gradle/mcp-builds/` (no Tooling API required) |

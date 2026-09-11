@@ -29,29 +29,18 @@ final class ConfigurationCatalogMapper {
         return selected;
     }
 
-    static List<String> resolvableNames(List<McpConfigurationSummary> all) {
-        List<String> names = new ArrayList<>();
-        for (McpConfigurationSummary summary : all) {
-            if (summary.isCanBeResolved()) {
-                names.add(summary.getName());
-            }
-        }
-        names.sort(String.CASE_INSENSITIVE_ORDER);
-        return names;
-    }
-
-    static String resolvableSuffix(List<String> resolvableNames) {
-        if (resolvableNames.isEmpty()) {
+    static String resolvableSuffix(List<String> names) {
+        if (names.isEmpty()) {
             return "Resolvable: (none)";
         }
-        boolean truncated = resolvableNames.size() > MAX_SUGGESTIONS;
+        boolean truncated = names.size() > MAX_SUGGESTIONS;
         List<String> shown = truncated
-                ? new ArrayList<>(resolvableNames.subList(0, MAX_SUGGESTIONS))
-                : resolvableNames;
+                ? new ArrayList<>(names.subList(0, MAX_SUGGESTIONS))
+                : names;
         StringBuilder suffix = new StringBuilder("Resolvable: ");
         suffix.append(String.join(", ", shown));
         if (truncated) {
-            suffix.append(" (+").append(resolvableNames.size() - MAX_SUGGESTIONS).append(" more)");
+            suffix.append(" (+").append(names.size() - MAX_SUGGESTIONS).append(" more)");
         }
         return suffix.toString();
     }
