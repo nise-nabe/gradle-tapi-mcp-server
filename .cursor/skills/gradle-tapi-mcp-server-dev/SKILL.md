@@ -61,11 +61,14 @@ Do not use the `gradle` MCP server to compile the server you are editing (see `g
 
 ## Version / install sync on release
 
-When bumping the server version, update together:
+When bumping the server version, put these in the **version bump PR** (same commit as `build.gradle.kts`):
 
 - `build.gradle.kts` `version`
-- `.cursor/install.sh` `GRADLE_TAPI_MCP_VERSION` and SHA-256
-- `.cursor/skills/gradle-tapi-mcp/SKILL.md` and `plugins/gradle-tapi-mcp/skills/gradle-tapi-mcp/SKILL.md` version mentions
-- `AGENTS.md` bootstrap section
+- `README.md` JAR path examples
+- Marketplace catalogs: `.cursor-plugin/marketplace.json` and `.github/plugin/marketplace.json` (`metadata.version` + plugin `version`); `.agents/plugins/marketplace.json` (plugin `version` only)
+- Plugin manifests: `plugins/gradle-tapi-mcp/plugin.json`, `.cursor-plugin/plugin.json`, `.codex-plugin/plugin.json`
+- `AGENTS.md` JAR path examples (`build/libs/gradle-tapi-mcp-server-X.Y.Z.jar`)
+
+Do **not** bump `.cursor/install.sh` `GRADLE_TAPI_MCP_VERSION` or `plugins/gradle-tapi-mcp/server-release.json` in that PR. After the GitHub Release exists, a SHA PR updates those two files (`version` + SHA-256 together), plus `AGENTS.md` `currently **X.Y.Z**` and `.cursor/skills/gradle-tapi-mcp/SKILL.md` `release vX.Y.Z`, so Cloud / plugin download URLs do not 404.
 
 Follow `.cursor/skills/release/SKILL.md` for the full release workflow.

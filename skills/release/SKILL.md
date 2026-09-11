@@ -40,35 +40,40 @@ git log "${LATEST_TAG}"..main --oneline   # 未リリースコミット
 
 ## リリース対象ファイル
 
+バージョン文字列（JAR名・marketplace・plugin）は **bump PR で一度に揃える**。SHA-256 だけは公開した Release アセットが必要なので、そのあと別 PR にする。
+
+bump PR で `install.sh` / `server-release.json` の **version だけ**先に上げない。GitHub Release がまだ無いあいだ Cloud / plugin ランチャが 404 または SHA 不一致になる。
+
 ### バージョン bump PR（必須）
 
 | ファイル | 変更内容 |
 |---------|---------|
 | `build.gradle.kts` | `version = "X.Y.Z"`（JAR `Implementation-Version` / MCP `initialize` serverInfo に反映） |
 | `README.md` | JAR パス例 2 箇所（`build/libs/gradle-tapi-mcp-server-X.Y.Z.jar`） |
-
-コミットメッセージ: `chore(release): bump version to X.Y.Z`
-
-### GitHub Release 後の follow-up PR（Cloud bootstrap 更新時）
-
-新バージョンを Cursor Cloud の `install.sh` で配布する場合:
-
-| ファイル | 変更内容 |
-|---------|---------|
-| `.cursor/install.sh` | `GRADLE_TAPI_MCP_VERSION`, `GRADLE_TAPI_MCP_SHA256` |
-| `plugins/gradle-tapi-mcp/server-release.json` | `version` と `sha256`（`install.sh` と一致させる） |
 | `.cursor-plugin/marketplace.json` | marketplace `metadata.version` と plugin `version` |
-| `.agents/plugins/marketplace.json` | plugin `version` |
+| `.agents/plugins/marketplace.json` | plugin `version`（このカタログに `metadata.version` は無い） |
 | `.github/plugin/marketplace.json` | marketplace `metadata.version` と plugin `version` |
 | `plugins/gradle-tapi-mcp/plugin.json` | plugin `version` |
 | `plugins/gradle-tapi-mcp/.cursor-plugin/plugin.json` | plugin `version` |
 | `plugins/gradle-tapi-mcp/.codex-plugin/plugin.json` | plugin `version` |
-| `AGENTS.md` | リリース番号の記述（該当箇所） |
-| `.cursor/skills/gradle-tapi-mcp/SKILL.md` | `release vX.Y.Z` の記述 |
+| `AGENTS.md` | JAR パス例（`build/libs/gradle-tapi-mcp-server-X.Y.Z.jar`）。`install.sh` の「currently」表記は SHA PR 側 |
+
+コミットメッセージ: `chore(release): bump version to X.Y.Z`
+
+### GitHub Release 後の SHA PR（Cloud / plugin ランチャ）
+
+公開アセットのハッシュが取れてから更新する:
+
+| ファイル | 変更内容 |
+|---------|---------|
+| `.cursor/install.sh` | `GRADLE_TAPI_MCP_VERSION` と `GRADLE_TAPI_MCP_SHA256` を同時に |
+| `plugins/gradle-tapi-mcp/server-release.json` | `version` と `sha256`（`install.sh` と一致させる） |
+| `AGENTS.md` | `install.sh` の現行バージョン表記（`currently **X.Y.Z**`） |
+| `.cursor/skills/gradle-tapi-mcp/SKILL.md` | bootstrap の `release vX.Y.Z`（`install.sh` が配る JAR に合わせる） |
 | `.cursor/skills/release/SKILL.md` | 必要なら説明文の更新（バージョン例はプレースホルダのまま維持） |
 | `skills/release/SKILL.md` | 必要なら説明文の更新（タグはコマンドで確認する方針のため通常は変更不要） |
 
-SHA-256 は **GitHub Release にアップロードする JAR** から取得する。Release 作成直後に保存し、follow-up PR で使う（`main` が進んだあと再ビルドしない）。
+SHA-256 は **GitHub Release にアップロードする JAR** から取得する。Release 作成直後に保存する（`main` が進んだあと再ビルドしない）。
 
 ```bash
 VERSION=X.Y.Z
@@ -102,11 +107,20 @@ CI と同等のゲート。失敗時はリリースを止める。
 
 ```bash
 git checkout -b cursor/release-X.Y.Z-<suffix>
-# build.gradle.kts と README.md を更新
-git add build.gradle.kts README.md
+# build.gradle.kts / README.md / marketplace catalogs / plugin.json / AGENTS.md JAR パスを更新
+git add build.gradle.kts README.md \
+  .cursor-plugin/marketplace.json \
+  .agents/plugins/marketplace.json \
+  .github/plugin/marketplace.json \
+  plugins/gradle-tapi-mcp/plugin.json \
+  plugins/gradle-tapi-mcp/.cursor-plugin/plugin.json \
+  plugins/gradle-tapi-mcp/.codex-plugin/plugin.json \
+  AGENTS.md
 git commit -m "chore(release): bump version to X.Y.Z"
 git push -u origin cursor/release-X.Y.Z-<suffix>
 ```
+
+`.agents/plugins/marketplace.json` は plugin `version` のみ（トップレベル `metadata.version` は無い）。Cursor / GitHub Copilot カタログは `metadata.version` と plugin `version` の両方を同じ `X.Y.Z` にする。
 
 PR は **ManagePullRequest** で作成。`main` へマージする（`gh pr create` は ManagePullRequest が失敗した場合のみ。`cloud-github` スキル参照）。
 
@@ -138,7 +152,7 @@ gh release create "v${VERSION}" \
   "build/libs/gradle-tapi-mcp-server-${VERSION}.jar"
 ```
 
-Release 作成直後に SHA-256 を記録する（§ follow-up PR 参照）。
+Release 作成直後に SHA-256 を記録する（§ SHA PR 参照）。
 
 Release 本文のテンプレ（`--notes` で上書きする場合）:
 
@@ -152,9 +166,18 @@ Release 本文のテンプレ（`--notes` で上書きする場合）:
 
 `--generate-notes` はマージ PR 一覧を自動生成する。手動で追記する場合は `--notes-file` を使う。
 
-### 5. install.sh 更新（任意だが Cloud 利用時は推奨）
+### 5. install.sh の SHA 更新
 
-Release アセット公開後、別 PR で `.cursor/install.sh` のバージョンと SHA-256 を更新する。あわせて `plugins/gradle-tapi-mcp/server-release.json` と marketplace / plugin の `version` も揃える。マージ後、次回 Cloud Agent セッションから新 JAR がダウンロードされる。
+Release アセット公開後、別 PR で `.cursor/install.sh` の **version と SHA-256 を同時に** 更新し、`plugins/gradle-tapi-mcp/server-release.json` を一致させる。marketplace / plugin の `version` は bump PR で済んでいるので、ここでは触らない。マージ後、次回 Cloud Agent セッションから新 JAR がダウンロードされる。
+
+```bash
+git checkout -b cursor/cloud-bootstrap-X.Y.Z-<suffix>
+# install.sh / server-release.json に Release アセットの SHA-256 を書く
+# AGENTS.md の currently **X.Y.Z** と .cursor/skills/gradle-tapi-mcp/SKILL.md の release vX.Y.Z を合わせる
+git add .cursor/install.sh plugins/gradle-tapi-mcp/server-release.json \
+  AGENTS.md .cursor/skills/gradle-tapi-mcp/SKILL.md
+git commit -m "chore(cloud): update install.sh and docs for release vX.Y.Z"
+```
 
 ### 6. リリース検証
 
@@ -171,13 +194,13 @@ timeout 5 env GRADLE_PROJECT_DIR=/workspace java -jar /tmp/test.jar </dev/null |
 ## チェックリスト
 
 - [ ] `main` で `./gradlew build` 成功
-- [ ] `build.gradle.kts` / `README.md` のバージョン一致
+- [ ] `build.gradle.kts` / `README.md` / marketplace catalogs / plugin.json のバージョン一致
 - [ ] bump PR が `main` にマージ済み
 - [ ] `git checkout main && git pull` のあと `./gradlew --no-daemon jar` で fat JAR 生成
 - [ ] `vX.Y.Z` タグを `main` HEAD に push
 - [ ] GitHub Release に JAR アセットあり
 - [ ] Release JAR の SHA-256 を記録済み
-- [ ] （Cloud 向け）`install.sh` / `server-release.json` / marketplace・plugin の version / `AGENTS.md` / スキル類の follow-up PR
+- [ ] （Cloud 向け）`install.sh` と `server-release.json` の version + SHA-256 を Release 後 PR で更新
 
 ## 関連スキル
 
@@ -194,5 +217,6 @@ timeout 5 env GRADLE_PROJECT_DIR=/workspace java -jar /tmp/test.jar </dev/null |
 | `main` へ直接 push 拒否 | バージョン bump は必ず PR |
 | `gh: command not found` | `/exec-daemon/gh` または `.cursor/install.sh` 再実行 |
 | Release に古い JAR | bump マージ後に `git pull origin main` したか。タグ・Release **前**に `./gradlew --no-daemon jar` したか。`build.gradle.kts` の `version` と JAR ファイル名が一致するか |
-| `install.sh` SHA 不一致 | Release アセット（または Release 直後に保存した JAR）の `sha256sum` を使う。follow-up 用に再ビルドした JAR と混同しない |
+| `install.sh` SHA 不一致 | Release アセット（または Release 直後に保存した JAR）の `sha256sum` を使う。SHA PR 用に再ビルドした JAR と混同しない |
+| bump で marketplace を忘れた | Cursor / GitHub Copilot は `metadata.version` と plugin `version` の両方。Codex は plugin `version` のみ。SHA PR で埋めない（リリース bump に含める） |
 | タグが `main` とずれる | `git checkout main && git pull` 後にタグ付け。ずれたら削除して再作成（`git push origin :refs/tags/vX.Y.Z` → 再 tag） |
