@@ -66,7 +66,7 @@ When bumping the server version, put these in the **version bump PR** (same comm
 - `build.gradle.kts` `version`
 - `README.md` JAR path examples
 - Marketplace catalogs: `.cursor-plugin/marketplace.json` and `.github/plugin/marketplace.json` (`metadata.version` + plugin `version`); `.agents/plugins/marketplace.json` (plugin `version` only)
-- Plugin manifests: `plugins/gradle-tapi-mcp/plugin.json`, `.cursor-plugin/plugin.json`, `.codex-plugin/plugin.json`
+- Plugin manifests: `plugins/gradle-tapi-mcp/plugin.json`, `plugins/gradle-tapi-mcp/.cursor-plugin/plugin.json`, `plugins/gradle-tapi-mcp/.codex-plugin/plugin.json`
 - `AGENTS.md` JAR path examples (`build/libs/gradle-tapi-mcp-server-X.Y.Z.jar`)
 
 Do **not** bump `.cursor/install.sh` `GRADLE_TAPI_MCP_VERSION` or `plugins/gradle-tapi-mcp/server-release.json` in that PR. After the GitHub Release exists, a SHA PR updates those two files (`version` + SHA-256 together), plus `AGENTS.md` `currently **X.Y.Z**` and `.cursor/skills/gradle-tapi-mcp/SKILL.md` `release vX.Y.Z`, so Cloud / plugin download URLs do not 404.
