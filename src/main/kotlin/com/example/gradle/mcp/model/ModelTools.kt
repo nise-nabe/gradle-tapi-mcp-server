@@ -11,7 +11,6 @@ import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.integerProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
-import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.optionalStringList
 import com.example.gradle.mcp.protocol.prepareTasksProperty
 import com.example.gradle.mcp.protocol.rejectUnsupportedProjectPath
@@ -26,7 +25,6 @@ import org.gradle.tooling.UnknownModelException
 import org.gradle.tooling.UnsupportedVersionException
 import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.build.Help
-import org.gradle.tooling.model.gradle.BuildInvocations
 import org.gradle.tooling.model.gradle.GradleBuild
 import org.gradle.tooling.model.gradle.ProjectPublications
 import java.io.File
@@ -150,6 +148,27 @@ private inline fun <T> fetchModelJson(
 }
 
 context(runtime: GradleMcpRuntime)
+private inline fun <T : Any> fetchResilientModelJson(
+    args: Map<String, Any>,
+    crossinline fetch: (ProjectConnection, List<String>, String?) -> ResilientModel<T>,
+    crossinline serialize: (T) -> Map<String, Any?>,
+): CallToolResult {
+    val prepareTasks = prepareTasksFromArgs(args)
+    val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+    return ProjectLifecycleGuard.withNoActiveBuild(
+        projectDirectory = projectDirectory,
+        buildExecutionManager = runtime.buildExecutionManager,
+        message = { directory -> modelQueryBlockedMessage(prepareTasks, directory) },
+    ) {
+        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+            val gradleVersion = runtime.connectionManager.cachedEnvironment(projectDirectory)?.gradleVersion
+            val result = fetch(connection, prepareTasks, gradleVersion)
+            jsonResult(attachResilientMetadata(serialize(result.model), result))
+        }
+    }
+}
+
+context(runtime: GradleMcpRuntime)
 fun Server.registerModelTools(scope: CoroutineScope) {
     registerTool(
         scope,
@@ -158,11 +177,16 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         schema = scopedProjectTreeSchema(),
     ) { args ->
         val treeOptions = ProjectTreeOptions.fromArgs(args)
-        fetchModelJson(
+        fetchResilientModelJson(
             args,
-            fetch = { connection, prepareTasks ->
-                connection.fetchModel(GradleProject::class.java, prepareTasks).also { project ->
-                    scopedGradleProject(project, treeOptions)
+            fetch = { connection, prepareTasks, gradleVersion ->
+                connection.fetchResilientModel(
+                    GradleProject::class.java,
+                    ModelFetchPhase.BUILD_FINISHED,
+                    prepareTasks,
+                    gradleVersion,
+                ).also { result ->
+                    scopedGradleProject(result.model, treeOptions)
                 }
             },
             serialize = { project ->
@@ -181,10 +205,15 @@ fun Server.registerModelTools(scope: CoroutineScope) {
     ) { args ->
         rejectUnsupportedProjectPath(args, "gradle_get_gradle_build")
         val treeOptions = ProjectTreeOptions.fromArgs(args)
-        fetchModelJson(
+        fetchResilientModelJson(
             args,
-            fetch = { connection, prepareTasks ->
-                connection.fetchModel(GradleBuild::class.java, prepareTasks)
+            fetch = { connection, prepareTasks, gradleVersion ->
+                connection.fetchResilientModel(
+                    GradleBuild::class.java,
+                    ModelFetchPhase.PROJECTS_LOADED,
+                    prepareTasks,
+                    gradleVersion,
+                )
             },
             serialize = { build -> ModelSerializers.gradleBuild(build, treeOptions) },
         )
@@ -197,11 +226,16 @@ fun Server.registerModelTools(scope: CoroutineScope) {
     ) { args ->
         val options = ModelQueryOptions.fromArgs(args)
         val treeOptions = ProjectTreeOptions.fromArgs(args)
-        fetchModelJson(
+        fetchResilientModelJson(
             args,
-            fetch = { connection, prepareTasks ->
-                connection.fetchModel(GradleProject::class.java, prepareTasks).also { project ->
-                    scopedGradleProject(project, treeOptions)
+            fetch = { connection, prepareTasks, gradleVersion ->
+                connection.fetchResilientModel(
+                    GradleProject::class.java,
+                    ModelFetchPhase.BUILD_FINISHED,
+                    prepareTasks,
+                    gradleVersion,
+                ).also { result ->
+                    scopedGradleProject(result.model, treeOptions)
                 }
             },
             serialize = { project ->
@@ -221,22 +255,21 @@ fun Server.registerModelTools(scope: CoroutineScope) {
     ) { args ->
         val options = ModelQueryOptions.fromArgs(args).copy(includeTasks = true)
         val treeOptions = ProjectTreeOptions.fromArgs(args)
-        fetchModelJson(
+        fetchResilientModelJson(
             args,
-            fetch = { connection, prepareTasks ->
-                val project = connection.fetchModel(GradleProject::class.java, prepareTasks)
-                scopedGradleProject(project, treeOptions)
-                val invocations = connection.fetchModel(BuildInvocations::class.java, prepareTasks)
-                invocations to project
+            fetch = { connection, prepareTasks, gradleVersion ->
+                connection.fetchResilientProjectAndInvocations(prepareTasks, gradleVersion).also { result ->
+                    scopedGradleProject(result.model.project, treeOptions)
+                }
             },
-            serialize = { (invocations, project) ->
-                val scoped = scopedGradleProject(project, treeOptions)
+            serialize = { models ->
+                val scoped = scopedGradleProject(models.project, treeOptions)
                 ModelSerializers.buildInvocations(
-                    invocations,
+                    models.invocations,
                     scoped,
                     options,
                     treeOptions,
-                    rootProject = project,
+                    rootProject = models.project,
                 )
             },
         )
@@ -248,10 +281,15 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         schema = publicationsSchema(),
     ) { args ->
         rejectUnsupportedProjectPath(args, "gradle_get_project_publications")
-        fetchModelJson(
+        fetchResilientModelJson(
             args,
-            fetch = { connection, prepareTasks ->
-                connection.fetchModel(ProjectPublications::class.java, prepareTasks)
+            fetch = { connection, prepareTasks, gradleVersion ->
+                connection.fetchResilientModel(
+                    ProjectPublications::class.java,
+                    ModelFetchPhase.BUILD_FINISHED,
+                    prepareTasks,
+                    gradleVersion,
+                )
             },
             serialize = ModelSerializers::projectPublications,
         )
