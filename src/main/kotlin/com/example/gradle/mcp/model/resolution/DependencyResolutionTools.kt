@@ -6,9 +6,11 @@ import com.example.gradle.mcp.connection.ProjectLifecycleGuard
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpToolDescriptions
+import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.integerProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
+import com.example.gradle.mcp.protocol.optionalBoolean
 import com.example.gradle.mcp.protocol.optionalNonNegativeInt
 import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.optionalStringList
@@ -31,12 +33,41 @@ internal fun dependencyResolutionSchema(): Map<String, Any> =
             "projectDirectory" to resolveRequiredProjectDirectoryProperty(),
             "prepareTasks" to prepareTasksProperty(),
             "projectPath" to stringProperty("Subproject path; default root"),
-            "configuration" to stringProperty("Resolvable config e.g. runtimeClasspath"),
+            "configuration" to stringProperty("Resolvable config. Omit to list names."),
             "dependency" to stringProperty("Optional substring filter (insight-like)"),
             "maxDependencies" to integerProperty("Edge cap (default 500)"),
             "maxComponents" to integerProperty("Component cap (default 500)"),
+            "includeAttributes" to booleanProperty("Catalog attributes. Default false."),
+            "includeOutgoingVariants" to booleanProperty("Catalog variants. Default false."),
+            "maxConfigurations" to integerProperty("Catalog cap (default 200)."),
         ),
-        required = listOf("configuration"),
+    )
+
+internal data class DependencyResolutionQuery(
+    val projectPath: String?,
+    val configuration: String?,
+    val dependency: String?,
+    val maxDependencies: Int,
+    val maxComponents: Int,
+    val includeAttributes: Boolean,
+    val includeOutgoingVariants: Boolean,
+    val maxConfigurations: Int,
+    val prepareTasks: List<String>,
+)
+
+internal fun parseDependencyResolutionQuery(args: Map<String, Any>): DependencyResolutionQuery =
+    DependencyResolutionQuery(
+        projectPath = args.optionalString("projectPath")?.trim()?.takeIf { it.isNotEmpty() },
+        configuration = args.optionalString("configuration")?.trim()?.takeIf { it.isNotEmpty() },
+        dependency = args.optionalString("dependency")?.trim()?.takeIf { it.isNotEmpty() },
+        maxDependencies = args.nonNegativeIntOrDefault("maxDependencies"),
+        maxComponents = args.nonNegativeIntOrDefault("maxComponents"),
+        includeAttributes = args.optionalBoolean("includeAttributes", default = false),
+        includeOutgoingVariants = args.optionalBoolean("includeOutgoingVariants", default = false),
+        maxConfigurations = args.nonNegativeIntOrDefault("maxConfigurations"),
+        prepareTasks = args.optionalStringList("prepareTasks").orEmpty()
+            .filter { it.isNotBlank() }
+            .distinct(),
     )
 
 context(runtime: GradleMcpRuntime)
@@ -47,20 +78,7 @@ fun Server.registerDependencyResolutionTools(scope: CoroutineScope) {
         description = McpToolDescriptions.DEPENDENCY_RESOLUTION,
         schema = dependencyResolutionSchema(),
     ) { args ->
-        val configuration = args.optionalString("configuration")?.trim().orEmpty()
-        if (configuration.isEmpty()) {
-            throw McpException(
-                McpErrorCode.INVALID_ARGUMENT,
-                "configuration is required (e.g. runtimeClasspath, compileClasspath)",
-            )
-        }
-        val projectPath = args.optionalString("projectPath")?.trim()?.takeIf { it.isNotEmpty() }
-        val dependency = args.optionalString("dependency")?.trim()?.takeIf { it.isNotEmpty() }
-        val maxDependencies = args.nonNegativeIntOrDefault("maxDependencies")
-        val maxComponents = args.nonNegativeIntOrDefault("maxComponents")
-        val prepareTasks = args.optionalStringList("prepareTasks").orEmpty()
-            .filter { it.isNotBlank() }
-            .distinct()
+        val query = parseDependencyResolutionQuery(args)
         val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
 
         val model = ProjectLifecycleGuard.withNoActiveBuild(
@@ -72,15 +90,7 @@ fun Server.registerDependencyResolutionTools(scope: CoroutineScope) {
             },
         ) {
             runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                fetchDependencyResolution(
-                    connection = connection,
-                    projectPath = projectPath,
-                    configuration = configuration,
-                    dependency = dependency,
-                    maxDependencies = maxDependencies,
-                    maxComponents = maxComponents,
-                    prepareTasks = prepareTasks,
-                )
+                fetchDependencyResolution(connection, query)
             }
         }
         jsonResult(DependencyResolutionSerializers.toMap(model))
@@ -104,26 +114,24 @@ internal fun Map<String, Any>.nonNegativeIntOrDefault(key: String, default: Int 
 
 internal fun fetchDependencyResolution(
     connection: ProjectConnection,
-    projectPath: String?,
-    configuration: String,
-    dependency: String?,
-    maxDependencies: Int,
-    maxComponents: Int,
-    prepareTasks: List<String>,
+    query: DependencyResolutionQuery,
 ): McpDependencyResolution {
     val initScript = DependencyResolutionInitScriptProvider.initScriptPath()
     val action = FetchDependencyResolutionAction(
-        projectPath,
-        configuration,
-        dependency,
-        maxDependencies,
-        maxComponents,
+        query.projectPath,
+        query.configuration,
+        query.dependency,
+        query.maxDependencies,
+        query.maxComponents,
+        query.includeAttributes,
+        query.includeOutgoingVariants,
+        query.maxConfigurations,
     )
     val executer = connection.action(action)
         .withArguments("--init-script", initScript)
-    if (prepareTasks.isNotEmpty()) {
+    if (query.prepareTasks.isNotEmpty()) {
         try {
-            executer.forTasks(*prepareTasks.toTypedArray())
+            executer.forTasks(*query.prepareTasks.toTypedArray())
         } catch (exception: UnsupportedOperationConfigurationException) {
             throw McpException(
                 McpErrorCode.INVALID_ARGUMENT,
@@ -142,7 +150,7 @@ internal fun fetchDependencyResolution(
     }
 }
 
-private fun mapResolutionFailure(exception: Exception): McpException {
+internal fun mapResolutionFailure(exception: Exception): McpException {
     val message = deepestMessage(exception)
     val invalid = message.contains("configuration is required", ignoreCase = true) ||
         message.contains("Unknown configuration", ignoreCase = true) ||
@@ -150,7 +158,20 @@ private fun mapResolutionFailure(exception: Exception): McpException {
         message.contains("is not resolvable", ignoreCase = true) ||
         message.contains("requires parameters", ignoreCase = true)
     if (invalid) {
-        return McpException(McpErrorCode.INVALID_ARGUMENT, message, exception)
+        val details = if (
+            message.contains("Unknown configuration", ignoreCase = true) ||
+            message.contains("is not resolvable", ignoreCase = true)
+        ) {
+            suggestedConfigurationErrorDetails(message)
+        } else {
+            emptyMap()
+        }
+        return McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            message,
+            exception,
+            errorDetails = details,
+        )
     }
     if (exception is BuildException || exception is GradleConnectionException) {
         return McpException(
@@ -165,6 +186,42 @@ private fun mapResolutionFailure(exception: Exception): McpException {
         exception,
     )
 }
+
+internal fun suggestedConfigurationErrorDetails(message: String): Map<String, Any?> {
+    val parsed = parseResolvableSuffix(message)
+    return buildMap {
+        if (parsed != null) {
+            put("suggestedConfigurations", parsed.names)
+            if (parsed.truncated) {
+                put("suggestedConfigurationsTruncated", true)
+            }
+        }
+        put(
+            "hint",
+            "Omit configuration on gradle_get_dependency_resolution to list resolvable and consumable names.",
+        )
+    }
+}
+
+internal data class ResolvableSuffix(
+    val names: List<String>,
+    val truncated: Boolean,
+)
+
+internal fun parseResolvableSuffix(message: String): ResolvableSuffix? {
+    val match = RESOLVABLE_SUFFIX.find(message) ?: return null
+    val rawNames = match.groupValues[1].trim()
+    val names = if (rawNames == "(none)") {
+        emptyList()
+    } else {
+        rawNames.split(", ").map { it.trim() }.filter { it.isNotEmpty() }
+    }
+    val truncated = match.groupValues[2].isNotEmpty()
+    return ResolvableSuffix(names, truncated)
+}
+
+private val RESOLVABLE_SUFFIX =
+    Regex("""Resolvable: (.+?)(?: \(\+(\d+) more\))?$""")
 
 private fun deepestMessage(exception: Throwable): String {
     var current: Throwable? = exception

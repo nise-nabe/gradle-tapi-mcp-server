@@ -5,7 +5,11 @@ import java.util.List;
 
 /**
  * Tooling API model for a configuration's {@code ResolutionResult} graph
- * (no task execution; dependency resolution only).
+ * or a configuration catalog (no task execution).
+ *
+ * <p>Catalog mode: {@link #getConfiguration()} is null/blank and {@link #getConfigurations()}
+ * holds resolvable/consumable names. Graph mode: {@link #getConfiguration()} is set and
+ * {@link #getConfigurations()} is empty.
  */
 public interface McpDependencyResolution extends Serializable {
     String getProjectPath();
@@ -27,4 +31,10 @@ public interface McpDependencyResolution extends Serializable {
     int getTotalComponentCount();
 
     int getTotalDependencyCount();
+
+    List<McpConfigurationSummary> getConfigurations();
+
+    boolean isConfigurationsTruncated();
+
+    int getTotalConfigurationCount();
 }
