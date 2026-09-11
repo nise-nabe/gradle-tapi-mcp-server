@@ -27,4 +27,25 @@ public interface McpDependencyResolutionParams {
     int getMaxComponents();
 
     void setMaxComponents(int maxComponents);
+
+    /**
+     * When true, catalog entries include configuration attributes.
+     * Ignored in graph mode (when {@link #getConfiguration()} is set).
+     */
+    boolean getIncludeAttributes();
+
+    void setIncludeAttributes(boolean includeAttributes);
+
+    /**
+     * When true, catalog entries include outgoing variants (no local file paths).
+     * Ignored in graph mode (when {@link #getConfiguration()} is set).
+     */
+    boolean getIncludeOutgoingVariants();
+
+    void setIncludeOutgoingVariants(boolean includeOutgoingVariants);
+
+    /** Max catalog entries to return; 0 = builder default. */
+    int getMaxConfigurations();
+
+    void setMaxConfigurations(int maxConfigurations);
 }

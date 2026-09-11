@@ -16,6 +16,9 @@ public final class DefaultMcpDependencyResolution implements McpDependencyResolu
     private final boolean dependenciesTruncated;
     private final int totalComponentCount;
     private final int totalDependencyCount;
+    private final List<McpConfigurationSummary> configurations;
+    private final boolean configurationsTruncated;
+    private final int totalConfigurationCount;
 
     public DefaultMcpDependencyResolution(
             String projectPath,
@@ -29,6 +32,38 @@ public final class DefaultMcpDependencyResolution implements McpDependencyResolu
             int totalComponentCount,
             int totalDependencyCount
     ) {
+        this(
+                projectPath,
+                configuration,
+                dependencyFilter,
+                root,
+                components,
+                dependencies,
+                componentsTruncated,
+                dependenciesTruncated,
+                totalComponentCount,
+                totalDependencyCount,
+                List.of(),
+                false,
+                0
+        );
+    }
+
+    public DefaultMcpDependencyResolution(
+            String projectPath,
+            String configuration,
+            String dependencyFilter,
+            McpResolvedComponentIdentity root,
+            List<McpResolvedComponent> components,
+            List<McpResolvedDependencyEdge> dependencies,
+            boolean componentsTruncated,
+            boolean dependenciesTruncated,
+            int totalComponentCount,
+            int totalDependencyCount,
+            List<McpConfigurationSummary> configurations,
+            boolean configurationsTruncated,
+            int totalConfigurationCount
+    ) {
         this.projectPath = projectPath;
         this.configuration = configuration;
         this.dependencyFilter = dependencyFilter;
@@ -39,6 +74,32 @@ public final class DefaultMcpDependencyResolution implements McpDependencyResolu
         this.dependenciesTruncated = dependenciesTruncated;
         this.totalComponentCount = totalComponentCount;
         this.totalDependencyCount = totalDependencyCount;
+        this.configurations = immutable(configurations);
+        this.configurationsTruncated = configurationsTruncated;
+        this.totalConfigurationCount = totalConfigurationCount;
+    }
+
+    public static DefaultMcpDependencyResolution catalog(
+            String projectPath,
+            List<McpConfigurationSummary> configurations,
+            boolean configurationsTruncated,
+            int totalConfigurationCount
+    ) {
+        return new DefaultMcpDependencyResolution(
+                projectPath,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                false,
+                false,
+                0,
+                0,
+                configurations,
+                configurationsTruncated,
+                totalConfigurationCount
+        );
     }
 
     private static <T> List<T> immutable(List<T> values) {
@@ -93,5 +154,20 @@ public final class DefaultMcpDependencyResolution implements McpDependencyResolu
     @Override
     public int getTotalDependencyCount() {
         return totalDependencyCount;
+    }
+
+    @Override
+    public List<McpConfigurationSummary> getConfigurations() {
+        return configurations;
+    }
+
+    @Override
+    public boolean isConfigurationsTruncated() {
+        return configurationsTruncated;
+    }
+
+    @Override
+    public int getTotalConfigurationCount() {
+        return totalConfigurationCount;
     }
 }

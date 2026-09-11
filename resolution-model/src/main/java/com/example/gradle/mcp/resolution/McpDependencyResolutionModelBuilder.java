@@ -5,6 +5,8 @@ import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.result.ResolutionResult;
 import org.gradle.tooling.provider.model.ParameterizedToolingModelBuilder;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 final class McpDependencyResolutionModelBuilder
@@ -23,16 +25,24 @@ final class McpDependencyResolutionModelBuilder
     @Override
     public Object buildAll(String modelName, Project project) {
         throw new IllegalArgumentException(
-                "McpDependencyResolution requires parameters (configuration is required). " +
-                        "Use a parameterized tooling model request."
+                "McpDependencyResolution requires parameters. " +
+                        "Use a parameterized tooling model request; omit configuration to list names."
         );
     }
 
     @Override
     public Object buildAll(String modelName, McpDependencyResolutionParams parameter, Project project) {
         Objects.requireNonNull(parameter, "parameter");
-        String configurationName = requireConfiguration(parameter.getConfiguration());
         Project target = resolveProject(project, parameter.getProjectPath());
+        String configurationName = trimToNull(parameter.getConfiguration());
+        if (configurationName == null) {
+            return catalog(
+                    target,
+                    parameter.getIncludeAttributes(),
+                    parameter.getIncludeOutgoingVariants(),
+                    parameter.getMaxConfigurations()
+            );
+        }
         Configuration configuration = findResolvableConfiguration(target, configurationName);
         ResolutionResult resolutionResult = configuration.getIncoming().getResolutionResult();
         return ResolutionResultMapper.map(
@@ -45,13 +55,25 @@ final class McpDependencyResolutionModelBuilder
         );
     }
 
-    private static String requireConfiguration(String configuration) {
-        if (configuration == null || configuration.isBlank()) {
-            throw new IllegalArgumentException(
-                    "configuration is required (e.g. runtimeClasspath, compileClasspath)"
-            );
+    static DefaultMcpDependencyResolution catalog(
+            Project project,
+            boolean includeAttributes,
+            boolean includeOutgoingVariants,
+            int maxConfigurations
+    ) {
+        List<McpConfigurationSummary> all = new ArrayList<>();
+        for (Configuration configuration : project.getConfigurations()) {
+            all.add(ConfigurationSnapshots.from(configuration, includeAttributes, includeOutgoingVariants));
         }
-        return configuration.trim();
+        List<McpConfigurationSummary> selected = ConfigurationCatalogMapper.selectResolvableOrConsumable(all);
+        ConfigurationCatalogMapper.CatalogSlice slice =
+                ConfigurationCatalogMapper.cap(selected, maxConfigurations);
+        return DefaultMcpDependencyResolution.catalog(
+                project.getPath(),
+                slice.configurations,
+                slice.truncated,
+                slice.totalCount
+        );
     }
 
     private static Project resolveProject(Project project, String projectPath) {
@@ -68,18 +90,39 @@ final class McpDependencyResolutionModelBuilder
 
     private static Configuration findResolvableConfiguration(Project project, String configurationName) {
         Configuration configuration = project.getConfigurations().findByName(configurationName);
+        List<McpConfigurationSummary> catalog = summariesForSuggestions(project);
+        String suffix = ConfigurationCatalogMapper.resolvableSuffix(
+                ConfigurationCatalogMapper.resolvableNames(catalog)
+        );
         if (configuration == null) {
             throw new IllegalArgumentException(
-                    "Unknown configuration '" + configurationName + "' on project " + project.getPath()
+                    "Unknown configuration '" + configurationName + "' on project " + project.getPath() +
+                            ". Omit configuration to list names. " + suffix
             );
         }
         if (!configuration.isCanBeResolved()) {
             throw new IllegalArgumentException(
                     "Configuration '" + configurationName + "' on " + project.getPath() +
                             " is not resolvable (canBeResolved=false). " +
-                            "Use a resolvable configuration such as runtimeClasspath or compileClasspath."
+                            "Omit configuration to list names. " + suffix
             );
         }
         return configuration;
+    }
+
+    private static List<McpConfigurationSummary> summariesForSuggestions(Project project) {
+        List<McpConfigurationSummary> all = new ArrayList<>();
+        for (Configuration configuration : project.getConfigurations()) {
+            all.add(ConfigurationSnapshots.from(configuration, false, false));
+        }
+        return all;
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }
