@@ -9,7 +9,7 @@ description: >-
 
 # Gradle Tooling API MCP
 
-Gradle プロジェクトの**実行時状態**を MCP 経由で取得・実行する。宣言（`build.gradle.kts` 等）は `project-context-ingestion` を先に使い、MCP は解決済みバージョン・ビルド成否・タスク実行・ソース locate に使う。Idea keep-set 以外のバージョン（Kotlin / plugin など）は `artifacts[]` + `downloadSources` で索引し、`gradleUserHome` を直接読まない。
+Gradle プロジェクトの**実行時状態**を MCP 経由で取得・実行する。宣言（`build.gradle.kts` 等）は `project-context-ingestion` を先に使い、MCP は解決済みバージョン・ビルド成否・タスク実行・ソース locate に使う。Idea keep-set 以外のバージョン（Kotlin / plugin など）は `artifacts[]` + `downloadSources: true` で索引し、`gradleUserHome` を直接読まない。
 
 ## 前提
 
@@ -101,13 +101,13 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | `gradle_list_builds` | 直近の MCP ビルド一覧（メモリ + `.gradle/mcp-builds/`、TAPI 不要） |
 | `gradle_get_build_status` | バックグラウンドビルドの進捗確認 |
 | `gradle_cancel_build` | バックグラウンドビルドのキャンセル（CancellationToken） |
-| `gradle_index_dependency_sources` | 依存ソース索引（Idea / `artifacts[]` / `sourcePaths[]`）。`background: true` で `indexId` 即時返却、フォアグラウンドは ~45s で detach。`projectPath` で Idea モジュール絞り込み。`tokenMode=all`（既定・コメント含む）または `idents`。`downloadSources=true` で不足分を取得（既定 Maven Central、社内は `sourcesRepositories`） |
+| `gradle_index_dependency_sources` | 依存ソース索引（Idea / `artifacts[]` / `sourcePaths[]`）。`background: true` で `indexId` 即時返却、フォアグラウンドは ~45s で detach。`projectPath` で Idea モジュール絞り込み。`tokenMode=all`（既定・コメント含む）または `idents`。`downloadSources: true` で不足分を取得（既定 Maven Central、社内は `sourcesRepositories`） |
 | `gradle_get_dependency_sources_index_status` | バックグラウンド / detach 索引ジョブを `indexId` でポーリング |
 | `gradle_search_dependency_sources` | 依存ソース上の単純名 exact locate（要事前 index）。`limit` 省略=無制限、`0`=空 |
 | `gradle_search_dependency_sources_multi` | 複数名 OR locate（dedup + `matchedQueries`）。`limit` / `perQueryLimit` 対応（`per_query_limit` エイリアス） |
 | `gradle_read_dependency_source` | 検索ヒットの `gav`+`path`（任意で `line`）から UTF-8 スニペット。`contextLines` 既定 10。`line` 省略は先頭から `maxLines`（既定 200）。Idea ディレクトリ / `sourcePaths` はヒットの `sourceRoot` を利用 |
 
-依存ソース検索: 先に `gradle_index_dependency_sources`、続けて `gradle_search_dependency_sources` または `gradle_search_dependency_sources_multi`、必要なら `gradle_read_dependency_source`。索引は `.gradle/mcp-dependency-sources/<tokenMode>/`（`manifest.json` / `formatVersion`）。mode 不一致時は暗黙 reindex しない。大規模リポジトリでは `background: true` + `gradle_get_dependency_sources_index_status`、または `projectPath` / `artifacts[]` / `sourcePaths[]`、初回は `tokenMode: idents` を優先。`artifacts[]` でローカルに無い `*-sources.jar` は `downloadSources=true` で取得（既定 Maven Central。社内ミラーは `sourcesRepositories` に Maven レイアウトの base URL のみを渡し Central は試さない。`user:token@` で Basic 認証可）。検索は単純名の exact match のみ（FQN / プレフィックス / ワイルドカード不可）。
+依存ソース検索: 先に `gradle_index_dependency_sources`、続けて `gradle_search_dependency_sources` または `gradle_search_dependency_sources_multi`、必要なら `gradle_read_dependency_source`。索引は `.gradle/mcp-dependency-sources/<tokenMode>/`（`manifest.json` / `formatVersion`）。mode 不一致時は暗黙 reindex しない。大規模リポジトリでは `background: true` + `gradle_get_dependency_sources_index_status`、または `projectPath` / `artifacts[]` / `sourcePaths[]`、初回は `tokenMode: idents` を優先。`artifacts[]` でローカルに無い `*-sources.jar` は `downloadSources: true` で取得（既定 Maven Central。社内ミラーは `sourcesRepositories` に Maven レイアウトの base URL のみを渡し Central は試さない。`user:token@` で Basic 認証可）。検索は単純名の exact match のみ（FQN / プレフィックス / ワイルドカード不可）。
 
 エンドユーザー向けの正規ワークフロー（JSON 例付き）はリポジトリ [README.md](../../../../README.md) の **Dependency sources name locate**。詳細な引数は [reference.md](reference.md)。
 
@@ -122,7 +122,7 @@ Idea keep-set（引数なし / `projectPath` のみ）は **今のプロジェ�
 | 別 Gradle バージョンの実行時スタック | 必要なら `gradle_disconnect` のあと `gradle_connect` で `gradleVersion` を指定し、`gradle_get_build_environment`。ソース調査のためだけにセッションの接続 Gradle を切り替えない |
 | ワークスペースや手元 zip など **既知パス** の tree/jar | `sourcePaths[]`（任意で GAV ラベル） |
 
-`artifacts[]` はプロジェクトの解決グラフに載っている必要はない。サーバーが Maven local / 接続中プロジェクトの Gradle user home（`caches/modules-2/files-2.1`）/ MCP jars cache を内部参照し、無ければ `downloadSources` で取る。エージェントが `gradleUserHome` 配下を列挙しない。
+`artifacts[]` はプロジェクトの解決グラフに載っている必要はない。サーバーが Maven local / 接続中プロジェクトの Gradle user home（`caches/modules-2/files-2.1`）/ MCP jars cache を内部参照し、無ければ `downloadSources: true` で取る。エージェントが `gradleUserHome` 配下を列挙しない。
 
 `sourcePaths[]` はパスが既に分かっているときだけ使う。`gradleUserHome` や `wrapper/dists` を探索してパスを発見する用途ではない。
 

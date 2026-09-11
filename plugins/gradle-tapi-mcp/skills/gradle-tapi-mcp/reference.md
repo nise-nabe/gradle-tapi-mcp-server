@@ -288,7 +288,7 @@ Canonical end-user workflow (index → search → read, `tokenMode`, keep-set ti
 | `forceReindex` | no | Rebuild even on fingerprint hit |
 | `background` | no | Return `indexId` immediately; poll `gradle_get_dependency_sources_index_status` |
 
-Index cache: `<project>/.gradle/mcp-dependency-sources/<tokenMode>/` (`manifest.json`). With `artifacts[]`, missing jars can be fetched via `downloadSources=true` (Maven Central by default, or `sourcesRepositories` for corporate mirrors). On large monorepos prefer `background: true`, `projectPath`, `artifacts[]` / `sourcePaths[]`, and/or `tokenMode: idents` over an unscoped foreground Idea keep-set. Foreground Idea indexing auto-detaches after ~45s (`detached: true` + `indexId`).
+Index cache: `<project>/.gradle/mcp-dependency-sources/<tokenMode>/` (`manifest.json`). With `artifacts[]`, missing jars can be fetched via `downloadSources: true` (Maven Central by default, or `sourcesRepositories` for corporate mirrors). On large monorepos prefer `background: true`, `projectPath`, `artifacts[]` / `sourcePaths[]`, and/or `tokenMode: idents` over an unscoped foreground Idea keep-set. Foreground Idea indexing auto-detaches after ~45s (`detached: true` + `indexId`).
 
 Configuration-scoped indexing: call `gradle_get_dependency_resolution` with `configuration` (optional `projectPath`), then pass resolved GAVs as `artifacts[]`.
 
