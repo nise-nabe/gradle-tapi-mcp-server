@@ -18,7 +18,7 @@ internal class QueryStrippingPathSegmentMatcher(
     private val delegate = PathSegmentTemplateMatcher(resourceTemplate)
 
     override fun match(resourceUri: String): MatchResult? =
-        delegate.match(stripQueryAndFragment(resourceUri))
+        delegate.match(canonicalizeGradleTapiScheme(stripQueryAndFragment(resourceUri)))
 
     companion object {
         val factory: ResourceTemplateMatcherFactory = ResourceTemplateMatcherFactory { template ->
@@ -28,6 +28,25 @@ internal class QueryStrippingPathSegmentMatcher(
         fun stripQueryAndFragment(uri: String): String {
             val withoutFragment = uri.substringBefore('#')
             return withoutFragment.substringBefore('?')
+        }
+
+        /**
+         * RFC 3986 schemes are case-insensitive. The SDK matcher compares the
+         * advertised lowercase `gradle-tapi://` template literally.
+         */
+        fun canonicalizeGradleTapiScheme(uri: String): String {
+            val schemeSeparator = uri.indexOf("://")
+            if (schemeSeparator <= 0) {
+                return uri
+            }
+            val scheme = uri.substring(0, schemeSeparator)
+            if (!scheme.equals(GradleTapiResourceUri.SCHEME, ignoreCase = true)) {
+                return uri
+            }
+            if (scheme == GradleTapiResourceUri.SCHEME) {
+                return uri
+            }
+            return GradleTapiResourceUri.SCHEME + uri.substring(schemeSeparator)
         }
     }
 }

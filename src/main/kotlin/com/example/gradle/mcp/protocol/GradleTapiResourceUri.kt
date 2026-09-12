@@ -54,11 +54,13 @@ internal data class GradleTapiResourceUri(
             if (trimmed.isEmpty()) {
                 throw invalidUri("Resource URI must not be blank")
             }
-            val schemePrefix = "$SCHEME://"
-            if (!trimmed.startsWith(schemePrefix)) {
+            val schemeSeparator = trimmed.indexOf("://")
+            if (schemeSeparator <= 0 ||
+                !trimmed.substring(0, schemeSeparator).equals(SCHEME, ignoreCase = true)
+            ) {
                 throw invalidUri("Resource URI must use $SCHEME://, got: $uri")
             }
-            val rest = trimmed.removePrefix(schemePrefix)
+            val rest = trimmed.substring(schemeSeparator + "://".length)
             val withoutFragment = rest.substringBefore('#')
             val authorityAndPath = withoutFragment.substringBefore('?')
             val queryString = withoutFragment.substringAfter('?', missingDelimiterValue = "")

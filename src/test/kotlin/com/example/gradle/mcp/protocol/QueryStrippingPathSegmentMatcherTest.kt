@@ -43,6 +43,21 @@ class QueryStrippingPathSegmentMatcherTest {
     }
 
     @Test
+    fun `matches advertised template when scheme case differs`() {
+        val matcher = QueryStrippingPathSegmentMatcher(
+            ResourceTemplate(
+                uriTemplate = GradleTapiResourceTemplates.environment.uriTemplate,
+                name = GradleTapiResourceTemplates.environment.name,
+            ),
+        )
+
+        val match = matcher.match("GRADLE-TAPI://%2Fworkspace/environment")
+
+        match.shouldNotBeNull()
+        match.variables.shouldContainExactly(mapOf("projectRoot" to "/workspace"))
+    }
+
+    @Test
     fun `does not match a different resource path`() {
         val matcher = QueryStrippingPathSegmentMatcher(
             ResourceTemplate(

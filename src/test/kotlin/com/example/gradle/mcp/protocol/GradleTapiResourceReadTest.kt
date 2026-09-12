@@ -218,9 +218,10 @@ class GradleTapiResourceReadTest {
 
     @Test
     fun `unknown resource path is invalid argument`(@TempDir project: File) {
+        val connectionManager = GradleConnectionManager()
         val runtime = DefaultGradleMcpRuntime(
-            GradleConnectionManager(),
-            BuildExecutionManager(GradleConnectionManager()),
+            connectionManager,
+            BuildExecutionManager(connectionManager),
         )
         val error = shouldThrow<McpException> {
             readGradleTapiResource(

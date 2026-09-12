@@ -83,6 +83,16 @@ class GradleTapiResourceUriTest {
     }
 
     @Test
+    fun `parses scheme case-insensitively`() {
+        val parsed = GradleTapiResourceUri.parse(
+            "GRADLE-TAPI://%2Fworkspace/environment",
+        )
+
+        parsed.kind shouldBe GradleTapiResourceKind.Environment
+        parsed.projectDirectory shouldBe File("/workspace").absoluteFile
+    }
+
+    @Test
     fun `rejects non gradle-tapi scheme`() {
         val error = shouldThrow<McpException> {
             GradleTapiResourceUri.parse("file:///workspace/overview")
