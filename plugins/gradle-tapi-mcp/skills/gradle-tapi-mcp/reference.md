@@ -234,7 +234,7 @@ Cancels the Gradle daemon build via Tooling API `CancellationToken`. Returns imm
 | `buildId` | yes | — | Build ID from a background run |
 | `projectDirectory` | no | connected project | Project root for disk-only lookup when the in-memory record was evicted and the connected project differs |
 | `includeProgress` | no | `false` | Include detailed `progress` object |
-| `includeProblems` | no | `false` | Live Problems API as `liveProblems` while running. Terminal `failed` + `GRADLE_TASK` already includes capped `problems` when emitted (no flag needed). Re-poll with `true` if terminal `problems` is missing — do not re-run via CLI for compiler output. `includeOutput` tails often miss Kotlin `Compilation error. See log for more details` |
+| `includeProblems` | no | `false` | Live Problems API as `liveProblems` while running. Terminal `failed` + `GRADLE_TASK` already includes capped `problems` when emitted (no flag needed). Problem entries include `originLocations` / `contextualLocations` with `path` and `line` when provided. Re-poll with `true` if terminal `problems` is missing — do not re-run via CLI for compiler output. `includeOutput` tails often miss Kotlin `Compilation error. See log for more details` |
 | `includeOutput` | no | `false` | Include stdout/stderr for running/completed builds. **Avoid `true` while `status` is `running`** unless debugging—prefer `sinceStdoutOffset` / `sinceStderrOffset` for incremental output, or read `testFailures` / `buildSummary` / `problems` on terminal failure |
 | `maxOutputChars` | no | `8000` | Per-stream char limit when `includeOutput=true` |
 | `tailOutput` | no | `true` | Keep tail when truncating |
@@ -253,7 +253,7 @@ Returns `status` (`queued`, `running`, `succeeded`, `failed`, `cancelled`, or `n
 | Flag | Default | Effect |
 |------|---------|--------|
 | `includeProgress` | `false` | `progress.completedTasks`, `progress.recentEvents` (live Tooling API or disk `events.ndjson`) |
-| `includeProblems` | `false` | Live Gradle Problems API as `liveProblems` while running. Failed `GRADLE_TASK` status includes a **capped** `problems` array by default (merged failure-result + live events). Re-poll with this flag if terminal `problems` is missing. Do not re-run via CLI for compiler output; `includeOutput` tails often miss Kotlin `Compilation error. See log for more details`. |
+| `includeProblems` | `false` | Live Gradle Problems API as `liveProblems` while running. Failed `GRADLE_TASK` status includes a **capped** `problems` array by default (merged failure-result + live events). Problem entries include `originLocations` / `contextualLocations` with `path` and `line` when Gradle provides them. Re-poll with this flag if terminal `problems` is missing. Do not re-run via CLI for compiler output; `includeOutput` tails often miss Kotlin `Compilation error. See log for more details`. |
 | `includeDownloads` | `false` | `activeDownloadCount`, `recentDownloads` (requires in-memory live record) |
 | `includeTestDetails` | `false` | Terminal `failedTests`; with `includeProgress=true`, adds `progress.recentEvents[].test` on `TEST_*` events. Disk polls restore `failedTests` from `events.ndjson` (`className`, `methodName`, `failureMessage`; `sourcePath`/`sourceLine` need live Tooling API) |
 
