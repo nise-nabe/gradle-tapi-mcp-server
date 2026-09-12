@@ -103,6 +103,47 @@ class ModelToolsTest {
     }
 
     @Test
+    fun `requireScopedProject attaches resilient failures when path is missing`() {
+        val root = gradleProjectProxy(
+            name = "root",
+            path = ":",
+            directory = File("/root"),
+        )
+        val result = ResilientModel(
+            model = root,
+            failures = listOf(FailureSnapshot(message = "included build failed")),
+        )
+
+        val error = shouldThrow<McpException> {
+            requireScopedProject(root, ProjectTreeOptions(projectPath = ":missing"), result)
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain ":missing"
+        error.errorDetails["failures"] shouldBe listOf(mapOf("message" to "included build failed"))
+    }
+
+    @Test
+    fun `requireScopedProject omits failures when the fetch was complete`() {
+        val root = gradleProjectProxy(
+            name = "root",
+            path = ":",
+            directory = File("/root"),
+        )
+
+        val error = shouldThrow<McpException> {
+            requireScopedProject(
+                root,
+                ProjectTreeOptions(projectPath = ":missing"),
+                ResilientModel(model = root),
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.errorDetails shouldBe emptyMap()
+    }
+
+    @Test
     fun `scopedGradleProject resolves scoped subproject`() {
         val root = gradleProjectProxy(
             name = "root",

@@ -52,7 +52,7 @@ class ResilientModelFetcherTest {
         result.partial shouldBe true
         result.usedFallback shouldBe false
         result.failures.single().message shouldBe "included build failed"
-        harness.calls.shouldContainExactly(listOf("action", "buildFinished", "build", "run"))
+        harness.calls.shouldContainExactly(listOf("action", "buildFinished", "build", "withDetailedFailure", "run"))
     }
 
     @Test
@@ -75,6 +75,24 @@ class ResilientModelFetcherTest {
         result.partial shouldBe true
         result.model.path shouldBe ":"
         result.failures.single().message shouldBe "included build failed"
+    }
+
+    @Test
+    fun `marks partial from run exception message when failure lists are empty`() {
+        val payload = ResilientModelPayload(sampleGradleProject(), emptyList(), false)
+        val thrown = GradleConnectionException("Could not execute build because of a failure")
+        val harness = phasedConnection(payload, runException = thrown)
+
+        val result = harness.connection.fetchResilientModel(
+            GradleProject::class.java,
+            ModelFetchPhase.BUILD_FINISHED,
+            listOf(":app:compileJava"),
+            "9.7.1",
+        )
+
+        result.partial shouldBe true
+        result.model.path shouldBe ":"
+        result.failures.single().message shouldBe "Could not execute build because of a failure"
     }
 
     @Test
@@ -141,7 +159,7 @@ class ResilientModelFetcherTest {
         )
 
         result.model shouldBe "gradle-build"
-        harness.calls.shouldContainExactly(listOf("action", "projectsLoaded", "build", "run"))
+        harness.calls.shouldContainExactly(listOf("action", "projectsLoaded", "build", "withDetailedFailure", "run"))
     }
 
     @Test
@@ -157,7 +175,7 @@ class ResilientModelFetcherTest {
         )
 
         harness.calls.shouldContainExactly(
-            listOf("action", "buildFinished", "build", "forTasks:help,:test", "run"),
+            listOf("action", "buildFinished", "build", "withDetailedFailure", "forTasks:help,:test", "run"),
         )
     }
 
@@ -179,7 +197,9 @@ class ResilientModelFetcherTest {
 
         result.usedFallback shouldBe true
         result.model.shouldBeSameInstanceAs(project)
-        harness.calls.shouldContainExactly(listOf("action", "buildFinished", "build", "run", "getModel:GradleProject"))
+        harness.calls.shouldContainExactly(
+            listOf("action", "buildFinished", "build", "withDetailedFailure", "run", "getModel:GradleProject"),
+        )
     }
 
     @Test
@@ -199,7 +219,7 @@ class ResilientModelFetcherTest {
         }
 
         error.code shouldBe McpErrorCode.BUILD_FAILED
-        harness.calls.shouldContainExactly(listOf("action", "buildFinished", "build", "run"))
+        harness.calls.shouldContainExactly(listOf("action", "buildFinished", "build", "withDetailedFailure", "run"))
     }
 
     @Test
@@ -216,7 +236,7 @@ class ResilientModelFetcherTest {
 
         result.model.project.path shouldBe ":"
         result.model.invocations.shouldBeSameInstanceAs(payload.invocations)
-        harness.calls.shouldContainExactly(listOf("action", "buildFinished", "build", "run"))
+        harness.calls.shouldContainExactly(listOf("action", "buildFinished", "build", "withDetailedFailure", "run"))
     }
 
     @Test

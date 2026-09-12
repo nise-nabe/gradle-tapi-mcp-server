@@ -102,6 +102,10 @@ internal fun phasedConnection(
                 calls += "forTasks:${tasks.joinToString(",")}"
                 executer
             }
+            "withDetailedFailure" -> {
+                calls += "withDetailedFailure"
+                executer
+            }
             "run" -> {
                 calls += "run"
                 val handler = buildFinishedHandler ?: projectsLoadedHandler
