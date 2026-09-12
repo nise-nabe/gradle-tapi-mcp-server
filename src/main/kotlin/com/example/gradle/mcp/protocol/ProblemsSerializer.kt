@@ -1,8 +1,12 @@
 package com.example.gradle.mcp.protocol
 
 import com.example.gradle.mcp.build.BuildProblemSnapshot
+import com.example.gradle.mcp.build.ProblemLocationSnapshot
 import org.gradle.tooling.Failure
 import org.gradle.tooling.events.FailureResult
+import org.gradle.tooling.events.problems.FileLocation
+import org.gradle.tooling.events.problems.LineInFileLocation
+import org.gradle.tooling.events.problems.Location
 import org.gradle.tooling.events.problems.Problem
 import org.gradle.tooling.events.problems.ProblemAggregation
 import org.gradle.tooling.events.problems.ProblemAggregationEvent
@@ -83,6 +87,8 @@ internal object ProblemsSerializer {
                     put("solutions", problem.solutions)
                 }
                 problem.contextualLabel?.let { put("contextualLabel", it) }
+                locationResponse(problem.originLocations)?.let { put("originLocations", it) }
+                locationResponse(problem.contextualLocations)?.let { put("contextualLocations", it) }
             }
         }
 
@@ -125,6 +131,8 @@ internal object ProblemsSerializer {
             severity = severityName(definition.severity),
             solutions = problem.solutions.mapNotNull { it.solution.takeIf(String::isNotBlank) },
             contextualLabel = problem.contextualLabel?.contextualLabel?.takeIf { it.isNotBlank() },
+            originLocations = safeLocations { problem.originLocations },
+            contextualLocations = safeLocations { problem.contextualLocations },
         )
     }
 
@@ -144,7 +152,39 @@ internal object ProblemsSerializer {
                 ?: context.failure?.message?.takeIf { it.isNotBlank() },
             severity = severityName(definition.severity),
             solutions = context.solutions.mapNotNull { it.solution.takeIf(String::isNotBlank) },
+            originLocations = safeLocations { context.originLocations },
+            contextualLocations = safeLocations { context.contextualLocations },
         )
+
+    private fun safeLocations(getter: () -> Collection<Location>?): List<ProblemLocationSnapshot> =
+        runCatching { locationSnapshots(getter()) }.getOrDefault(emptyList())
+
+    private fun locationSnapshots(locations: Collection<Location>?): List<ProblemLocationSnapshot> =
+        locations.orEmpty().mapNotNull { location -> toLocationSnapshot(location) }
+
+    private fun toLocationSnapshot(location: Location): ProblemLocationSnapshot? {
+        val path = (location as? FileLocation)?.path?.takeIf { it.isNotBlank() }
+        val lineInFile = location as? LineInFileLocation
+        val line = lineInFile?.line?.takeIf { it > 0 }
+        val column = lineInFile?.column?.takeIf { it > 0 }
+        if (path == null && line == null) {
+            return null
+        }
+        return ProblemLocationSnapshot(path = path, line = line, column = column)
+    }
+
+    private fun locationResponse(locations: List<ProblemLocationSnapshot>): List<Map<String, Any?>>? {
+        if (locations.isEmpty()) {
+            return null
+        }
+        return locations.map { location ->
+            buildMap {
+                location.path?.let { put("path", it) }
+                location.line?.let { put("line", it) }
+                location.column?.let { put("column", it) }
+            }
+        }
+    }
 
     private fun problemLabel(problemId: ProblemId): String =
         problemId.displayName.takeIf { it.isNotBlank() } ?: problemId.name
