@@ -32,11 +32,11 @@ Most query/build tools accept optional `projectDirectory` (defaults to `GRADLE_P
 
 Model and overview tools also accept optional `prepareTasks` (string array): Gradle tasks to run before fetching the Tooling API model (for example `:app:compileJava` to ensure sources exist). Empty or omitted means no pre-tasks. **While a build is `running` or `queued` for the same `projectDirectory`, model queries are rejected** with `BUILD_ALREADY_RUNNING` and `activeBuildId` / related fields when the occupying build is known. Non-empty `prepareTasks` execute Gradle work and can be slow—use only when needed.
 
-On Gradle 9.3+, those model tools (except `gradle_get_help`) use Tooling API `BuildController.fetch` plus a phased `projectsLoaded` / `buildFinished` action. Partial models (`partial: true` + capped `failures[]`, `isError=false`, max 20; `failuresTruncated` when clipped) need Gradle 9.4+. Gradle 9.7 may throw after the handler already delivered that model; this server keeps the payload and records failures (`withDetailedFailure`, so failed `prepareTasks` are not silent successes). When no model is produced, the tool returns `BUILD_FAILED` with the same `failures` shape. Gradle older than 9.3 keeps all-or-nothing `getModel`. `gradle_get_gradle_build` fetches at `projectsLoaded`; overview, project model, publications, and invocations fetch at `buildFinished` (invocations fetches `GradleProject` and `BuildInvocations` in one action). Scoped `projectPath` that is missing from a partial tree returns `INVALID_ARGUMENT` and includes those `failures` when present.
+On Gradle 9.3+, those model tools (except `gradle_get_help`) use Tooling API `BuildController.fetch` plus a phased `projectsLoaded` / `buildFinished` action. Partial models (`partial: true` + capped `failures[]`, `isError=false`, max 20; `failuresTruncated` when clipped) need Gradle 9.4+. Gradle 9.7 may throw after the handler already delivered that model; this server keeps the payload and records failures (`withDetailedFailure`, so failed `prepareTasks` are not silent successes). When no model is produced, the tool returns `BUILD_FAILED` with the same `failures` shape. Gradle older than 9.3 keeps all-or-nothing `getModel`. `gradle_get_gradle_build` fetches at `projectsLoaded`; overview, project model, publications, and invocations fetch at `buildFinished` (invocations fetches `GradleProject` and `BuildInvocations` in one action). Omit `buildTreePath` to keep default-project `fetch(Class)`. Pass `buildTreePath` (Tooling API identity, e.g. `:buildSrc`) to `fetch(target, Class)` for included builds and `buildSrc`. Unknown `buildTreePath` returns `INVALID_ARGUMENT` (with `failures` when present). Blank `buildTreePath` is `INVALID_ARGUMENT`. Gradle older than 9.3 rejects `buildTreePath`. Scoped `projectPath` that is missing from a partial tree returns `INVALID_ARGUMENT` and includes those `failures` when present.
 
 ## Query (read-only)
 
-Tools that accept `projectPath` (`gradle_get_project_overview`, `gradle_get_project_model`, `gradle_get_build_invocations`) validate it in `ProjectTreeOptions.fromArgs`: malformed paths (e.g. `::plugin`, `:plugin:`) return `INVALID_ARGUMENT` before any Tooling API fetch. Unknown but syntactically valid paths (e.g. `:missing`) still require a `GradleProject` model fetch to resolve against the connected tree.
+Tools that accept `projectPath` (`gradle_get_project_overview`, `gradle_get_project_model`, `gradle_get_build_invocations`) validate it in `ProjectTreeOptions.fromArgs`: malformed paths (e.g. `::plugin`, `:plugin:`) return `INVALID_ARGUMENT` before any Tooling API fetch. Unknown but syntactically valid paths (e.g. `:missing`) still require a `GradleProject` model fetch to resolve against the connected tree. `buildTreePath` uses the same identity-path syntax and is required to target included builds / `buildSrc`; do not use `projectPath` as an included-build selector.
 
 ### gradle_get_build_environment
 
@@ -93,7 +93,8 @@ Returns:
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `projectPath` | — | Scope results to a subproject path (e.g. `:plugin`); includes its children. Resolves within the connected build's `GradleProject` tree only (not included/editable composite builds; use `gradle_get_gradle_build` for those). |
+| `projectPath` | — | Scope results to a subproject path (e.g. `:plugin`); includes its children. Resolves within the connected build's `GradleProject` tree only. |
+| `buildTreePath` | — | Tooling API `buildTreePath` (e.g. `:buildSrc`, `:included`) to `fetch` that project, including included builds and `buildSrc`. Required to target those; omit to fetch the connected build's default project. Cap with `maxDepth` / `maxChildren`. |
 | `maxDepth` | unlimited | Maximum project tree depth (depth 0 = scoped `projectPath` when set, else build root) |
 | `maxChildren` | unlimited | Maximum child projects per node |
 | `prepareTasks` | `[]` | Optional tasks to run before fetching the model |
@@ -107,13 +108,14 @@ Returns hierarchy with `taskCount` per project; no task lists. When truncated: `
 | `maxDepth` | unlimited | Maximum project tree depth (depth 0 = build root) |
 | `maxChildren` | unlimited | Maximum child projects per node |
 
-`projectPath` is not supported on this tool. Use `gradle_get_project_overview`, `gradle_get_project_model`, or `gradle_get_build_invocations` to scope a subproject within the connected build. Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`BasicGradleProject`), flat `projects`, `projectCount`, `includedBuilds`, and `editableBuilds`. No tasks. Nested composite builds reuse the same shape; already-visited builds return `{ buildRootDir, cycleReference: true }`. Fetched at `projectsLoaded`. Gradle 9.4+: `partial: true` plus capped `failures[]` when some builds fail.
+`projectPath` and `buildTreePath` are not supported on this tool. Discover included / `buildSrc` identity paths here, then pass `buildTreePath` to `gradle_get_project_overview`, `gradle_get_project_model`, `gradle_get_build_invocations`, or `gradle_get_project_publications`. Use `projectPath` on those tools to scope a subtree within the connected build. Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`BasicGradleProject`), flat `projects`, `projectCount`, `includedBuilds`, and `editableBuilds`. No tasks. Nested composite builds reuse the same shape; already-visited builds return `{ buildRootDir, cycleReference: true }`. Fetched at `projectsLoaded`. Gradle 9.4+: `partial: true` plus capped `failures[]` when some builds fail.
 
 ### gradle_get_project_model
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `projectPath` | — | Scope results to a subproject path (e.g. `:plugin`); includes its children. Resolves within the connected build's `GradleProject` tree only (not included/editable composite builds; use `gradle_get_gradle_build` for those). |
+| `projectPath` | — | Scope results to a subproject path (e.g. `:plugin`); includes its children. Resolves within the connected build's `GradleProject` tree only. |
+| `buildTreePath` | — | Tooling API `buildTreePath` (e.g. `:buildSrc`, `:included`) to `fetch` that project, including included builds and `buildSrc`. Required to target those; omit to fetch the connected build's default project. Cap with `maxDepth` / `maxChildren`. |
 | `maxDepth` | unlimited | Maximum project tree depth (depth 0 = scoped `projectPath` when set, else build root) |
 | `maxChildren` | unlimited | Maximum child projects per node |
 | `includeTasks` | `false` | Include task arrays |
@@ -126,7 +128,7 @@ Slim task shape (default): `{ name, path, group }`.
 
 ### gradle_get_build_invocations
 
-Same task query options as `gradle_get_project_model` (including `projectPath`, global `maxTasks`, `maxDepth` / `maxChildren`). When `maxTasks` caps the result, the response includes `tasksTruncated` and `tasksTotalMatched`. Plus:
+Same task query options as `gradle_get_project_model` (including `projectPath`, `buildTreePath`, global `maxTasks`, `maxDepth` / `maxChildren`). When `maxTasks` caps the result, the response includes `tasksTruncated` and `tasksTotalMatched`. Plus:
 
 | Argument | Default | Description |
 |----------|---------|-------------|
@@ -142,6 +144,7 @@ When `projectPath` is set, `taskSelectors` include only selectors whose task nam
 |----------|---------|-------------|
 | `projectDirectory` | `GRADLE_PROJECT_DIR` | Gradle project directory to connect |
 | `prepareTasks` | `[]` | Optional tasks to run before fetching the model |
+| `buildTreePath` | — | Tooling API `buildTreePath` to fetch publications for included builds / `buildSrc`. Omit for the connected build's default project. |
 
 `projectPath` is not supported on this tool.
 
@@ -342,7 +345,7 @@ Scheme: `gradle-tapi://{url-encoded-absolute-project-root}/…` (`mimeType`: `ap
 |--------------|------|-------|
 | `…/connection/status` | `gradle_connection_status` | `refresh=true` live-fetches `BuildEnvironment` when uncached |
 | `…/environment` | `gradle_get_build_environment` | — |
-| `…/overview` | `gradle_get_project_overview` | optional `projectPath`, `maxDepth`, `maxChildren` |
+| `…/overview` | `gradle_get_project_overview` | optional `projectPath`, `buildTreePath`, `maxDepth`, `maxChildren` |
 | `…/builds/{buildId}/status` | `gradle_get_build_status` | default omits stdout/progress; optional `includeOutput` / `includeProgress` |
 | `…/builds/recent` | `gradle_list_builds` | optional `limit` |
 
