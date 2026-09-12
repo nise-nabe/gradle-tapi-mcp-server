@@ -71,11 +71,11 @@ Do not rely on bare `gh` before install completes. Set `GH_TOKEN` in Cursor Clou
 
 | Goal | Command |
 |------|---------|
-| Build JAR | `./gradlew jar` → `build/libs/gradle-tapi-mcp-server-0.11.1.jar` |
+| Build JAR | `./gradlew jar` → `build/libs/gradle-tapi-mcp-server-0.12.0.jar` |
 | Unit tests | `./gradlew test` (JUnit 5; mocked Tooling API, no Gradle daemon) |
 | Full verify | `./gradlew build` (compile + test + assemble) |
 | Lint | Not configured; use `./gradlew build` as compile/test gate |
-| Run MCP server | `GRADLE_PROJECT_DIR=/workspace java -jar build/libs/gradle-tapi-mcp-server-0.11.1.jar` |
+| Run MCP server | `GRADLE_PROJECT_DIR=/workspace java -jar build/libs/gradle-tapi-mcp-server-0.12.0.jar` |
 
 Logging goes to **stderr** only; **stdout** is reserved for MCP JSON-RPC (newline-delimited JSON).
 
