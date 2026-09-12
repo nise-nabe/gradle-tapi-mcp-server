@@ -115,6 +115,27 @@ class GradleTapiResourceUriTest {
     }
 
     @Test
+    fun `toToolArgs keeps URI projectDirectory and buildId over query aliases`() {
+        val parsed = GradleTapiResourceUri.parse(
+            "gradle-tapi://%2Ftmp%2Fapp/builds/real-id/status?buildId=other&projectDirectory=%2Ftmp%2Fother",
+        )
+
+        val args = parsed.toToolArgs()
+        args["buildId"] shouldBe "real-id"
+        args["projectDirectory"] shouldBe File("/tmp/app").absoluteFile.path
+    }
+
+    @Test
+    fun `decodes plus in project root as plus not space`() {
+        val parsed = GradleTapiResourceUri.parse(
+            "gradle-tapi://%2Ftmp%2Ffoo+bar/environment",
+        )
+
+        parsed.projectDirectory shouldBe File("/tmp/foo+bar").absoluteFile
+        parsed.kind shouldBe GradleTapiResourceKind.Environment
+    }
+
+    @Test
     fun `rejects non-boolean refresh query`() {
         val parsed = GradleTapiResourceUri.parse(
             "gradle-tapi://%2Fworkspace/connection/status?refresh=yes",

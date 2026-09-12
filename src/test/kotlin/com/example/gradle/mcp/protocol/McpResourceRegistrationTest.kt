@@ -67,7 +67,8 @@ class McpResourceRegistrationTest {
     @Test
     fun `resources list is empty when no project is connected`() {
         registeredMcpResourceTemplateUris.clear()
-        val runtime = DefaultGradleMcpRuntime(GradleConnectionManager(), BuildExecutionManager(GradleConnectionManager()))
+        val connectionManager = GradleConnectionManager()
+        val runtime = DefaultGradleMcpRuntime(connectionManager, BuildExecutionManager(connectionManager))
         val server = resourceEnabledServer()
         with(runtime) {
             server.registerGradleTapiResources()

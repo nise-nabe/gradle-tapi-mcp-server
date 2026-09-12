@@ -346,9 +346,9 @@ Scheme: `gradle-tapi://{url-encoded-absolute-project-root}/…` (`mimeType`: `ap
 | `…/builds/{buildId}/status` | `gradle_get_build_status` | default omits stdout/progress; optional `includeOutput` / `includeProgress` |
 | `…/builds/recent` | `gradle_list_builds` | optional `limit` |
 
-`resources/templates/list` always lists the five templates. `resources/list` lists concrete URIs for connected projects (build status stays template-only). Subscribe is off.
+`resources/templates/list` always lists the five templates. `resources/list` lists concrete URIs for projects connected at **server startup** (typically `GRADLE_PROJECT_DIR` auto-connect); build status stays template-only. Later `gradle_connect` / `gradle_disconnect` do not update that list (`listChanged` is off). `resources/read` still matches the templates for any encoded project root. Subscribe is off.
 
-**ProjectLifecycleGuard:** overview **rejects** with `BUILD_ALREADY_RUNNING` while an MCP build is active for that project (same as the tool). No stale snapshot. Other Phase 1 resources follow their tools.
+**ProjectLifecycleGuard:** overview **rejects** while an MCP build is active for that project (same as the tool). The JSON-RPC error `data.error` includes `code` (`BUILD_ALREADY_RUNNING`), `message`, and `activeBuildId` / related fields. No stale snapshot. Other Phase 1 resources follow their tools.
 
 ## MCP tool discovery (token-efficient)
 

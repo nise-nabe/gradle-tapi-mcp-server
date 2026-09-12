@@ -34,11 +34,14 @@ internal data class GradleTapiResourceUri(
     }
 
     fun toToolArgs(): Map<String, Any> = buildMap {
-        put("projectDirectory", projectDirectory.path)
-        kind.buildId?.let { put("buildId", it) }
         query.forEach { (key, raw) ->
+            if (key == "projectDirectory" || key == "buildId") {
+                return@forEach
+            }
             put(key, coerceQueryValue(key, raw))
         }
+        put("projectDirectory", projectDirectory.path)
+        kind.buildId?.let { put("buildId", it) }
     }
 
     companion object {
@@ -84,7 +87,9 @@ internal data class GradleTapiResourceUri(
 
         internal fun decodeSegment(value: String, uri: String): String =
             try {
-                URLDecoder.decode(value, StandardCharsets.UTF_8)
+                // RFC 3986: '+' is a literal plus. URLDecoder is form-encoding and would
+                // turn it into a space, disagreeing with the SDK's decodeURLPart matcher.
+                URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8)
             } catch (exception: IllegalArgumentException) {
                 throw McpException(
                     McpErrorCode.INVALID_ARGUMENT,

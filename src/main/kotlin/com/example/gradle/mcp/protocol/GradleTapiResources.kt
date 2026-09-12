@@ -134,14 +134,7 @@ internal suspend fun readGradleTapiResourceResult(
     } catch (exception: CancellationException) {
         throw exception
     } catch (exception: Exception) {
-        if (exception is McpException) {
-            throw exception
-        }
-        throw McpException(
-            mapExceptionToErrorCode(exception),
-            exception.message ?: exception.toString(),
-            exception,
-        )
+        throw exception.toSdkResourceException()
     }
 
 /**

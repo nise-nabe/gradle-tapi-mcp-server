@@ -110,9 +110,9 @@ URI scheme: `gradle-tapi://{url-encoded-absolute-project-root}/…`
 | `…/builds/{buildId}/status` | `gradle_get_build_status` | Default omits stdout and progress (same as the tool) |
 | `…/builds/recent` | `gradle_list_builds` | Memory + `.gradle/mcp-builds/`; no Tooling API |
 
-`resources/templates/list` always advertises those five templates. `resources/list` also lists concrete URIs for **currently connected** projects (except `builds/{buildId}/status`, which stays template-only until a `buildId` is known). Subscribe / `listChanged` are not enabled.
+`resources/templates/list` always advertises those five templates. `resources/list` lists concrete URIs for projects connected at **server startup** (typically `GRADLE_PROJECT_DIR` auto-connect), except `builds/{buildId}/status`, which stays template-only until a `buildId` is known. Later `gradle_connect` / `gradle_disconnect` do not change that list (`listChanged` is off). `resources/read` still works for any encoded project root that matches a template. Subscribe is not enabled.
 
-While an MCP build is active for a project, the **overview** resource **rejects** the read with `BUILD_ALREADY_RUNNING` (same `ProjectLifecycleGuard` as `gradle_get_project_overview`). It does not return a stale tree. Connection status, environment, build status, and recent builds follow the corresponding tools.
+While an MCP build is active for a project, the **overview** resource **rejects** the read. The JSON-RPC error `data.error` matches the tool payload (`code`: `BUILD_ALREADY_RUNNING`, `message`, `activeBuildId` and related fields). It does not return a stale tree. Connection status, environment, build status, and recent builds follow the corresponding tools.
 
 ## Modules
 

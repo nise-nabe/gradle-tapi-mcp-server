@@ -3,6 +3,7 @@ package com.example.gradle.mcp.protocol
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.shouldBe
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
+import io.modelcontextprotocol.kotlin.sdk.types.RPCError
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -100,6 +101,32 @@ class McpErrorsTest {
             "activeBuildId" to "abc-123",
             "activeKind" to "tasks",
         )
+    }
+
+    @Test
+    fun `resource SDK exception keeps structured error data`() {
+        val protocol = McpException(
+            McpErrorCode.BUILD_ALREADY_RUNNING,
+            "Cannot query Gradle models while a build is active for /tmp.",
+            errorDetails = mapOf("activeBuildId" to "running-build"),
+        )
+
+        val sdk = protocol.toSdkResourceException()
+
+        sdk.code shouldBe RPCError.ErrorCode.INTERNAL_ERROR
+        sdk.message shouldBe protocol.message
+        val payload = decodeMcpJsonMap(sdk.data.toString())
+        payload["error"] shouldBe mapOf(
+            "code" to "BUILD_ALREADY_RUNNING",
+            "message" to protocol.message,
+            "activeBuildId" to "running-build",
+        )
+    }
+
+    @Test
+    fun `invalid argument resource errors use JSON-RPC invalid params`() {
+        val sdk = McpException(McpErrorCode.INVALID_ARGUMENT, "bad uri").toSdkResourceException()
+        sdk.code shouldBe RPCError.ErrorCode.INVALID_PARAMS
     }
 
     companion object {
