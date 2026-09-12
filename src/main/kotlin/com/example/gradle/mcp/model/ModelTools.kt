@@ -90,6 +90,25 @@ private fun prepareTasksFromArgs(args: Map<String, Any>): List<String> =
 internal fun scopedGradleProject(root: GradleProject, treeOptions: ProjectTreeOptions): GradleProject =
     ProjectTreeScope.requireProject(root, treeOptions.projectPath)
 
+internal fun requireScopedProject(
+    project: GradleProject,
+    treeOptions: ProjectTreeOptions,
+    result: ResilientModel<*>,
+): GradleProject =
+    try {
+        scopedGradleProject(project, treeOptions)
+    } catch (error: McpException) {
+        if (error.code != McpErrorCode.INVALID_ARGUMENT || result.failures.isEmpty()) {
+            throw error
+        }
+        throw McpException(
+            error.code,
+            error.message,
+            error,
+            error.errorDetails + resilientErrorDetails(result.failures, result.failuresTruncated),
+        )
+    }
+
 internal fun requireNoActiveBuildForPrepareTasks(
     prepareTasks: List<String>,
     projectDirectory: File,
@@ -186,7 +205,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
                     prepareTasks,
                     gradleVersion,
                 ).also { result ->
-                    scopedGradleProject(result.model, treeOptions)
+                    requireScopedProject(result.model, treeOptions, result)
                 }
             },
             serialize = { project ->
@@ -235,7 +254,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
                     prepareTasks,
                     gradleVersion,
                 ).also { result ->
-                    scopedGradleProject(result.model, treeOptions)
+                    requireScopedProject(result.model, treeOptions, result)
                 }
             },
             serialize = { project ->
@@ -259,7 +278,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
             args,
             fetch = { connection, prepareTasks, gradleVersion ->
                 connection.fetchResilientProjectAndInvocations(prepareTasks, gradleVersion).also { result ->
-                    scopedGradleProject(result.model.project, treeOptions)
+                    requireScopedProject(result.model.project, treeOptions, result)
                 }
             },
             serialize = { models ->

@@ -32,7 +32,7 @@ Most query/build tools accept optional `projectDirectory` (defaults to `GRADLE_P
 
 Model and overview tools also accept optional `prepareTasks` (string array): Gradle tasks to run before fetching the Tooling API model (for example `:app:compileJava` to ensure sources exist). Empty or omitted means no pre-tasks. **While a build is `running` or `queued` for the same `projectDirectory`, model queries are rejected** with `BUILD_ALREADY_RUNNING` and `activeBuildId` / related fields when the occupying build is known. Non-empty `prepareTasks` execute Gradle work and can be slow—use only when needed.
 
-On Gradle 9.3+, those model tools (except `gradle_get_help`) use Tooling API `BuildController.fetch` plus a phased `projectsLoaded` / `buildFinished` action. A failed included build or project can still return the rest of the model with `partial: true` and capped `failures[]` (`isError=false`, max 20; `failuresTruncated` when clipped). When no model is produced, the tool returns `BUILD_FAILED` with the same `failures` shape. Gradle older than 9.3 keeps all-or-nothing `getModel`. `gradle_get_gradle_build` fetches at `projectsLoaded`; overview, project model, publications, and invocations fetch at `buildFinished` (invocations fetches `GradleProject` and `BuildInvocations` in one action).
+On Gradle 9.3+, those model tools (except `gradle_get_help`) use Tooling API `BuildController.fetch` plus a phased `projectsLoaded` / `buildFinished` action. Partial models (`partial: true` + capped `failures[]`, `isError=false`, max 20; `failuresTruncated` when clipped) need Gradle 9.4+. Gradle 9.7 may throw after the handler already delivered that model; this server keeps the payload and records failures (`withDetailedFailure`, so failed `prepareTasks` are not silent successes). When no model is produced, the tool returns `BUILD_FAILED` with the same `failures` shape. Gradle older than 9.3 keeps all-or-nothing `getModel`. `gradle_get_gradle_build` fetches at `projectsLoaded`; overview, project model, publications, and invocations fetch at `buildFinished` (invocations fetches `GradleProject` and `BuildInvocations` in one action). Scoped `projectPath` that is missing from a partial tree returns `INVALID_ARGUMENT` and includes those `failures` when present.
 
 ## Query (read-only)
 
@@ -98,7 +98,7 @@ Returns:
 | `maxChildren` | unlimited | Maximum child projects per node |
 | `prepareTasks` | `[]` | Optional tasks to run before fetching the model |
 
-Returns hierarchy with `taskCount` per project; no task lists. When truncated: `truncated: true`, `totalChildCount`. Gradle 9.3+: `partial: true` plus capped `failures[]` when some projects fail.
+Returns hierarchy with `taskCount` per project; no task lists. When truncated: `truncated: true`, `totalChildCount`. Gradle 9.4+: `partial: true` plus capped `failures[]` when some projects fail.
 
 ### gradle_get_gradle_build
 
@@ -107,7 +107,7 @@ Returns hierarchy with `taskCount` per project; no task lists. When truncated: `
 | `maxDepth` | unlimited | Maximum project tree depth (depth 0 = build root) |
 | `maxChildren` | unlimited | Maximum child projects per node |
 
-`projectPath` is not supported on this tool. Use `gradle_get_project_overview`, `gradle_get_project_model`, or `gradle_get_build_invocations` to scope a subproject within the connected build. Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`BasicGradleProject`), flat `projects`, `projectCount`, `includedBuilds`, and `editableBuilds`. No tasks. Nested composite builds reuse the same shape; already-visited builds return `{ buildRootDir, cycleReference: true }`. Gradle 9.3+: fetched at `projectsLoaded`; `partial: true` plus capped `failures[]` when some builds fail.
+`projectPath` is not supported on this tool. Use `gradle_get_project_overview`, `gradle_get_project_model`, or `gradle_get_build_invocations` to scope a subproject within the connected build. Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`BasicGradleProject`), flat `projects`, `projectCount`, `includedBuilds`, and `editableBuilds`. No tasks. Nested composite builds reuse the same shape; already-visited builds return `{ buildRootDir, cycleReference: true }`. Fetched at `projectsLoaded`. Gradle 9.4+: `partial: true` plus capped `failures[]` when some builds fail.
 
 ### gradle_get_project_model
 

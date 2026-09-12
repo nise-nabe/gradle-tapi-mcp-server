@@ -210,7 +210,7 @@ internal object ResilientModelFetcher {
         onComplete: (T) -> Unit,
     ): GradleConnectionException? {
         val handler = IntermediateResultHandler(onComplete)
-        val executer = register(connection.action(), handler).build()
+        val executer = register(connection.action(), handler).build().withDetailedFailure()
         if (prepareTasks.isNotEmpty()) {
             executer.forTasks(*prepareTasks.toTypedArray())
         }
@@ -308,11 +308,25 @@ private fun mergeSnapshots(
         }
     }
     val capped = merged.take(FailureRecords.MAX_FAILURES)
+    if (thrown != null && capped.isEmpty()) {
+        return SnapshotList(
+            items = listOf(snapshotFromThrown(thrown)),
+            truncated = false,
+        )
+    }
     return SnapshotList(
         items = capped,
         truncated = payloadTruncated || extra.truncated || merged.size > FailureRecords.MAX_FAILURES,
     )
 }
+
+private fun snapshotFromThrown(exception: GradleConnectionException): FailureSnapshot =
+    FailureSnapshot(
+        message = exception.message
+            ?.take(FailureRecords.MAX_MESSAGE_CHARS)
+            ?.takeIf { it.isNotBlank() }
+            ?: "Gradle model fetch failed",
+    )
 
 private fun snapshotsFromException(exception: GradleConnectionException?): SnapshotList {
     if (exception == null) {
