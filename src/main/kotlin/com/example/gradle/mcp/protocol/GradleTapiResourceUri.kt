@@ -78,7 +78,14 @@ internal data class GradleTapiResourceUri(
             }
             val encodedRoot = authorityAndPath.substring(0, slash)
             val path = authorityAndPath.substring(slash)
-            val projectDirectory = File(decodeSegment(encodedRoot, uri)).absoluteFile
+            val decodedRoot = decodeSegment(encodedRoot, uri)
+            val decodedDirectory = File(decodedRoot)
+            if (!decodedDirectory.isAbsolute) {
+                throw invalidUri(
+                    "Resource URI project root must be an absolute path, got: $uri",
+                )
+            }
+            val projectDirectory = decodedDirectory.absoluteFile
             if (projectDirectory.path.isBlank()) {
                 throw invalidUri("Resource URI project root is blank: $uri")
             }
