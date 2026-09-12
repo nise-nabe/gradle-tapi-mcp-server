@@ -79,11 +79,11 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_get_java_runtimes` | Daemon Java from BuildEnvironment plus detected local JDKs via `javaToolchains -q` (set `includeToolchains: false` for daemon only) |
 | `gradle_get_help` | Gradle CLI help text (`gradle --help` equivalent); optional `maxChars` / `tailOutput`; requires Gradle 9.4+ |
 | `gradle_get_build_cache_status` | Build cache / configuration cache settings and local cache summaries |
-| `gradle_get_project_overview` | Project hierarchy and task counts only; optional `projectPath`, `maxDepth` / `maxChildren`. Gradle 9.4+ may return `partial` + capped `failures` |
+| `gradle_get_project_overview` | Project hierarchy and task counts only; optional `projectPath`, `buildTreePath`, `maxDepth` / `maxChildren`. Gradle 9.4+ may return `partial` + capped `failures` |
 | `gradle_get_gradle_build` | GradleBuild structure (root project tree, all projects, included/editable builds); optional `maxDepth` / `maxChildren`. Gradle 9.4+ may return `partial` + capped `failures` |
-| `gradle_get_project_model` | Project model; tasks omitted by default; optional `projectPath` to scope a subproject subtree. Gradle 9.4+ may return `partial` + capped `failures` |
-| `gradle_get_build_invocations` | Runnable tasks; selectors omitted by default; optional `projectPath` to scope task collection. Gradle 9.4+ may return `partial` + capped `failures` |
-| `gradle_get_project_publications` | Publications. Gradle 9.4+ may return `partial` + capped `failures` |
+| `gradle_get_project_model` | Project model; tasks omitted by default; optional `projectPath` or `buildTreePath`. Gradle 9.4+ may return `partial` + capped `failures` |
+| `gradle_get_build_invocations` | Runnable tasks; selectors omitted by default; optional `projectPath` or `buildTreePath`. Gradle 9.4+ may return `partial` + capped `failures` |
+| `gradle_get_project_publications` | Publications; optional `buildTreePath` for included/`buildSrc`. Gradle 9.4+ may return `partial` + capped `failures` |
 | `gradle_get_dependency_resolution` | Resolved dependency graph via Tooling API `ResolutionResult` (no task run). Omit `configuration` to list resolvable/consumable names (optional `includeAttributes` / `includeOutgoingVariants`; catalog cap 200). With `configuration`: optional `projectPath`, `dependency` filter, `maxDependencies` / `maxComponents` (default 500). Unknown names return `suggestedConfigurations` |
 | `gradle_run_tasks` | Execute tasks; stdout/stderr truncated by default |
 | `gradle_run_tests` | Execute JVM tests by class, method, pattern, or task scope; stdout/stderr truncated by default |
@@ -106,7 +106,7 @@ URI scheme: `gradle-tapi://{url-encoded-absolute-project-root}/…`
 |-----|--------|-------|
 | `…/connection/status` | `gradle_connection_status` | `?refresh=true` live-fetches `BuildEnvironment` when the cache is empty |
 | `…/environment` | `gradle_get_build_environment` | Resolved Gradle/Java, not Version Catalog files |
-| `…/overview` | `gradle_get_project_overview` | Optional `?projectPath=` |
+| `…/overview` | `gradle_get_project_overview` | Optional `?projectPath=` or `?buildTreePath=` |
 | `…/builds/{buildId}/status` | `gradle_get_build_status` | Default omits stdout and progress (same as the tool) |
 | `…/builds/recent` | `gradle_list_builds` | Memory + `.gradle/mcp-builds/`; no Tooling API |
 
@@ -243,7 +243,8 @@ Use heavier tools only when required:
 - `gradle_get_project_model` with `includeTasks=true` to list tasks
 - `includeTaskDetails=true` only when descriptions are needed
 - `taskGroup`, `taskNamePrefix`, or `maxTasks` to narrow large builds
-- `projectPath` on overview/model/invocations to scope a subproject subtree (e.g. `:plugin`) instead of the full monorepo. Resolves within the connected build's `GradleProject` tree only; use `gradle_get_gradle_build` for included/editable composite builds. Scoped `taskSelectors` omit names shared with sibling subprojects; prefer scoped `tasks` paths for invocation targets.
+- `projectPath` on overview/model/invocations to scope a subproject subtree (e.g. `:plugin`) within the connected build's `GradleProject` tree
+- `buildTreePath` (Tooling API identity, e.g. `:buildSrc`) on overview/model/invocations/publications to `fetch` included builds and `buildSrc`; omit it to keep default-project `fetch(Class)`. Do not pass `projectPath` and `buildTreePath` together. Discover identity paths with `gradle_get_gradle_build`. Cap large trees with `maxDepth` / `maxChildren`. Scoped `taskSelectors` omit names shared with sibling subprojects; prefer scoped `tasks` paths for invocation targets.
 - `maxDepth` / `maxChildren` on overview/model queries for large monorepos
 - `gradle_get_build_invocations` with `includeTaskSelectors=true` only when selectors matter
 
@@ -257,7 +258,7 @@ Tool errors return structured JSON: `{ "error": { "code": "NOT_CONNECTED", "mess
 
 Build task failures are **not** tool errors: `gradle_run_tasks` / `gradle_run_tests` return `status: "failed"` / `outcome: "FAILED"` in the success payload (`isError=false`). Reserve `BUILD_FAILED` for tooling failures (for example `javaToolchains` probe errors on `gradle_get_java_runtimes`, or a model query that produced no model).
 
-Model queries (`gradle_get_project_overview`, `gradle_get_gradle_build`, `gradle_get_project_model`, `gradle_get_build_invocations`, `gradle_get_project_publications`) use Tooling API `fetch` on Gradle 9.3+. Gradle 9.4+ can return a partial model when some projects fail (`partial: true` and capped `failures[]`, `isError=false`). Gradle 9.7 may still throw after that payload is delivered; this server keeps the model and surfaces failures (including `prepareTasks` failures, via `withDetailedFailure`). When no model is produced, the tool returns `BUILD_FAILED` with the same `failures` shape. Gradle older than 9.3 keeps all-or-nothing `getModel`. `gradle_get_help` and `gradle_get_build_environment` are unchanged.
+Model queries (`gradle_get_project_overview`, `gradle_get_gradle_build`, `gradle_get_project_model`, `gradle_get_build_invocations`, `gradle_get_project_publications`) use Tooling API `fetch` on Gradle 9.3+. Omit `buildTreePath` for default-project `fetch(Class)`. Pass `buildTreePath` to `fetch` a specific included build or `buildSrc` project. Gradle 9.4+ can return a partial model when some projects fail (`partial: true` and capped `failures[]`, `isError=false`). Gradle 9.7 may still throw after that payload is delivered; this server keeps the model and surfaces failures (including `prepareTasks` failures, via `withDetailedFailure`). When no model is produced, the tool returns `BUILD_FAILED` with the same `failures` shape. Gradle older than 9.3 keeps all-or-nothing `getModel` and rejects `buildTreePath`. `gradle_get_help` and `gradle_get_build_environment` are unchanged.
 
 ## Multiple projects
 

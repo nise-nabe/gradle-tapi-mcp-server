@@ -106,3 +106,58 @@ internal fun <T> toolingDomainObjectSet(items: List<T>): DomainObjectSet<T> =
 
         override fun getAt(index: Int): T = items[index]
     }
+
+internal fun basicGradleProjectProxy(
+    name: String,
+    path: String,
+    directory: File,
+    buildTreePath: String? = null,
+    children: List<org.gradle.tooling.model.gradle.BasicGradleProject> = emptyList(),
+): org.gradle.tooling.model.gradle.BasicGradleProject =
+    Proxy.newProxyInstance(
+        org.gradle.tooling.model.gradle.BasicGradleProject::class.java.classLoader,
+        arrayOf(org.gradle.tooling.model.gradle.BasicGradleProject::class.java),
+    ) { proxy, method, args ->
+        proxyIdentity(proxy, method.name, args) ?: when (method.name) {
+            "getName" -> name
+            "getPath" -> path
+            "getProjectDirectory" -> directory
+            "getBuildTreePath" -> buildTreePath
+            "getParent" -> null
+            "getChildren" -> toolingDomainObjectSet(children)
+            "getProjectIdentifier" -> null
+            else -> defaultProxyReturn(method)
+        }
+    } as org.gradle.tooling.model.gradle.BasicGradleProject
+
+internal fun gradleBuildProxy(
+    rootDir: File,
+    rootProject: org.gradle.tooling.model.gradle.BasicGradleProject,
+    projects: List<org.gradle.tooling.model.gradle.BasicGradleProject>,
+    includedBuilds: List<org.gradle.tooling.model.gradle.GradleBuild> = emptyList(),
+    editableBuilds: List<org.gradle.tooling.model.gradle.GradleBuild> = emptyList(),
+): org.gradle.tooling.model.gradle.GradleBuild =
+    Proxy.newProxyInstance(
+        org.gradle.tooling.model.gradle.GradleBuild::class.java.classLoader,
+        arrayOf(org.gradle.tooling.model.gradle.GradleBuild::class.java),
+    ) { proxy, method, args ->
+        proxyIdentity(proxy, method.name, args) ?: when (method.name) {
+            "getBuildIdentifier" -> buildIdentifierProxy(rootDir)
+            "getRootProject" -> rootProject
+            "getProjects" -> toolingDomainObjectSet(projects)
+            "getIncludedBuilds" -> toolingDomainObjectSet(includedBuilds)
+            "getEditableBuilds" -> toolingDomainObjectSet(editableBuilds)
+            else -> defaultProxyReturn(method)
+        }
+    } as org.gradle.tooling.model.gradle.GradleBuild
+
+internal fun buildIdentifierProxy(rootDir: File): org.gradle.tooling.model.BuildIdentifier =
+    Proxy.newProxyInstance(
+        org.gradle.tooling.model.BuildIdentifier::class.java.classLoader,
+        arrayOf(org.gradle.tooling.model.BuildIdentifier::class.java),
+    ) { proxy, method, args ->
+        proxyIdentity(proxy, method.name, args) ?: when (method.name) {
+            "getRootDir" -> rootDir
+            else -> defaultProxyReturn(method)
+        }
+    } as org.gradle.tooling.model.BuildIdentifier

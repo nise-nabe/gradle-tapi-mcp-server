@@ -3,6 +3,7 @@ package com.example.gradle.mcp.model
 import com.example.gradle.mcp.support.defaultProxyReturn
 import com.example.gradle.mcp.support.gradleProjectProxy
 import com.example.gradle.mcp.support.problemProxy
+import com.example.gradle.mcp.support.proxyIdentity
 import org.gradle.tooling.BuildActionExecuter
 import org.gradle.tooling.BuildController
 import org.gradle.tooling.Failure
@@ -15,14 +16,6 @@ import org.gradle.tooling.events.problems.Severity
 import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.gradle.BuildInvocations
 import java.lang.reflect.Proxy
-
-internal fun proxyIdentity(proxy: Any, methodName: String, args: Array<out Any?>?): Any? =
-    when (methodName) {
-        "equals" -> args?.getOrNull(0) === proxy
-        "hashCode" -> System.identityHashCode(proxy)
-        "toString" -> "${proxy.javaClass.simpleName}@${System.identityHashCode(proxy)}"
-        else -> null
-    }
 
 internal fun toolingFailureProxy(
     message: String?,
@@ -58,15 +51,31 @@ internal fun fetchModelResultProxy(model: Any?, failures: List<Failure> = emptyL
         }
     } as FetchModelResult<*>
 
-internal fun buildControllerProxy(resultsByType: Map<Class<*>, FetchModelResult<*>>): BuildController =
+internal fun buildControllerProxy(
+    resultsByType: Map<Class<*>, FetchModelResult<*>>,
+    targetedResults: Map<Pair<Any, Class<*>>, FetchModelResult<*>> = emptyMap(),
+    fetchCalls: MutableList<Pair<Any?, Class<*>>>? = null,
+): BuildController =
     Proxy.newProxyInstance(
         BuildController::class.java.classLoader,
         arrayOf(BuildController::class.java),
     ) { proxy, method, args ->
         proxyIdentity(proxy, method.name, args) ?: when (method.name) {
             "fetch" -> {
-                val modelType = args?.getOrNull(0) as? Class<*>
-                resultsByType[modelType] ?: fetchModelResultProxy(null)
+                when {
+                    args == null || args.isEmpty() -> fetchModelResultProxy(null)
+                    args.size == 1 -> {
+                        val modelType = args[0] as Class<*>
+                        fetchCalls?.add(null to modelType)
+                        resultsByType[modelType] ?: fetchModelResultProxy(null)
+                    }
+                    else -> {
+                        val target = args[0]
+                        val modelType = args[1] as Class<*>
+                        fetchCalls?.add(target to modelType)
+                        targetedResults[target to modelType] ?: fetchModelResultProxy(null)
+                    }
+                }
             }
             else -> defaultProxyReturn(method)
         }

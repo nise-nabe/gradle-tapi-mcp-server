@@ -65,6 +65,18 @@ fun rejectUnsupportedProjectPath(args: Map<String, Any>, toolName: String) {
     }
 }
 
+fun rejectUnsupportedBuildTreePath(args: Map<String, Any>, toolName: String) {
+    val buildTreePath = args.optionalString("buildTreePath")
+    if (!buildTreePath.isNullOrBlank()) {
+        throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "buildTreePath is not supported on $toolName. " +
+                "Use gradle_get_project_overview, gradle_get_project_model, " +
+                "gradle_get_build_invocations, or gradle_get_project_publications instead.",
+        )
+    }
+}
+
 private fun Map<String, Any>.parseOptionalInt(key: String): Int? =
     when (val value = this[key]) {
         is Number -> value.toExactIntOrNull()

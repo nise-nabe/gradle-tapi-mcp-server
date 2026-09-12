@@ -40,7 +40,8 @@ internal object GradleTapiResourceTemplates {
     val overview = GradleTapiResourceTemplateSpec(
         name = "gradle-project-overview",
         uriTemplate = "$ROOT/overview",
-        description = "Module tree and task counts (gradle_get_project_overview). Optional ?projectPath=.",
+        description = "Module tree and task counts (gradle_get_project_overview). " +
+            "Optional ?projectPath= or ?buildTreePath=.",
     )
     val buildStatus = GradleTapiResourceTemplateSpec(
         name = "gradle-build-status",

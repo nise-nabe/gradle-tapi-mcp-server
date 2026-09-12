@@ -13,6 +13,7 @@ import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
 import com.example.gradle.mcp.protocol.optionalStringList
 import com.example.gradle.mcp.protocol.prepareTasksProperty
+import com.example.gradle.mcp.protocol.rejectUnsupportedBuildTreePath
 import com.example.gradle.mcp.protocol.rejectUnsupportedProjectPath
 import com.example.gradle.mcp.protocol.resolveRequiredProjectDirectoryProperty
 import com.example.gradle.mcp.protocol.stringProperty
@@ -44,6 +45,7 @@ internal fun projectTreeProperties(): Map<String, Any> =
 internal fun scopedProjectTreeProperties(): Map<String, Any> =
     mapOf(
         "projectPath" to stringProperty("Subproject :plugin"),
+        "buildTreePath" to stringProperty("TAPI path for included/buildSrc (e.g. :buildSrc)"),
     ) + projectTreeProperties()
 
 internal fun projectTreeSchema(): Map<String, Any> =
@@ -72,7 +74,11 @@ internal fun buildInvocationsQuerySchema(): Map<String, Any> =
     )
 
 internal fun publicationsSchema(): Map<String, Any> =
-    objectSchema(properties = modelDirectoryProperties())
+    objectSchema(
+        properties = mapOf(
+            "buildTreePath" to stringProperty("TAPI path for included/buildSrc (e.g. :buildSrc)"),
+        ) + modelDirectoryProperties(),
+    )
 
 internal fun helpSchema(): Map<String, Any> =
     objectSchema(
@@ -208,6 +214,7 @@ internal fun projectOverviewPayload(
                     ModelFetchPhase.BUILD_FINISHED,
                     prepareTasks,
                     gradleVersion,
+                    treeOptions.buildTreePath,
                 ).also { result ->
                     requireScopedProject(result.model, treeOptions, result)
                 }
@@ -239,7 +246,8 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         schema = projectTreeSchema(),
     ) { args ->
         rejectUnsupportedProjectPath(args, "gradle_get_gradle_build")
-        val treeOptions = ProjectTreeOptions.fromArgs(args)
+        rejectUnsupportedBuildTreePath(args, "gradle_get_gradle_build")
+        val treeOptions = ProjectTreeOptions.fromArgs(args, parseBuildTreePath = false)
         fetchResilientModelJson(
             args,
             fetch = { connection, prepareTasks, gradleVersion ->
@@ -269,6 +277,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
                     ModelFetchPhase.BUILD_FINISHED,
                     prepareTasks,
                     gradleVersion,
+                    treeOptions.buildTreePath,
                 ).also { result ->
                     requireScopedProject(result.model, treeOptions, result)
                 }
@@ -293,7 +302,11 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         fetchResilientModelJson(
             args,
             fetch = { connection, prepareTasks, gradleVersion ->
-                connection.fetchResilientProjectAndInvocations(prepareTasks, gradleVersion).also { result ->
+                connection.fetchResilientProjectAndInvocations(
+                    prepareTasks,
+                    gradleVersion,
+                    treeOptions.buildTreePath,
+                ).also { result ->
                     requireScopedProject(result.model.project, treeOptions, result)
                 }
             },
@@ -316,6 +329,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         schema = publicationsSchema(),
     ) { args ->
         rejectUnsupportedProjectPath(args, "gradle_get_project_publications")
+        val buildTreePath = parseBuildTreePathArg(args)
         fetchResilientModelJson(
             args,
             fetch = { connection, prepareTasks, gradleVersion ->
@@ -324,6 +338,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
                     ModelFetchPhase.BUILD_FINISHED,
                     prepareTasks,
                     gradleVersion,
+                    buildTreePath,
                 )
             },
             serialize = ModelSerializers::projectPublications,
@@ -336,6 +351,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         schema = helpSchema(),
     ) { args ->
         rejectUnsupportedProjectPath(args, "gradle_get_help")
+        rejectUnsupportedBuildTreePath(args, "gradle_get_help")
         val limitOptions = HelpLimitOptions.fromArgs(args)
         fetchModelJson(
             args,

@@ -2,6 +2,14 @@ package com.example.gradle.mcp.support
 
 import java.lang.reflect.Method
 
+internal fun proxyIdentity(proxy: Any, methodName: String, args: Array<out Any?>?): Any? =
+    when (methodName) {
+        "equals" -> args?.getOrNull(0) === proxy
+        "hashCode" -> System.identityHashCode(proxy)
+        "toString" -> "${proxy.javaClass.simpleName}@${System.identityHashCode(proxy)}"
+        else -> null
+    }
+
 internal fun defaultProxyReturn(method: Method): Any? =
     when (method.returnType) {
         java.lang.Void.TYPE -> null

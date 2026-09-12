@@ -77,7 +77,9 @@ internal object ResilientModelFetcher {
         phase: ModelFetchPhase,
         prepareTasks: List<String>,
         gradleVersion: String?,
+        buildTreePath: String? = null,
     ): ResilientModel<T> {
+        requireResilientFetchForBuildTreePath(buildTreePath, gradleVersion)
         if (!supportsResilientFetch(gradleVersion)) {
             return fallbackGetModel(connection, modelType, prepareTasks)
         }
@@ -86,7 +88,7 @@ internal object ResilientModelFetcher {
             connection = connection,
             prepareTasks = prepareTasks,
             register = { builder, handler ->
-                val action = FetchToolingModelAction(modelType)
+                val action = FetchToolingModelAction(modelType, buildTreePath)
                 when (phase) {
                     ModelFetchPhase.PROJECTS_LOADED -> builder.projectsLoaded(action, handler)
                     ModelFetchPhase.BUILD_FINISHED -> builder.buildFinished(action, handler)
@@ -96,6 +98,9 @@ internal object ResilientModelFetcher {
         )
         val payload = holder.get()
         if (payload == null) {
+            if (buildTreePath != null) {
+                throw targetedFetchFailed(modelType.simpleName, thrown, buildTreePath)
+            }
             return missingPayloadFallback(
                 thrown = thrown,
                 gradleVersion = gradleVersion,
@@ -105,6 +110,7 @@ internal object ResilientModelFetcher {
             }
         }
         val snapshots = mergeSnapshots(payload.failures.map { it.toSnapshot() }, thrown, payload.isFailuresTruncated)
+        throwIfUnresolvedBuildTreePath(payload.unresolvedBuildTreePath, snapshots)
         val model = castFetchedModel(payload.model, modelType, modelType.simpleName)
             ?: throw modelFetchFailed(modelType.simpleName, thrown, snapshots.items, snapshots.truncated)
         return ResilientModel(
@@ -118,7 +124,9 @@ internal object ResilientModelFetcher {
         connection: ProjectConnection,
         prepareTasks: List<String>,
         gradleVersion: String?,
+        buildTreePath: String? = null,
     ): ResilientModel<ProjectAndInvocations> {
+        requireResilientFetchForBuildTreePath(buildTreePath, gradleVersion)
         if (!supportsResilientFetch(gradleVersion)) {
             return fallbackProjectAndInvocations(connection, prepareTasks)
         }
@@ -127,12 +135,15 @@ internal object ResilientModelFetcher {
             connection = connection,
             prepareTasks = prepareTasks,
             register = { builder, handler ->
-                builder.buildFinished(FetchProjectAndInvocationsAction(), handler)
+                builder.buildFinished(FetchProjectAndInvocationsAction(buildTreePath), handler)
             },
             onComplete = holder::set,
         )
         val payload = holder.get()
         if (payload == null) {
+            if (buildTreePath != null) {
+                throw targetedFetchFailed("GradleProject", thrown, buildTreePath)
+            }
             return missingPayloadFallback(
                 thrown = thrown,
                 gradleVersion = gradleVersion,
@@ -142,6 +153,7 @@ internal object ResilientModelFetcher {
             }
         }
         val snapshots = mergeSnapshots(payload.failures.map { it.toSnapshot() }, thrown, payload.isFailuresTruncated)
+        throwIfUnresolvedBuildTreePath(payload.unresolvedBuildTreePath, snapshots)
         val project = castFetchedModel(payload.project, GradleProject::class.java, "GradleProject")
         val invocations = castFetchedModel(payload.invocations, BuildInvocations::class.java, "BuildInvocations")
         if (project == null || invocations == null) {
@@ -228,14 +240,16 @@ internal fun <T : Any> ProjectConnection.fetchResilientModel(
     phase: ModelFetchPhase,
     prepareTasks: List<String>,
     gradleVersion: String?,
+    buildTreePath: String? = null,
 ): ResilientModel<T> =
-    ResilientModelFetcher.fetch(this, modelType, phase, prepareTasks, gradleVersion)
+    ResilientModelFetcher.fetch(this, modelType, phase, prepareTasks, gradleVersion, buildTreePath)
 
 internal fun ProjectConnection.fetchResilientProjectAndInvocations(
     prepareTasks: List<String>,
     gradleVersion: String?,
+    buildTreePath: String? = null,
 ): ResilientModel<ProjectAndInvocations> =
-    ResilientModelFetcher.fetchProjectAndInvocations(this, prepareTasks, gradleVersion)
+    ResilientModelFetcher.fetchProjectAndInvocations(this, prepareTasks, gradleVersion, buildTreePath)
 
 internal fun attachResilientMetadata(
     body: Map<String, Any?>,
@@ -276,6 +290,18 @@ internal fun modelFetchFailed(
     )
 }
 
+internal fun unresolvedBuildTreePath(
+    buildTreePath: String,
+    failures: List<FailureSnapshot>,
+    truncated: Boolean,
+): McpException =
+    McpException(
+        McpErrorCode.INVALID_ARGUMENT,
+        "buildTreePath '$buildTreePath' was not found in the Gradle build tree. " +
+            "Use Tooling API buildTreePath for included builds and buildSrc; projectPath only scopes the connected build.",
+        errorDetails = resilientErrorDetails(failures, truncated),
+    )
+
 internal fun resilientErrorDetails(
     failures: List<FailureSnapshot>,
     truncated: Boolean,
@@ -293,6 +319,38 @@ private data class SnapshotList(
     val items: List<FailureSnapshot>,
     val truncated: Boolean,
 )
+
+private fun requireResilientFetchForBuildTreePath(buildTreePath: String?, gradleVersion: String?) {
+    if (buildTreePath == null || ResilientModelFetcher.supportsResilientFetch(gradleVersion)) {
+        return
+    }
+    throw McpException(
+        McpErrorCode.INVALID_ARGUMENT,
+        "buildTreePath targeting requires Gradle 9.3 or later (BuildController.fetch).",
+    )
+}
+
+private fun throwIfUnresolvedBuildTreePath(unresolved: String?, snapshots: SnapshotList) {
+    if (unresolved.isNullOrBlank()) {
+        return
+    }
+    throw unresolvedBuildTreePath(unresolved, snapshots.items, snapshots.truncated)
+}
+
+private fun targetedFetchFailed(
+    modelName: String,
+    thrown: GradleConnectionException?,
+    buildTreePath: String,
+): McpException {
+    val snapshots = snapshotsFromException(thrown)
+    val detail = thrown?.message?.takeIf { it.isNotBlank() } ?: "no model was produced"
+    return McpException(
+        McpErrorCode.BUILD_FAILED,
+        "Failed to fetch $modelName for buildTreePath '$buildTreePath': $detail",
+        thrown,
+        errorDetails = resilientErrorDetails(snapshots.items, snapshots.truncated),
+    )
+}
 
 private fun mergeSnapshots(
     payloadFailures: List<FailureSnapshot>,

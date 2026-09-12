@@ -240,6 +240,73 @@ class ResilientModelFetcherTest {
     }
 
     @Test
+    fun `maps unresolved buildTreePath to INVALID_ARGUMENT`() {
+        val payload = ResilientModelPayload(
+            null,
+            FailureRecords.fromFailures(listOf(toolingFailureProxy("included build failed"))).records,
+            false,
+            ":missing",
+        )
+        val harness = phasedConnection(payload)
+
+        val error = shouldThrow<McpException> {
+            harness.connection.fetchResilientModel(
+                GradleProject::class.java,
+                ModelFetchPhase.BUILD_FINISHED,
+                emptyList(),
+                "9.7.1",
+                buildTreePath = ":missing",
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain ":missing"
+        error.errorDetails["failures"] shouldBe listOf(mapOf("message" to "included build failed"))
+    }
+
+    @Test
+    fun `rejects buildTreePath targeting on Gradle older than 9_3`() {
+        val harness = phasedConnection(payload = null)
+
+        val error = shouldThrow<McpException> {
+            harness.connection.fetchResilientModel(
+                GradleProject::class.java,
+                ModelFetchPhase.BUILD_FINISHED,
+                emptyList(),
+                "8.14",
+                buildTreePath = ":buildSrc",
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "9.3"
+        harness.calls.shouldBe(emptyList())
+    }
+
+    @Test
+    fun `does not fall back to unscoped getModel when targeted fetch yields no payload`() {
+        val harness = phasedConnection(
+            payload = null,
+            runException = GradleConnectionException("fetch is not supported"),
+            directModels = mapOf(GradleProject::class.java to sampleGradleProject()),
+        )
+
+        val error = shouldThrow<McpException> {
+            harness.connection.fetchResilientModel(
+                GradleProject::class.java,
+                ModelFetchPhase.BUILD_FINISHED,
+                emptyList(),
+                gradleVersion = null,
+                buildTreePath = ":buildSrc",
+            )
+        }
+
+        error.code shouldBe McpErrorCode.BUILD_FAILED
+        error.message shouldContain ":buildSrc"
+        harness.calls.shouldContainExactly(listOf("action", "buildFinished", "build", "withDetailedFailure", "run"))
+    }
+
+    @Test
     fun `supportsResilientFetch uses base version 9_3`() {
         ResilientModelFetcher.supportsResilientFetch("8.14") shouldBe false
         ResilientModelFetcher.supportsResilientFetch("9.2.1") shouldBe false

@@ -21,23 +21,23 @@ internal object McpToolDescriptions {
         "Build/configuration cache settings. No projectPath. probeConfigurationCache=true for probe."
 
     const val PROJECT_OVERVIEW =
-        "Project hierarchy and task counts; projectPath scopes connected-build subtree. " +
-            "Partial+failures if some projects fail."
+        "Project hierarchy and task counts; projectPath or buildTreePath. Partial+failures if some projects fail."
 
     const val GRADLE_BUILD =
-        "GradleBuild: projects, included/editable builds. No projectPath. " +
+        "GradleBuild: projects, included/editable builds. No projectPath/buildTreePath. " +
             "Partial+failures if some builds fail."
 
     const val PROJECT_MODEL =
-        "GradleProject model; projectPath scopes subtree. includeTasks=true for tasks. " +
+        "GradleProject model; projectPath or buildTreePath. includeTasks=true for tasks. " +
             "Partial+failures if some projects fail."
 
     const val BUILD_INVOCATIONS =
-        "Runnable tasks; projectPath scopes subtree. includeTaskSelectors=true for selectors. " +
+        "Runnable tasks; projectPath or buildTreePath. includeTaskSelectors=true for selectors. " +
             "Partial+failures if some projects fail."
 
     const val PROJECT_PUBLICATIONS =
-        "Publications declared by the build. No projectPath. Partial+failures if some projects fail."
+        "Publications declared by the build. buildTreePath for included/buildSrc. " +
+            "No projectPath. Partial+failures if some projects fail."
 
     const val DEPENDENCY_RESOLUTION =
         "ResolutionResult graph or config catalog (omit configuration to list). Optional dependency filter. Caps 500 graph / 200 catalog."

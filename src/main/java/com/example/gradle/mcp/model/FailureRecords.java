@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.model;
 
 import org.gradle.tooling.Failure;
+import org.gradle.tooling.FetchModelResult;
 import org.gradle.tooling.events.problems.Problem;
 import org.gradle.tooling.events.problems.ProblemDefinition;
 import org.gradle.tooling.events.problems.ProblemId;
@@ -23,6 +24,28 @@ public final class FailureRecords {
     public static final int MAX_PROBLEMS_PER_FAILURE = 5;
 
     private FailureRecords() {
+    }
+
+    public static Slice fromModelResults(FetchModelResult<?>... results) {
+        if (results == null || results.length == 0) {
+            return Slice.empty();
+        }
+        ArrayList<Failure> all = new ArrayList<>();
+        for (FetchModelResult<?> result : results) {
+            if (result == null) {
+                continue;
+            }
+            Collection<? extends Failure> failures;
+            try {
+                failures = result.getFailures();
+            } catch (RuntimeException ignored) {
+                continue;
+            }
+            if (failures != null && !failures.isEmpty()) {
+                all.addAll(failures);
+            }
+        }
+        return fromFailures(all);
     }
 
     public static Slice fromFailures(Collection<? extends Failure> failures) {
