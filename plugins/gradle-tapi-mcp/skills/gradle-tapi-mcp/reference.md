@@ -32,6 +32,8 @@ Most query/build tools accept optional `projectDirectory` (defaults to `GRADLE_P
 
 Model and overview tools also accept optional `prepareTasks` (string array): Gradle tasks to run before fetching the Tooling API model (for example `:app:compileJava` to ensure sources exist). Empty or omitted means no pre-tasks. **While a build is `running` or `queued` for the same `projectDirectory`, model queries are rejected** with `BUILD_ALREADY_RUNNING` and `activeBuildId` / related fields when the occupying build is known. Non-empty `prepareTasks` execute Gradle work and can be slow—use only when needed.
 
+On Gradle 9.3+, those model tools (except `gradle_get_help`) use Tooling API `BuildController.fetch` plus a phased `projectsLoaded` / `buildFinished` action. A failed included build or project can still return the rest of the model with `partial: true` and capped `failures[]` (`isError=false`, max 20; `failuresTruncated` when clipped). When no model is produced, the tool returns `BUILD_FAILED` with the same `failures` shape. Gradle older than 9.3 keeps all-or-nothing `getModel`. `gradle_get_gradle_build` fetches at `projectsLoaded`; overview, project model, publications, and invocations fetch at `buildFinished` (invocations fetches `GradleProject` and `BuildInvocations` in one action).
+
 ## Query (read-only)
 
 Tools that accept `projectPath` (`gradle_get_project_overview`, `gradle_get_project_model`, `gradle_get_build_invocations`) validate it in `ProjectTreeOptions.fromArgs`: malformed paths (e.g. `::plugin`, `:plugin:`) return `INVALID_ARGUMENT` before any Tooling API fetch. Unknown but syntactically valid paths (e.g. `:missing`) still require a `GradleProject` model fetch to resolve against the connected tree.
@@ -96,7 +98,7 @@ Returns:
 | `maxChildren` | unlimited | Maximum child projects per node |
 | `prepareTasks` | `[]` | Optional tasks to run before fetching the model |
 
-Returns hierarchy with `taskCount` per project; no task lists. When truncated: `truncated: true`, `totalChildCount`.
+Returns hierarchy with `taskCount` per project; no task lists. When truncated: `truncated: true`, `totalChildCount`. Gradle 9.3+: `partial: true` plus capped `failures[]` when some projects fail.
 
 ### gradle_get_gradle_build
 
@@ -105,7 +107,7 @@ Returns hierarchy with `taskCount` per project; no task lists. When truncated: `
 | `maxDepth` | unlimited | Maximum project tree depth (depth 0 = build root) |
 | `maxChildren` | unlimited | Maximum child projects per node |
 
-`projectPath` is not supported on this tool. Use `gradle_get_project_overview`, `gradle_get_project_model`, or `gradle_get_build_invocations` to scope a subproject within the connected build. Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`BasicGradleProject`), flat `projects`, `projectCount`, `includedBuilds`, and `editableBuilds`. No tasks. Nested composite builds reuse the same shape; already-visited builds return `{ buildRootDir, cycleReference: true }`.
+`projectPath` is not supported on this tool. Use `gradle_get_project_overview`, `gradle_get_project_model`, or `gradle_get_build_invocations` to scope a subproject within the connected build. Returns the connected `GradleBuild` model: `buildRootDir`, `rootProject` tree (`BasicGradleProject`), flat `projects`, `projectCount`, `includedBuilds`, and `editableBuilds`. No tasks. Nested composite builds reuse the same shape; already-visited builds return `{ buildRootDir, cycleReference: true }`. Gradle 9.3+: fetched at `projectsLoaded`; `partial: true` plus capped `failures[]` when some builds fail.
 
 ### gradle_get_project_model
 
@@ -346,7 +348,7 @@ Detailed parameter semantics live in this reference (Layer 3). Tool `description
 
 - **Tool errors** (`isError=true`): structured `{ "error": { "code", "message", ... } }` for preflight failures (`NOT_CONNECTED`, `BUILD_ALREADY_RUNNING`, `INVALID_ARGUMENT`, …). `BUILD_ALREADY_RUNNING` and `BUILD_QUEUE_FULL` include `activeBuildId`, `activeKind`, `activeStatus`, and task/test fields (`activeTasks`, `activeTestClasses`, …) when the occupying build is known. `activeStatus` reflects the occupying record (`running` or `queued`), not the error code name. Global pool saturation returns `activeBuildIds` when multiple builds are running. Multi-project `gradle_run_tests` without `taskPath`/`tasks` infers `taskPath` when unambiguous (`taskPathInferred: true`); otherwise returns `INVALID_ARGUMENT` with up to 20 `suggestedTaskPaths`, optional `suggestedTaskPathsTruncated: true`, and `hint` when the Gradle project model is available. `gradle_run_tests` without `testClasses` / `testMethods` / `includePattern(s)` returns `INVALID_ARGUMENT` with `hint` to call `gradle_run_tasks` for the whole suite.
 - **Build outcomes** (`isError=false`): `gradle_run_tasks` / `gradle_run_tests` foreground responses and `gradle_get_build_status` terminal polls return `status: "failed"` / `outcome: "FAILED"` with `buildSummary`—not `error.code: BUILD_FAILED`. On `failureCategory: GRADLE_TASK`, read capped `problems` (default when emitted) instead of shelling out for compiler output.
-- **`BUILD_FAILED`**: reserved for tooling/setup failures where Gradle could not be invoked meaningfully (for example `gradle_get_java_runtimes` when `javaToolchains` probing fails).
+- **`BUILD_FAILED`**: reserved for tooling/setup failures where Gradle could not be invoked meaningfully (for example `gradle_get_java_runtimes` when `javaToolchains` probing fails, or a model query that produced no model). Partial model success is **not** `BUILD_FAILED`: those tools return `partial: true` + `failures[]` with `isError=false`.
 
 Failed tool calls return JSON:
 

@@ -23,7 +23,7 @@ Apply during implementation — not only before opening a PR.
 | `build/` | `BuildExecutionManager`, run/cancel/status tools, output parsing, persistence, test runners |
 | `connection/` | Connection pool, `gradle_connect` / disconnect, build environment snapshots, `gradle_get_java_runtimes` |
 | `protocol/` | `McpToolSchemas`, `McpToolDescriptions`, `McpErrors`, JSON mapping, progress notifications |
-| `model/` | `gradle_get_project_overview`, `gradle_get_project_publications`, `gradle_get_build_invocations` |
+| `model/` | `gradle_get_project_overview`, `gradle_get_project_publications`, `gradle_get_build_invocations`; daemon-side `BuildAction` classes in `src/main/java` (no Kotlin on the TAPI payload) |
 | `cache/` | Build cache status and local cache inspection tools |
 | `server/` | Stdio transport helpers (e.g. `EofSignalingInputStream`) |
 | `:dependency-sources-core` (`…dependency`) | Lexer, δ codec, keep-set, name-locate index I/O (no MCP SDK) |
