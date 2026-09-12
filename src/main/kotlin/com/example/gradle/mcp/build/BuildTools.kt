@@ -124,6 +124,40 @@ internal fun runTestsSchema(): Map<String, Any> =
         ),
     )
 
+internal fun listBuildsPayload(
+    runtime: GradleMcpRuntime,
+    args: Map<String, Any>,
+): Map<String, Any?> {
+    val projectScope = ProjectDirectoryScope(runtime.connectionManager)
+    val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
+        args,
+        boundary = projectScope::requireWithinBoundary,
+    )
+    val limit = args.optionalPositiveInt("limit") ?: BuildExecutionManager.DEFAULT_LIST_BUILDS
+    return runtime.buildExecutionManager.listBuilds(projectDirectory, limit)
+}
+
+internal fun buildStatusPayload(
+    runtime: GradleMcpRuntime,
+    args: Map<String, Any>,
+): Map<String, Any?> {
+    val outputLimit = OutputLimitOptions.fromArgs(args)
+    val progressOptions = ProgressResponseOptions.fromArgs(args)
+    val waitOptions = BuildStatusWaitOptions.fromArgs(args)
+    val projectScope = ProjectDirectoryScope(runtime.connectionManager)
+    val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
+        args,
+        boundary = projectScope::requireWithinBoundary,
+    )
+    return runtime.buildExecutionManager.status(
+        args.requiredString("buildId"),
+        outputLimit,
+        progressOptions,
+        projectDirectory,
+        waitOptions,
+    )
+}
+
 context(runtime: GradleMcpRuntime)
 fun Server.registerBuildTools(serverScope: CoroutineScope) {
     registerTool(
@@ -132,13 +166,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         description = McpToolDescriptions.LIST_BUILDS,
         schema = listBuildsSchema(),
     ) { args ->
-        val projectScope = ProjectDirectoryScope(runtime.connectionManager)
-        val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
-            args,
-            boundary = projectScope::requireWithinBoundary,
-        )
-        val limit = args.optionalPositiveInt("limit") ?: BuildExecutionManager.DEFAULT_LIST_BUILDS
-        jsonResult(runtime.buildExecutionManager.listBuilds(projectDirectory, limit))
+        jsonResult(listBuildsPayload(runtime, args))
     }
     registerTool(
         serverScope,
@@ -164,23 +192,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         description = McpToolDescriptions.BUILD_STATUS,
         schema = buildStatusSchema(),
     ) { args ->
-        val outputLimit = OutputLimitOptions.fromArgs(args)
-        val progressOptions = ProgressResponseOptions.fromArgs(args)
-        val waitOptions = BuildStatusWaitOptions.fromArgs(args)
-        val projectScope = ProjectDirectoryScope(runtime.connectionManager)
-        val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
-            args,
-            boundary = projectScope::requireWithinBoundary,
-        )
-        jsonResult(
-            runtime.buildExecutionManager.status(
-                args.requiredString("buildId"),
-                outputLimit,
-                progressOptions,
-                projectDirectory,
-                waitOptions,
-            ),
-        )
+        jsonResult(buildStatusPayload(runtime, args))
     }
     registerTool(
         serverScope,

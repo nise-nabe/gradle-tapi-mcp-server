@@ -9,6 +9,8 @@ import com.example.gradle.mcp.connection.registerJavaRuntimeTools
 import com.example.gradle.mcp.dependency.registerDependencySourceTools
 import com.example.gradle.mcp.model.registerModelTools
 import com.example.gradle.mcp.model.resolution.registerDependencyResolutionTools
+import com.example.gradle.mcp.protocol.QueryStrippingPathSegmentMatcher
+import com.example.gradle.mcp.protocol.registerGradleTapiResources
 import com.example.gradle.mcp.server.EofSignalingInputStream
 import io.ktor.utils.io.streams.asInput
 import io.modelcontextprotocol.kotlin.sdk.server.Server
@@ -45,7 +47,12 @@ fun runGradleTapiMcpServer() {
             capabilities = ServerCapabilities(
                 tools = ServerCapabilities.Tools(),
                 logging = ServerCapabilities.Logging,
+                resources = ServerCapabilities.Resources(
+                    subscribe = false,
+                    listChanged = false,
+                ),
             ),
+            resourceTemplateMatcherFactory = QueryStrippingPathSegmentMatcher.factory,
         ).apply {
             timeout = 30.minutes
         },
@@ -59,6 +66,7 @@ fun runGradleTapiMcpServer() {
         server.registerDependencyResolutionTools(serverScope)
         server.registerBuildTools(serverScope)
         server.registerDependencySourceTools(serverScope)
+        server.registerGradleTapiResources()
     }
 
     val transport = StdioServerTransport(
