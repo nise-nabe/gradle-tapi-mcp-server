@@ -38,7 +38,7 @@ Kotlin/JVM MCP server (stdio) with optional `:dependency-sources-*` modules. No 
 
 `.cursor/environment.json` runs `.cursor/install.sh` on every Cloud Agent session:
 
-1. Downloads release JAR (version in `.cursor/install.sh` `GRADLE_TAPI_MCP_VERSION`, currently **0.11.1**) with SHA-256 verification to `~/.local/share/gradle-tapi-mcp-server/gradle-tapi-mcp-server.jar` so MCP can drive this repo's build when needed
+1. Downloads release JAR (version in `.cursor/install.sh` `GRADLE_TAPI_MCP_VERSION`, currently **0.12.0**) with SHA-256 verification to `~/.local/share/gradle-tapi-mcp-server/gradle-tapi-mcp-server.jar` so MCP can drive this repo's build when needed
 2. Configures `gh` from `/exec-daemon/gh` (optional `GH_TOKEN` / `GITHUB_TOKEN` login)
 3. Ensures **JDK 17** for `./gradlew` (toolchain in `build.gradle.kts`; JDK 21+ can run the MCP JAR at runtime)
 
