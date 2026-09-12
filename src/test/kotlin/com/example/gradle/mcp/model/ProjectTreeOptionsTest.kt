@@ -86,6 +86,31 @@ class ProjectTreeOptionsTest {
     }
 
     @Test
+    fun `fromArgs rejects projectPath combined with buildTreePath`() {
+        val error = shouldThrow<McpException> {
+            ProjectTreeOptions.fromArgs(
+                mapOf(
+                    "projectPath" to ":plugin",
+                    "buildTreePath" to ":buildSrc",
+                ),
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "not both"
+    }
+
+    @Test
+    fun `fromArgs rejects non-string buildTreePath`() {
+        val error = shouldThrow<McpException> {
+            ProjectTreeOptions.fromArgs(mapOf("buildTreePath" to 1))
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "must be a string"
+    }
+
+    @Test
     fun `fromArgs can skip buildTreePath parsing`() {
         val options = ProjectTreeOptions.fromArgs(
             mapOf("buildTreePath" to "  "),

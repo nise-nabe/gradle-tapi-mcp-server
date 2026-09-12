@@ -85,7 +85,10 @@ class FetchToolingModelActionTest {
                 ),
             ),
             targetedResults = mapOf(
-                (includedRoot to GradleProject::class.java) to fetchModelResultProxy(includedGradleProject),
+                (includedRoot to GradleProject::class.java) to fetchModelResultProxy(
+                    includedGradleProject,
+                    listOf(toolingFailureProxy("target fetch failed")),
+                ),
             ),
             fetchCalls = fetchCalls,
         )
@@ -93,7 +96,10 @@ class FetchToolingModelActionTest {
         val payload = FetchToolingModelAction(GradleProject::class.java, ":plugins").execute(controller)
 
         payload.model.shouldBeSameInstanceAs(includedGradleProject)
-        payload.failures.map { it.message } shouldBe listOf("settings failed in another included build")
+        payload.failures.map { it.message } shouldBe listOf(
+            "target fetch failed",
+            "settings failed in another included build",
+        )
         payload.unresolvedBuildTreePath.shouldBeNull()
         fetchCalls shouldBe listOf(
             null to GradleBuild::class.java,

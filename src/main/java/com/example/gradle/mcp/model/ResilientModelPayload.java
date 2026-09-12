@@ -47,7 +47,7 @@ public final class ResilientModelPayload implements Serializable {
             FetchModelResult<?> gradleBuildResult,
             FetchModelResult<?> modelResult
     ) {
-        FailureRecords.Slice slice = FailureRecords.fromModelResults(gradleBuildResult, modelResult);
+        FailureRecords.Slice slice = FailureRecords.fromModelResults(modelResult, gradleBuildResult);
         Object model = modelResult == null ? null : modelResult.getModel();
         return new ResilientModelPayload(model, slice.getRecords(), slice.isTruncated());
     }

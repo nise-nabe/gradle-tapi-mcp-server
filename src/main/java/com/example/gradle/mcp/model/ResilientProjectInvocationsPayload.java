@@ -60,7 +60,7 @@ public final class ResilientProjectInvocationsPayload implements Serializable {
             FetchModelResult<?> project,
             FetchModelResult<?> invocations
     ) {
-        FailureRecords.Slice slice = FailureRecords.fromModelResults(gradleBuildResult, project, invocations);
+        FailureRecords.Slice slice = FailureRecords.fromModelResults(project, invocations, gradleBuildResult);
         return new ResilientProjectInvocationsPayload(
                 project == null ? null : project.getModel(),
                 invocations == null ? null : invocations.getModel(),

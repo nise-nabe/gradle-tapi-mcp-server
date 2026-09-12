@@ -36,7 +36,7 @@ On Gradle 9.3+, those model tools (except `gradle_get_help`) use Tooling API `Bu
 
 ## Query (read-only)
 
-Tools that accept `projectPath` (`gradle_get_project_overview`, `gradle_get_project_model`, `gradle_get_build_invocations`) validate it in `ProjectTreeOptions.fromArgs`: malformed paths (e.g. `::plugin`, `:plugin:`) return `INVALID_ARGUMENT` before any Tooling API fetch. Unknown but syntactically valid paths (e.g. `:missing`) still require a `GradleProject` model fetch to resolve against the connected tree. `buildTreePath` uses the same identity-path syntax and is required to target included builds / `buildSrc`; do not use `projectPath` as an included-build selector.
+Tools that accept `projectPath` (`gradle_get_project_overview`, `gradle_get_project_model`, `gradle_get_build_invocations`) validate it in `ProjectTreeOptions.fromArgs`: malformed paths (e.g. `::plugin`, `:plugin:`) return `INVALID_ARGUMENT` before any Tooling API fetch. Unknown but syntactically valid paths (e.g. `:missing`) still require a `GradleProject` model fetch to resolve against the connected tree. `buildTreePath` uses the same identity-path syntax and is required to target included builds / `buildSrc`; do not use `projectPath` as an included-build selector. Passing both `projectPath` and `buildTreePath` returns `INVALID_ARGUMENT`.
 
 ### gradle_get_build_environment
 

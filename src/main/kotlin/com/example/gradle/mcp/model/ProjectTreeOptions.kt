@@ -21,11 +21,19 @@ data class ProjectTreeOptions(
                 } else {
                     ProjectTreeScope.normalizeProjectPath(rawProjectPath)
                 }
+            val buildTreePath = if (parseBuildTreePath) parseBuildTreePathArg(args) else null
+            if (!projectPath.isNullOrBlank() && buildTreePath != null) {
+                throw McpException(
+                    McpErrorCode.INVALID_ARGUMENT,
+                    "Specify either projectPath (connected build subtree) or " +
+                        "buildTreePath (included builds / buildSrc), not both.",
+                )
+            }
             return ProjectTreeOptions(
                 maxDepth = args.optionalNonNegativeInt("maxDepth"),
                 maxChildren = args.optionalPositiveInt("maxChildren"),
                 projectPath = projectPath,
-                buildTreePath = if (parseBuildTreePath) parseBuildTreePathArg(args) else null,
+                buildTreePath = buildTreePath,
             )
         }
     }
@@ -36,7 +44,13 @@ internal fun parseBuildTreePathArg(args: Map<String, Any>): String? {
         return null
     }
     val raw = args["buildTreePath"]
-    if (raw !is String || raw.isBlank()) {
+    if (raw !is String) {
+        throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "buildTreePath must be a string Tooling API identity path (e.g. :buildSrc).",
+        )
+    }
+    if (raw.isBlank()) {
         throw McpException(
             McpErrorCode.INVALID_ARGUMENT,
             "buildTreePath is required to target included builds or buildSrc. " +
