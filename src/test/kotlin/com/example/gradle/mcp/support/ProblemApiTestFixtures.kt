@@ -2,6 +2,7 @@ package com.example.gradle.mcp.support
 
 import org.gradle.tooling.events.problems.ContextualLabel
 import org.gradle.tooling.events.problems.Details
+import org.gradle.tooling.events.problems.FileLocation
 import org.gradle.tooling.events.problems.LineInFileLocation
 import org.gradle.tooling.events.problems.Location
 import org.gradle.tooling.events.problems.Problem
@@ -161,6 +162,18 @@ internal fun lineInFileLocationProxy(
             }
         },
     ) as LineInFileLocation
+
+internal fun throwingFileLocationProxy(): FileLocation =
+    Proxy.newProxyInstance(
+        FileLocation::class.java.classLoader,
+        arrayOf(FileLocation::class.java),
+        InvocationHandler { _, method, _ ->
+            when (method.name) {
+                "getPath" -> throw RuntimeException("broken location")
+                else -> null
+            }
+        },
+    ) as FileLocation
 
 private fun problemIdProxy(displayName: String): ProblemId =
     Proxy.newProxyInstance(
