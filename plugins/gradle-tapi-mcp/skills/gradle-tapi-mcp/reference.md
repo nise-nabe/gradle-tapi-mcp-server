@@ -332,6 +332,24 @@ Returns `snippet`, `startLine`, `endLine`, `lineCount`, `truncated`, and resolve
 
 Search hits may include `sourceRoot` from the index side-car `source-roots.tsv` (written at index time). Hits omit `sourceRoot` when multiple roots contain the same path. `gradle_read_dependency_source` uses that path when `sourceRoot` is omitted (before falling back to cache jar lookup); if the path is ambiguous across indexed roots, read fails and requires an explicit `sourceRoot` (no silent jar fallback). An explicit `sourceRoot` works without a Gradle connection. `contextLines` max 100; `maxLines` max 2000. Oversized lines/snippets are truncated (`MAX_LINE_CHARS` / `MAX_SNIPPET_CHARS`) and `truncated=true`.
 
+## MCP resources (optional host context)
+
+Resources wrap the same handlers as the tools in this reference. Agents keep using `tools/call` until the host attaches resources. Tools are unchanged.
+
+Scheme: `gradle-tapi://{url-encoded-absolute-project-root}/…` (`mimeType`: `application/json`).
+
+| URI template | Tool | Query |
+|--------------|------|-------|
+| `…/connection/status` | `gradle_connection_status` | `refresh=true` live-fetches `BuildEnvironment` when uncached |
+| `…/environment` | `gradle_get_build_environment` | — |
+| `…/overview` | `gradle_get_project_overview` | optional `projectPath`, `maxDepth`, `maxChildren` |
+| `…/builds/{buildId}/status` | `gradle_get_build_status` | default omits stdout/progress; optional `includeOutput` / `includeProgress` |
+| `…/builds/recent` | `gradle_list_builds` | optional `limit` |
+
+`resources/templates/list` always lists the five templates. `resources/list` lists concrete URIs for projects connected at **server startup** (typically `GRADLE_PROJECT_DIR` auto-connect); build status stays template-only. Later `gradle_connect` / `gradle_disconnect` do not update that list (`listChanged` is off). `resources/read` still matches the templates for any encoded project root. Subscribe is off.
+
+**ProjectLifecycleGuard:** overview **rejects** while an MCP build is active for that project (same as the tool). The JSON-RPC error `data.error` includes `code` (`BUILD_ALREADY_RUNNING`), `message`, and `activeBuildId` / related fields. No stale snapshot. Other Phase 1 resources follow their tools.
+
 ## MCP tool discovery (token-efficient)
 
 `tools/list` returns every tool name, description, and `inputSchema`. For Cursor agents, prefer lazy discovery:

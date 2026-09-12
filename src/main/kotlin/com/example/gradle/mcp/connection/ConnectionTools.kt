@@ -117,6 +117,27 @@ internal fun disconnectSchema(): Map<String, Any> =
         ),
     )
 
+internal fun connectionStatusPayload(
+    runtime: GradleMcpRuntime,
+    args: Map<String, Any>,
+): Map<String, Any?> {
+    val projectDirectory = args.optionalString("projectDirectory")
+        ?.let(ProjectDirectoryResolver::bestEffortDirectory)
+    val refresh = args.optionalBoolean("refresh", default = false)
+    return runtime.connectionManager.status(projectDirectory, refresh)
+}
+
+internal fun buildEnvironmentPayload(
+    runtime: GradleMcpRuntime,
+    args: Map<String, Any>,
+): Map<String, Any?> {
+    rejectUnsupportedProjectPath(args, "gradle_get_build_environment")
+    val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+    return runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+        runtime.connectionManager.fetchAndCacheEnvironment(projectDirectory, connection).toMap()
+    }
+}
+
 context(runtime: GradleMcpRuntime)
 fun Server.registerConnectionTools(scope: CoroutineScope) {
     registerTool(
@@ -143,10 +164,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
         description = McpToolDescriptions.CONNECTION_STATUS,
         schema = connectionStatusSchema(),
     ) { args ->
-        val projectDirectory = args.optionalString("projectDirectory")
-            ?.let(ProjectDirectoryResolver::bestEffortDirectory)
-        val refresh = args.optionalBoolean("refresh", default = false)
-        jsonResult(runtime.connectionManager.status(projectDirectory, refresh))
+        jsonResult(connectionStatusPayload(runtime, args))
     }
     registerTool(
         scope,
@@ -162,11 +180,6 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
         description = McpToolDescriptions.BUILD_ENVIRONMENT,
         schema = buildEnvironmentSchema(),
     ) { args ->
-        rejectUnsupportedProjectPath(args, "gradle_get_build_environment")
-        val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-            val snapshot = runtime.connectionManager.fetchAndCacheEnvironment(projectDirectory, connection)
-            jsonResult(snapshot.toMap())
-        }
+        jsonResult(buildEnvironmentPayload(runtime, args))
     }
 }

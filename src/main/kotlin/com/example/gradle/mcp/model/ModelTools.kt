@@ -167,11 +167,11 @@ private inline fun <T> fetchModelJson(
 }
 
 context(runtime: GradleMcpRuntime)
-private inline fun <T : Any> fetchResilientModelJson(
+private inline fun <T : Any> fetchResilientModelMap(
     args: Map<String, Any>,
     crossinline fetch: (ProjectConnection, List<String>, String?) -> ResilientModel<T>,
     crossinline serialize: (T) -> Map<String, Any?>,
-): CallToolResult {
+): Map<String, Any?> {
     val prepareTasks = prepareTasksFromArgs(args)
     val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
     return ProjectLifecycleGuard.withNoActiveBuild(
@@ -182,21 +182,25 @@ private inline fun <T : Any> fetchResilientModelJson(
         runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
             val gradleVersion = runtime.connectionManager.cachedEnvironment(projectDirectory)?.gradleVersion
             val result = fetch(connection, prepareTasks, gradleVersion)
-            jsonResult(attachResilientMetadata(serialize(result.model), result))
+            attachResilientMetadata(serialize(result.model), result)
         }
     }
 }
 
 context(runtime: GradleMcpRuntime)
-fun Server.registerModelTools(scope: CoroutineScope) {
-    registerTool(
-        scope,
-        name = "gradle_get_project_overview",
-        description = McpToolDescriptions.PROJECT_OVERVIEW,
-        schema = scopedProjectTreeSchema(),
-    ) { args ->
-        val treeOptions = ProjectTreeOptions.fromArgs(args)
-        fetchResilientModelJson(
+private inline fun <T : Any> fetchResilientModelJson(
+    args: Map<String, Any>,
+    crossinline fetch: (ProjectConnection, List<String>, String?) -> ResilientModel<T>,
+    crossinline serialize: (T) -> Map<String, Any?>,
+): CallToolResult = jsonResult(fetchResilientModelMap(args, fetch, serialize))
+
+internal fun projectOverviewPayload(
+    runtime: GradleMcpRuntime,
+    args: Map<String, Any>,
+): Map<String, Any?> {
+    val treeOptions = ProjectTreeOptions.fromArgs(args)
+    return with(runtime) {
+        fetchResilientModelMap(
             args,
             fetch = { connection, prepareTasks, gradleVersion ->
                 connection.fetchResilientModel(
@@ -215,6 +219,18 @@ fun Server.registerModelTools(scope: CoroutineScope) {
                 )
             },
         )
+    }
+}
+
+context(runtime: GradleMcpRuntime)
+fun Server.registerModelTools(scope: CoroutineScope) {
+    registerTool(
+        scope,
+        name = "gradle_get_project_overview",
+        description = McpToolDescriptions.PROJECT_OVERVIEW,
+        schema = scopedProjectTreeSchema(),
+    ) { args ->
+        jsonResult(projectOverviewPayload(runtime, args))
     }
     registerTool(
         scope,

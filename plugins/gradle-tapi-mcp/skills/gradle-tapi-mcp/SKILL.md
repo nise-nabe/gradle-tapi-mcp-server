@@ -112,6 +112,10 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 
 エンドユーザー向けの正規ワークフロー（JSON 例付き）はリポジトリ [README.md](../../../../README.md) の **Dependency sources name locate**。詳細な引数は [reference.md](reference.md)。
 
+## MCP resources（任意）
+
+ホストが `resources/read` でスナップショットを先読みできる。URI は `gradle-tapi://{URL エンコードしたプロジェクトルート}/…`。Phase 1 は `connection/status`、`environment`、`overview`、`builds/{buildId}/status`、`builds/recent`。いずれも既存ツールと同じハンドラ（`application/json`）。**クライアントが resource をアタッチするまでエージェントはツールを使い続ける。** ツールは削除・非推奨にしない。`resources/list` は **起動時に接続済み** のプロジェクト（多くは `GRADLE_PROJECT_DIR` 自動接続）の具体 URI。後からの `gradle_connect` は list に出ない（`listChanged` オフ）。templates 経由の `resources/read` は有効。実行中 MCP ビルドがあるプロジェクトの `overview` はツールと同じく拒否（JSON-RPC `data.error.code` = `BUILD_ALREADY_RUNNING`、古いツリーは返さない）。
+
 ## 別バージョン・非依存のソース
 
 Idea keep-set（引数なし / `projectPath` のみ）は **今のプロジェクトの Idea モデルに付いている依存ソース** だけを索引する。次の調査は Idea keep-set では足りない:

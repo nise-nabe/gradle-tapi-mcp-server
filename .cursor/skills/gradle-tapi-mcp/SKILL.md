@@ -29,6 +29,8 @@ JAR only after you need to test server changes (not during `./gradlew build` of 
 
 Avoid `includeTasks=true` and heavy model queries unless necessary. On multi-module projects, pass `projectPath` (e.g. `:plugin`) to scope overview/model/invocation queries to a subproject subtree within the connected build only (not included/editable composite builds; use `gradle_get_gradle_build` for those). `gradle_run_tasks` omits stdout/stderr by default (`includeOutput=false`).
 
+MCP **resources** (`gradle-tapi://…`) are optional host context wrapping the same connection/environment/overview/build-status handlers. Keep using tools until the client attaches resources; do not skip `tools/call` because templates exist. `resources/list` is the startup connection snapshot; templates cover later connects.
+
 ## MCP tool discovery (token-efficient)
 
 When using Cursor **GetMcpTools** (some clients expose this as `mcp_get_tools`):
