@@ -74,6 +74,15 @@ class GradleTapiResourceUriTest {
     }
 
     @Test
+    fun `rejects relative encoded project root`() {
+        val error = shouldThrow<McpException> {
+            GradleTapiResourceUri.parse("gradle-tapi://rel-app/environment")
+        }
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message.contains("absolute path") shouldBe true
+    }
+
+    @Test
     fun `rejects unknown path`() {
         val error = shouldThrow<McpException> {
             GradleTapiResourceUri.parse("gradle-tapi://%2Fworkspace/cache/status")
