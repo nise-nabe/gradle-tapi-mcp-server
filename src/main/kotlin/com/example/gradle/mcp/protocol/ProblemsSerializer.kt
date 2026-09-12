@@ -160,7 +160,9 @@ internal object ProblemsSerializer {
         runCatching { locationSnapshots(getter()) }.getOrDefault(emptyList())
 
     private fun locationSnapshots(locations: Collection<Location>?): List<ProblemLocationSnapshot> =
-        locations.orEmpty().mapNotNull { location -> toLocationSnapshot(location) }
+        locations.orEmpty().mapNotNull { location ->
+            runCatching { toLocationSnapshot(location) }.getOrNull()
+        }
 
     private fun toLocationSnapshot(location: Location): ProblemLocationSnapshot? {
         val path = (location as? FileLocation)?.path?.takeIf { it.isNotBlank() }

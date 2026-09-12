@@ -9,6 +9,7 @@ import com.example.gradle.mcp.support.problemProxy
 import com.example.gradle.mcp.support.problemSummariesEventProxy
 import com.example.gradle.mcp.support.problemSummaryProxy
 import com.example.gradle.mcp.support.singleProblemEventProxy
+import com.example.gradle.mcp.support.throwingFileLocationProxy
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
@@ -157,6 +158,24 @@ class ProblemsSerializerTest {
 
         extracted.originLocations.single().path shouldBe "src/Foo.kt"
         extracted.originLocations.single().line shouldBe 10
+    }
+
+    @Test
+    fun `fromProblemEvent keeps valid locations when one location throws`() {
+        val problem = problemProxy(
+            displayName = "Compilation failed",
+            details = "cannot find symbol",
+            severity = Severity.ERROR,
+            originLocations = listOf(
+                throwingFileLocationProxy(),
+                lineInFileLocationProxy("src/main/java/App.java", 24),
+            ),
+        )
+
+        val extracted = ProblemsSerializer.fromProblemEvent(singleProblemEventProxy(problem)).single()
+
+        extracted.originLocations.single().path shouldBe "src/main/java/App.java"
+        extracted.originLocations.single().line shouldBe 24
     }
 
     @Test
