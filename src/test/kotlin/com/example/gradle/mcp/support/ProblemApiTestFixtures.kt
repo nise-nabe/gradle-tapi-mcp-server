@@ -2,6 +2,9 @@ package com.example.gradle.mcp.support
 
 import org.gradle.tooling.events.problems.ContextualLabel
 import org.gradle.tooling.events.problems.Details
+import org.gradle.tooling.events.problems.FileLocation
+import org.gradle.tooling.events.problems.LineInFileLocation
+import org.gradle.tooling.events.problems.Location
 import org.gradle.tooling.events.problems.Problem
 import org.gradle.tooling.events.problems.ProblemAggregation
 import org.gradle.tooling.events.problems.ProblemAggregationEvent
@@ -78,6 +81,8 @@ internal fun problemContextProxy(
     details: String?,
     solutions: List<String>,
     failureMessage: String? = null,
+    originLocations: List<Location> = emptyList(),
+    contextualLocations: List<Location> = emptyList(),
 ): ProblemContext =
     Proxy.newProxyInstance(
         ProblemContext::class.java.classLoader,
@@ -87,7 +92,8 @@ internal fun problemContextProxy(
                 "getDetails" -> details?.let(::detailsProxy)
                 "getSolutions" -> solutions.map(::solutionProxy)
                 "getFailure" -> failureMessage?.let { problemFailureProxy(it) }
-                "getOriginLocations", "getContextualLocations" -> emptyList<Any>()
+                "getOriginLocations" -> originLocations
+                "getContextualLocations" -> contextualLocations
                 else -> null
             }
         },
@@ -112,6 +118,9 @@ internal fun problemProxy(
     severity: Severity,
     solutions: List<String> = emptyList(),
     contextualLabel: String? = null,
+    originLocations: List<Location> = emptyList(),
+    contextualLocations: List<Location> = emptyList(),
+    locationsAvailable: Boolean = true,
 ): Problem {
     val definition = problemDefinitionProxy(problemIdProxy(displayName), severity)
     return Proxy.newProxyInstance(
@@ -123,12 +132,48 @@ internal fun problemProxy(
                 "getDetails" -> details?.let(::detailsProxy)
                 "getContextualLabel" -> contextualLabel?.let(::contextualLabelProxy)
                 "getSolutions" -> solutions.map(::solutionProxy)
-                "getOriginLocations", "getContextualLocations", "getFailure", "getAdditionalData" -> emptyList<Any>()
+                "getOriginLocations" ->
+                    if (locationsAvailable) originLocations else throw AbstractMethodError("getOriginLocations")
+                "getContextualLocations" ->
+                    if (locationsAvailable) contextualLocations else throw AbstractMethodError("getContextualLocations")
+                "getFailure", "getAdditionalData" -> emptyList<Any>()
                 else -> null
             }
         },
     ) as Problem
 }
+
+internal fun lineInFileLocationProxy(
+    path: String,
+    line: Int,
+    column: Int = 0,
+    length: Int = 0,
+): LineInFileLocation =
+    Proxy.newProxyInstance(
+        LineInFileLocation::class.java.classLoader,
+        arrayOf(LineInFileLocation::class.java),
+        InvocationHandler { _, method, _ ->
+            when (method.name) {
+                "getPath" -> path
+                "getLine" -> line
+                "getColumn" -> column
+                "getLength" -> length
+                else -> null
+            }
+        },
+    ) as LineInFileLocation
+
+internal fun throwingFileLocationProxy(): FileLocation =
+    Proxy.newProxyInstance(
+        FileLocation::class.java.classLoader,
+        arrayOf(FileLocation::class.java),
+        InvocationHandler { _, method, _ ->
+            when (method.name) {
+                "getPath" -> throw RuntimeException("broken location")
+                else -> null
+            }
+        },
+    ) as FileLocation
 
 private fun problemIdProxy(displayName: String): ProblemId =
     Proxy.newProxyInstance(

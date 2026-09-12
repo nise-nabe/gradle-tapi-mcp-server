@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.protocol
 
 import com.example.gradle.mcp.build.BuildProblemSnapshot
+import com.example.gradle.mcp.support.lineInFileLocationProxy
 import com.example.gradle.mcp.support.problemAggregationEventProxy
 import com.example.gradle.mcp.support.problemAggregationProxy
 import com.example.gradle.mcp.support.problemContextProxy
@@ -8,6 +9,8 @@ import com.example.gradle.mcp.support.problemProxy
 import com.example.gradle.mcp.support.problemSummariesEventProxy
 import com.example.gradle.mcp.support.problemSummaryProxy
 import com.example.gradle.mcp.support.singleProblemEventProxy
+import com.example.gradle.mcp.support.throwingFileLocationProxy
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import org.gradle.tooling.Failure
@@ -38,6 +41,8 @@ class ProblemsSerializerTest {
         response["severity"] shouldBe "error"
         response["solutions"] shouldBe listOf("Check dependencies")
         response["contextualLabel"] shouldBe "Task :compileJava"
+        response.containsKey("originLocations") shouldBe false
+        response.containsKey("contextualLocations") shouldBe false
     }
 
     @Test
@@ -80,6 +85,97 @@ class ProblemsSerializerTest {
         extracted.single().label shouldBe "Deprecated API usage"
         extracted.single().severity shouldBe "warning"
         extracted.single().contextualLabel shouldBe "Task :compileJava"
+        extracted.single().originLocations.shouldBeEmpty()
+        extracted.single().contextualLocations.shouldBeEmpty()
+    }
+
+    @Test
+    fun `fromProblemEvent serializes LineInFileLocation path and line`() {
+        val problem = problemProxy(
+            displayName = "Compilation failed",
+            details = "cannot find symbol",
+            severity = Severity.ERROR,
+            originLocations = listOf(lineInFileLocationProxy("src/main/java/App.java", 24, column = 8)),
+            contextualLocations = listOf(lineInFileLocationProxy("build.gradle.kts", 12)),
+        )
+
+        val extracted = ProblemsSerializer.fromProblemEvent(singleProblemEventProxy(problem)).single()
+
+        extracted.originLocations.single().path shouldBe "src/main/java/App.java"
+        extracted.originLocations.single().line shouldBe 24
+        extracted.originLocations.single().column shouldBe 8
+        extracted.contextualLocations.single().path shouldBe "build.gradle.kts"
+        extracted.contextualLocations.single().line shouldBe 12
+
+        val response = ProblemsSerializer.toResponseMaps(listOf(extracted)).single()
+        (response["originLocations"] as List<*>).single() shouldBe mapOf(
+            "path" to "src/main/java/App.java",
+            "line" to 24,
+            "column" to 8,
+        )
+        (response["contextualLocations"] as List<*>).single() shouldBe mapOf(
+            "path" to "build.gradle.kts",
+            "line" to 12,
+        )
+    }
+
+    @Test
+    fun `fromProblemEvent treats missing location APIs as empty lists`() {
+        val problem = problemProxy(
+            displayName = "Legacy problem",
+            details = "no locations",
+            severity = Severity.WARNING,
+            locationsAvailable = false,
+        )
+
+        val extracted = ProblemsSerializer.fromProblemEvent(singleProblemEventProxy(problem)).single()
+
+        extracted.originLocations.shouldBeEmpty()
+        extracted.contextualLocations.shouldBeEmpty()
+        ProblemsSerializer.toResponseMaps(listOf(extracted)).single()
+            .containsKey("originLocations") shouldBe false
+    }
+
+    @Test
+    fun `fromProblemEvent copies aggregation context locations`() {
+        val problem = problemProxy(
+            displayName = "Compilation failed",
+            details = null,
+            severity = Severity.ERROR,
+        )
+        val aggregation = problemAggregationProxy(
+            problem = problem,
+            contexts = listOf(
+                problemContextProxy(
+                    details = "cannot find symbol",
+                    solutions = emptyList(),
+                    originLocations = listOf(lineInFileLocationProxy("src/Foo.kt", 10)),
+                ),
+            ),
+        )
+
+        val extracted = ProblemsSerializer.fromProblemEvent(problemAggregationEventProxy(aggregation)).single()
+
+        extracted.originLocations.single().path shouldBe "src/Foo.kt"
+        extracted.originLocations.single().line shouldBe 10
+    }
+
+    @Test
+    fun `fromProblemEvent keeps valid locations when one location throws`() {
+        val problem = problemProxy(
+            displayName = "Compilation failed",
+            details = "cannot find symbol",
+            severity = Severity.ERROR,
+            originLocations = listOf(
+                throwingFileLocationProxy(),
+                lineInFileLocationProxy("src/main/java/App.java", 24),
+            ),
+        )
+
+        val extracted = ProblemsSerializer.fromProblemEvent(singleProblemEventProxy(problem)).single()
+
+        extracted.originLocations.single().path shouldBe "src/main/java/App.java"
+        extracted.originLocations.single().line shouldBe 24
     }
 
     @Test
