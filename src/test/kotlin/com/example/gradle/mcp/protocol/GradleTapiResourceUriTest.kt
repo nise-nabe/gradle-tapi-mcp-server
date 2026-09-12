@@ -83,6 +83,18 @@ class GradleTapiResourceUriTest {
     }
 
     @Test
+    fun `toUri and toToolArgs use an absolute project root`() {
+        val relative = File("rel-app")
+        val absolute = relative.absoluteFile
+        val resource = GradleTapiResourceUri(relative, GradleTapiResourceKind.Environment)
+
+        resource.toUri() shouldBe
+            "gradle-tapi://${GradleTapiResourceUri.encodeSegment(absolute.path)}/environment"
+        resource.toToolArgs()["projectDirectory"] shouldBe absolute.path
+        File(resource.toToolArgs()["projectDirectory"] as String).isAbsolute shouldBe true
+    }
+
+    @Test
     fun `parses scheme case-insensitively`() {
         val parsed = GradleTapiResourceUri.parse(
             "GRADLE-TAPI://%2Fworkspace/environment",

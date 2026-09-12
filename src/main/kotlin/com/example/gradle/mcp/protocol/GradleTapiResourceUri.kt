@@ -8,19 +8,24 @@ import java.nio.charset.StandardCharsets
 /**
  * `gradle-tapi://` resource URI for Phase 1 snapshots.
  *
- * Authority is the **URL-encoded** canonical project root so it stays one path
+ * Authority is the **URL-encoded** absolute project root so it stays one path
  * segment (RFC 6570 Level 1 `{projectRoot}`). Example:
  * `gradle-tapi://%2Fworkspace/connection/status?refresh=true`.
+ *
+ * [toUri] / [toToolArgs] always emit [File.getAbsoluteFile] so a relative
+ * constructor argument cannot change identity with the process working directory.
  */
 internal data class GradleTapiResourceUri(
     val projectDirectory: File,
     val kind: GradleTapiResourceKind,
     val query: Map<String, String> = emptyMap(),
 ) {
+    private val absoluteProjectRoot: File = projectDirectory.absoluteFile
+
     fun toUri(): String = buildString {
         append(SCHEME)
         append("://")
-        append(encodeSegment(projectDirectory.path))
+        append(encodeSegment(absoluteProjectRoot.path))
         append(kind.path)
         val queryString = query.entries
             .sortedBy { it.key }
@@ -40,7 +45,7 @@ internal data class GradleTapiResourceUri(
             }
             put(key, coerceQueryValue(key, raw))
         }
-        put("projectDirectory", projectDirectory.path)
+        put("projectDirectory", absoluteProjectRoot.path)
         kind.buildId?.let { put("buildId", it) }
     }
 

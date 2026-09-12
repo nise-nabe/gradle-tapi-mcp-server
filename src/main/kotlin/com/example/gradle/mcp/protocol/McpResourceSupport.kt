@@ -39,7 +39,9 @@ internal fun Exception.toSdkResourceException(): SdkMcpException {
 internal fun McpException.toSdkResourceException(): SdkMcpException {
     val rpcCode = when (code) {
         McpErrorCode.INVALID_ARGUMENT -> RPCError.ErrorCode.INVALID_PARAMS
-        McpErrorCode.PROJECT_NOT_FOUND -> RPCError.ErrorCode.RESOURCE_NOT_FOUND
+        McpErrorCode.NOT_CONNECTED,
+        McpErrorCode.PROJECT_NOT_FOUND,
+        -> RPCError.ErrorCode.RESOURCE_NOT_FOUND
         else -> RPCError.ErrorCode.INTERNAL_ERROR
     }
     val payload = mapOf(

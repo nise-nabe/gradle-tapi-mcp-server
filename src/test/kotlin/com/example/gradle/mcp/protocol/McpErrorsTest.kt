@@ -129,6 +129,14 @@ class McpErrorsTest {
         sdk.code shouldBe RPCError.ErrorCode.INVALID_PARAMS
     }
 
+    @Test
+    fun `not connected resource errors use JSON-RPC resource not found`() {
+        val sdk = McpException(McpErrorCode.NOT_CONNECTED, "Not connected").toSdkResourceException()
+        sdk.code shouldBe RPCError.ErrorCode.RESOURCE_NOT_FOUND
+        val payload = decodeMcpJsonMap(sdk.data.toString())
+        payload["error"] shouldBe mapOf("code" to "NOT_CONNECTED", "message" to "Not connected")
+    }
+
     companion object {
         @JvmStatic
         fun buildAlreadyRunningMessages(): Stream<Arguments> =
