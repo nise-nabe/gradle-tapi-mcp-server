@@ -33,7 +33,7 @@ Gradle プロジェクトの**実行時状態**を MCP 経由で取得・実行�
 ```
 1. gradle_connection_status              # runtimeStackAvailable=true 時は gradleVersion / javaHome / javaVersion。false なら refresh=true または gradle_get_build_environment。全接続一覧 + refresh=true は接続ごとに 1 回 fetch
 2. gradle_get_build_environment          # 解決済み Gradle/Java + javaVersion + versionInfo（Gradle 9.4+、軽量）
-3. gradle_get_project_overview           # モジュール階層 + taskCount（軽量、projectPath / maxDepth / maxChildren 可。Gradle 9.3+ は一部失敗時 partial+failures）
+3. gradle_get_project_overview           # モジュール階層 + taskCount（軽量、projectPath / maxDepth / maxChildren 可。Gradle 9.4+ は一部失敗時 partial+failures）
 4. [必要時] gradle_run_tasks ["build"]   # ビルド検証
 5. [必要時] gradle_run_tests [...]       # クラス / メソッド / パターン指定
 ```
@@ -91,11 +91,11 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 | `gradle_get_java_runtimes` | デーモン Java + `javaToolchains`（JDK 選定・toolchain 調査向け） |
 | `gradle_get_help` | Gradle CLI ヘルプ（`gradle --help` 相当；Gradle 9.4+） |
 | `gradle_get_build_cache_status` | Build Cache / Configuration Cache 設定とローカルキャッシュ概要 |
-| `gradle_get_project_overview` | 階層 + taskCount（`projectPath` 可。Gradle 9.3+ は一部失敗時 `partial`+`failures`） |
-| `gradle_get_gradle_build` | GradleBuild 全体（composite / includeBuild 向け、`projectPath` 不可。Gradle 9.3+ は一部失敗時 `partial`+`failures`） |
-| `gradle_get_project_model` | プロジェクトモデル（タスクはデフォルト省略、`projectPath` 可。Gradle 9.3+ は一部失敗時 `partial`+`failures`） |
-| `gradle_get_build_invocations` | 実行可能タスク（セレクタはデフォルト省略、`projectPath` 可。Gradle 9.3+ は一部失敗時 `partial`+`failures`） |
-| `gradle_get_project_publications` | Publications（Gradle 9.3+ は一部失敗時 `partial`+`failures`） |
+| `gradle_get_project_overview` | 階層 + taskCount（`projectPath` 可。Gradle 9.4+ は一部失敗時 `partial`+`failures`） |
+| `gradle_get_gradle_build` | GradleBuild 全体（composite / includeBuild 向け、`projectPath` 不可。Gradle 9.4+ は一部失敗時 `partial`+`failures`） |
+| `gradle_get_project_model` | プロジェクトモデル（タスクはデフォルト省略、`projectPath` 可。Gradle 9.4+ は一部失敗時 `partial`+`failures`） |
+| `gradle_get_build_invocations` | 実行可能タスク（セレクタはデフォルト省略、`projectPath` 可。Gradle 9.4+ は一部失敗時 `partial`+`failures`） |
+| `gradle_get_project_publications` | Publications（Gradle 9.4+ は一部失敗時 `partial`+`failures`） |
 | `gradle_get_dependency_resolution` | `ResolutionResult` 依存グラフ（タスクなし）。`configuration` 省略で一覧、指定時はグラフ。任意 `dependency` / `projectPath`。既定 cap 500 / 200 |
 | `gradle_run_tasks` | タスク実行 |
 | `gradle_run_tests` | JVM テスト実行（クラス / メソッド / パターン） |
