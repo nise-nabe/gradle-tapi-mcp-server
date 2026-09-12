@@ -40,6 +40,16 @@ class ModelToolsTest {
 
         properties.containsKey("projectPath") shouldBe true
         (properties["projectPath"] as Map<*, *>)["type"] shouldBe "string"
+        properties.containsKey("buildTreePath") shouldBe true
+        (properties["buildTreePath"] as Map<*, *>)["type"] shouldBe "string"
+    }
+
+    @Test
+    fun `publications schema exposes buildTreePath but not projectPath`() {
+        val properties = publicationsSchema()["properties"] as Map<*, *>
+
+        properties.containsKey("buildTreePath") shouldBe true
+        properties.containsKey("projectPath") shouldBe false
     }
 
     @Test

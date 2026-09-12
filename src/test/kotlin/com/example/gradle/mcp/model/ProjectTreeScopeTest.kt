@@ -57,6 +57,16 @@ class ProjectTreeScopeTest {
     }
 
     @Test
+    fun `normalizeBuildTreePath rejects malformed identity paths`() {
+        val error = shouldThrow<McpException> {
+            ProjectTreeScope.normalizeBuildTreePath("::buildSrc")
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "Invalid buildTreePath"
+    }
+
+    @Test
     fun `requireProject throws when path is unknown`() {
         val root = multiModuleRoot()
 

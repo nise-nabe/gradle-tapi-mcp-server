@@ -50,6 +50,52 @@ class ProjectTreeOptionsTest {
     }
 
     @Test
+    fun `fromArgs parses buildTreePath`() {
+        val options = ProjectTreeOptions.fromArgs(mapOf("buildTreePath" to ":buildSrc"))
+
+        options.buildTreePath shouldBe ":buildSrc"
+        options.projectPath.shouldBeNull()
+    }
+
+    @Test
+    fun `fromArgs normalizes bare buildTreePath`() {
+        val options = ProjectTreeOptions.fromArgs(mapOf("buildTreePath" to "buildSrc"))
+
+        options.buildTreePath shouldBe ":buildSrc"
+    }
+
+    @Test
+    fun `fromArgs rejects blank buildTreePath as a missing selector`() {
+        val error = shouldThrow<McpException> {
+            ProjectTreeOptions.fromArgs(mapOf("buildTreePath" to "  "))
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "buildTreePath is required"
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["::plugin", ":plugin:"])
+    fun `fromArgs rejects malformed buildTreePath`(malformedPath: String) {
+        val error = shouldThrow<McpException> {
+            ProjectTreeOptions.fromArgs(mapOf("buildTreePath" to malformedPath))
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "Invalid buildTreePath"
+    }
+
+    @Test
+    fun `fromArgs can skip buildTreePath parsing`() {
+        val options = ProjectTreeOptions.fromArgs(
+            mapOf("buildTreePath" to "  "),
+            parseBuildTreePath = false,
+        )
+
+        options.buildTreePath.shouldBeNull()
+    }
+
+    @Test
     fun `fromArgs accepts root-only maxDepth and rejects invalid children limits`() {
         val options = ProjectTreeOptions.fromArgs(mapOf("maxDepth" to 0, "maxChildren" to -1))
 

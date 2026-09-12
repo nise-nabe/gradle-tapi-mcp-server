@@ -20,6 +20,21 @@ internal object ProjectTreeScope {
         return normalized
     }
 
+    fun normalizeBuildTreePath(input: String): String {
+        try {
+            return normalizeProjectPath(input)
+        } catch (error: McpException) {
+            if (error.code != McpErrorCode.INVALID_ARGUMENT) {
+                throw error
+            }
+            throw McpException(
+                McpErrorCode.INVALID_ARGUMENT,
+                "Invalid buildTreePath '$input'. Use Tooling API identity paths like :buildSrc or :included.",
+                error,
+            )
+        }
+    }
+
     fun findByPath(root: GradleProject, projectPath: String): GradleProject? {
         val normalized = normalizeProjectPath(projectPath)
         if (normalized == ":") {

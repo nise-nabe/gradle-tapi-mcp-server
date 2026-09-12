@@ -43,6 +43,22 @@ class McpToolArgumentsTest {
     }
 
     @Test
+    fun `rejectUnsupportedBuildTreePath rejects buildTreePath for unsupported tools`() {
+        val error = shouldThrow<McpException> {
+            rejectUnsupportedBuildTreePath(mapOf("buildTreePath" to ":buildSrc"), "gradle_get_gradle_build")
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        error.message shouldContain "gradle_get_gradle_build"
+        error.message shouldContain "gradle_get_project_overview"
+    }
+
+    @Test
+    fun `rejectUnsupportedBuildTreePath allows blank buildTreePath`() {
+        rejectUnsupportedBuildTreePath(mapOf("buildTreePath" to "   "), "gradle_get_gradle_build")
+    }
+
+    @Test
     fun `optionalPositiveInt accepts integral numbers and strings`() {
         mapOf("limit" to 5).optionalPositiveInt("limit") shouldBe 5
         mapOf("limit" to 5L).optionalPositiveInt("limit") shouldBe 5

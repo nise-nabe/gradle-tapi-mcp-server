@@ -46,6 +46,17 @@ class GradleTapiResourceUriTest {
     }
 
     @Test
+    fun `parses overview buildTreePath query`() {
+        val uri = "gradle-tapi://%2Fworkspace/overview?buildTreePath=%3AbuildSrc"
+
+        val parsed = GradleTapiResourceUri.parse(uri)
+
+        parsed.kind shouldBe GradleTapiResourceKind.Overview
+        parsed.query.shouldContainExactly(mapOf("buildTreePath" to ":buildSrc"))
+        parsed.toToolArgs()["buildTreePath"] shouldBe ":buildSrc"
+    }
+
+    @Test
     fun `parses build status path and omits query by default`() {
         val parsed = GradleTapiResourceUri.parse(
             "gradle-tapi://%2Ftmp%2Fapp/builds/abc-123/status",
