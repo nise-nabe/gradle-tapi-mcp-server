@@ -96,11 +96,29 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | `gradle_search_dependency_sources_multi` | Multi-name OR locate with dedup and `matchedQueries`; optional `limit` and `perQueryLimit` (`per_query_limit` alias) |
 | `gradle_read_dependency_source` | Read a UTF-8 snippet from a dependency `*-sources.jar` **or** dir/file via `sourceRoot`, using `gav`/`group`+`name`+`version` and `path`. Optional `line` + `contextLines` (default 10, max 100); omit `line` to read from the start up to `maxLines` (default 200, max 2000). Cache jars resolve by coordinates; Idea directories / `sourcePaths` use indexed `sourceRoot` (or an explicit arg) |
 
+## Resources
+
+MCP **resources** are optional host context. They wrap the same handlers as the tools above (`application/json`). **Do not treat them as a replacement for tools** — agents should keep calling tools until the MCP client actually attaches resources. This server does not remove or deprecate any tool.
+
+URI scheme: `gradle-tapi://{url-encoded-absolute-project-root}/…`
+
+| URI | Wraps | Notes |
+|-----|--------|-------|
+| `…/connection/status` | `gradle_connection_status` | `?refresh=true` live-fetches `BuildEnvironment` when the cache is empty |
+| `…/environment` | `gradle_get_build_environment` | Resolved Gradle/Java, not Version Catalog files |
+| `…/overview` | `gradle_get_project_overview` | Optional `?projectPath=` |
+| `…/builds/{buildId}/status` | `gradle_get_build_status` | Default omits stdout and progress (same as the tool) |
+| `…/builds/recent` | `gradle_list_builds` | Memory + `.gradle/mcp-builds/`; no Tooling API |
+
+`resources/templates/list` always advertises those five templates. `resources/list` also lists concrete URIs for **currently connected** projects (except `builds/{buildId}/status`, which stays template-only until a `buildId` is known). Subscribe / `listChanged` are not enabled.
+
+While an MCP build is active for a project, the **overview** resource **rejects** the read with `BUILD_ALREADY_RUNNING` (same `ProjectLifecycleGuard` as `gradle_get_project_overview`). It does not return a stale tree. Connection status, environment, build status, and recent builds follow the corresponding tools.
+
 ## Modules
 
 | Project | Role |
 |---------|------|
-| root (`gradle-tapi-mcp-server`) | MCP server fat JAR; registers tools |
+| root (`gradle-tapi-mcp-server`) | MCP server fat JAR; registers tools and MCP resources |
 | `:dependency-sources-core` | Identifier lexer, δ postings, keep-set resolver, on-disk index, source snippet reader |
 | `:dependency-sources-mcp` | Index/search/read tool schemas and facade (depends on core) |
 | `:resolution-model` | Thin ToolingModelBuilder jar for `ResolutionResult` graphs (embedded under `META-INF/mcp/`) |
