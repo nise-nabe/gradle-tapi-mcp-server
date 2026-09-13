@@ -164,9 +164,9 @@ class BuildExecutionManagerQueueTest {
             queueIfBusy = true,
         )
 
-        val builds = (manager.listBuilds(projectDirectory, limit = 10)["builds"] as List<Map<*, *>>)
-        val running = builds.single { it["buildId"] == "running-build" }
-        val queuedEntry = builds.single { it["buildId"] == queued["buildId"] }
+        val builds = (manager.listBuilds(projectDirectory, limit = 10)["builds"] as List<*>)
+        val running = builds.map { it as Map<*, *> }.single { it["buildId"] == "running-build" }
+        val queuedEntry = builds.map { it as Map<*, *> }.single { it["buildId"] == queued["buildId"] }
 
         running.containsKey("queuePosition").shouldBeFalse()
         running.containsKey("queuedBehindBuildId").shouldBeFalse()

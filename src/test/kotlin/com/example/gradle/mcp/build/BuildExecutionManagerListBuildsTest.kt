@@ -13,10 +13,7 @@ import com.example.gradle.mcp.support.succeededTracker
 import com.example.gradle.mcp.support.testBuildRecord
 import com.example.gradle.mcp.support.writeGradleResultToDisk
 import com.example.gradle.mcp.support.writeMcpResultToDisk
-import com.example.gradle.mcp.model.OutputLimitOptions
-import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -115,11 +112,12 @@ class BuildExecutionManagerListBuildsTest {
             ),
         )
 
-        val builds = (manager.listBuilds(projectDir, limit = 10)["builds"] as List<Map<*, *>>)
+        val builds = (manager.listBuilds(projectDir, limit = 10)["builds"] as List<*>)
+        val build = builds.single() as Map<*, *>
 
-        builds.single()["status"] shouldBe "succeeded"
-        builds.single()["recordSource"] shouldBe "merged"
-        builds.single()["statusSource"] shouldBe "disk"
+        build["status"] shouldBe "succeeded"
+        build["recordSource"] shouldBe "merged"
+        build["statusSource"] shouldBe "disk"
     }
 
     @Test
@@ -270,8 +268,8 @@ class BuildExecutionManagerListBuildsTest {
             ),
         )
 
-        val builds = (manager.listBuilds(projectDirectoryHint = null, limit = 10)["builds"] as List<Map<*, *>>)
-        val crossProjectBuild = builds.single { it["buildId"] == buildId }
+        val builds = (manager.listBuilds(projectDirectoryHint = null, limit = 10)["builds"] as List<*>)
+        val crossProjectBuild = builds.map { it as Map<*, *> }.single { it["buildId"] == buildId }
 
         crossProjectBuild["status"] shouldBe "succeeded"
         crossProjectBuild["recordSource"] shouldBe "merged"
