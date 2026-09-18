@@ -23,7 +23,7 @@ internal data class PostingMeta(
  * ```
  * `data_offset` is relative to the start of the blob region (`data_base = 4 + name_count * 12`).
  */
-internal sealed class PostingsTable {
+internal sealed class PostingsTable : AutoCloseable {
     abstract val size: Int
 
     abstract fun postingAt(nameId: Int): PostingSlice?
@@ -37,6 +37,8 @@ internal sealed class PostingsTable {
             val (blob, count) = entries.getOrNull(nameId) ?: return null
             return PostingSlice(bytes = blob, count = count)
         }
+
+        override fun close() = Unit
     }
 
     internal data class Mmap(
@@ -55,6 +57,8 @@ internal sealed class PostingsTable {
                 count = entry.count,
             )
         }
+
+        override fun close() = MmapCleaner.clean(buffer)
     }
 
     companion object {
@@ -99,7 +103,12 @@ internal sealed class PostingsTable {
                 require(length >= NAME_COUNT_SIZE) { "truncated postings" }
                 val buffer =
                     raf.channel.map(FileChannel.MapMode.READ_ONLY, 0, length).order(ByteOrder.LITTLE_ENDIAN)
-                return parseMmap(buffer)
+                return try {
+                    parseMmap(buffer)
+                } catch (error: Exception) {
+                    MmapCleaner.clean(buffer)
+                    throw error
+                }
             }
         }
 

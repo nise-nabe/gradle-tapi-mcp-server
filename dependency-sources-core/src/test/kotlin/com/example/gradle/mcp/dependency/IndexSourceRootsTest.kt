@@ -22,7 +22,7 @@ class IndexSourceRootsTest {
         IndexSourceRoots.resolve(roots, "g:n:1", "../secret.kt") shouldBe SourceRootResolution.Missing
         val found = IndexSourceRoots.resolve(roots, "g:n:1", "Ok.kt")
         found.shouldBeInstanceOf<SourceRootResolution.Found>()
-        (found as SourceRootResolution.Found).root.name shouldBe "safe"
+        found.root.name shouldBe "safe"
     }
 
     @Test
@@ -37,7 +37,7 @@ class IndexSourceRootsTest {
         val loaded = IndexSourceRoots.load(dir)
         val found = IndexSourceRoots.resolve(loaded, "g:n:1", "A.kt")
         found.shouldBeInstanceOf<SourceRootResolution.Found>()
-        (found as SourceRootResolution.Found).root.absolutePath shouldBe root.absolutePath
+        found.root.absolutePath shouldBe root.absolutePath
         IndexSourceRoots.resolve(loaded, "g:n:1", "Missing.kt") shouldBe SourceRootResolution.Missing
     }
 
@@ -53,7 +53,7 @@ class IndexSourceRootsTest {
         IndexSourceRoots.resolve(roots, "g:n:1", "Missing.kt") shouldBe SourceRootResolution.Missing
         val found = IndexSourceRoots.resolve(roots, "g:n:1", "Only.kt")
         found.shouldBeInstanceOf<SourceRootResolution.Found>()
-        (found as SourceRootResolution.Found).root.name shouldBe "lib-sources.jar"
+        found.root.name shouldBe "lib-sources.jar"
     }
 
     @Test
@@ -68,7 +68,7 @@ class IndexSourceRootsTest {
         val cache = HashMap<String, Set<String>>()
         val found = IndexSourceRoots.resolve(roots, "g:n:1", "B.kt", cache)
         found.shouldBeInstanceOf<SourceRootResolution.Found>()
-        (found as SourceRootResolution.Found).root.name shouldBe "cached-sources.jar"
+        found.root.name shouldBe "cached-sources.jar"
         IndexSourceRoots.resolve(roots, "g:n:1", "Missing.kt", cache) shouldBe SourceRootResolution.Missing
         cache.size shouldBe 1
         cache.values.single().shouldContain("B.kt")

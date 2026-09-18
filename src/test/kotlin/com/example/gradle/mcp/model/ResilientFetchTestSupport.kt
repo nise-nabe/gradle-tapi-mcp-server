@@ -86,6 +86,7 @@ internal data class PhasedFetchHarness(
     val calls: MutableList<String>,
 )
 
+@Suppress("UNCHECKED_CAST")
 internal fun phasedConnection(
     payload: Any?,
     runException: GradleConnectionException? = null,

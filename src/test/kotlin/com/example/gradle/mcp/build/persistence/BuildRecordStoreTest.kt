@@ -50,7 +50,7 @@ class BuildRecordStoreTest {
         metadataFile.isFile shouldBe true
         val metadata = decodeMcpJson<McpBuildLauncherMetadata>(metadataFile.readText(StandardCharsets.UTF_8))
         metadata.buildId shouldBe "build-1"
-        metadata.recordDir shouldBe File(projectDir, ".gradle/mcp-builds/build-1").absolutePath
+        metadata.recordDir shouldBe File(projectDir, ".gradle/mcp-builds/build-1").canonicalFile.path
 
         val recordDir = store.recordDirectory(projectDir, "build-1").shouldNotBeNull()
         val gradleResult = store.readGradleResult(recordDir).shouldNotBeNull()

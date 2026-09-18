@@ -80,7 +80,9 @@ internal data class GradleTapiResourceUri(
             val path = authorityAndPath.substring(slash)
             val decodedRoot = decodeSegment(encodedRoot, uri)
             val decodedDirectory = File(decodedRoot)
-            if (!decodedDirectory.isAbsolute) {
+            // File.isAbsolute rejects POSIX-absolute roots ("/workspace") on Windows,
+            // where they resolve against the current drive; still accept them.
+            if (!decodedDirectory.isAbsolute && !decodedRoot.startsWith("/")) {
                 throw invalidUri(
                     "Resource URI project root must be an absolute path, got: $uri",
                 )

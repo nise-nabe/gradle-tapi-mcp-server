@@ -156,7 +156,7 @@ class DependencySourcesFacadeTest {
         search["hitCount"] shouldBe 2
         @Suppress("UNCHECKED_CAST")
         val hits = search["hits"] as List<Map<String, Any?>>
-        hits.single { (it["matchedQueries"] as List<String>).contains("HttpClient") }["matchedQueries"] shouldBe
+        hits.single { (it["matchedQueries"] as List<*>).contains("HttpClient") }["matchedQueries"] shouldBe
             listOf("HttpClient")
     }
 

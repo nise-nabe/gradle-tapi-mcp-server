@@ -6,6 +6,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.DataInputStream
@@ -155,6 +156,18 @@ class NameLocateIndexTest {
     @TempDir
     lateinit var tempDir: File
 
+    // mmap-backed loads lock postings.bin until closed (Windows tempDir teardown).
+    private val openIndexes = mutableListOf<NameLocateIndex>()
+
+    @AfterEach
+    fun closeOpenIndexes() {
+        openIndexes.forEach { it.close() }
+        openIndexes.clear()
+    }
+
+    private fun NameLocateIndex?.trackForClose(): NameLocateIndex? =
+        also { it?.let(openIndexes::add) }
+
     @Test
     fun `indexes source tree and persists with format version`() {
         val sources = File(tempDir, "sources").apply { mkdirs() }
@@ -175,7 +188,7 @@ class NameLocateIndexTest {
         val hitsAll = index.locate("HttpClient")
         hitsAll.map { it.line }.sorted() shouldContainExactly listOf(1, 3)
 
-        val loaded = NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL).shouldNotBeNull()
+        val loaded = NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL).trackForClose().shouldNotBeNull()
         loaded.stats(indexDir, cacheHit = true).formatVersion shouldBe IndexFormat.VERSION
         val loadedHits = loaded.locate("HttpClient")
         loadedHits.map { it.line }.sorted() shouldContainExactly listOf(1, 3)
@@ -231,7 +244,7 @@ class NameLocateIndexTest {
         val indexDir = File(tempDir, "idx-mmap")
         built.writeTo(indexDir)
 
-        val loaded = NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.IDENTS).shouldNotBeNull()
+        val loaded = NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.IDENTS).trackForClose().shouldNotBeNull()
         built.locate("Foo", limit = null) shouldContainExactly loaded.locate("Foo", limit = null)
         loaded.locate("Foo", limit = 1) shouldHaveSize 1
     }
@@ -487,7 +500,7 @@ class NameLocateIndexTest {
             GapEliasDeltaCodec.encodeOccurrences(listOf(OccPos(docId = 99, line = 1, column = 0)))
         val patchedAll = postings.map { (_, count) -> forgedBlob to count }
         writeV3Postings(File(indexDir, NameLocateIndex.POSTINGS_NAME), patchedAll)
-        val reloaded = NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL).shouldNotBeNull()
+        val reloaded = NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL).trackForClose().shouldNotBeNull()
         shouldThrow<IllegalArgumentException> {
             reloaded.locate("Foo", limit = 0)
         }
@@ -513,7 +526,7 @@ class NameLocateIndexTest {
             )
         val patchedAll = postings.map { (_, count) -> forgedBlob to count }
         writeV3Postings(File(indexDir, NameLocateIndex.POSTINGS_NAME), patchedAll)
-        val reloaded = NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL).shouldNotBeNull()
+        val reloaded = NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL).trackForClose().shouldNotBeNull()
         shouldThrow<IllegalArgumentException> {
             reloaded.locate("Foo")
         }

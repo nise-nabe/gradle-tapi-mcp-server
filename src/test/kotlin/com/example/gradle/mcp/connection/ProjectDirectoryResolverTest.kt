@@ -17,7 +17,7 @@ class ProjectDirectoryResolverTest {
     fun `bestEffortDirectory does not require directory to exist`(@TempDir dir: File) {
         val missing = File(dir, "removed-project").absoluteFile
 
-        ProjectDirectoryResolver.bestEffortDirectory(missing.path) shouldBe missing
+        ProjectDirectoryResolver.bestEffortDirectory(missing.path) shouldBe missing.canonicalFile
     }
 
     @Test
@@ -42,7 +42,7 @@ class ProjectDirectoryResolverTest {
     @Test
     fun `canonicalKey falls back to absolute path for missing directories`(@TempDir dir: File) {
         val missing = File(dir, "removed-project").absoluteFile
-        ProjectDirectoryResolver.canonicalKey(missing) shouldBe missing.absolutePath
+        ProjectDirectoryResolver.canonicalKey(missing) shouldBe missing.canonicalFile.absolutePath
     }
 
     @Test
@@ -171,6 +171,6 @@ class ProjectDirectoryResolverTest {
         val missing = File(dir, "removed-project")
         ProjectDirectoryResolver.resolveOptionalHint(
             mapOf("projectDirectory" to missing.path),
-        ) shouldBe missing
+        ) shouldBe missing.canonicalFile
     }
 }

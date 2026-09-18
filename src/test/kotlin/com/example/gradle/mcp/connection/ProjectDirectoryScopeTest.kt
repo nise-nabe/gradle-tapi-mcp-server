@@ -90,7 +90,7 @@ class ProjectDirectoryScopeTest {
             workspaceProjectDirectory = { File(project.path) },
         )
 
-        scope.allowedRoots().shouldContainExactlyInAnyOrder(listOf(project.canonicalFile))
+        scope.allowedRoots().shouldContainExactlyInAnyOrder(listOf(project))
     }
 
     @Test
@@ -104,7 +104,7 @@ class ProjectDirectoryScopeTest {
         )
 
         scope.allowedRoots().shouldContainExactlyInAnyOrder(
-            listOf(connected.canonicalFile, missingWorkspace.absoluteFile),
+            listOf(connected, missingWorkspace),
         )
     }
 
