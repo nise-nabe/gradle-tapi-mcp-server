@@ -69,7 +69,11 @@ class NameLocateIndex private constructor(
     private val documents: List<DocMeta>,
     private val postings: PostingsTable,
     private val occurrenceCount: Int,
-) {
+) : AutoCloseable {
+    override fun close() {
+        postings.close()
+    }
+
     fun stats(indexDir: File, cacheHit: Boolean): IndexStats =
         IndexStats(
             formatVersion = IndexFormat.VERSION,
@@ -320,18 +324,25 @@ class NameLocateIndex private constructor(
             val dictionary = readDictionary(File(directory, DICTIONARY_NAME))
             val documents = readDocuments(File(directory, DOCUMENTS_NAME))
             val postings = PostingsTable.mmap(File(directory, POSTINGS_NAME))
-            require(dictionary.size() == manifest.nameCount)
-            require(documents.size == manifest.docCount)
-            require(postings.size == dictionary.size())
-            val totalOccurrencesLong =
-                (0 until postings.size).fold(0L) { acc, nameId ->
-                    acc + (postings.postingAt(nameId)?.count?.toLong() ?: 0L)
+            val totalOccurrences =
+                try {
+                    require(dictionary.size() == manifest.nameCount)
+                    require(documents.size == manifest.docCount)
+                    require(postings.size == dictionary.size())
+                    val totalOccurrencesLong =
+                        (0 until postings.size).fold(0L) { acc, nameId ->
+                            acc + (postings.postingAt(nameId)?.count?.toLong() ?: 0L)
+                        }
+                    require(totalOccurrencesLong in 0L..Int.MAX_VALUE.toLong()) {
+                        "occurrence count $totalOccurrencesLong does not fit in Int"
+                    }
+                    totalOccurrencesLong.toInt().also { total ->
+                        require(total == manifest.occurrenceCount)
+                    }
+                } catch (error: Exception) {
+                    runCatching { postings.close() }
+                    throw error
                 }
-            require(totalOccurrencesLong in 0L..Int.MAX_VALUE.toLong()) {
-                "occurrence count $totalOccurrencesLong does not fit in Int"
-            }
-            val totalOccurrences = totalOccurrencesLong.toInt()
-            require(totalOccurrences == manifest.occurrenceCount)
             return NameLocateIndex(
                 tokenMode = tokenMode,
                 fingerprint = manifest.fingerprint,

@@ -55,7 +55,7 @@ data class SearchMultiResult(
     val hitsTruncated: Boolean,
 )
 
-class DependencyIndexStore {
+class DependencyIndexStore : AutoCloseable {
     private val memory = ConcurrentHashMap<String, NameLocateIndex>()
 
     fun defaultIndexDir(projectDirectory: File, tokenMode: TokenMode): File =
@@ -101,7 +101,7 @@ class DependencyIndexStore {
         val key = cacheKey(request.projectDirectory, request.tokenMode, indexDir)
 
         if (request.forceReindex) {
-            memory.remove(key)
+            memory.remove(key)?.close()
         } else {
             val loaded =
                 try {
@@ -114,7 +114,7 @@ class DependencyIndexStore {
                     null
                 }
             if (loaded != null) {
-                memory[key] = loaded
+                memory.put(key, loaded)?.takeIf { it !== loaded }?.close()
                 val sideCar = File(indexDir, IndexSourceRoots.FILE_NAME)
                 try {
                     IndexSourceRoots.write(indexDir, keepSet.members)
@@ -142,7 +142,7 @@ class DependencyIndexStore {
         )
         // Drop any mmap-backed entry before replacing on-disk files (mapped buffers can
         // block directory moves/deletes, especially on Windows).
-        memory.remove(key)
+        memory.remove(key)?.close()
         built.writeTo(indexDir)
         IndexSourceRoots.write(indexDir, keepSet.members)
         memory[key] = built
@@ -306,11 +306,16 @@ class DependencyIndexStore {
                     staleFormatError = error
                     continue
                 } ?: continue
-            memory[key] = loaded
+            memory.put(key, loaded)?.takeIf { it !== loaded }?.close()
             return loaded
         }
         if (staleFormatError != null) throw staleFormatError
         return null
+    }
+
+    override fun close() {
+        memory.values.forEach { runCatching { it.close() } }
+        memory.clear()
     }
 
     

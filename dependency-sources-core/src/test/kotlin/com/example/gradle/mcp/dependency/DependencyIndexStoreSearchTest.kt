@@ -319,17 +319,18 @@ class DependencyIndexStoreSearchTest {
             ),
         )
 
-        val fresh = DependencyIndexStore()
-        val result = fresh.search(
-            SearchRequest(
-                projectDirectory = project,
-                query = "IdentsHit",
-                tokenMode = null,
-            ),
-        )
-        result.hitCount shouldBe 1
-        result.hits.single().path shouldBe "B.kt"
-        result.stats.tokenMode shouldBe TokenMode.IDENTS
+        DependencyIndexStore().use { fresh ->
+            val result = fresh.search(
+                SearchRequest(
+                    projectDirectory = project,
+                    query = "IdentsHit",
+                    tokenMode = null,
+                ),
+            )
+            result.hitCount shouldBe 1
+            result.hits.single().path shouldBe "B.kt"
+            result.stats.tokenMode shouldBe TokenMode.IDENTS
+        }
     }
 
     @Test
