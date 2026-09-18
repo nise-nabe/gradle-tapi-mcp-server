@@ -223,7 +223,7 @@ class BuildExecutionManagerListBuildsTest {
         val result = manager.listBuilds(projectDirectoryHint = null, limit = 10)
         val builds = result["builds"] as List<*>
 
-        result["projectDirectory"] shouldBe projectA.absolutePath
+        result["projectDirectory"] shouldBe projectA.canonicalFile.path
         result["totalAvailable"] shouldBe 2
         builds.map { (it as Map<*, *>)["buildId"] } shouldBe listOf("build-a", "build-b")
     }

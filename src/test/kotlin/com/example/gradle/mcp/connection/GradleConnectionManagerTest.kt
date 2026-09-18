@@ -244,7 +244,7 @@ class GradleConnectionManagerTest {
 
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
         error.message shouldBe
-            "Project ${project.path} is already connected with different Gradle settings. " +
+            "Project ${project.canonicalFile.path} is already connected with different Gradle settings. " +
             "Call gradle_disconnect first or use matching gradleUserHome, gradleVersion, " +
             "and gradleInstallation."
     }
@@ -267,7 +267,7 @@ class GradleConnectionManagerTest {
             ),
         )
 
-        info.projectDirectory shouldBe project.path
+        info.projectDirectory shouldBe project.canonicalFile.path
         info.state shouldBe "connected"
     }
 
