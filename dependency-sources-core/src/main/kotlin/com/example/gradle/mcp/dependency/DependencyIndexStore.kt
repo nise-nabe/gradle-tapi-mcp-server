@@ -3,6 +3,8 @@ package com.example.gradle.mcp.dependency
 import org.gradle.tooling.ProjectConnection
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.withLock
 
 data class IndexRequest(
     val projectDirectory: File,
@@ -58,6 +60,12 @@ data class SearchMultiResult(
 class DependencyIndexStore : AutoCloseable {
     private val memory = ConcurrentHashMap<String, NameLocateIndex>()
 
+    // Guards every cache close(): unmapping an in-use MappedByteBuffer can crash
+    // the JVM, so eviction waits until no reader holds the index. Readers may
+    // proceed concurrently; writers exclude readers for the whole
+    // evict-and-replace-files section.
+    private val cacheLock = ReentrantReadWriteLock()
+
     fun defaultIndexDir(projectDirectory: File, tokenMode: TokenMode): File =
         File(projectDirectory, ".gradle/mcp-dependency-sources/${tokenMode.wireName()}")
 
@@ -101,7 +109,7 @@ class DependencyIndexStore : AutoCloseable {
         val key = cacheKey(request.projectDirectory, request.tokenMode, indexDir)
 
         if (request.forceReindex) {
-            memory.remove(key)?.close()
+            cacheLock.writeLock().withLock { memory.remove(key)?.close() }
         } else {
             val loaded =
                 try {
@@ -114,7 +122,9 @@ class DependencyIndexStore : AutoCloseable {
                     null
                 }
             if (loaded != null) {
-                memory.put(key, loaded)?.takeIf { it !== loaded }?.close()
+                cacheLock.writeLock().withLock {
+                    memory.put(key, loaded)?.takeIf { it !== loaded }?.close()
+                }
                 val sideCar = File(indexDir, IndexSourceRoots.FILE_NAME)
                 try {
                     IndexSourceRoots.write(indexDir, keepSet.members)
@@ -141,11 +151,14 @@ class DependencyIndexStore : AutoCloseable {
             keepSetMode = keepSet.mode,
         )
         // Drop any mmap-backed entry before replacing on-disk files (mapped buffers can
-        // block directory moves/deletes, especially on Windows).
-        memory.remove(key)?.close()
-        built.writeTo(indexDir)
-        IndexSourceRoots.write(indexDir, keepSet.members)
-        memory[key] = built
+        // block directory moves/deletes, especially on Windows). The write lock spans
+        // eviction through the file swap so no reader can map the old files mid-move.
+        cacheLock.writeLock().withLock {
+            memory.remove(key)?.close()
+            built.writeTo(indexDir)
+            IndexSourceRoots.write(indexDir, keepSet.members)
+            memory[key] = built
+        }
         return IndexResult(
             stats = built.stats(indexDir, cacheHit = false),
             memberCount = keepSet.members.size,
@@ -160,48 +173,50 @@ class DependencyIndexStore : AutoCloseable {
     fun search(request: SearchRequest): SearchResult {
         require(request.query.isNotBlank()) { "query must not be blank" }
         require(request.limit == null || request.limit >= 0) { "limit must be non-negative" }
-        val index = loadForSearch(request.projectDirectory, request.tokenMode, request.indexDir)
-            ?: throw IllegalArgumentException(
-                "No dependency-sources index found for this project/tokenMode. " +
-                    "Call gradle_index_dependency_sources first.",
-            )
-        val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode, request.indexDir)
-        return when (val limit = request.limit) {
-            null -> {
-                val hits = enrichHits(indexDir, index.locate(request.query, limit = null))
-                SearchResult(
-                    hits = hits,
-                    stats = index.stats(indexDir, cacheHit = true),
-                    hitCount = hits.size,
-                    hitsTruncated = false,
+        return cacheLock.readLock().withLock {
+            val index = loadForSearch(request.projectDirectory, request.tokenMode, request.indexDir)
+                ?: throw IllegalArgumentException(
+                    "No dependency-sources index found for this project/tokenMode. " +
+                        "Call gradle_index_dependency_sources first.",
                 )
-            }
-            0 -> {
-                index.locate(request.query, limit = 0)
-                SearchResult(
-                    hits = emptyList(),
-                    stats = index.stats(indexDir, cacheHit = true),
-                    hitCount = 0,
-                    hitsTruncated = index.postingCount(request.query) > 0,
-                )
-            }
-            else -> {
-                // Probe limit+1 so hitsTruncated is false when there are exactly `limit` matches.
-                // Only Int.MAX_VALUE skips +1 (signed overflow).
-                val probed =
-                    if (limit == Int.MAX_VALUE) {
-                        index.locate(request.query, limit = Int.MAX_VALUE)
-                    } else {
-                        index.locate(request.query, limit = limit + 1)
-                    }
-                val truncated = limit < Int.MAX_VALUE && probed.size > limit
-                val hits = enrichHits(indexDir, if (truncated) probed.take(limit) else probed)
-                SearchResult(
-                    hits = hits,
-                    stats = index.stats(indexDir, cacheHit = true),
-                    hitCount = hits.size,
-                    hitsTruncated = truncated,
-                )
+            val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode, request.indexDir)
+            when (val limit = request.limit) {
+                null -> {
+                    val hits = enrichHits(indexDir, index.locate(request.query, limit = null))
+                    SearchResult(
+                        hits = hits,
+                        stats = index.stats(indexDir, cacheHit = true),
+                        hitCount = hits.size,
+                        hitsTruncated = false,
+                    )
+                }
+                0 -> {
+                    index.locate(request.query, limit = 0)
+                    SearchResult(
+                        hits = emptyList(),
+                        stats = index.stats(indexDir, cacheHit = true),
+                        hitCount = 0,
+                        hitsTruncated = index.postingCount(request.query) > 0,
+                    )
+                }
+                else -> {
+                    // Probe limit+1 so hitsTruncated is false when there are exactly `limit` matches.
+                    // Only Int.MAX_VALUE skips +1 (signed overflow).
+                    val probed =
+                        if (limit == Int.MAX_VALUE) {
+                            index.locate(request.query, limit = Int.MAX_VALUE)
+                        } else {
+                            index.locate(request.query, limit = limit + 1)
+                        }
+                    val truncated = limit < Int.MAX_VALUE && probed.size > limit
+                    val hits = enrichHits(indexDir, if (truncated) probed.take(limit) else probed)
+                    SearchResult(
+                        hits = hits,
+                        stats = index.stats(indexDir, cacheHit = true),
+                        hitCount = hits.size,
+                        hitsTruncated = truncated,
+                    )
+                }
             }
         }
     }
@@ -213,58 +228,60 @@ class DependencyIndexStore : AutoCloseable {
         require(request.perQueryLimit == null || request.perQueryLimit >= 0) {
             "perQueryLimit must be non-negative"
         }
-        val index = loadForSearch(request.projectDirectory, request.tokenMode, request.indexDir)
-            ?: throw IllegalArgumentException(
-                "No dependency-sources index found for this project/tokenMode. " +
-                    "Call gradle_index_dependency_sources first.",
-            )
-        val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode, request.indexDir)
-        return when (val limit = request.limit) {
-            null -> {
-                val hits = enrichHits(indexDir, index.searchMulti(request.queries, limit = null, perQueryLimit = request.perQueryLimit))
-                SearchMultiResult(
-                    hits = hits,
-                    stats = index.stats(indexDir, cacheHit = true),
-                    hitCount = hits.size,
-                    hitsTruncated = perQueryHitsTruncated(index, request.queries, request.perQueryLimit),
+        return cacheLock.readLock().withLock {
+            val index = loadForSearch(request.projectDirectory, request.tokenMode, request.indexDir)
+                ?: throw IllegalArgumentException(
+                    "No dependency-sources index found for this project/tokenMode. " +
+                        "Call gradle_index_dependency_sources first.",
                 )
-            }
-            0 -> {
-                for (query in request.queries.distinct()) {
-                    index.locate(query, limit = 0)
+            val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode, request.indexDir)
+            when (val limit = request.limit) {
+                null -> {
+                    val hits = enrichHits(indexDir, index.searchMulti(request.queries, limit = null, perQueryLimit = request.perQueryLimit))
+                    SearchMultiResult(
+                        hits = hits,
+                        stats = index.stats(indexDir, cacheHit = true),
+                        hitCount = hits.size,
+                        hitsTruncated = perQueryHitsTruncated(index, request.queries, request.perQueryLimit),
+                    )
                 }
-                SearchMultiResult(
-                    hits = emptyList(),
-                    stats = index.stats(indexDir, cacheHit = true),
-                    hitCount = 0,
-                    hitsTruncated = request.queries.any { index.postingCount(it) > 0 } ||
-                        perQueryHitsTruncated(index, request.queries, request.perQueryLimit),
-                )
-            }
-            else -> {
-                val probed =
-                    if (limit == Int.MAX_VALUE) {
-                        index.searchMulti(
-                            request.queries,
-                            limit = Int.MAX_VALUE,
-                            perQueryLimit = request.perQueryLimit,
-                        )
-                    } else {
-                        index.searchMulti(
-                            request.queries,
-                            limit = limit + 1,
-                            perQueryLimit = request.perQueryLimit,
-                        )
+                0 -> {
+                    for (query in request.queries.distinct()) {
+                        index.locate(query, limit = 0)
                     }
-                val truncated = limit < Int.MAX_VALUE && probed.size > limit
-                val hits = enrichHits(indexDir, if (truncated) probed.take(limit) else probed)
-                SearchMultiResult(
-                    hits = hits,
-                    stats = index.stats(indexDir, cacheHit = true),
-                    hitCount = hits.size,
-                    hitsTruncated = truncated ||
-                        perQueryHitsTruncated(index, request.queries, request.perQueryLimit),
-                )
+                    SearchMultiResult(
+                        hits = emptyList(),
+                        stats = index.stats(indexDir, cacheHit = true),
+                        hitCount = 0,
+                        hitsTruncated = request.queries.any { index.postingCount(it) > 0 } ||
+                            perQueryHitsTruncated(index, request.queries, request.perQueryLimit),
+                    )
+                }
+                else -> {
+                    val probed =
+                        if (limit == Int.MAX_VALUE) {
+                            index.searchMulti(
+                                request.queries,
+                                limit = Int.MAX_VALUE,
+                                perQueryLimit = request.perQueryLimit,
+                            )
+                        } else {
+                            index.searchMulti(
+                                request.queries,
+                                limit = limit + 1,
+                                perQueryLimit = request.perQueryLimit,
+                            )
+                        }
+                    val truncated = limit < Int.MAX_VALUE && probed.size > limit
+                    val hits = enrichHits(indexDir, if (truncated) probed.take(limit) else probed)
+                    SearchMultiResult(
+                        hits = hits,
+                        stats = index.stats(indexDir, cacheHit = true),
+                        hitCount = hits.size,
+                        hitsTruncated = truncated ||
+                            perQueryHitsTruncated(index, request.queries, request.perQueryLimit),
+                    )
+                }
             }
         }
     }
@@ -306,7 +323,13 @@ class DependencyIndexStore : AutoCloseable {
                     staleFormatError = error
                     continue
                 } ?: continue
-            memory.put(key, loaded)?.takeIf { it !== loaded }?.close()
+            // Two readers may race to load the same key: keep the winner and
+            // unmap only the instance we created, which was never published.
+            val cached = memory.putIfAbsent(key, loaded)
+            if (cached != null) {
+                loaded.close()
+                return cached
+            }
             return loaded
         }
         if (staleFormatError != null) throw staleFormatError
@@ -314,8 +337,10 @@ class DependencyIndexStore : AutoCloseable {
     }
 
     override fun close() {
-        memory.values.forEach { runCatching { it.close() } }
-        memory.clear()
+        cacheLock.writeLock().withLock {
+            memory.values.forEach { runCatching { it.close() } }
+            memory.clear()
+        }
     }
 
     
