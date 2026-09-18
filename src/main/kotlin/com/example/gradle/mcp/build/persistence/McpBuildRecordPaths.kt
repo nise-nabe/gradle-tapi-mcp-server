@@ -2,6 +2,7 @@ package com.example.gradle.mcp.build.persistence
 
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.Path
 
 object McpBuildRecordPaths {
     const val RECORDS_ROOT = ".gradle/mcp-builds"
@@ -41,22 +42,20 @@ object McpBuildRecordPaths {
         if (!isSafeBuildId(buildId)) {
             return null
         }
-        val projectRoot = projectDirectory.canonicalFile.toPath()
-        val root = recordsRoot(projectDirectory).canonicalFile
-        val rootPath = root.toPath()
+        val projectRoot = realPath(projectDirectory)
+        val rootPath = realPath(recordsRoot(projectDirectory))
         if (!rootPath.startsWith(projectRoot)) {
             return null
         }
-        val recordDir = File(root, buildId).canonicalFile
-        val recordPath = recordDir.toPath()
+        val recordPath = realPath(File(rootPath.toFile(), buildId))
         if (recordPath == rootPath || !recordPath.startsWith(rootPath)) {
             return null
         }
-        return recordDir
+        return recordPath.toFile()
     }
 
     internal fun safeRecordFile(recordDir: File, name: String): File? {
-        val recordRoot = recordDir.canonicalFile.toPath()
+        val recordRoot = realPath(recordDir)
         val candidate = File(recordDir, name)
         val path = candidate.toPath()
         if (!Files.isRegularFile(path)) {
@@ -65,10 +64,28 @@ object McpBuildRecordPaths {
         if (Files.isSymbolicLink(path)) {
             return null
         }
-        val canonical = candidate.canonicalFile.toPath()
-        if (canonical != recordRoot && !canonical.startsWith(recordRoot)) {
+        val resolved = realPath(candidate)
+        if (resolved != recordRoot && !resolved.startsWith(recordRoot)) {
             return null
         }
         return candidate
+    }
+
+    /**
+     * Canonical path with symlinks resolved. `File.getCanonicalFile` does not
+     * follow links on Windows (unlike Unix realpath), so containment checks must
+     * resolve the deepest existing ancestor with [Path.toRealPath] and re-append
+     * the missing tail lexically.
+     */
+    private fun realPath(file: File): Path {
+        var cursor = file.toPath().toAbsolutePath().normalize()
+        val missingTail = ArrayDeque<Path>()
+        while (!Files.exists(cursor)) {
+            val parent = cursor.parent ?: break
+            missingTail.addFirst(cursor.fileName)
+            cursor = parent
+        }
+        val resolved = runCatching { cursor.toRealPath() }.getOrDefault(cursor)
+        return missingTail.fold(resolved) { acc, name -> acc.resolve(name) }
     }
 }
