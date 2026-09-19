@@ -374,7 +374,8 @@ class NameLocateIndex private constructor(
             DataInputStream(counting).use { input ->
                 requireMagic(input)
                 val count = input.readInt()
-                val remaining = { file.length() - counting.position }
+                val fileLength = file.length()
+                val remaining = { fileLength - counting.position }
                 require(count >= 0 && count.toLong() <= remaining() / Int.SIZE_BYTES) {
                     "name count $count exceeds dictionary file capacity"
                 }
@@ -389,7 +390,8 @@ class NameLocateIndex private constructor(
             DataInputStream(counting).use { input ->
                 requireMagic(input)
                 val docCount = input.readInt()
-                val remaining = { file.length() - counting.position }
+                val fileLength = file.length()
+                val remaining = { fileLength - counting.position }
                 require(docCount >= 0 && docCount.toLong() <= remaining() / (2L * Int.SIZE_BYTES)) {
                     "document count $docCount exceeds documents file capacity"
                 }
