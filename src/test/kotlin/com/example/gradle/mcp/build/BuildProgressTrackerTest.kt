@@ -571,6 +571,27 @@ class BuildProgressTrackerTest {
         tracker.snapshot().currentOperation shouldBe "Gradle tasks: build"
     }
 
+    @Test
+    fun `markQueued requeues a dequeued build`() {
+        val tracker = BuildProgressTracker(initialStatus = BuildProgressTracker.STATUS_QUEUED)
+
+        tracker.markDequeued().shouldBeTrue()
+        tracker.markQueued().shouldBeTrue()
+
+        tracker.snapshot().status shouldBe BuildProgressTracker.STATUS_QUEUED
+    }
+
+    @Test
+    fun `markQueued returns false once the build is terminal`() {
+        val tracker = BuildProgressTracker(initialStatus = BuildProgressTracker.STATUS_QUEUED)
+        tracker.markDequeued().shouldBeTrue()
+        tracker.markCancelled("Gradle connection closed")
+
+        tracker.markQueued().shouldBeFalse()
+
+        tracker.snapshot().status shouldBe BuildProgressTracker.STATUS_CANCELLED
+    }
+
     private fun captureOperationTypes(
         trackDownloads: Boolean = false,
     ): List<OperationType> {

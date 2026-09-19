@@ -1,8 +1,11 @@
 package com.example.gradle.mcp.model
 
+import com.example.gradle.mcp.protocol.McpErrorCode
+import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.support.defaultProxyReturn
 import com.example.gradle.mcp.support.gradleProjectProxy
 import com.example.gradle.mcp.support.toolingDomainObjectSet
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -261,10 +264,11 @@ class ModelSerializersTest {
     }
 
     @Test
-    fun `model query options ignore non-positive maxTasks`() {
-        val options = ModelQueryOptions.fromArgs(mapOf("maxTasks" to 0))
-
-        options.maxTasks.shouldBeNull()
+    fun `model query options reject non-positive maxTasks`() {
+        val error = shouldThrow<McpException> {
+            ModelQueryOptions.fromArgs(mapOf("maxTasks" to 0))
+        }
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
     }
 
     @Test

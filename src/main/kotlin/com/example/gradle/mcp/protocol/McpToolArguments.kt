@@ -38,21 +38,39 @@ fun Map<String, Any>.requiredStringList(key: String): List<String> {
     }
 }
 
-@Suppress("UNCHECKED_CAST")
 fun Map<String, Any>.optionalStringList(key: String): List<String>? =
-    (this[key] as? List<*>)?.mapNotNull { it as? String }
+    when (val value = this[key]) {
+        null -> null
+        !is List<*> -> throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "Optional argument must be a string array: $key",
+        )
+        else -> {
+            if (value.any { it !is String }) {
+                throw McpException(
+                    McpErrorCode.INVALID_ARGUMENT,
+                    "Optional argument must contain only strings: $key",
+                )
+            }
+            value.filterIsInstance<String>()
+        }
+    }
 
 fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boolean =
     when (val value = this[key]) {
+        null -> default
         is Boolean -> value
-        else -> default
+        else -> throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "Optional argument must be a boolean: $key",
+        )
     }
 
 fun Map<String, Any>.optionalPositiveInt(key: String): Int? =
-    parseOptionalInt(key)?.takeIf { it > 0 }
+    parseOptionalInt(key, "a positive integer") { it > 0 }
 
 fun Map<String, Any>.optionalNonNegativeInt(key: String): Int? =
-    parseOptionalInt(key)?.takeIf { it >= 0 }
+    parseOptionalInt(key, "a non-negative integer") { it >= 0 }
 
 fun rejectUnsupportedProjectPath(args: Map<String, Any>, toolName: String) {
     val projectPath = args.optionalString("projectPath")
@@ -77,12 +95,25 @@ fun rejectUnsupportedBuildTreePath(args: Map<String, Any>, toolName: String) {
     }
 }
 
-private fun Map<String, Any>.parseOptionalInt(key: String): Int? =
-    when (val value = this[key]) {
+private fun Map<String, Any>.parseOptionalInt(
+    key: String,
+    description: String,
+    inRange: (Int) -> Boolean,
+): Int? {
+    val parsed = when (val value = this[key]) {
+        null -> return null
         is Number -> value.toExactIntOrNull()
         is String -> value.toIntOrNull()
         else -> null
     }
+    if (parsed == null || !inRange(parsed)) {
+        throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "Optional argument must be $description: $key",
+        )
+    }
+    return parsed
+}
 
 private fun Number.toExactIntOrNull(): Int? {
     val longValue = when (this) {
