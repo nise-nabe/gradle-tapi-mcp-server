@@ -67,6 +67,17 @@ tasks.jar {
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
 }
 
+tasks.withType<Test>().configureEach {
+    // Forked test JVMs inherit the environment of the process that launched the
+    // Gradle daemon. When this build runs under the MCP server (or any shell with
+    // GRADLE_PROJECT_DIR set), the variable leaks into tests and
+    // ProjectDirectoryResolver.workspaceFromEnvironment() resolves the host
+    // workspace instead of @TempDir fixtures. An empty value reads as unset
+    // (the resolver rejects blank values), without enumerating the parent
+    // environment, which is not allowed under isolated projects.
+    environment("GRADLE_PROJECT_DIR", "")
+}
+
 tasks.named<Test>("test") {
     dependsOn(tasks.jar)
 }
