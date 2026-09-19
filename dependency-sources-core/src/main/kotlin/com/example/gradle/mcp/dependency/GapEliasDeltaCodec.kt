@@ -336,7 +336,7 @@ private class BitReader private constructor(
         }
         val rest = if (lenL == 0) 0L else (readBits(lenL) ?: return null)
         val len = (1L shl lenL) or rest
-        if (len == 0L || len > 64L) return null
+        if (len <= 0L || len >= 64L) return null
         val l = (len - 1).toInt()
         val low = if (l == 0) 0L else (readBits(l) ?: return null)
         return (1L shl l) or low

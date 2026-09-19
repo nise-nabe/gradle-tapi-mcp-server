@@ -125,6 +125,24 @@ class GapEliasDeltaCodecTest {
         val encoded = GapEliasDeltaCodec.encodeOccurrences(occs)
         GapEliasDeltaCodec.decodeOccurrences(encoded, occs.size) shouldContainExactly occs
     }
+
+    @Test
+    fun `decode rejects malformed delta with unary length 63`() {
+        // 63 zero bits then a 1 (bit 63): lenL = 63 makes (1L shl 63) overflow to Long.MIN_VALUE
+        val bytes = ByteArray(16).also { it[7] = 0x01 }
+        shouldThrow<IllegalArgumentException> {
+            GapEliasDeltaCodec.decode(bytes, 1)
+        }
+    }
+
+    @Test
+    fun `decode rejects malformed delta with length field 64`() {
+        // lenL = 6 with rest = 0 gives len = 64, whose l = 63 would overflow (1L shl 63)
+        val bytes = ByteArray(10).also { it[0] = 0x02 }
+        shouldThrow<IllegalArgumentException> {
+            GapEliasDeltaCodec.decode(bytes, 1)
+        }
+    }
 }
 
 class IdentifierLexerTest {
