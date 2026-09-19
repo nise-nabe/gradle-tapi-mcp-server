@@ -101,12 +101,18 @@ internal class ProjectBuildQueue {
         return TakeResult.Ready(head)
     }
 
-    /** Caller must hold the project lifecycle lock. */
+    /**
+     * Requeue a dequeued build at the head after a rejected executor submit.
+     * A tracker already moved to a terminal state (e.g. a concurrent reset or
+     * cancel ran first) is left untouched and the build is dropped instead of
+     * resurrected into the queue.
+     * Caller must hold the project lifecycle lock.
+     */
     fun requeueAtFront(projectDirectory: File, queued: QueuedBuild) {
-        val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
-        check(queued.record.progressTracker.markQueued()) {
-            "Failed to requeue build ${queued.record.id}"
+        if (!queued.record.progressTracker.markQueued()) {
+            return
         }
+        val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
         queues.computeIfAbsent(key) { ArrayDeque() }.addFirst(queued)
     }
 
