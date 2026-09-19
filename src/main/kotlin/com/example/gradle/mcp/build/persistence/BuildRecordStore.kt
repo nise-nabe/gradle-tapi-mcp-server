@@ -107,6 +107,7 @@ class BuildRecordStore {
             gradleResult,
             provisionalResult,
             readEvents(recordDir),
+            eventsFileLastModified(recordDir),
         )
         if (status != resolved.status &&
             resolved.terminalSource == BuildPersistenceContract.TerminalStatusSource.GRADLE
@@ -215,12 +216,18 @@ class BuildRecordStore {
         if (gradleResult == null && mcpResult == null) {
             return null
         }
-        val events = if (gradleResult?.status == BuildProgressTracker.STATUS_RUNNING && mcpResult != null) {
+        val gradleRunning = gradleResult?.status == BuildProgressTracker.STATUS_RUNNING && mcpResult != null
+        val events = if (gradleRunning) {
             readEvents(recordDir)
         } else {
             emptyList()
         }
-        val resolved = BuildPersistenceContract.resolve(gradleResult, mcpResult, events)
+        val resolved = BuildPersistenceContract.resolve(
+            gradleResult,
+            mcpResult,
+            events,
+            if (gradleRunning) eventsFileLastModified(recordDir) else null,
+        )
         val status = resolved.status
         val outcome = when (resolved.terminalSource) {
             BuildPersistenceContract.TerminalStatusSource.MCP ->
@@ -261,6 +268,7 @@ class BuildRecordStore {
             stdout = readLogFile(recordDir, McpBuildRecordPaths.STDOUT_LOG, mcpResult?.stdoutTotalChars),
             stderr = readLogFile(recordDir, McpBuildRecordPaths.STDERR_LOG, mcpResult?.stderrTotalChars),
             events = readEvents(recordDir),
+            eventsLastModified = eventsFileLastModified(recordDir),
         )
     }
 
@@ -284,6 +292,10 @@ class BuildRecordStore {
             }.toList()
         }
     }
+
+    internal fun eventsFileLastModified(recordDir: File): Instant? =
+        McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.EVENTS_FILE)
+            ?.let { Instant.ofEpochMilli(it.lastModified()) }
 
     private fun parseEventLine(line: String): DiskBuildEvent? {
         val map = decodeMcpJsonMap(line)

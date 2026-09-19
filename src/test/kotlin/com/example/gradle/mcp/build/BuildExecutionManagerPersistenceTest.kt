@@ -203,6 +203,7 @@ class BuildExecutionManagerPersistenceTest {
             mcpBuildResult(
                 buildId = buildId,
                 projectDirectory = projectDir.absolutePath,
+                finishedAt = Instant.now().minusSeconds(5).toString(),
                 status = "failed",
                 outcome = "FAILED",
                 error = "Gradle connection closed",
