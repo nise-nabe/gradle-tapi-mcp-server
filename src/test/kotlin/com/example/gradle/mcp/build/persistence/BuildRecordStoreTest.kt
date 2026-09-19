@@ -2,6 +2,7 @@ package com.example.gradle.mcp.build.persistence
 
 import com.example.gradle.mcp.build.BuildKind
 import com.example.gradle.mcp.build.BuildProblemSnapshot
+import com.example.gradle.mcp.build.ProgressEventTypes
 import com.example.gradle.mcp.build.TestRunSelection
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildRecord
@@ -56,6 +57,69 @@ class BuildRecordStoreTest {
         val gradleResult = store.readGradleResult(recordDir).shouldNotBeNull()
         gradleResult.status shouldBe "running"
         gradleResult.taskNames shouldBe listOf("build")
+    }
+
+    @Test
+    fun `launcherArguments does not overwrite existing terminal gradle result on retry`(@TempDir projectDir: File) {
+        val buildId = "fallback-terminal"
+        store.writeGradleResultToDisk(
+            projectDir,
+            buildId,
+            gradleBuildResult(
+                buildId = buildId,
+                status = BuildProgressTracker.STATUS_FAILED,
+                startedAt = "2026-06-14T10:00:00Z",
+                finishedAt = "2026-06-14T10:01:00Z",
+                taskNames = listOf(":app:test"),
+                failure = "Execution failed for task ':app:test'.",
+            ),
+        )
+        store.writeDiskFile(
+            projectDir,
+            buildId,
+            McpBuildRecordPaths.EVENTS_FILE,
+            """{"ts":"2026-06-14T10:00:01Z","type":"START","displayName":"Gradle tasks: :app:test"}""" + "\n",
+        )
+
+        // The TestLauncher → BuildLauncher fallback prepares launcher metadata a
+        // second time for the same buildId; the persisted terminal result and
+        // the event log must survive, while launcher metadata is refreshed.
+        val args = store.launcherArguments(projectDir, buildId, listOf(":app:test"))
+
+        McpBuildRecordPaths.launcherMetadataFile(projectDir).isFile shouldBe true
+        args.any { it.startsWith("-Pmcp.launcherMetadata=") } shouldBe true
+
+        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        store.readGradleResult(recordDir).shouldNotBeNull().apply {
+            status shouldBe BuildProgressTracker.STATUS_FAILED
+            startedAt shouldBe "2026-06-14T10:00:00Z"
+            finishedAt shouldBe "2026-06-14T10:01:00Z"
+            failure shouldBe "Execution failed for task ':app:test'."
+        }
+        val events = store.readEvents(recordDir)
+        events.size shouldBe 1
+        events.single().eventType shouldBe ProgressEventTypes.START
+    }
+
+    @Test
+    fun `launcherArguments keeps original running state and single START event on retry`(@TempDir projectDir: File) {
+        val buildId = "fallback-running"
+        store.launcherArguments(projectDir, buildId, listOf(":app:test"))
+        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        val initial = store.readGradleResult(recordDir).shouldNotBeNull()
+        initial.status shouldBe BuildProgressTracker.STATUS_RUNNING
+
+        // A second prepare for the same buildId must not reset startedAt or
+        // append a duplicate START event.
+        store.launcherArguments(projectDir, buildId, listOf(":app:test"))
+
+        store.readGradleResult(recordDir).shouldNotBeNull().apply {
+            status shouldBe BuildProgressTracker.STATUS_RUNNING
+            startedAt shouldBe initial.startedAt
+        }
+        val events = store.readEvents(recordDir)
+        events.size shouldBe 1
+        events.single().eventType shouldBe ProgressEventTypes.START
     }
 
     @Test

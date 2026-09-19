@@ -326,6 +326,16 @@ class BuildRecordStore {
         buildId: String,
         taskNames: List<String>,
     ) {
+        // Retry paths (e.g. the TestLauncher → BuildLauncher fallback in
+        // BuildExecutionManager.runTestsViaBuildLauncher) prepare launcher
+        // metadata a second time for the same buildId. Once gradle-result.json
+        // exists it must not be rewritten: it may already hold a terminal
+        // status persisted by the init script's buildFinished hook, and even
+        // for a plain "running" result a rewrite would reset startedAt and
+        // append a duplicate START event to events.ndjson.
+        if (McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE) != null) {
+            return
+        }
         recordDir.mkdirs()
         val result = GradleBuildResult(
             buildId = buildId,
