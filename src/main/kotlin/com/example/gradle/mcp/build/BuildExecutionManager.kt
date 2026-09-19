@@ -476,8 +476,21 @@ class BuildExecutionManager(
         }
     }
 
+    /**
+     * Whether the shared build executor should be swapped for a fresh one.
+     *
+     * On a per-project disconnect the project being disconnected is still in the
+     * connection pool: GradleConnectionManager.disconnect runs after onDisconnect
+     * so running builds can be cancelled through the live ProjectConnection.
+     * Treat that project as already removed: replace the executor when every
+     * still-connected project is the one being disconnected (no other connection
+     * will remain). An empty pool, or a global reset with null projectDirectory,
+     * also qualifies.
+     */
     private fun shouldReplaceExecutor(projectDirectory: File?): Boolean =
-        projectDirectory == null || connectionManager.connectedProjectDirectories().isEmpty()
+        projectDirectory == null ||
+            connectionManager.connectedProjectDirectories()
+                .all { ProjectDirectoryResolver.sameProject(it.path, projectDirectory) }
 
     fun shutdown() {
         val executorToAwait = synchronized(ProjectLifecycleLock.global()) {

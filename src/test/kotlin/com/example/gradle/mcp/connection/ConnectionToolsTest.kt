@@ -6,14 +6,18 @@ import com.example.gradle.mcp.support.defaultProxyReturn
 import com.example.gradle.mcp.support.noopProjectConnection
 import com.example.gradle.mcp.support.runningTracker
 import com.example.gradle.mcp.support.testBuildRecord
+import com.example.gradle.mcp.support.testExecutor
 import com.example.gradle.mcp.support.testProjectDirectory
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import java.io.File
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
 import java.util.concurrent.atomic.AtomicBoolean
@@ -83,6 +87,36 @@ class ConnectionToolsTest {
         val payload = disconnectProjects(runtime, testProjectDirectory.absolutePath)
 
         payload["state"] shouldBe "not_connected"
+    }
+
+    @Test
+    fun `disconnect replaces build executor for last connected project`(@TempDir project: File) {
+        val connectionManager = GradleConnectionManager()
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        connectionManager.seedConnectionForTests(noopProjectConnection(), project)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+        val executorBefore = buildExecutionManager.testExecutor()
+
+        disconnectProjects(runtime, project.absolutePath)
+
+        buildExecutionManager.testExecutor() shouldNotBe executorBefore
+    }
+
+    @Test
+    fun `disconnect keeps build executor while another project stays connected`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val connectionManager = GradleConnectionManager()
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        connectionManager.seedConnectionForTests(noopProjectConnection(), projectA)
+        connectionManager.seedConnectionForTests(noopProjectConnection(), projectB)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+        val executorBefore = buildExecutionManager.testExecutor()
+
+        disconnectProjects(runtime, projectA.absolutePath)
+
+        buildExecutionManager.testExecutor() shouldBe executorBefore
     }
 
     private fun closeTrackingConnection(

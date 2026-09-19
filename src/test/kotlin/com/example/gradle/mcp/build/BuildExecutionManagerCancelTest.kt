@@ -12,6 +12,7 @@ import com.example.gradle.mcp.support.failedTracker
 import com.example.gradle.mcp.support.interruptedOnRunProjectConnection
 import com.example.gradle.mcp.support.noopProjectConnection
 import com.example.gradle.mcp.support.seedNoopConnection
+import com.example.gradle.mcp.support.seedNoopConnections
 import com.example.gradle.mcp.support.runningTracker
 import com.example.gradle.mcp.support.succeededTracker
 import com.example.gradle.mcp.support.testBuildRecord
@@ -173,6 +174,42 @@ class BuildExecutionManagerCancelTest {
         scopedManager.onDisconnect(project)
 
         scopedManager.testExecutor() shouldNotBe executorBefore
+    }
+
+    @Test
+    fun `onDisconnect replaces executor while disconnecting project is still connected`(
+        @TempDir project: File,
+    ) {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedNoopConnection(project)
+        val scopedManager = BuildExecutionManager(connectionManager)
+
+        val executorBefore = scopedManager.testExecutor()
+
+        // disconnectProjects calls onDisconnect before removing the connection
+        // from the pool so in-flight builds can be cancelled through the live
+        // ProjectConnection.
+        scopedManager.onDisconnect(project)
+        connectionManager.disconnect(project)
+
+        scopedManager.testExecutor() shouldNotBe executorBefore
+    }
+
+    @Test
+    fun `onDisconnect keeps executor while other projects remain connected`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedNoopConnections(projectA, projectB)
+        val scopedManager = BuildExecutionManager(connectionManager)
+
+        val executorBefore = scopedManager.testExecutor()
+
+        scopedManager.onDisconnect(projectA)
+        connectionManager.disconnect(projectA)
+
+        scopedManager.testExecutor() shouldBe executorBefore
     }
 
     @Test
