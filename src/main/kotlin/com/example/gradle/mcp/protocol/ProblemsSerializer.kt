@@ -157,11 +157,21 @@ internal object ProblemsSerializer {
         )
 
     private fun safeLocations(getter: () -> Collection<Location>?): List<ProblemLocationSnapshot> =
-        runCatching { locationSnapshots(getter()) }.getOrDefault(emptyList())
+        try {
+            locationSnapshots(getter())
+        } catch (_: AbstractMethodError) {
+            emptyList()
+        }
 
     private fun locationSnapshots(locations: Collection<Location>?): List<ProblemLocationSnapshot> =
         locations.orEmpty().mapNotNull { location ->
-            runCatching { toLocationSnapshot(location) }.getOrNull()
+            try {
+                toLocationSnapshot(location)
+            } catch (_: AbstractMethodError) {
+                null
+            } catch (_: Exception) {
+                null
+            }
         }
 
     private fun toLocationSnapshot(location: Location): ProblemLocationSnapshot? {

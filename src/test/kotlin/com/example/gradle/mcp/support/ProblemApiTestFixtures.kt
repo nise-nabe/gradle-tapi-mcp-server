@@ -120,7 +120,7 @@ internal fun problemProxy(
     contextualLabel: String? = null,
     originLocations: List<Location> = emptyList(),
     contextualLocations: List<Location> = emptyList(),
-    locationsAvailable: Boolean = true,
+    locationsError: Throwable? = null,
 ): Problem {
     val definition = problemDefinitionProxy(problemIdProxy(displayName), severity)
     return Proxy.newProxyInstance(
@@ -132,11 +132,9 @@ internal fun problemProxy(
                 "getDetails" -> details?.let(::detailsProxy)
                 "getContextualLabel" -> contextualLabel?.let(::contextualLabelProxy)
                 "getSolutions" -> solutions.map(::solutionProxy)
-                "getOriginLocations" ->
-                    if (locationsAvailable) originLocations else throw AbstractMethodError("getOriginLocations")
-                "getContextualLocations" ->
-                    if (locationsAvailable) contextualLocations else throw AbstractMethodError("getContextualLocations")
-                "getFailure", "getAdditionalData" -> emptyList<Any>()
+                "getOriginLocations" -> locationsError?.let { throw it } ?: originLocations
+                "getContextualLocations" -> locationsError?.let { throw it } ?: contextualLocations
+                "getFailure", "getAdditionalData" -> null
                 else -> null
             }
         },

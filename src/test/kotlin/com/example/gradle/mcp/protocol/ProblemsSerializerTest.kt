@@ -10,6 +10,7 @@ import com.example.gradle.mcp.support.problemSummariesEventProxy
 import com.example.gradle.mcp.support.problemSummaryProxy
 import com.example.gradle.mcp.support.singleProblemEventProxy
 import com.example.gradle.mcp.support.throwingFileLocationProxy
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
@@ -125,7 +126,7 @@ class ProblemsSerializerTest {
             displayName = "Legacy problem",
             details = "no locations",
             severity = Severity.WARNING,
-            locationsAvailable = false,
+            locationsError = AbstractMethodError("getOriginLocations"),
         )
 
         val extracted = ProblemsSerializer.fromProblemEvent(singleProblemEventProxy(problem)).single()
@@ -176,6 +177,20 @@ class ProblemsSerializerTest {
 
         extracted.originLocations.single().path shouldBe "src/main/java/App.java"
         extracted.originLocations.single().line shouldBe 24
+    }
+
+    @Test
+    fun `fromProblemEvent propagates unexpected location list failures`() {
+        val problem = problemProxy(
+            displayName = "Broken locations",
+            details = "getter throws",
+            severity = Severity.ERROR,
+            locationsError = RuntimeException("unexpected location failure"),
+        )
+
+        shouldThrow<RuntimeException> {
+            ProblemsSerializer.fromProblemEvent(singleProblemEventProxy(problem))
+        }
     }
 
     @Test
