@@ -24,6 +24,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.longs.shouldBeGreaterThanOrEqual
+import io.kotest.matchers.longs.shouldBeLessThan
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import kotlinx.coroutines.Dispatchers
@@ -511,6 +512,35 @@ class BuildExecutionManagerRunTest {
         result["waitTimedOut"] shouldBe true
         (result["waitedMs"] as Number).toLong() shouldBeGreaterThanOrEqual 50
         result["hint"] shouldBe BuildStatusWaitOptions.WAIT_TIMEOUT_HINT
+    }
+
+    @Test
+    fun `waitUntilComplete clamps poll interval to remaining wait budget`() {
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "running-overshoot-wait-build",
+                tracker = runningTracker(),
+            ),
+        )
+
+        val waitStartedAt = System.currentTimeMillis()
+        val result = manager.status(
+            "running-overshoot-wait-build",
+            OutputLimitOptions(),
+            ProgressResponseOptions(),
+            waitOptions = BuildStatusWaitOptions(
+                waitUntilComplete = true,
+                waitTimeoutMs = 50,
+                pollIntervalMs = BuildStatusWaitOptions.MAX_WAIT_TIMEOUT_MS,
+            ),
+        )
+        val elapsedMs = System.currentTimeMillis() - waitStartedAt
+
+        result["status"] shouldBe "running"
+        result["waitTimedOut"] shouldBe true
+        (result["waitedMs"] as Number).toLong() shouldBeGreaterThanOrEqual 50
+        result["hint"] shouldBe BuildStatusWaitOptions.WAIT_TIMEOUT_HINT
+        elapsedMs shouldBeLessThan 5_000
     }
 
     @Test

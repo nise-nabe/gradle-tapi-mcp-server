@@ -239,7 +239,7 @@ class BuildExecutionManager(
                     "hint" to BuildStatusWaitOptions.WAIT_TIMEOUT_HINT,
                 )
             }
-            Thread.sleep(waitOptions.pollIntervalMs)
+            Thread.sleep(minOf(waitOptions.pollIntervalMs, deadline - now))
             latest = statusOnce(buildId, outputLimit, progressOptions, projectDirectoryHint)
         }
         return latest
