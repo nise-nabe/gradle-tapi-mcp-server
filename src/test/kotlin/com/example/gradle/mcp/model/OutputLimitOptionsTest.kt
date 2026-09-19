@@ -1,5 +1,8 @@
 package com.example.gradle.mcp.model
 
+import com.example.gradle.mcp.protocol.McpErrorCode
+import com.example.gradle.mcp.protocol.McpException
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.shouldBe
@@ -36,9 +39,10 @@ class OutputLimitOptionsTest {
 
         zeroLimit.maxOutputChars shouldBe 0
 
-        val negativeLimit = OutputLimitOptions.fromArgs(mapOf("maxOutputChars" to -1))
-
-        negativeLimit.maxOutputChars shouldBe OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS
+        val error = shouldThrow<McpException> {
+            OutputLimitOptions.fromArgs(mapOf("maxOutputChars" to -1))
+        }
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
     }
 
     @Test

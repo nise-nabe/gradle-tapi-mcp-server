@@ -122,9 +122,13 @@ class ProjectTreeOptionsTest {
 
     @Test
     fun `fromArgs accepts root-only maxDepth and rejects invalid children limits`() {
-        val options = ProjectTreeOptions.fromArgs(mapOf("maxDepth" to 0, "maxChildren" to -1))
+        val options = ProjectTreeOptions.fromArgs(mapOf("maxDepth" to 0))
 
         options.maxDepth shouldBe 0
-        options.maxChildren.shouldBeNull()
+
+        val error = shouldThrow<McpException> {
+            ProjectTreeOptions.fromArgs(mapOf("maxChildren" to -1))
+        }
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
     }
 }
