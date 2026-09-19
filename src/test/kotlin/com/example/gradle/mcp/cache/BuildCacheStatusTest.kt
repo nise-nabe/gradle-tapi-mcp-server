@@ -282,4 +282,23 @@ class BuildCacheStatusTest {
         val taskStats = lastMcpBuild["taskStats"] as Map<String, Any?>
         taskStats["executed"] shouldBe 5
     }
+
+    @Test
+    fun `GradlePropertiesParser uses the earliest separator`() {
+        GradlePropertiesParser.parsePropertyLine("org.gradle.caching.remote.url: https://cache.example.com/?token=x") shouldBe
+            ("org.gradle.caching.remote.url" to "https://cache.example.com/?token=x")
+        GradlePropertiesParser.parsePropertyLine("key=value") shouldBe ("key" to "value")
+        GradlePropertiesParser.parsePropertyLine("key=a:b") shouldBe ("key" to "a:b")
+        GradlePropertiesParser.parsePropertyLine("key:a=b") shouldBe ("key" to "a=b")
+    }
+
+    @Test
+    fun `GradlePropertiesStreamCapture captures properties written after invalid utf8 bytes`() {
+        val capture = GradlePropertiesStreamCapture(retainKey = BuildCachePropertyKeys::isCacheRelated)
+        val out = capture.asOutputStream()
+        out.write(byteArrayOf(0x93.toByte(), 0x0A.toByte()))
+        out.write("org.gradle.caching: true\n".toByteArray(StandardCharsets.UTF_8))
+
+        capture.snapshotProperties()["org.gradle.caching"] shouldBe "true"
+    }
 }

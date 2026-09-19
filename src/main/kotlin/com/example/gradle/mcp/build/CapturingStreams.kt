@@ -21,7 +21,7 @@ class TailCapturingStream(
         synchronized(lock) {
             val incoming = bytes.copyOfRange(offset, offset + length)
             val combined = if (pendingBytes.isEmpty()) incoming else pendingBytes + incoming
-            val completeLength = utf8CompletePrefixLength(combined)
+            val completeLength = Utf8ByteDecoder.completePrefixLength(combined)
             if (completeLength > 0) {
                 val decoded = String(combined, 0, completeLength, StandardCharsets.UTF_8)
                 appendNormalizedText(decoded)
@@ -74,29 +74,6 @@ class TailCapturingStream(
         }
         val startIndex = buffer.offsetByCodePoints(buffer.length, -maxRetainedChars)
         buffer.delete(0, startIndex)
-    }
-
-    private fun utf8CompletePrefixLength(bytes: ByteArray): Int {
-        var index = 0
-        while (index < bytes.size) {
-            val sequenceLength = utf8SequenceLength(bytes[index])
-            if (sequenceLength <= 0 || index + sequenceLength > bytes.size) {
-                return index
-            }
-            index += sequenceLength
-        }
-        return bytes.size
-    }
-
-    private fun utf8SequenceLength(firstByte: Byte): Int {
-        val byte = firstByte.toInt() and 0xFF
-        return when {
-            byte and 0x80 == 0 -> 1
-            byte and 0xE0 == 0xC0 -> 2
-            byte and 0xF0 == 0xE0 -> 3
-            byte and 0xF8 == 0xF0 -> 4
-            else -> 0
-        }
     }
 
     companion object {
@@ -186,10 +163,15 @@ private object Utf8ByteDecoder {
         var index = 0
         while (index < bytes.size) {
             val sequenceLength = sequenceLength(bytes[index])
-            if (sequenceLength <= 0 || index + sequenceLength > bytes.size) {
+            if (sequenceLength <= 0) {
+                // Invalid leading byte: consume it so later bytes are not
+                // left stuck in pendingBytes. It decodes as U+FFFD.
+                index += 1
+            } else if (index + sequenceLength > bytes.size) {
                 return index
+            } else {
+                index += sequenceLength
             }
-            index += sequenceLength
         }
         return bytes.size
     }
