@@ -92,4 +92,39 @@ class TailCapturingStreamTest {
         snapshot.totalChars shouldBe 200
         snapshot.text shouldEndWith "x\n"
     }
+
+    @Test
+    fun `decodes invalid leading byte as replacement without stalling`() {
+        val stream = TailCapturingStream(maxRetainedChars = 100)
+        val bytes = byteArrayOf(0x93.toByte()) + "hello".toByteArray(StandardCharsets.UTF_8)
+
+        stream.append(bytes, 0, bytes.size)
+
+        stream.snapshot().text shouldBe "\uFFFDhello"
+    }
+
+    @Test
+    fun `recovers from invalid byte in the middle of output`() {
+        val stream = TailCapturingStream(maxRetainedChars = 100)
+        val bytes = "abc".toByteArray(StandardCharsets.UTF_8) +
+            byteArrayOf(0x80.toByte()) +
+            "def".toByteArray(StandardCharsets.UTF_8)
+
+        stream.append(bytes, 0, bytes.size)
+
+        stream.snapshot().text shouldBe "abc\uFFFDdef"
+    }
+
+    @Test
+    fun `invalid byte does not block a pending multi byte sequence`() {
+        val stream = TailCapturingStream(maxRetainedChars = 100)
+        val emoji = "\uD83D\uDE00".toByteArray(StandardCharsets.UTF_8)
+        val first = byteArrayOf(0x93.toByte()) + emoji.copyOfRange(0, 2)
+
+        stream.append(first, 0, first.size)
+        stream.snapshot().text shouldBe "\uFFFD"
+
+        stream.append(emoji.copyOfRange(2, 4), 0, 2)
+        stream.snapshot().text shouldBe "\uFFFD\uD83D\uDE00"
+    }
 }
