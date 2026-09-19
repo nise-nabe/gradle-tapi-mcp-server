@@ -369,6 +369,52 @@ class ProgressResponseOptionsTest {
     }
 
     @Test
+    fun `terminalFailureFields keeps non-method framework failures in testFailures`() {
+        val snapshot = BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_FAILED,
+            currentOperation = null,
+            completedTaskCount = 1,
+            runningTaskCount = 0,
+            failedTaskCount = 1,
+            failedTestCount = 1,
+            completedTasks = emptyList(),
+            runningTasks = emptyList(),
+            failedTasks = listOf(":plugin:test"),
+            recentEvents = emptyList(),
+            totalEventCount = 2,
+            failedTests = listOf(
+                FailedTestSnapshot(
+                    className = "com.example.FooTest",
+                    displayName = "com.example.FooTest",
+                    failureMessage = "java.lang.IllegalStateException: setup boom",
+                    exceptionType = "java.lang.IllegalStateException",
+                    failureType = "framework",
+                ),
+                FailedTestSnapshot(
+                    className = "com.example.FooTest",
+                    methodName = "bar",
+                    displayName = "com.example.FooTest.bar",
+                    failureMessage = "expected:<1> but was:<0>",
+                    exceptionType = "junit.framework.AssertionFailedError",
+                    failureType = "assertion",
+                ),
+            ),
+        )
+
+        val fields = terminalFailureFields(snapshot, ProgressResponseOptions())
+
+        val testFailures = fields["testFailures"] as List<*>
+        testFailures.size shouldBe 2
+        val frameworkFailure = testFailures[0] as Map<*, *>
+        frameworkFailure["className"] shouldBe "com.example.FooTest"
+        frameworkFailure.containsKey("methodName") shouldBe false
+        frameworkFailure["failureType"] shouldBe "framework"
+        val assertionFailure = testFailures[1] as Map<*, *>
+        assertionFailure["methodName"] shouldBe "bar"
+        assertionFailure["failureType"] shouldBe "assertion"
+    }
+
+    @Test
     fun `terminalFailureFields keeps failedTestCount when testFailures list is capped`() {
         val failedTests = (1..FailedTestSnapshots.MAX_TRACKED_FAILED_TESTS).map { index ->
             FailedTestSnapshot(

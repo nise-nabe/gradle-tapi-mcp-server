@@ -12,8 +12,8 @@ internal object FailedTestSnapshots {
     fun methodLevelNames(tests: List<FailedTestSnapshot>): List<String> =
         methodLevelFailures(tests).mapNotNull { it.qualifiedName() }
 
-    fun methodLevelTestFailures(tests: List<FailedTestSnapshot>): List<Map<String, Any?>> =
-        methodLevelFailures(tests).map { it.toTestFailureMap() }
+    fun testFailureMaps(tests: List<FailedTestSnapshot>): List<Map<String, Any?>> =
+        tests.map { it.toTestFailureMap() }
 
     fun mergeDistinct(vararg lists: List<FailedTestSnapshot>): List<FailedTestSnapshot> {
         val merged = LinkedHashMap<String, FailedTestSnapshot>()
@@ -38,6 +38,7 @@ internal object FailedTestSnapshots {
         outcome: String?,
         testDetails: TestProgressDetailsSnapshot?,
         exceptionType: String? = null,
+        failureType: String? = null,
     ): FailedTestSnapshot =
         FailedTestSnapshot(
             className = testDetails?.className,
@@ -45,6 +46,7 @@ internal object FailedTestSnapshots {
             displayName = displayName,
             failureMessage = testDetails?.failureMessage ?: outcome,
             exceptionType = exceptionType ?: testDetails?.exceptionType,
+            failureType = failureType ?: testDetails?.failureType,
             sourceFile = testDetails?.sourcePath?.substringAfterLast('/'),
             line = testDetails?.sourceLine,
         )

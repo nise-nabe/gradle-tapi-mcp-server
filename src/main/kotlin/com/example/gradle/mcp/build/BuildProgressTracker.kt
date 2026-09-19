@@ -220,11 +220,12 @@ class BuildProgressTracker(
                         val failure = result.failures.firstOrNull()
                         val message = failure?.message ?: "failed"
                         val exceptionType = TestFailureDetails.exceptionTypeFromFailure(failure)
+                        val failureType = TestFailureDetails.failureTypeFromFailure(failure)
                         applyTaskEvent(
                             ProgressEventTypes.TEST_FAIL,
                             displayName,
                             message,
-                            TestProgressDetailsExtractor.fromGradleEvent(event, message, exceptionType),
+                            TestProgressDetailsExtractor.fromGradleEvent(event, message, exceptionType, failureType),
                         )
                     }
                     is org.gradle.tooling.events.test.TestSkippedResult -> {
