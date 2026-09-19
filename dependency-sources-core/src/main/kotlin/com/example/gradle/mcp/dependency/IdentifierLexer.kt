@@ -75,6 +75,26 @@ object IdentifierLexer {
                     }
                     if (i + 1 < source.length) i += 2
                 }
+                c == '"' && i + 2 < source.length &&
+                    source[i + 1] == '"' && source[i + 2] == '"' -> {
+                    // Kotlin raw string / Java text block: no escapes, closes at the next """
+                    i += 3
+                    while (i < source.length) {
+                        when {
+                            source[i] == '\n' -> {
+                                line += 1
+                                lineStart = i + 1
+                                i += 1
+                            }
+                            i + 2 < source.length &&
+                                source[i] == '"' && source[i + 1] == '"' && source[i + 2] == '"' -> {
+                                i += 3
+                                break
+                            }
+                            else -> i += 1
+                        }
+                    }
+                }
                 c == '"' || c == '\'' || c == '`' -> {
                     val quote = c
                     i += 1
