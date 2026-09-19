@@ -3,6 +3,8 @@ package com.example.gradle.mcp.dependency
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
+import java.io.FilterInputStream
+import java.io.InputStream
 import java.nio.file.Files
 import java.security.MessageDigest
 
@@ -54,6 +56,19 @@ data class IndexStats(
 )
 
 private data class DocMeta(val gav: String, val path: String)
+
+/** Tracks consumed bytes so persisted counts and length fields can be bounded by remaining file size. */
+private class CountingInputStream(delegate: InputStream) : FilterInputStream(delegate) {
+    var position: Long = 0
+        private set
+
+    override fun read(): Int = super.read().also { if (it >= 0) position++ }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+        super.read(buffer, offset, length).also { if (it > 0) position += it }
+
+    override fun skip(count: Long): Long = super.skip(count).also { position += it }
+}
 
 private fun requireNonNegativeLimit(limit: Int?, paramName: String = "limit") {
     if (limit != null && limit < 0) {
@@ -355,21 +370,33 @@ class NameLocateIndex private constructor(
         }
 
         private fun readDictionary(file: File): NameDictionary {
-            DataInputStream(file.inputStream().buffered()).use { input ->
+            val counting = CountingInputStream(file.inputStream().buffered())
+            DataInputStream(counting).use { input ->
                 requireMagic(input)
                 val count = input.readInt()
+                val fileLength = file.length()
+                val remaining = { fileLength - counting.position }
+                require(count >= 0 && count.toLong() <= remaining() / Int.SIZE_BYTES) {
+                    "name count $count exceeds dictionary file capacity"
+                }
                 val dictionary = NameDictionary()
-                repeat(count) { dictionary.intern(readUtf(input)) }
+                repeat(count) { dictionary.intern(readUtf(input, remaining)) }
                 return dictionary
             }
         }
 
         private fun readDocuments(file: File): List<DocMeta> {
-            DataInputStream(file.inputStream().buffered()).use { input ->
+            val counting = CountingInputStream(file.inputStream().buffered())
+            DataInputStream(counting).use { input ->
                 requireMagic(input)
                 val docCount = input.readInt()
+                val fileLength = file.length()
+                val remaining = { fileLength - counting.position }
+                require(docCount >= 0 && docCount.toLong() <= remaining() / (2L * Int.SIZE_BYTES)) {
+                    "document count $docCount exceeds documents file capacity"
+                }
                 val documents = ArrayList<DocMeta>(docCount)
-                repeat(docCount) { documents.add(DocMeta(readUtf(input), readUtf(input))) }
+                repeat(docCount) { documents.add(DocMeta(readUtf(input, remaining), readUtf(input, remaining))) }
                 return documents
             }
         }
@@ -385,8 +412,13 @@ class NameLocateIndex private constructor(
             out.write(bytes)
         }
 
-        private fun readUtf(input: DataInputStream): String {
-            val bytes = ByteArray(input.readInt())
+        private fun readUtf(input: DataInputStream, remainingBytes: () -> Long): String {
+            val length = input.readInt()
+            val remaining = remainingBytes()
+            require(length >= 0 && length.toLong() <= remaining) {
+                "string byte length $length exceeds $remaining remaining input bytes"
+            }
+            val bytes = ByteArray(length)
             input.readFully(bytes)
             return String(bytes, Charsets.UTF_8)
         }

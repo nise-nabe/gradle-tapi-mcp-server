@@ -710,6 +710,90 @@ class NameLocateIndexTest {
         postingsFile.writeBytes(bytes)
         NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
     }
+
+    @Test
+    fun `rejects oversized string length in dictionary`() {
+        val sources = File(tempDir, "src-huge-strlen").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}")
+        val members = listOf(KeepSetMember(gav = "g:a:1", sourceRoot = sources))
+        val fingerprint = KeepSetFingerprint.compute(TokenMode.ALL, "explicit", members)
+        val index = NameLocateIndex.build(members, TokenMode.ALL, fingerprint, "explicit")
+        val indexDir = File(tempDir, "idx-huge-strlen")
+        index.writeTo(indexDir)
+
+        val dictionaryFile = File(indexDir, NameLocateIndex.DICTIONARY_NAME)
+        val bytes = dictionaryFile.readBytes()
+        // First string length is a big-endian u32 after magic+version+count: claim Int.MAX_VALUE.
+        bytes[12] = 0x7F.toByte()
+        bytes[13] = 0xFF.toByte()
+        bytes[14] = 0xFF.toByte()
+        bytes[15] = 0xFF.toByte()
+        dictionaryFile.writeBytes(bytes)
+        NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
+    }
+
+    @Test
+    fun `rejects oversized string length in documents`() {
+        val sources = File(tempDir, "src-huge-docstrlen").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}")
+        val members = listOf(KeepSetMember(gav = "g:a:1", sourceRoot = sources))
+        val fingerprint = KeepSetFingerprint.compute(TokenMode.ALL, "explicit", members)
+        val index = NameLocateIndex.build(members, TokenMode.ALL, fingerprint, "explicit")
+        val indexDir = File(tempDir, "idx-huge-docstrlen")
+        index.writeTo(indexDir)
+
+        val documentsFile = File(indexDir, NameLocateIndex.DOCUMENTS_NAME)
+        val bytes = documentsFile.readBytes()
+        // First gav length is a big-endian u32 after magic+version+docCount: claim Int.MAX_VALUE.
+        bytes[12] = 0x7F.toByte()
+        bytes[13] = 0xFF.toByte()
+        bytes[14] = 0xFF.toByte()
+        bytes[15] = 0xFF.toByte()
+        documentsFile.writeBytes(bytes)
+        NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
+    }
+
+    @Test
+    fun `rejects oversized name count in dictionary`() {
+        val sources = File(tempDir, "src-huge-namecount").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}")
+        val members = listOf(KeepSetMember(gav = "g:a:1", sourceRoot = sources))
+        val fingerprint = KeepSetFingerprint.compute(TokenMode.ALL, "explicit", members)
+        val index = NameLocateIndex.build(members, TokenMode.ALL, fingerprint, "explicit")
+        val indexDir = File(tempDir, "idx-huge-namecount")
+        index.writeTo(indexDir)
+
+        val dictionaryFile = File(indexDir, NameLocateIndex.DICTIONARY_NAME)
+        val bytes = dictionaryFile.readBytes()
+        // Name count is a big-endian u32 after magic+version: claim Int.MAX_VALUE.
+        bytes[8] = 0x7F.toByte()
+        bytes[9] = 0xFF.toByte()
+        bytes[10] = 0xFF.toByte()
+        bytes[11] = 0xFF.toByte()
+        dictionaryFile.writeBytes(bytes)
+        NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
+    }
+
+    @Test
+    fun `rejects oversized document count in documents`() {
+        val sources = File(tempDir, "src-huge-doccount").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}")
+        val members = listOf(KeepSetMember(gav = "g:a:1", sourceRoot = sources))
+        val fingerprint = KeepSetFingerprint.compute(TokenMode.ALL, "explicit", members)
+        val index = NameLocateIndex.build(members, TokenMode.ALL, fingerprint, "explicit")
+        val indexDir = File(tempDir, "idx-huge-doccount")
+        index.writeTo(indexDir)
+
+        val documentsFile = File(indexDir, NameLocateIndex.DOCUMENTS_NAME)
+        val bytes = documentsFile.readBytes()
+        // Doc count is a big-endian u32 after magic+version: claim Int.MAX_VALUE.
+        bytes[8] = 0x7F.toByte()
+        bytes[9] = 0xFF.toByte()
+        bytes[10] = 0xFF.toByte()
+        bytes[11] = 0xFF.toByte()
+        documentsFile.writeBytes(bytes)
+        NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
+    }
 }
 
 private fun readV3PostingEntries(file: File): List<Pair<ByteArray, Int>> {
