@@ -8,10 +8,13 @@ import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.ints.shouldBeLessThanOrEqual
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import org.gradle.tooling.ConfigurableLauncher
 import org.gradle.tooling.Failure
+import org.gradle.tooling.TestAssertionFailure
+import org.gradle.tooling.TestFrameworkFailure
 import org.gradle.tooling.events.FailureResult
 import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.FinishEvent
@@ -35,6 +38,7 @@ import org.gradle.tooling.events.download.FileDownloadNotFoundResult
 import org.gradle.tooling.events.download.FileDownloadOperationDescriptor
 import org.gradle.tooling.events.download.FileDownloadResult
 import org.gradle.tooling.events.download.FileDownloadStartEvent
+import org.gradle.tooling.events.test.source.ClassSource
 import org.gradle.tooling.events.test.source.FilePosition
 import org.gradle.tooling.events.test.source.FileSource
 import org.junit.jupiter.api.Test
@@ -217,6 +221,74 @@ class BuildProgressTrackerTest {
         snapshot.failedTests.single().className shouldBe "com.example.DemoTest"
         snapshot.failedTests.single().methodName shouldBe "fails"
         snapshot.failedTests.single().failureMessage shouldBe "expected:<1> but was:<2>"
+    }
+
+    @Test
+    fun `keeps class level framework failures in failed test snapshots`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+        val displayName = "com.example.DemoTest"
+        val descriptor = jvmTestDescriptorProxy(
+            displayName = displayName,
+            className = "com.example.DemoTest",
+            methodName = null,
+            source = classSourceProxy("com.example.DemoTest"),
+        )
+
+        listener.statusChanged(testStartEventProxy(displayName, descriptor))
+        listener.statusChanged(
+            testFinishEventProxy(
+                displayName = displayName,
+                descriptor = descriptor,
+                result = testFailureResultProxy(
+                    message = "java.lang.IllegalStateException: setup boom",
+                    failureInterfaces = arrayOf(TestFrameworkFailure::class.java),
+                    failureClassName = "java.lang.IllegalStateException",
+                ),
+            ),
+        )
+
+        val failedTest = tracker.snapshot().failedTests.single()
+        failedTest.className shouldBe "com.example.DemoTest"
+        failedTest.methodName.shouldBeNull()
+        failedTest.failureType shouldBe TestFailureDetails.FAILURE_TYPE_FRAMEWORK
+        failedTest.exceptionType shouldBe "java.lang.IllegalStateException"
+        failedTest.failureMessage shouldBe "java.lang.IllegalStateException: setup boom"
+    }
+
+    @Test
+    fun `captures assertion failure type for method level test failures`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+        val displayName = "com.example.DemoTest.fails"
+        val descriptor = jvmTestDescriptorProxy(
+            displayName = displayName,
+            className = "com.example.DemoTest",
+            methodName = "fails",
+            source = fileSourceProxy(
+                file = File("src/test/kotlin/com/example/DemoTest.kt"),
+                line = 42,
+                column = null,
+            ),
+        )
+
+        listener.statusChanged(testStartEventProxy(displayName, descriptor))
+        listener.statusChanged(
+            testFinishEventProxy(
+                displayName = displayName,
+                descriptor = descriptor,
+                result = testFailureResultProxy(
+                    message = "expected:<1> but was:<2>",
+                    failureInterfaces = arrayOf(TestAssertionFailure::class.java),
+                    failureClassName = "junit.framework.AssertionFailedError",
+                ),
+            ),
+        )
+
+        val failedTest = tracker.snapshot().failedTests.single()
+        failedTest.methodName shouldBe "fails"
+        failedTest.failureType shouldBe TestFailureDetails.FAILURE_TYPE_ASSERTION
+        failedTest.exceptionType shouldBe "junit.framework.AssertionFailedError"
     }
 
     @Test
@@ -653,9 +725,9 @@ class BuildProgressTrackerTest {
 
     private fun jvmTestDescriptorProxy(
         displayName: String,
-        className: String,
-        methodName: String,
-        source: FileSource,
+        className: String?,
+        methodName: String?,
+        source: Any?,
     ): JvmTestOperationDescriptor =
         Proxy.newProxyInstance(
             JvmTestOperationDescriptor::class.java.classLoader,
@@ -671,6 +743,18 @@ class BuildProgressTrackerTest {
                 }
             },
         ) as JvmTestOperationDescriptor
+
+    private fun classSourceProxy(className: String): ClassSource =
+        Proxy.newProxyInstance(
+            ClassSource::class.java.classLoader,
+            arrayOf(ClassSource::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getClassName" -> className
+                    else -> null
+                }
+            },
+        ) as ClassSource
 
     private fun fileSourceProxy(
         file: File,
@@ -702,7 +786,11 @@ class BuildProgressTrackerTest {
             },
         ) as FilePosition
 
-    private fun testFailureResultProxy(message: String): TestFailureResult =
+    private fun testFailureResultProxy(
+        message: String,
+        failureInterfaces: Array<Class<*>> = arrayOf(Failure::class.java),
+        failureClassName: String? = null,
+    ): TestFailureResult =
         Proxy.newProxyInstance(
             TestFailureResult::class.java.classLoader,
             arrayOf(TestFailureResult::class.java),
@@ -711,11 +799,12 @@ class BuildProgressTrackerTest {
                     "getFailures" -> listOf(
                         Proxy.newProxyInstance(
                             Failure::class.java.classLoader,
-                            arrayOf(Failure::class.java),
+                            failureInterfaces,
                             InvocationHandler { _, method, _ ->
                                 when (method.name) {
                                     "getMessage" -> message
                                     "getDescription" -> null
+                                    "getClassName" -> failureClassName
                                     "getProblems", "getCauses" -> emptyList<Any>()
                                     else -> null
                                 }

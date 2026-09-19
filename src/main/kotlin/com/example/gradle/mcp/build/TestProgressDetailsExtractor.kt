@@ -16,6 +16,7 @@ internal object TestProgressDetailsExtractor {
         event: TestProgressEvent,
         failureMessage: String? = null,
         exceptionType: String? = null,
+        failureType: String? = null,
     ): TestProgressDetailsSnapshot? {
         val descriptor = event.descriptor as? JvmTestOperationDescriptor
         val source = descriptor?.source
@@ -61,6 +62,7 @@ internal object TestProgressDetailsExtractor {
             sourceColumn = sourcePosition?.column,
             failureMessage = failureMessage,
             exceptionType = exceptionType,
+            failureType = failureType,
         ).takeUnlessBlank()
     }
 
@@ -85,6 +87,7 @@ internal object TestProgressDetailsExtractor {
             sourceColumn = (map["sourceColumn"] as? Number)?.toInt(),
             failureMessage = failureMessage,
             exceptionType = map["exceptionType"] as? String,
+            failureType = map["failureType"] as? String,
         ).takeUnlessBlank()
     }
 }
@@ -100,7 +103,8 @@ internal fun TestProgressDetailsSnapshot.takeUnlessBlank(): TestProgressDetailsS
         sourceLine == null &&
         sourceColumn == null &&
         failureMessage == null &&
-        exceptionType == null
+        exceptionType == null &&
+        failureType == null
     ) {
         null
     } else {

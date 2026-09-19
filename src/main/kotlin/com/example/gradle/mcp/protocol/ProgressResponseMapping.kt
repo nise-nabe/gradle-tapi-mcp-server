@@ -72,7 +72,7 @@ internal fun terminalFailureFields(
                     put("failedTests", failedTests)
                 }
             }
-            val testFailures = FailedTestSnapshots.methodLevelTestFailures(snapshot.failedTests)
+            val testFailures = FailedTestSnapshots.testFailureMaps(snapshot.failedTests)
             if (snapshot.status == BuildProgressTracker.STATUS_FAILED && testFailures.isNotEmpty()) {
                 put("testFailures", testFailures)
             }
@@ -165,6 +165,7 @@ private fun TestProgressDetailsSnapshot.toResponseMap(): Map<String, Any?> =
         sourceLine?.let { put("sourceLine", it) }
         sourceColumn?.let { put("sourceColumn", it) }
         failureMessage?.let { put("failureMessage", it) }
+        failureType?.let { put("failureType", it) }
     }
 
 private fun FailedTestSnapshot.toResponseMap(): Map<String, Any?> =
@@ -173,4 +174,5 @@ private fun FailedTestSnapshot.toResponseMap(): Map<String, Any?> =
         className?.let { put("className", it) }
         methodName?.let { put("methodName", it) }
         failureMessage?.let { put("failureMessage", it) }
+        failureType?.let { put("failureType", it) }
     }

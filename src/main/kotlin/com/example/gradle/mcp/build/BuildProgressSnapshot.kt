@@ -11,6 +11,7 @@ data class TestProgressDetailsSnapshot(
     val sourceColumn: Int? = null,
     val failureMessage: String? = null,
     val exceptionType: String? = null,
+    val failureType: String? = null,
 )
 
 @Serializable
@@ -20,6 +21,7 @@ data class FailedTestSnapshot(
     val displayName: String,
     val failureMessage: String? = null,
     val exceptionType: String? = null,
+    val failureType: String? = null,
     val sourceFile: String? = null,
     val line: Int? = null,
 ) {
@@ -38,6 +40,7 @@ data class FailedTestSnapshot(
             className?.let { put("className", it) }
             methodName?.let { put("methodName", it) }
             exceptionType?.let { put("exceptionType", it) }
+            failureType?.let { put("failureType", it) }
             failureMessage?.let { put("message", it) }
             sourceFile?.let { put("sourceFile", it) }
             line?.let { put("line", it) }

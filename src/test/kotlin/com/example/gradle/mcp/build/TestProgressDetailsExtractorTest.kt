@@ -36,6 +36,19 @@ class TestProgressDetailsExtractorTest {
     }
 
     @Test
+    fun `fromDiskMap restores failureType for failed test events`() {
+        val details = TestProgressDetailsExtractor.fromDiskMap(
+            ProgressEventTypes.TEST_FAIL,
+            mapOf(
+                "className" to "com.example.FooTest",
+                "failureType" to "framework",
+            ),
+        ).shouldNotBeNull()
+
+        details.failureType shouldBe "framework"
+    }
+
+    @Test
     fun `fromDiskMap normalizes sourcePath separators`() {
         val details = TestProgressDetailsExtractor.fromDiskMap(
             ProgressEventTypes.TEST_START,

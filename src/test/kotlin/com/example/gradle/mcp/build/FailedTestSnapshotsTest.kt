@@ -43,6 +43,30 @@ class FailedTestSnapshotsTest {
     }
 
     @Test
+    fun `testFailureMaps includes failures without a method name`() {
+        val maps = FailedTestSnapshots.testFailureMaps(
+            listOf(
+                failedTestSnapshot(
+                    className = "com.example.FooTest",
+                    methodName = "bar",
+                    failureMessage = "boom",
+                ),
+                FailedTestSnapshot(
+                    className = "com.example.FooTest",
+                    displayName = "com.example.FooTest",
+                    failureMessage = "setup failed",
+                    failureType = "framework",
+                ),
+            ),
+        )
+
+        maps.size shouldBe 2
+        maps[0]["methodName"] shouldBe "bar"
+        maps[1].containsKey("methodName") shouldBe false
+        maps[1]["failureType"] shouldBe "framework"
+    }
+
+    @Test
     fun `fromEvents caps tracked failed tests`() {
         val events = (1..11).map { index ->
             testFailProgressEvent("com.example.Test$index", "fails$index", "failure $index")
