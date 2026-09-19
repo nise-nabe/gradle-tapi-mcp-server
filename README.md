@@ -284,7 +284,7 @@ For slow `build` or `test` runs, pass `background: true` to `gradle_run_tasks` o
 - `statusSource`: `memory` (in-process record) or `disk` (`.gradle/mcp-builds/<buildId>/`)
 - `outcome` and `buildSummary` when the build has finished
 - `progress` (only when `includeProgress: true`): capped task lists and recent events; running polls merge in-memory progress with disk `events.ndjson` when available
-- `problems` on terminal `failed` + `failureCategory: GRADLE_TASK` when the Problems API emitted them (capped; no `includeProblems` needed). Set `includeProblems: true` for `liveProblems` while running, or to re-poll if terminal `problems` is missing. Do not re-run the task via CLI just to read compiler output.
+- `problems` on terminal `failed` + `failureCategory: GRADLE_TASK` when the Problems API emitted them (capped; no `includeProblems` needed). Entries include `originLocations` / `contextualLocations` with `path` and `line` when Gradle provides them. Set `includeProblems: true` for `liveProblems` while running, or to re-poll if terminal `problems` is missing. Do not re-run the task via CLI just to read compiler output.
 - `recordDirectory`: path to `.gradle/mcp-builds/<buildId>/` (included during running polls when disk artifacts exist)
 - `stdout`/`stderr` only when `includeOutput: true` — live partial output while running only when the MCP server still holds the in-memory record; disk-only polls return streams after MCP finalizes logs at build end. Tails often miss Kotlin compiler diagnostics (`Compilation error. See log for more details`); prefer `problems` on `GRADLE_TASK` failure
 - optional `projectDirectory` when the in-memory record was evicted and the connected project differs (disk-only lookup)
