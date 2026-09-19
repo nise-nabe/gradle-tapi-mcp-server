@@ -32,6 +32,7 @@ class BuildExecutionManager(
     private val connectionManager: GradleConnectionManager,
     private val buildRecordStore: BuildRecordStore = BuildRecordStore(),
 ) {
+    @Volatile
     private var executor: ExecutorService = newBuildExecutor()
     private val builds = ConcurrentHashMap<String, BuildRecord>()
     private val lastCompletedBuildSnapshots = ConcurrentHashMap<String, CompletedBuildSnapshot>()
