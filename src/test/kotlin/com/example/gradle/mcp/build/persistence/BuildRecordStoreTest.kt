@@ -32,6 +32,7 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.attribute.FileTime
 import java.time.Instant
 import org.junit.jupiter.api.Assumptions.assumeTrue
 
@@ -604,7 +605,7 @@ class BuildRecordStoreTest {
                     testClasses = emptyList(),
                     projectDirectory = projectDir.absolutePath,
                     startedAt = "2026-06-14T10:00:00Z",
-                    finishedAt = "2026-06-14T10:01:00Z",
+                    finishedAt = Instant.now().minusSeconds(5).toString(),
                     status = "failed",
                     outcome = "FAILED",
                     error = "Gradle connection closed",
@@ -664,6 +665,12 @@ class BuildRecordStoreTest {
             """{"ts":"$preFinalizeEventTs","type":"TASK_START","displayName":":app:build"}""" + "\n",
             StandardCharsets.UTF_8,
         )
+        // A fresh events.ndjson mtime counts as post-finalize activity; the dead
+        // daemon's log must look untouched since before MCP finalized.
+        Files.setLastModifiedTime(
+            File(recordDir, McpBuildRecordPaths.EVENTS_FILE).toPath(),
+            FileTime.from(staleFinishedInstant.minusSeconds(30)),
+        )
 
         val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
             .shouldNotBeNull()
@@ -671,6 +678,121 @@ class BuildRecordStoreTest {
         status["status"] shouldBe "failed"
         status["outcome"] shouldBe "FAILED"
         status["error"] shouldBe "Gradle connection closed"
+    }
+
+    @Test
+    fun `loadStatus prefers mcp failed when gradle running and events file is missing`(@TempDir projectDir: File) {
+        val buildId = "stale-gradle-running-no-events"
+        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        recordDir.mkdirs()
+        File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
+            encodeMcpJson(
+                GradleBuildResult(
+                    buildId = buildId,
+                    status = "running",
+                    startedAt = "2026-06-14T10:00:00Z",
+                    taskNames = listOf("build"),
+                ),
+            ),
+            StandardCharsets.UTF_8,
+        )
+        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
+            encodeMcpJson(
+                McpBuildResult(
+                    buildId = buildId,
+                    kind = "tasks",
+                    tasks = listOf("build"),
+                    testClasses = emptyList(),
+                    projectDirectory = projectDir.absolutePath,
+                    startedAt = "2026-06-14T10:00:00Z",
+                    finishedAt = Instant.now().minusSeconds(120).toString(),
+                    status = "failed",
+                    outcome = "FAILED",
+                    error = "Gradle connection closed",
+                ),
+            ),
+            StandardCharsets.UTF_8,
+        )
+
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+            .shouldNotBeNull()
+
+        status["status"] shouldBe "failed"
+        status["outcome"] shouldBe "FAILED"
+        status["error"] shouldBe "Gradle connection closed"
+    }
+
+    @Test
+    fun `loadStatus keeps gradle running when empty events file was written after finalize`(@TempDir projectDir: File) {
+        val buildId = "live-gradle-empty-events"
+        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        recordDir.mkdirs()
+        File(recordDir, McpBuildRecordPaths.GRADLE_RESULT_FILE).writeText(
+            encodeMcpJson(
+                GradleBuildResult(
+                    buildId = buildId,
+                    status = "running",
+                    startedAt = "2026-06-14T10:00:00Z",
+                    taskNames = listOf("build"),
+                ),
+            ),
+            StandardCharsets.UTF_8,
+        )
+        File(recordDir, McpBuildRecordPaths.MCP_RESULT_FILE).writeText(
+            encodeMcpJson(
+                McpBuildResult(
+                    buildId = buildId,
+                    kind = "tasks",
+                    tasks = listOf("build"),
+                    testClasses = emptyList(),
+                    projectDirectory = projectDir.absolutePath,
+                    startedAt = "2026-06-14T10:00:00Z",
+                    finishedAt = Instant.now().minusSeconds(120).toString(),
+                    status = "failed",
+                    outcome = "FAILED",
+                    error = "Gradle connection closed",
+                ),
+            ),
+            StandardCharsets.UTF_8,
+        )
+        // An events.ndjson touched after MCP finalized is a liveness signal even
+        // with no parseable events: a live Gradle keeps appending to it.
+        File(recordDir, McpBuildRecordPaths.EVENTS_FILE).writeText("", StandardCharsets.UTF_8)
+
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+            .shouldNotBeNull()
+
+        status["status"] shouldBe "running"
+    }
+
+    @Test
+    fun `loadListSummary reclaims stale gradle running when events file is missing`(@TempDir projectDir: File) {
+        val buildId = "listed-stale-running"
+        store.writeGradleResultToDisk(
+            projectDir,
+            buildId,
+            gradleBuildResult(
+                buildId = buildId,
+                status = "running",
+                taskNames = listOf("build"),
+            ),
+        )
+        store.writeMcpResultToDisk(
+            projectDir,
+            mcpBuildResult(
+                buildId = buildId,
+                projectDirectory = projectDir.absolutePath,
+                finishedAt = Instant.now().minusSeconds(120).toString(),
+                status = "failed",
+                outcome = "FAILED",
+                error = "Gradle connection closed",
+            ),
+        )
+
+        val summary = store.loadListSummary(projectDir, buildId).shouldNotBeNull()
+
+        summary.status shouldBe "failed"
+        summary.outcome shouldBe "FAILED"
     }
 
     @Test

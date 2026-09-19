@@ -37,6 +37,7 @@ internal object BuildPersistenceContract {
         gradleResult: GradleBuildResult?,
         mcpResult: McpBuildResult?,
         events: List<DiskBuildEvent> = emptyList(),
+        eventsLastModified: Instant? = null,
     ): ResolvedPersistence {
         val gradleStatus = gradleResult?.status
         if (gradleStatus == BuildProgressTracker.STATUS_SUCCEEDED ||
@@ -49,7 +50,7 @@ internal object BuildPersistenceContract {
             val mcpStatus = mcpResult?.status
             if (mcpStatus != null &&
                 mcpStatus != BuildProgressTracker.STATUS_RUNNING &&
-                isStaleGradleRunning(mcpResult, events)
+                isStaleGradleRunning(mcpResult, events, eventsLastModified)
             ) {
                 return ResolvedPersistence(mcpStatus, TerminalStatusSource.MCP)
             }
@@ -70,16 +71,29 @@ internal object BuildPersistenceContract {
      * event (including init-script [ProgressEventTypes.HEARTBEAT]) at or after MCP's
      * `finishedAt` (daemon likely dead). Pre-finalize task events alone are inconclusive
      * right after disconnect, so a grace period is required.
+     *
+     * When [events] is empty (Gradle died before its first event, or `events.ndjson` is
+     * missing or unreadable), the parsed log gives no timestamp evidence either way; the
+     * file's last write ([eventsLastModified]) still proves liveness because a live Gradle
+     * keeps appending heartbeats and task events. With no post-finalize event or write the
+     * record is reclaimed once `finishedAt` + [staleGradleGracePeriod] has elapsed.
+     * `startedAt` anchors the grace check when `finishedAt` is unparseable.
      */
-    internal fun isStaleGradleRunning(mcpResult: McpBuildResult, events: List<DiskBuildEvent>): Boolean {
-        if (events.isEmpty()) {
-            return false
-        }
+    internal fun isStaleGradleRunning(
+        mcpResult: McpBuildResult,
+        events: List<DiskBuildEvent>,
+        eventsLastModified: Instant? = null,
+    ): Boolean {
         if (events.any { it.eventType == ProgressEventTypes.BUILD_FINISHED }) {
             return false
         }
-        val mcpFinishedAt = parseInstant(mcpResult.finishedAt) ?: return false
-        if (events.any { event -> parseInstant(event.timestamp)?.let { it >= mcpFinishedAt } == true }) {
+        val mcpFinishedAt = parseInstant(mcpResult.finishedAt)
+            ?: parseInstant(mcpResult.startedAt)
+            ?: return false
+        val postFinalizeActivity = events.any { event ->
+            parseInstant(event.timestamp)?.let { it >= mcpFinishedAt } == true
+        } || eventsLastModified?.let { it >= mcpFinishedAt } == true
+        if (postFinalizeActivity) {
             return false
         }
         return Instant.now().isAfter(mcpFinishedAt.plus(staleGradleGracePeriod))

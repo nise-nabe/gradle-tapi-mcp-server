@@ -18,6 +18,7 @@ internal object PersistedBuildViewFactory {
             artifacts.gradleResult,
             artifacts.mcpResult,
             events,
+            artifacts.eventsLastModified,
         )
         val status = resolved.status
         val terminalSource = resolved.terminalSource

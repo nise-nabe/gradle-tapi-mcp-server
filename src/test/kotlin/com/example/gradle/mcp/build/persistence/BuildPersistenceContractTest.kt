@@ -12,11 +12,48 @@ import java.time.Instant
 
 class BuildPersistenceContractTest {
     @Test
-    fun `isStaleGradleRunning is false when events are empty`() {
+    fun `isStaleGradleRunning is false for empty events within grace period`() {
         BuildPersistenceContract.isStaleGradleRunning(
             contractMcpResult("failed", Instant.now()),
             emptyList(),
         ) shouldBe false
+    }
+
+    @Test
+    fun `isStaleGradleRunning is true for empty events after grace period`() {
+        BuildPersistenceContract.isStaleGradleRunning(
+            contractMcpResult("failed", Instant.now().minusSeconds(120)),
+            emptyList(),
+        ) shouldBe true
+    }
+
+    @Test
+    fun `isStaleGradleRunning is false for empty events when file write follows finalize`() {
+        val finishedAt = Instant.now().minusSeconds(120)
+        BuildPersistenceContract.isStaleGradleRunning(
+            contractMcpResult("failed", finishedAt),
+            emptyList(),
+            eventsLastModified = finishedAt.plusSeconds(10),
+        ) shouldBe false
+    }
+
+    @Test
+    fun `isStaleGradleRunning is true for empty events when last file write precedes finalize`() {
+        val finishedAt = Instant.now().minusSeconds(120)
+        BuildPersistenceContract.isStaleGradleRunning(
+            contractMcpResult("failed", finishedAt),
+            emptyList(),
+            eventsLastModified = finishedAt.minusSeconds(60),
+        ) shouldBe true
+    }
+
+    @Test
+    fun `isStaleGradleRunning falls back to startedAt when finishedAt is unparseable`() {
+        BuildPersistenceContract.isStaleGradleRunning(
+            contractMcpResult("failed", Instant.now().minusSeconds(120))
+                .copy(finishedAt = "not-a-timestamp"),
+            emptyList(),
+        ) shouldBe true
     }
 
     @Test
@@ -108,6 +145,29 @@ class BuildPersistenceContractTest {
 
         resolved.status shouldBe BuildProgressTracker.STATUS_RUNNING
         resolved.terminalSource shouldBe BuildPersistenceContract.TerminalStatusSource.NONE
+    }
+
+    @Test
+    fun `resolve reclaims stale gradle running when events log is empty`() {
+        val resolved = BuildPersistenceContract.resolve(
+            gradleResult = gradleBuildResult(
+                buildId = "dead-daemon",
+                status = BuildProgressTracker.STATUS_RUNNING,
+                taskNames = listOf("build"),
+            ),
+            mcpResult = mcpBuildResult(
+                buildId = "dead-daemon",
+                projectDirectory = "/tmp/project",
+                finishedAt = Instant.now().minusSeconds(120).toString(),
+                status = BuildProgressTracker.STATUS_FAILED,
+                outcome = "FAILED",
+                error = "Gradle connection closed",
+            ),
+            events = emptyList(),
+        )
+
+        resolved.status shouldBe BuildProgressTracker.STATUS_FAILED
+        resolved.terminalSource shouldBe BuildPersistenceContract.TerminalStatusSource.MCP
     }
 
     @Test
