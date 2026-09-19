@@ -18,9 +18,13 @@ object GradlePropertiesParser {
         if (trimmed.isEmpty() || trimmed.startsWith("#")) {
             return null
         }
-        val separator = trimmed.indexOf('=').takeIf { it > 0 }
-            ?: trimmed.indexOf(':').takeIf { it > 0 }
-            ?: return null
+        val equalsIndex = trimmed.indexOf('=')
+        val colonIndex = trimmed.indexOf(':')
+        val separator = when {
+            equalsIndex > 0 && (colonIndex <= 0 || equalsIndex < colonIndex) -> equalsIndex
+            colonIndex > 0 -> colonIndex
+            else -> return null
+        }
         val key = trimmed.substring(0, separator).trim()
         val value = trimmed.substring(separator + 1).trim()
         if (key.isEmpty()) {

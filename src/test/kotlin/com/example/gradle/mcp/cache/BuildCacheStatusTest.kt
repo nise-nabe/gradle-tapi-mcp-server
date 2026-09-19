@@ -284,6 +284,15 @@ class BuildCacheStatusTest {
     }
 
     @Test
+    fun `GradlePropertiesParser uses the earliest separator`() {
+        GradlePropertiesParser.parsePropertyLine("org.gradle.caching.remote.url: https://cache.example.com/?token=x") shouldBe
+            ("org.gradle.caching.remote.url" to "https://cache.example.com/?token=x")
+        GradlePropertiesParser.parsePropertyLine("key=value") shouldBe ("key" to "value")
+        GradlePropertiesParser.parsePropertyLine("key=a:b") shouldBe ("key" to "a:b")
+        GradlePropertiesParser.parsePropertyLine("key:a=b") shouldBe ("key" to "a=b")
+    }
+
+    @Test
     fun `GradlePropertiesStreamCapture captures properties written after invalid utf8 bytes`() {
         val capture = GradlePropertiesStreamCapture(retainKey = BuildCachePropertyKeys::isCacheRelated)
         val out = capture.asOutputStream()
