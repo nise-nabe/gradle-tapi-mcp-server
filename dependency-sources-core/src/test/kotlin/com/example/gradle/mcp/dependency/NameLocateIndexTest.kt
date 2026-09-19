@@ -150,6 +150,73 @@ class IdentifierLexerTest {
         all shouldContainExactly listOf("Foo", "in", "comment", "class", "Bar", "val", "x", "Baz", "fun", "Foo")
         idents shouldContainExactly listOf("class", "Bar", "val", "x", "fun", "Foo")
     }
+
+    @Test
+    fun `idents skips triple-quoted raw strings including inner quotes`() {
+        val triple = "\"\"\""
+        val source =
+            "class Bar {\n" +
+                "  val msg = ${triple}He said \"hi\" loudly${triple}\n" +
+                "  fun Foo() {}\n" +
+                "}\n"
+
+        val idents = IdentifierLexer.tokenize(source, TokenMode.IDENTS).map { it.name }
+
+        idents.filter { it == "hi" } shouldHaveSize 0
+        idents.filter { it == "said" } shouldHaveSize 0
+        idents shouldContainExactly listOf("class", "Bar", "val", "msg", "fun", "Foo")
+    }
+
+    @Test
+    fun `idents keeps line numbers across multiline raw strings`() {
+        val triple = "\"\"\""
+        val source =
+            "val a = ${triple}line one\n" +
+                "line two\n" +
+                "line three${triple}\n" +
+                "val After = 1\n"
+
+        val occurrences = IdentifierLexer.tokenize(source, TokenMode.IDENTS)
+
+        occurrences.map { it.name } shouldContainExactly listOf("val", "a", "val", "After")
+        occurrences.first { it.name == "After" }.line shouldBe 4
+    }
+
+    @Test
+    fun `idents treats unterminated triple quote as consuming the rest`() {
+        val triple = "\"\"\""
+        val source =
+            "val a = ${triple}never closed\n" +
+                "val Missing = 1\n"
+
+        val idents = IdentifierLexer.tokenize(source, TokenMode.IDENTS).map { it.name }
+
+        idents shouldContainExactly listOf("val", "a")
+    }
+
+    @Test
+    fun `idents does not treat triple quotes inside comments as strings`() {
+        val triple = "\"\"\""
+        val source =
+            "// $triple not a string opener\n" +
+                "val After = 1\n"
+
+        val idents = IdentifierLexer.tokenize(source, TokenMode.IDENTS).map { it.name }
+
+        idents shouldContainExactly listOf("val", "After")
+    }
+
+    @Test
+    fun `idents treats quadruple quote as raw string containing one quote`() {
+        // """"x""" lexes as a raw string whose content is `"x` — no identifiers inside
+        val source =
+            "val a = " + "\"".repeat(4) + "x" + "\"".repeat(3) + "\n" +
+                "val After = 1\n"
+
+        val idents = IdentifierLexer.tokenize(source, TokenMode.IDENTS).map { it.name }
+
+        idents shouldContainExactly listOf("val", "a", "val", "After")
+    }
 }
 
 class NameLocateIndexTest {
