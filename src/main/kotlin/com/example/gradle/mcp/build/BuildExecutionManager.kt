@@ -574,6 +574,7 @@ class BuildExecutionManager(
         if (outcome is BuildTerminalOutcome.Cancelled && record.errorMessage == null) {
             record.errorMessage = outcome.message
         }
+        record.streams.finish()
         val classified = BuildFailureClassifier.classify(
             status = record.progressTracker.snapshot().status,
             kind = record.kind.name.lowercase(),
