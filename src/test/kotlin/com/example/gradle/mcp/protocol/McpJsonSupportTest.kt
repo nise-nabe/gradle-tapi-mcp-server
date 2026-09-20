@@ -22,6 +22,30 @@ class McpJsonSupportTest {
     }
 
     @Test
+    fun `encodeMcpJsonDynamic emits valid JSON for non-finite numbers`() {
+        val encoded = encodeMcpJsonDynamic(
+            mapOf(
+                "nan" to Double.NaN,
+                "posInf" to Double.POSITIVE_INFINITY,
+                "negInf" to Double.NEGATIVE_INFINITY,
+                "nanFloat" to Float.NaN,
+                "posInfFloat" to Float.POSITIVE_INFINITY,
+                "finite" to 1.5,
+            ),
+        )
+
+        // A strict JSON parser rejects bare NaN/Infinity literals, so the
+        // round trip only succeeds when they were encoded as strings.
+        val decoded = decodeMcpJsonMap(encoded)
+        decoded["nan"] shouldBe "NaN"
+        decoded["posInf"] shouldBe "Infinity"
+        decoded["negInf"] shouldBe "-Infinity"
+        decoded["nanFloat"] shouldBe "NaN"
+        decoded["posInfFloat"] shouldBe "Infinity"
+        decoded["finite"] shouldBe 1.5
+    }
+
+    @Test
     fun `decodeMcpJsonMap preserves integer json numbers as long`() {
         val decoded = decodeMcpJsonMap("""{"value":42}""")
         decoded["value"] shouldBe 42L
