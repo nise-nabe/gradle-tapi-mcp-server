@@ -537,6 +537,52 @@ class BuildExecutionManagerQueueTest {
     }
 
     @Test
+    fun `global reset does not take the per-project lifecycle lock`(@TempDir project: File) {
+        val connectionManager = GradleConnectionManager()
+        val manager = BuildExecutionManager(connectionManager)
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "running-build",
+                tracker = runningTracker(),
+                projectDirectory = project.absolutePath,
+            ),
+        )
+        val projectLock =
+            com.example.gradle.mcp.connection.ProjectLifecycleLock.forProject(project)
+        val contenderHoldsProjectLock = CountDownLatch(1)
+        val proceedToGlobal = CountDownLatch(1)
+        val contenderDone = CountDownLatch(1)
+
+        // Mirrors the startBackground rejection path: forProject(P) is held
+        // while global() is acquired to build the max-concurrency error.
+        val contender = kotlin.concurrent.thread(isDaemon = true) {
+            synchronized(projectLock) {
+                contenderHoldsProjectLock.countDown()
+                proceedToGlobal.await(5, TimeUnit.SECONDS)
+                synchronized(com.example.gradle.mcp.connection.ProjectLifecycleLock.global()) {
+                }
+            }
+            contenderDone.countDown()
+        }
+        contenderHoldsProjectLock.await(5, TimeUnit.SECONDS).shouldBeTrue()
+
+        val resetDone = CountDownLatch(1)
+        val resetter = kotlin.concurrent.thread(isDaemon = true) {
+            manager.resetBuildState("simulated disconnect-all", null)
+            resetDone.countDown()
+        }
+
+        // If reset acquired forProject(project) while holding global(), it
+        // would block forever here: the contender holds the project lock and
+        // then waits on global(). That lock-order inversion deadlocks.
+        resetDone.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        proceedToGlobal.countDown()
+        contenderDone.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        contender.join(5_000)
+        resetter.join(5_000)
+    }
+
+    @Test
     fun `queueIfBusy false still rejects when project busy`() {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnection()
