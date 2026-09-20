@@ -27,7 +27,7 @@ class TestRunPreflightTest {
     private val projectDirectory = testProjectDirectory
 
     @Test
-    fun `preflightRunTests refetches single-project on each call because false is not cached`() {
+    fun `preflightRunTests refetches single-project on each call`() {
         val getModelCalls = AtomicInteger(0)
         val connectionManager = GradleConnectionManager()
         connectionManager.seedConnectionForTests(
@@ -43,11 +43,10 @@ class TestRunPreflightTest {
         }
 
         getModelCalls.get() shouldBe 2
-        connectionManager.cachedHasSubprojects(projectDirectory).shouldBeNull()
     }
 
     @Test
-    fun `preflightRunTests loads model when multi-project is cached to include suggestedTaskPaths`() {
+    fun `preflightRunTests loads model for multi-project to include suggestedTaskPaths`() {
         val getModelCalls = AtomicInteger(0)
         val connectionManager = GradleConnectionManager()
         connectionManager.seedConnectionForTests(
@@ -69,7 +68,6 @@ class TestRunPreflightTest {
                 getModelCalls,
             ),
             projectDirectory = projectDirectory,
-            cachedHasSubprojects = true,
         )
         val runtime = DefaultGradleMcpRuntime(connectionManager, BuildExecutionManager(connectionManager))
 
@@ -123,7 +121,6 @@ class TestRunPreflightTest {
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
         (error.errorDetails["suggestedTaskPaths"] as List<*>) shouldContain ":app:test"
         (error.errorDetails["suggestedTaskPaths"] as List<*>) shouldContain ":lib:test"
-        connectionManager.cachedHasSubprojects(projectDirectory) shouldBe true
     }
 
     @Test
@@ -302,13 +299,12 @@ class TestRunPreflightTest {
     }
 
     @Test
-    fun `preflightRunTests defers scope check when multi-project is cached and deferScopeModelCheck is true`() {
+    fun `preflightRunTests defers scope check when deferScopeModelCheck is true`() {
         val getModelCalls = AtomicInteger(0)
         val connectionManager = GradleConnectionManager()
         connectionManager.seedConnectionForTests(
             connection = gradleProjectConnectionProxy(gradleProjectProxy(), getModelCalls),
             projectDirectory = projectDirectory,
-            cachedHasSubprojects = true,
         )
         val runtime = DefaultGradleMcpRuntime(connectionManager, BuildExecutionManager(connectionManager))
         val options = TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest")))
@@ -381,7 +377,7 @@ class TestRunPreflightTest {
     }
 
     @Test
-    fun `preflightRunTests detects newly added subprojects when false was never cached`() {
+    fun `preflightRunTests detects newly added subprojects on refetch`() {
         val getModelCalls = AtomicInteger(0)
         val singleProject = gradleProjectProxy()
         val multiProject = gradleProjectProxy(
@@ -401,7 +397,6 @@ class TestRunPreflightTest {
 
         with(runtime) {
             preflightRunTests(projectDirectory, options)
-            connectionManager.cachedHasSubprojects(projectDirectory).shouldBeNull()
 
             val error = shouldThrow<McpException> {
                 preflightRunTests(projectDirectory, options)
@@ -410,7 +405,6 @@ class TestRunPreflightTest {
         }
 
         getModelCalls.get() shouldBe 2
-        connectionManager.cachedHasSubprojects(projectDirectory) shouldBe true
     }
 
     @Test
