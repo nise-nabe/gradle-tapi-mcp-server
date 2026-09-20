@@ -102,10 +102,7 @@ internal fun testCompletedSnapshot(
     )
 
 internal fun BuildExecutionManager.testExecutor(): ExecutorService =
-    BuildExecutionManager::class.java
-        .getDeclaredField("executor")
-        .apply { isAccessible = true }
-        .get(this) as ExecutorService
+    executorForTests()
 
 internal fun noopProjectConnection(): ProjectConnection =
     Proxy.newProxyInstance(

@@ -33,13 +33,13 @@ Issue §2 asks for an optional queue (or `waitForSlot: true`) so “compile then
 
 ### 2.1 Single-flight per project
 
-`BuildExecutionManager.registerBuildStart` holds `ProjectLifecycleLock.forProject` and rejects a second start when `hasActiveBuild(projectDirectory)` is true:
+`BuildExecutionManager.registerImmediateBuildStart` holds `ProjectLifecycleLock.forProject` and rejects a second start when `hasActiveBuild(projectDirectory)` is true:
 
 ```kotlin
 // hasActiveBuild: any in-memory record with status == "running" for that project
 ```
 
-There is **no grace window** after terminal status. As soon as `finalizeBuild` marks succeeded / failed / cancelled, the next start is allowed.
+There is **no grace window** after terminal status. As soon as `BuildRunner.finalizeBuild` marks succeeded / failed / cancelled, the next start is allowed.
 
 ### 2.1a Structured error payloads (`activeBuildId`)
 
@@ -54,7 +54,7 @@ When a per-project start is rejected (`BUILD_ALREADY_RUNNING`, `BUILD_QUEUE_FULL
 | `activeBuildIds` | Global pool saturation (2+ running) | Sorted list of running build ids |
 | `activeBuildId` + siblings | Global pool saturation (exactly 1 running) | Same single-build enrichment as per-project errors |
 
-`ActiveBuildSnapshot.forProject` prefers, in order: a `running` build for the project → the queue head (`preferredQueuedBuildId` from `ProjectQueue.headBuildId` under the project lock) → the first remaining active (`queued` or `running`) record. The queue-head id is passed from `BuildExecutionManager.activeBuildSnapshotUnderProjectLock` so the fallback rarely runs.
+`ActiveBuildSnapshot.forProject` prefers, in order: a `running` build for the project → the queue head (`preferredQueuedBuildId` from `ProjectQueue.headBuildId` under the project lock) → the first remaining active (`queued` or `running`) record. The queue-head id is passed from `BuildRegistry.activeBuildSnapshot` so the fallback rarely runs.
 
 ### 2.2 Global concurrent pool (cross-project)
 
@@ -199,7 +199,7 @@ Global executor pool:
 ### 5.4 Ordering and start
 
 - FIFO per project.
-- Dequeue trigger: `finalizeBuild` success path (and cancel/shutdown paths that free the slot).
+- Dequeue trigger: `BuildRunner.finalizeBuild` success path (and cancel/shutdown paths that free the slot).
 - Start under the same `ProjectLifecycleLock` as today’s `registerBuildStart` so two dequeue races cannot create two runners.
 
 ### 5.5 Cancel
@@ -266,7 +266,7 @@ Issue §2 also asked to run `:test` and `:fastTest` in one invocation. That is *
 2. **This design** — review & agree Option C + defaults.
 3. **Implementation PR** (follow-up):
    - `queued` status in `BuildProgressTracker` (or parallel enum)
-   - Per-project queue in `BuildExecutionManager`
+   - Per-project queue in `BuildRegistry` (drained by `BuildRunner`)
    - `queueIfBusy` on run tools
    - Cancel / list / status / disconnect
    - Unit tests: parallel enqueue, FIFO start after finalize, cancel queued, queue full, model guard
