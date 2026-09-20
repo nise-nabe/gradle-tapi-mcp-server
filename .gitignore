@@ -3,6 +3,7 @@
 /.gradle/
 /.kotlin/
 /.idea/
+/.junie/
 *.iml
 *.jar
 !gradle/wrapper/gradle-wrapper.jar
