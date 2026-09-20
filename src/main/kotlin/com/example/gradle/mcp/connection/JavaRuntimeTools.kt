@@ -212,6 +212,10 @@ private fun toolchainDetectionBlockedMessage(projectDirectory: File): String =
     "Cannot detect installed JDKs while a Gradle build is active for ${projectDirectory.path}. " +
         "Wait for the build to finish, call gradle_get_build_status, or set includeToolchains=false."
 
+private fun environmentFetchBlockedMessage(projectDirectory: File): String =
+    "Cannot query the Gradle build environment while a build is active for ${projectDirectory.path}. " +
+        "Wait for the build to finish, call gradle_cancel_build, or poll gradle_get_build_status."
+
 internal fun requireNoActiveBuildForToolchainDetection(
     includeToolchains: Boolean,
     projectDirectory: File,
@@ -235,38 +239,65 @@ fun Server.registerJavaRuntimeTools(scope: CoroutineScope) {
         description = McpToolDescriptions.JAVA_RUNTIMES,
         schema = javaRuntimesSchema(),
     ) { args ->
-        rejectUnsupportedProjectPath(args, "gradle_get_java_runtimes")
-        val includeToolchains = args.optionalBoolean("includeToolchains", default = true)
-        val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-        if (!includeToolchains) {
-            return@registerTool runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val environment = runtime.connectionManager.cachedEnvironment(projectDirectory)
-                    ?: runtime.connectionManager.fetchAndCacheEnvironment(projectDirectory, connection)
-                val runtimes = JavaRuntimesCollector.collect(
-                    projectDirectory = projectDirectory,
-                    connection = connection,
-                    environment = environment,
-                    includeToolchains = false,
-                )
-                jsonResult(runtimes.toMap(projectDirectory.path))
-            }
+        jsonResult(javaRuntimesPayload(runtime, args))
+    }
+}
+
+internal fun javaRuntimesPayload(
+    runtime: GradleMcpRuntime,
+    args: Map<String, Any>,
+): Map<String, Any?> {
+    rejectUnsupportedProjectPath(args, "gradle_get_java_runtimes")
+    val includeToolchains = args.optionalBoolean("includeToolchains", default = true)
+    val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+    if (!includeToolchains) {
+        return daemonOnlyJavaRuntimesPayload(runtime, projectDirectory)
+    }
+    return ProjectLifecycleGuard.withNoActiveBuild(
+        projectDirectory = projectDirectory,
+        buildExecutionManager = runtime.buildExecutionManager,
+        message = ::toolchainDetectionBlockedMessage,
+    ) {
+        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+            val environment = runtime.connectionManager.cachedEnvironment(projectDirectory)
+                ?: runtime.connectionManager.fetchAndCacheEnvironment(projectDirectory, connection)
+            JavaRuntimesCollector.collect(
+                projectDirectory = projectDirectory,
+                connection = connection,
+                environment = environment,
+                includeToolchains = true,
+            ).toMap(projectDirectory.path)
         }
-        return@registerTool ProjectLifecycleGuard.withNoActiveBuild(
-            projectDirectory = projectDirectory,
-            buildExecutionManager = runtime.buildExecutionManager,
-            message = ::toolchainDetectionBlockedMessage,
-        ) {
-            runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-                val environment = runtime.connectionManager.cachedEnvironment(projectDirectory)
-                    ?: runtime.connectionManager.fetchAndCacheEnvironment(projectDirectory, connection)
-                val runtimes = JavaRuntimesCollector.collect(
-                    projectDirectory = projectDirectory,
-                    connection = connection,
-                    environment = environment,
-                    includeToolchains = true,
-                )
-                jsonResult(runtimes.toMap(projectDirectory.path))
-            }
+    }
+}
+
+private fun daemonOnlyJavaRuntimesPayload(
+    runtime: GradleMcpRuntime,
+    projectDirectory: File,
+): Map<String, Any?> {
+    fun collect(environment: BuildEnvironmentSnapshot): Map<String, Any?> =
+        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+            JavaRuntimesCollector.collect(
+                projectDirectory = projectDirectory,
+                connection = connection,
+                environment = environment,
+                includeToolchains = false,
+            ).toMap(projectDirectory.path)
+        }
+
+    // The Tooling API connection is not thread-safe: serve the cached snapshot
+    // without touching it, otherwise fetch under the same no-active-build guard
+    // used by every other model query.
+    runtime.connectionManager.cachedEnvironment(projectDirectory)?.let { return collect(it) }
+    return ProjectLifecycleGuard.withNoActiveBuild(
+        projectDirectory = projectDirectory,
+        buildExecutionManager = runtime.buildExecutionManager,
+        message = ::environmentFetchBlockedMessage,
+    ) {
+        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+            val environment = runtime.connectionManager.cachedEnvironment(projectDirectory)
+                ?: runtime.connectionManager.fetchAndCacheEnvironment(projectDirectory, connection)
+            collect(environment)
         }
     }
 }
