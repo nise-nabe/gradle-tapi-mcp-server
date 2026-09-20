@@ -67,6 +67,27 @@ git push -u origin cursor/issue-<N>-...
 - Body: Summary / Changes / Test plan (`pr-description-format.mdc`).
 - Link issue in PR body (`Fixes #N`).
 
+## 6 — Copilot review, CI, merge
+
+When asked to merge after opening the PR:
+
+```bash
+# request Copilot review (skip if repo auto-requests it)
+gh api repos/{owner}/{repo}/pulls/N/requested_reviewers \
+  -f "reviewers[]=copilot-pull-request-reviewer[bot]"
+
+gh pr checks N   # poll until ubuntu + windows pass
+
+# Copilot verdict: COMMENTED with no inline comments = no findings
+gh api repos/{owner}/{repo}/pulls/N/reviews --jq '.[].state'
+gh api repos/{owner}/{repo}/pulls/N/comments --jq 'length'
+
+gh pr merge N --squash
+git checkout main && git pull origin main
+```
+
+Merge only when CI passes **and** Copilot reports no findings (for findings, switch to `pr-review-response`). For a batch of issues: one PR per issue — after merging, pull `main` and restart from step 2.
+
 ## Token budget
 
 - [ ] ≤2 `gh issue` calls (list pick + view)

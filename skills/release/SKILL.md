@@ -218,5 +218,6 @@ timeout 5 env GRADLE_PROJECT_DIR=/workspace java -jar /tmp/test.jar </dev/null |
 | `gh: command not found` | `/exec-daemon/gh` または `.cursor/install.sh` 再実行 |
 | Release に古い JAR | bump マージ後に `git pull origin main` したか。タグ・Release **前**に `./gradlew --no-daemon jar` したか。`build.gradle.kts` の `version` と JAR ファイル名が一致するか |
 | `install.sh` SHA 不一致 | Release アセット（または Release 直後に保存した JAR）の `sha256sum` を使う。SHA PR 用に再ビルドした JAR と混同しない |
+| smoke test が `require(jars.size == 1)` で失敗 | `build/libs` に旧バージョンの JAR が残存（`./gradlew jar` は上書きせず別名で残る）。古い `gradle-tapi-mcp-server-*.jar` を削除して再実行 |
 | bump で marketplace を忘れた | Cursor / GitHub Copilot は `metadata.version` と plugin `version` の両方。Codex は plugin `version` のみ。SHA PR で埋めない（リリース bump に含める） |
 | タグが `main` とずれる | `git checkout main && git pull` 後にタグ付け。ずれたら削除して再作成（`git push origin :refs/tags/vX.Y.Z` → 再 tag） |

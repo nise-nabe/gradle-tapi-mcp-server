@@ -19,7 +19,9 @@ Use **shell `./gradlew`** — not the `gradle` MCP server — while compiling or
 | Compile + unit tests | `./gradlew build` |
 | Tests only | `./gradlew test` |
 | Assemble JAR | `./gradlew jar` |
-| Single test class | `./gradlew test --tests "com.example.gradle.mcp.build.BuildExecutionManagerRunTest"` |
+| Single test class | `./gradlew :test --tests "com.example.gradle.mcp.build.BuildExecutionManagerRunTest"` |
+
+Use `:test` (root project) or `:<module>:test` for `--tests` — a bare `test --tests` filter applies to every subproject and fails with `No tests found` in modules that lack the class.
 
 For long shell builds, run `./gradlew` in a **background shell session** when the client supports it; otherwise one `./gradlew` invocation per verify round. This is separate from MCP `gradle_run_tasks` `background: true` below.
 
