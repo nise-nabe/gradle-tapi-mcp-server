@@ -868,7 +868,7 @@ class DependencySourcesFacadeTest {
                 mapOf("docCount" to 1)
             }
         val error =
-            shouldThrow<IllegalStateException> {
+            shouldThrow<DependencySourcesIndexingConflictException> {
                 jobs.start(
                     projectDirectory = project,
                     tokenMode = "idents",

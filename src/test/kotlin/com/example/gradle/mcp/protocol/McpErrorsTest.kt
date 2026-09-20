@@ -6,36 +6,8 @@ import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.RPCError
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.params.ParameterizedTest
-import org.junit.jupiter.params.provider.Arguments
-import org.junit.jupiter.params.provider.MethodSource
-import java.util.stream.Stream
 
 class McpErrorsTest {
-    @Test
-    fun `maps not connected state exception`() {
-        val code = mapExceptionToErrorCode(
-            IllegalStateException(
-                "Not connected to a Gradle project. Call gradle_connect first or set GRADLE_PROJECT_DIR.",
-            ),
-        )
-
-        code shouldBe McpErrorCode.NOT_CONNECTED
-    }
-
-    @ParameterizedTest
-    @MethodSource("buildAlreadyRunningMessages")
-    fun `maps build already running messages`(message: String) {
-        mapExceptionToErrorCode(IllegalStateException(message)) shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
-    }
-
-    @Test
-    fun `maps build queue full message`() {
-        mapExceptionToErrorCode(
-            IllegalStateException("Build queue is full for /tmp (max 3 queued builds)."),
-        ) shouldBe McpErrorCode.BUILD_QUEUE_FULL
-    }
-
     @Test
     fun `maps mcp exception directly`() {
         mapExceptionToErrorCode(
@@ -49,17 +21,12 @@ class McpErrorsTest {
     }
 
     @Test
-    fun `maps project not found legacy message`() {
-        mapExceptionToErrorCode(
-            IllegalStateException("Project directory does not exist: /missing"),
-        ) shouldBe McpErrorCode.PROJECT_NOT_FOUND
-    }
-
-    @Test
-    fun `maps per project not connected message`() {
+    fun `maps bare illegal state to internal error even for legacy message shapes`() {
+        // Agent-facing errors must be thrown as McpException; a bare
+        // IllegalStateException reaching a handler is an internal bug.
         mapExceptionToErrorCode(
             IllegalStateException("Not connected to Gradle project: /tmp. Call gradle_connect first."),
-        ) shouldBe McpErrorCode.NOT_CONNECTED
+        ) shouldBe McpErrorCode.INTERNAL_ERROR
     }
 
     @Test
@@ -135,25 +102,5 @@ class McpErrorsTest {
         sdk.code shouldBe RPCError.ErrorCode.RESOURCE_NOT_FOUND
         val payload = decodeMcpJsonMap(sdk.data.toString())
         payload["error"] shouldBe mapOf("code" to "NOT_CONNECTED", "message" to "Not connected")
-    }
-
-    companion object {
-        @JvmStatic
-        fun buildAlreadyRunningMessages(): Stream<Arguments> =
-            Stream.of(
-                Arguments.of("A Gradle build is already active for /tmp."),
-                Arguments.of("A Gradle build is already running for /tmp."),
-                Arguments.of("Cannot connect while a Gradle build is active for /tmp."),
-                Arguments.of("Cannot connect while a Gradle build is running for /tmp."),
-                Arguments.of("Cannot query Gradle models while a build is active for /tmp."),
-                Arguments.of("Cannot query Gradle models while a build is running for /tmp."),
-                Arguments.of("Cannot run prepareTasks while a Gradle build is active for /tmp."),
-                Arguments.of("Cannot run prepareTasks while a Gradle build is running for /tmp."),
-                Arguments.of("Cannot inspect build cache while a Gradle build is active for /tmp."),
-                Arguments.of("Cannot inspect build cache while a Gradle build is running for /tmp."),
-                Arguments.of("Cannot detect installed JDKs while a Gradle build is active for /tmp."),
-                Arguments.of("Cannot detect installed JDKs while a Gradle build is running for /tmp."),
-                Arguments.of("Maximum concurrent builds (4) reached. Poll gradle_get_build_status with activeBuildIds."),
-            )
     }
 }
