@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.connection
 
+import com.example.gradle.mcp.DefaultGradleMcpRuntime
 import com.example.gradle.mcp.build.BuildExecutionManager
 import com.example.gradle.mcp.connection.support.BuildEnvironmentProxyOptions
 import com.example.gradle.mcp.connection.support.buildEnvironmentProxy
@@ -208,6 +209,72 @@ class JavaRuntimeToolsTest {
         error.code shouldBe McpErrorCode.BUILD_FAILED
         error.message shouldContain "javaToolchains -q"
         error.message shouldContain "Task 'javaToolchains' not found"
+    }
+
+    @Test
+    fun `daemon-only runtimes serves cached environment while build is active`() {
+        val connectionManager = GradleConnectionManager()
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        val getModelCalls = AtomicInteger(0)
+        connectionManager.seedConnectionForTests(
+            projectConnectionProxy(
+                getModelCalls = getModelCalls,
+                buildEnvironment = buildEnvironmentProxy(),
+                launcher = recordingBuildLauncher().launcher,
+            ),
+            testProjectDirectory,
+            environment = BuildEnvironmentSnapshot(
+                gradleVersion = "9.6",
+                gradleUserHome = "/gradle/home",
+                javaHome = "/jdk/home",
+                javaVersion = "17.0.19",
+                jvmArguments = emptyList(),
+            ),
+        )
+        seedRunningBuild(buildExecutionManager)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+
+        val payload = javaRuntimesPayload(
+            runtime,
+            mapOf(
+                "projectDirectory" to testProjectDirectory.absolutePath,
+                "includeToolchains" to false,
+            ),
+        )
+
+        payload["detectionSource"] shouldBe "buildEnvironment"
+        getModelCalls.get() shouldBe 0
+    }
+
+    @Test
+    fun `daemon-only runtimes rejects uncached environment fetch while build is active`() {
+        val connectionManager = GradleConnectionManager()
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        val getModelCalls = AtomicInteger(0)
+        connectionManager.seedConnectionForTests(
+            projectConnectionProxy(
+                getModelCalls = getModelCalls,
+                buildEnvironment = buildEnvironmentProxy(),
+                launcher = recordingBuildLauncher().launcher,
+            ),
+            testProjectDirectory,
+        )
+        seedRunningBuild(buildExecutionManager)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+
+        val error = shouldThrow<McpException> {
+            javaRuntimesPayload(
+                runtime,
+                mapOf(
+                    "projectDirectory" to testProjectDirectory.absolutePath,
+                    "includeToolchains" to false,
+                ),
+            )
+        }
+
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        error.errorDetails["activeBuildId"] shouldBe "running-build"
+        getModelCalls.get() shouldBe 0
     }
 
     @Test
