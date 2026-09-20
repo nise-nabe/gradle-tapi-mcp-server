@@ -236,26 +236,19 @@ private fun recordingLauncherProxy(
     interfaceClass: Class<*>,
     calls: MutableList<LauncherCall>,
     onRun: () -> Unit,
-): Any {
-    val self = arrayOfNulls<Any>(1)
-    self[0] = Proxy.newProxyInstance(
-        interfaceClass.classLoader,
-        arrayOf(interfaceClass),
-        InvocationHandler { _, method, args ->
-            when (method.name) {
-                "run" -> {
-                    onRun()
-                    null
-                }
-                else -> {
-                    calls += LauncherCall(method.name, normalizeLauncherArgs(args))
-                    self[0]
-                }
+): Any =
+    selfReturningProxy(interfaceClass) { self, method, args ->
+        when (method.name) {
+            "run" -> {
+                onRun()
+                null
             }
-        },
-    )
-    return self[0]!!
-}
+            else -> {
+                calls += LauncherCall(method.name, normalizeLauncherArgs(args))
+                self
+            }
+        }
+    }
 
 private fun normalizeLauncherArgs(args: Array<out Any?>?): List<Any?> {
     val raw = args?.toList().orEmpty()
@@ -274,20 +267,13 @@ private fun normalizeLauncherArgs(args: Array<out Any?>?): List<Any?> {
 private fun chainingProxy(
     interfaceClass: Class<*>,
     onRun: () -> Unit,
-): Any {
-    val self = arrayOfNulls<Any>(1)
-    self[0] = Proxy.newProxyInstance(
-        interfaceClass.classLoader,
-        arrayOf(interfaceClass),
-        InvocationHandler { _, method, _ ->
-            when (method.name) {
-                "run" -> {
-                    onRun()
-                    null
-                }
-                else -> self[0]
+): Any =
+    selfReturningProxy(interfaceClass) { self, method, _ ->
+        when (method.name) {
+            "run" -> {
+                onRun()
+                null
             }
-        },
-    )
-    return self[0]!!
-}
+            else -> self
+        }
+    }

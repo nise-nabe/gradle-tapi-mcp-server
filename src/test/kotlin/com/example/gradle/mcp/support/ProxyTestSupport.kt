@@ -1,6 +1,25 @@
 package com.example.gradle.mcp.support
 
+import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
+import java.lang.reflect.Proxy
+
+/**
+ * Dynamic proxy whose fluent methods can return the proxy itself.
+ * [handler] receives the proxy as `self`; return `self` to chain calls.
+ */
+internal fun selfReturningProxy(
+    interfaceClass: Class<*>,
+    handler: (self: Any, method: Method, args: Array<out Any?>?) -> Any?,
+): Any {
+    val self = arrayOfNulls<Any>(1)
+    self[0] = Proxy.newProxyInstance(
+        interfaceClass.classLoader,
+        arrayOf(interfaceClass),
+        InvocationHandler { _, method, args -> handler(requireNotNull(self[0]), method, args) },
+    )
+    return requireNotNull(self[0])
+}
 
 internal fun proxyIdentity(proxy: Any, methodName: String, args: Array<out Any?>?): Any? =
     when (methodName) {

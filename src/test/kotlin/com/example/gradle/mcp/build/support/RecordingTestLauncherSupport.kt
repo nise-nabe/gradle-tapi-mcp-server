@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.build.support
 
+import com.example.gradle.mcp.support.selfReturningProxy
 import org.gradle.tooling.TestLauncher
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
@@ -25,37 +26,32 @@ internal class RecordingTestLauncher(
 internal fun recordingTestLauncher(): RecordingTestLauncher {
     val calls = mutableListOf<TestLauncherCall>()
     val testsForSpecs = mutableListOf<RecordedTestSpec>()
-    val self = arrayOfNulls<Any>(1)
-    self[0] = Proxy.newProxyInstance(
-        TestLauncher::class.java.classLoader,
-        arrayOf(TestLauncher::class.java),
-        InvocationHandler { _, method, args ->
-            when (method.name) {
-                "withJvmTestClasses",
-                "withJvmTestMethods",
-                "withTaskAndTestClasses",
-                "withTaskAndTestMethods",
-                "forTasks",
-                -> {
-                    calls += TestLauncherCall(method.name, normalizeRecordedArgs(args))
-                    self[0]
-                }
-                "withTestsFor" -> {
-                    calls += TestLauncherCall(method.name, emptyList())
-                    val action = args?.get(0) as org.gradle.api.Action<*>
-                    val specs = recordingTestSpecs { taskPath ->
-                        recordingTestSpec(taskPath, testsForSpecs)
-                    }
-                    @Suppress("UNCHECKED_CAST")
-                    (action as org.gradle.api.Action<Any>).execute(specs)
-                    self[0]
-                }
-                "run" -> null
-                else -> self[0]
+    val launcher = selfReturningProxy(TestLauncher::class.java) { self, method, args ->
+        when (method.name) {
+            "withJvmTestClasses",
+            "withJvmTestMethods",
+            "withTaskAndTestClasses",
+            "withTaskAndTestMethods",
+            "forTasks",
+            -> {
+                calls += TestLauncherCall(method.name, normalizeRecordedArgs(args))
+                self
             }
-        },
-    )
-    return RecordingTestLauncher(self[0] as TestLauncher, calls, testsForSpecs)
+            "withTestsFor" -> {
+                calls += TestLauncherCall(method.name, emptyList())
+                val action = args?.get(0) as org.gradle.api.Action<*>
+                val specs = recordingTestSpecs { taskPath ->
+                    recordingTestSpec(taskPath, testsForSpecs)
+                }
+                @Suppress("UNCHECKED_CAST")
+                (action as org.gradle.api.Action<Any>).execute(specs)
+                self
+            }
+            "run" -> null
+            else -> self
+        }
+    } as TestLauncher
+    return RecordingTestLauncher(launcher, calls, testsForSpecs)
 }
 
 private fun normalizeRecordedArgs(args: Array<out Any?>?): List<Any?> {
@@ -91,57 +87,51 @@ private fun recordingTestSpec(
     sink: MutableList<RecordedTestSpec>,
 ): Any {
     val state = arrayOf(RecordedTestSpec(taskPath, emptyList()))
-    val self = arrayOfNulls<Any>(1)
-    self[0] = Proxy.newProxyInstance(
-        Class.forName("org.gradle.tooling.TestSpec").classLoader,
-        arrayOf(Class.forName("org.gradle.tooling.TestSpec")),
-        InvocationHandler { _, method, args ->
-            when (method.name) {
-                "includePatterns" -> {
-                    val patterns = when (val value = args?.get(0)) {
-                        is Collection<*> -> value.filterIsInstance<String>()
-                        else -> emptyList()
-                    }
-                    state[0] = state[0].copy(patterns = patterns)
-                    sink += state[0]
-                    self[0]
+    return selfReturningProxy(Class.forName("org.gradle.tooling.TestSpec")) { self, method, args ->
+        when (method.name) {
+            "includePatterns" -> {
+                val patterns = when (val value = args?.get(0)) {
+                    is Collection<*> -> value.filterIsInstance<String>()
+                    else -> emptyList()
                 }
-                "includeClasses" -> {
-                    val classes = when (val value = args?.get(0)) {
-                        is Collection<*> -> value.filterIsInstance<String>()
-                        else -> emptyList()
-                    }
-                    state[0] = state[0].copy(classes = classes)
-                    sink += state[0]
-                    self[0]
-                }
-                "includeClass" -> {
-                    val className = args[0] as? String ?: return@InvocationHandler self[0]
-                    state[0] = state[0].copy(classes = state[0].classes + className)
-                    sink += state[0]
-                    self[0]
-                }
-                "includeMethods" -> {
-                    val className = args[0] as? String ?: return@InvocationHandler self[0]
-                    val methods = when (val value = args.getOrNull(1)) {
-                        is Collection<*> -> value.filterIsInstance<String>()
-                        else -> emptyList()
-                    }
-                    state[0] = state[0].copy(methods = state[0].methods + (className to methods))
-                    sink += state[0]
-                    self[0]
-                }
-                "includeMethod" -> {
-                    val className = args[0] as? String ?: return@InvocationHandler self[0]
-                    val methodName = args.getOrNull(1) as? String ?: return@InvocationHandler self[0]
-                    val existing = state[0].methods[className].orEmpty()
-                    state[0] = state[0].copy(methods = state[0].methods + (className to (existing + methodName)))
-                    sink += state[0]
-                    self[0]
-                }
-                else -> self[0]
+                state[0] = state[0].copy(patterns = patterns)
+                sink += state[0]
+                self
             }
-        },
-    )
-    return self[0]!!
+            "includeClasses" -> {
+                val classes = when (val value = args?.get(0)) {
+                    is Collection<*> -> value.filterIsInstance<String>()
+                    else -> emptyList()
+                }
+                state[0] = state[0].copy(classes = classes)
+                sink += state[0]
+                self
+            }
+            "includeClass" -> {
+                val className = args?.get(0) as? String ?: return@selfReturningProxy self
+                state[0] = state[0].copy(classes = state[0].classes + className)
+                sink += state[0]
+                self
+            }
+            "includeMethods" -> {
+                val className = args?.get(0) as? String ?: return@selfReturningProxy self
+                val methods = when (val value = args.getOrNull(1)) {
+                    is Collection<*> -> value.filterIsInstance<String>()
+                    else -> emptyList()
+                }
+                state[0] = state[0].copy(methods = state[0].methods + (className to methods))
+                sink += state[0]
+                self
+            }
+            "includeMethod" -> {
+                val className = args?.get(0) as? String ?: return@selfReturningProxy self
+                val methodName = args.getOrNull(1) as? String ?: return@selfReturningProxy self
+                val existing = state[0].methods[className].orEmpty()
+                state[0] = state[0].copy(methods = state[0].methods + (className to (existing + methodName)))
+                sink += state[0]
+                self
+            }
+            else -> self
+        }
+    }
 }
