@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.model.resolution
 
+import com.example.gradle.mcp.protocol.ClasspathResources
 import java.io.File
 
 /**
@@ -37,23 +38,22 @@ object DependencyResolutionInitScriptProvider {
         return Materials(script, jar)
     }
 
-    private fun extractJar(): File {
-        val resource = DependencyResolutionInitScriptProvider::class.java.getResource(JAR_RESOURCE)
-            ?: error(
-                "$JAR_RESOURCE not found on classpath. " +
-                    "Build the server jar so :resolution-model is embedded under META-INF/mcp/.",
-            )
-        val temp = File.createTempFile("mcp-resolution-model-", ".jar")
-        temp.deleteOnExit()
-        resource.openStream().use { input ->
-            temp.outputStream().use { output -> input.copyTo(output) }
-        }
-        return temp
-    }
+    private fun extractJar(): File =
+        ClasspathResources.copyToTempFile(
+            ClasspathResources.require(
+                DependencyResolutionInitScriptProvider::class.java,
+                JAR_RESOURCE,
+                hint = "Build the server jar so :resolution-model is embedded under META-INF/mcp/.",
+            ),
+            "mcp-resolution-model-",
+            ".jar",
+        )
 
     private fun writeInitScript(jar: File): File {
-        val template = DependencyResolutionInitScriptProvider::class.java.getResource(INIT_RESOURCE)
-            ?: error("$INIT_RESOURCE not found on classpath")
+        val template = ClasspathResources.require(
+            DependencyResolutionInitScriptProvider::class.java,
+            INIT_RESOURCE,
+        )
         val jarLiteral = jar.absolutePath.replace("\\", "/").replace("'", "\\'")
         val content = template.readText().replace(JAR_PLACEHOLDER, jarLiteral)
         val temp = File.createTempFile("mcp-dependency-resolution-", ".init.gradle")
