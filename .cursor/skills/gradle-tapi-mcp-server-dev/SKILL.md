@@ -52,10 +52,15 @@ Do not add tool handler classes to the root package (thin register wrappers that
 When you change server code, verify with **shell**:
 
 ```bash
-./gradlew test --tests "com.example.gradle.mcp.<area>.<Class>Test"
+./gradlew :test --tests "com.example.gradle.mcp.<area>.<Class>Test"
 # or
 ./gradlew build
 ```
+
+Pitfalls:
+
+- Use `:test` (root) or `:<module>:test` with `--tests` — a bare `test --tests` filter applies to every subproject and fails with `No tests found` in modules that lack the class.
+- `GradleTapiMcpServerLauncherSmokeTest` requires exactly one JAR in `build/libs` — delete stale `gradle-tapi-mcp-server-*.jar` files (e.g. after a version bump) if it fails with `require(jars.size == 1)`.
 
 Do not use the `gradle` MCP server to compile the server you are editing (see `gradle-mcp.mdc`).
 
