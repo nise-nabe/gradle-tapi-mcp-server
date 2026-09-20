@@ -157,14 +157,13 @@ class GradlePropertiesStreamCapture(
     }
 
     private fun flushLineBuffer() {
-        if (lineBuffer.isNotEmpty()) {
-            storeLine(lineBuffer.toString())
-            lineBuffer.clear()
-        }
         if (pendingBytes.isNotEmpty()) {
             appendText(String(pendingBytes, StandardCharsets.UTF_8))
             pendingBytes = ByteArray(0)
-            flushLineBuffer()
+        }
+        if (lineBuffer.isNotEmpty()) {
+            storeLine(lineBuffer.toString())
+            lineBuffer.clear()
         }
     }
 

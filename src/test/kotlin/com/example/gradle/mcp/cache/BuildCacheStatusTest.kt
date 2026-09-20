@@ -301,4 +301,17 @@ class BuildCacheStatusTest {
 
         capture.snapshotProperties()["org.gradle.caching"] shouldBe "true"
     }
+
+    @Test
+    fun `GradlePropertiesStreamCapture joins a final line split by truncated utf8 bytes`() {
+        val capture = GradlePropertiesStreamCapture(retainKey = BuildCachePropertyKeys::isCacheRelated)
+        val out = capture.asOutputStream()
+        // The trailing 0xC3 starts a two-byte UTF-8 sequence that never
+        // completes: it stays in pendingBytes until snapshotProperties.
+        // Decoding it into the line buffer keeps the final line whole.
+        out.write("org.gradle.caching: tru".toByteArray(StandardCharsets.UTF_8))
+        out.write(byteArrayOf(0xC3.toByte()))
+
+        capture.snapshotProperties()["org.gradle.caching"] shouldBe "tru\uFFFD"
+    }
 }
