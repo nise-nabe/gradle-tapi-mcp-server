@@ -124,7 +124,9 @@ internal fun connectionStatusPayload(
     val projectDirectory = args.optionalString("projectDirectory")
         ?.let(ProjectDirectoryResolver::bestEffortDirectory)
     val refresh = args.optionalBoolean("refresh", default = false)
-    return runtime.connectionManager.status(projectDirectory, refresh)
+    return runtime.connectionManager.status(projectDirectory, refresh) { directory ->
+        runtime.buildExecutionManager.hasActiveBuild(directory)
+    }
 }
 
 internal fun buildEnvironmentPayload(
@@ -133,8 +135,21 @@ internal fun buildEnvironmentPayload(
 ): Map<String, Any?> {
     rejectUnsupportedProjectPath(args, "gradle_get_build_environment")
     val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
-    return runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
-        runtime.connectionManager.fetchAndCacheEnvironment(projectDirectory, connection).toMap()
+    // The Tooling API connection is not thread-safe: serve the cached
+    // snapshot without touching it, otherwise fetch under the same
+    // no-active-build guard used by every other model query.
+    runtime.connectionManager.cachedEnvironment(projectDirectory)?.let { return it.toMap() }
+    return ProjectLifecycleGuard.withNoActiveBuild(
+        projectDirectory = projectDirectory,
+        buildExecutionManager = runtime.buildExecutionManager,
+        message = { directory ->
+            "Cannot query the Gradle build environment while a build is active for ${directory.path}. " +
+                "Wait for the build to finish, call gradle_cancel_build, or poll gradle_get_build_status."
+        },
+    ) {
+        runtime.connectionManager.withConnectionResult(projectDirectory) { connection ->
+            runtime.connectionManager.fetchAndCacheEnvironment(projectDirectory, connection).toMap()
+        }
     }
 }
 

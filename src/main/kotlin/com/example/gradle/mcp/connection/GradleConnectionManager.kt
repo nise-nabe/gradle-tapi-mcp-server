@@ -166,13 +166,17 @@ class GradleConnectionManager {
     ): BuildEnvironmentSnapshot? =
         loadEnvironmentSnapshot(connection)?.also { cacheEnvironmentSnapshot(projectDirectory, it) }
 
-    fun status(projectDirectory: File? = null, refresh: Boolean = false): Map<String, Any?> {
+    fun status(
+        projectDirectory: File? = null,
+        refresh: Boolean = false,
+        isBuildActive: (File) -> Boolean = { false },
+    ): Map<String, Any?> {
         if (projectDirectory != null) {
-            return connectionStatus(projectDirectory, refresh).toResponseMap()
+            return connectionStatus(projectDirectory, refresh, isBuildActive).toResponseMap()
         }
         val default = defaultProjectDirectory()
         val connections = pool.values
-            .map { pooled -> connectionStatus(pooled.projectDirectory, refresh) }
+            .map { pooled -> connectionStatus(pooled.projectDirectory, refresh, isBuildActive) }
             .sortedBy { it.projectDirectory }
         return MultiConnectionStatus(
             defaultProjectDirectory = default?.path,
@@ -241,12 +245,16 @@ class GradleConnectionManager {
         return ConnectionInfo(projectDir.path, "connected")
     }
 
-    private fun connectionStatus(projectDirectory: File, refresh: Boolean): ConnectionStatus {
+    private fun connectionStatus(
+        projectDirectory: File,
+        refresh: Boolean,
+        isBuildActive: (File) -> Boolean = { false },
+    ): ConnectionStatus {
         val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
         val pooled = pool[key]
         val env = pooled?.cachedEnvironment
             ?: if (refresh) {
-                pooled?.let { refreshEnvironmentIfMissing(it.projectDirectory, it.connection) }
+                refreshEnvironmentWhenIdle(projectDirectory, isBuildActive)
             } else {
                 null
             }
@@ -288,6 +296,26 @@ class GradleConnectionManager {
         }
         return projectDir.canonicalFile
     }
+
+    /**
+     * Fetch BuildEnvironment only while the project has no active build.
+     * The Tooling API connection is not thread-safe, so the fetch runs under
+     * the per-project lifecycle lock: build starts take the same lock, which
+     * serializes this getModel against them. A build that was already running
+     * is reported by [isBuildActive] and the refresh is skipped.
+     */
+    private fun refreshEnvironmentWhenIdle(
+        projectDirectory: File,
+        isBuildActive: (File) -> Boolean,
+    ): BuildEnvironmentSnapshot? =
+        synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+            val pooled = pool[ProjectDirectoryResolver.canonicalKey(projectDirectory)]
+            if (pooled == null || isBuildActive(projectDirectory)) {
+                null
+            } else {
+                refreshEnvironmentIfMissing(pooled.projectDirectory, pooled.connection)
+            }
+        }
 
     private fun loadEnvironmentSnapshot(connection: ProjectConnection): BuildEnvironmentSnapshot? =
         try {
