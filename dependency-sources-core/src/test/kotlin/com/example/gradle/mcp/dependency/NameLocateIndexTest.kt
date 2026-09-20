@@ -143,6 +143,44 @@ class GapEliasDeltaCodecTest {
             GapEliasDeltaCodec.decode(bytes, 1)
         }
     }
+
+    @Test
+    fun `decode rejects gap exceeding Int range`() {
+        val bytes = eliasDeltaStream(Int.MAX_VALUE.toLong() + 1L)
+        shouldThrow<IllegalArgumentException> {
+            GapEliasDeltaCodec.decode(bytes, 1)
+        }
+    }
+
+    @Test
+    fun `decode rejects cumulative position overflow`() {
+        // First gap lands at position Int.MAX_VALUE - 1; the next gap pushes past Int range.
+        val bytes = eliasDeltaStream(Int.MAX_VALUE.toLong(), 2L)
+        shouldThrow<IllegalArgumentException> {
+            GapEliasDeltaCodec.decode(bytes, 2)
+        }
+    }
+
+    private fun eliasDeltaStream(vararg gaps: Long): ByteArray {
+        val bits = StringBuilder()
+        fun append(value: Long, nbits: Int) {
+            for (i in nbits - 1 downTo 0) {
+                bits.append(if ((value ushr i) and 1L == 1L) '1' else '0')
+            }
+        }
+        for (gap in gaps) {
+            val l = 63 - java.lang.Long.numberOfLeadingZeros(gap)
+            val len = l + 1L
+            val lenL = 63 - java.lang.Long.numberOfLeadingZeros(len)
+            repeat(lenL) { bits.append('0') }
+            append(len, lenL + 1)
+            if (l > 0) {
+                append(gap and ((1L shl l) - 1), l)
+            }
+        }
+        while (bits.length % 8 != 0) bits.append('0')
+        return bits.chunked(8).map { Integer.parseInt(it, 2).toByte() }.toByteArray()
+    }
 }
 
 class IdentifierLexerTest {

@@ -30,7 +30,10 @@ object GapEliasDeltaCodec {
         for (i in 0 until count) {
             val gap = reader.readDelta()
                 ?: throw IllegalArgumentException("truncated Elias-δ stream at index $i")
-            val position = prev + gap.toInt()
+            require(gap <= Int.MAX_VALUE.toLong()) { "position gap does not fit in Int" }
+            val next = prev.toLong() + gap
+            require(next <= Int.MAX_VALUE.toLong()) { "position overflow in posting" }
+            val position = next.toInt()
             out[i] = position
             prev = position
         }
