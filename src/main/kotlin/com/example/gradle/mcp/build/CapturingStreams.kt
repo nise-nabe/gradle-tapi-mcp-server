@@ -39,6 +39,24 @@ class TailCapturingStream(
             CapturedStreamSnapshot(text = buffer.toString(), totalChars = totalChars)
         }
 
+    /**
+     * Marks the stream as complete: decodes any pending UTF-8 bytes and
+     * resolves a trailing `\r` that was kept pending for a possible `\r\n`
+     * split across appends. Idempotent.
+     */
+    fun finish() {
+        synchronized(lock) {
+            if (pendingBytes.isNotEmpty()) {
+                val decoded = String(pendingBytes, StandardCharsets.UTF_8)
+                pendingBytes = ByteArray(0)
+                appendNormalizedText(decoded)
+            }
+            if (buffer.isNotEmpty() && buffer[buffer.length - 1] == '\r') {
+                buffer.setCharAt(buffer.length - 1, '\n')
+            }
+        }
+    }
+
     private fun appendNormalizedText(text: String) {
         var chunk = text
         if (buffer.isNotEmpty() && buffer[buffer.length - 1] == '\r') {
@@ -200,6 +218,11 @@ class CapturingStreams(
     fun stdoutText(): String = stdoutSnapshot().text
     fun stderrText(): String = stderrSnapshot().text
 
+    fun finish() {
+        stdoutCapture.finish()
+        stderrCapture.finish()
+    }
+
     internal fun appendStdoutForTests(text: String) {
         val bytes = text.toByteArray(StandardCharsets.UTF_8)
         stdoutCapture.append(bytes, 0, bytes.size)
@@ -219,6 +242,10 @@ class CapturingStreams(
 
         override fun write(bytes: ByteArray, offset: Int, length: Int) {
             capture.append(bytes, offset, length)
+        }
+
+        override fun close() {
+            capture.finish()
         }
     }
 }

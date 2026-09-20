@@ -127,4 +127,42 @@ class TailCapturingStreamTest {
         stream.append(emoji.copyOfRange(2, 4), 0, 2)
         stream.snapshot().text shouldBe "\uFFFD\uD83D\uDE00"
     }
+
+    @Test
+    fun `finish normalizes a trailing carriage return`() {
+        val stream = TailCapturingStream(maxRetainedChars = 32)
+        stream.append("a\rb".toByteArray(StandardCharsets.UTF_8), 0, 3)
+        stream.append("c\r".toByteArray(StandardCharsets.UTF_8), 0, 2)
+
+        stream.snapshot().text shouldBe "a\nbc\r"
+
+        stream.finish()
+
+        stream.snapshot().text shouldBe "a\nbc\n"
+        stream.snapshot().totalChars shouldBe 5
+    }
+
+    @Test
+    fun `finish flushes pending utf8 bytes before resolving trailing carriage return`() {
+        val stream = TailCapturingStream(maxRetainedChars = 32)
+        val bytes = "😀".toByteArray(StandardCharsets.UTF_8)
+        stream.append("x\r".toByteArray(StandardCharsets.UTF_8), 0, 2)
+        stream.append(bytes.copyOfRange(0, 2), 0, 2)
+
+        stream.finish()
+
+        stream.snapshot().text shouldBe "x\n\uFFFD"
+    }
+
+    @Test
+    fun `finish is idempotent`() {
+        val stream = TailCapturingStream(maxRetainedChars = 32)
+        stream.append("a\r".toByteArray(StandardCharsets.UTF_8), 0, 2)
+
+        stream.finish()
+        stream.finish()
+
+        stream.snapshot().text shouldBe "a\n"
+        stream.snapshot().totalChars shouldBe 2
+    }
 }
