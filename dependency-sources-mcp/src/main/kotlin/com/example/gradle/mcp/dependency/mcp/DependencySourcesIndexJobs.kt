@@ -158,8 +158,7 @@ class IndexJob(
 
     fun await(timeoutMs: Long): Boolean {
         if (timeoutMs <= 0L) {
-            completion.await()
-            return true
+            return completion.await(0L, TimeUnit.MILLISECONDS)
         }
         return completion.await(timeoutMs, TimeUnit.MILLISECONDS)
     }

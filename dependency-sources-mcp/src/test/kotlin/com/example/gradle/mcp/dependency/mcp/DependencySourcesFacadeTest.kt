@@ -802,6 +802,23 @@ class DependencySourcesFacadeTest {
     }
 
     @Test
+    fun `foreground index detaches immediately when detach timeout is non-positive`() {
+        val project = File(tempDir, "proj-zero-detach").apply { mkdirs() }
+        val jobs = DependencySourcesIndexJobs(foregroundDetachTimeoutMs = 0)
+        val job =
+            jobs.start(
+                projectDirectory = project,
+                tokenMode = "idents",
+                projectPath = null,
+            ) {
+                Thread.sleep(200)
+                mapOf("docCount" to 1, "memberCount" to 1)
+            }
+        val detached = jobs.awaitOrDetach(job)
+        detached["detached"] shouldBe true
+    }
+
+    @Test
     fun `projectPath with sourcePaths is rejected`() {
         val sources = File(tempDir, "src-path").apply { mkdirs() }
         File(sources, "A.kt").writeText("class A\n")

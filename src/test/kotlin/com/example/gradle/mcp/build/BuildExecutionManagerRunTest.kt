@@ -724,6 +724,50 @@ class BuildExecutionManagerRunTest {
     }
 
     @Test
+    fun `runForeground detaches immediately when detach timeout is non-positive`() {
+        val connectionManager = GradleConnectionManager()
+        val buildEntered = CountDownLatch(1)
+        val releaseBuild = CountDownLatch(1)
+        connectionManager.seedConnectionForTests(blockingProjectConnection(buildEntered, releaseBuild))
+        val manager = BuildExecutionManager(connectionManager)
+        val resultRef = AtomicReference<Map<String, Any?>>()
+
+        val waiterThread = Thread {
+            resultRef.set(
+                runBlocking {
+                    manager.runForeground(
+                        request = BuildRunRequest(
+                            projectDirectory = testProjectDirectory,
+                            kind = BuildKind.TASKS,
+                            tasks = listOf("test"),
+                        ),
+                        notifier = null,
+                        foregroundDetachTimeoutMs = 0L,
+                    )
+                },
+            )
+        }.apply { isDaemon = true }
+        waiterThread.start()
+
+        buildEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        waiterThread.join(5_000)
+        releaseBuild.countDown()
+
+        val detached = resultRef.get()
+        detached.shouldNotBeNull()
+        detached["status"] shouldBe "running"
+        detached["detached"] shouldBe true
+        detached["buildId"].shouldNotBeNull()
+
+        var attempts = 0
+        while (manager.hasActiveBuild() && attempts < 50) {
+            Thread.sleep(100)
+            attempts++
+        }
+        manager.hasActiveBuild().shouldBeFalse()
+    }
+
+    @Test
     fun `runForeground falls back to BuildLauncher when TestLauncher cannot resolve taskPath`() = runBlocking {
         val connectionManager = GradleConnectionManager()
         val buildLauncherCalls = mutableListOf<LauncherCall>()
