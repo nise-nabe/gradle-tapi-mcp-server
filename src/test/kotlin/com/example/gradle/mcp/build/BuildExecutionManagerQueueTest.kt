@@ -505,6 +505,38 @@ class BuildExecutionManagerQueueTest {
     }
 
     @Test
+    fun `global reset does not mutate per-project queues and leaves stale entries for drain`(
+        @TempDir project: File,
+    ) {
+        val connectionManager = GradleConnectionManager()
+        val manager = BuildExecutionManager(connectionManager)
+        manager.seedQueuedBuildForTests(
+            testBuildRecord(
+                id = "queued-cancelled",
+                tracker = queuedTracker(),
+                projectDirectory = project.absolutePath,
+            ),
+            request = BuildRunRequest(
+                projectDirectory = project,
+                kind = BuildKind.TASKS,
+                tasks = listOf("compileKotlin"),
+            ),
+        )
+
+        // Global reset (disconnect-all / shutdown path) holds only the global
+        // lifecycle lock, so it must cancel the record without touching the
+        // per-project deque; the cancelled entry is dropped by the next drain.
+        manager.resetBuildState("simulated disconnect-all", null)
+
+        manager.queueDepthForTests(project) shouldBe 1
+
+        manager.wakeQueuedBuilds()
+        manager.queueDepthForTests(project) shouldBe 0
+        waitUntilStatus(manager, "queued-cancelled", BuildProgressTracker.STATUS_CANCELLED)
+        manager.hasActiveBuild().shouldBeFalse()
+    }
+
+    @Test
     fun `queueIfBusy false still rejects when project busy`() {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnection()

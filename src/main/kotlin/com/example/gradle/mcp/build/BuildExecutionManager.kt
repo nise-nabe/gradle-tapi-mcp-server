@@ -517,9 +517,14 @@ class BuildExecutionManager(
                     record.matchesProject(projectDirectory)
             }
             .forEach { record ->
-                val dir = record.projectDirectory?.let(::File)
-                if (dir != null) {
-                    projectQueue.remove(dir, record.id)
+                // ProjectBuildQueue requires the per-project lifecycle lock. The
+                // per-project reset path holds forProject(projectDirectory), but the
+                // global path (disconnect-all/shutdown) holds only global(); taking
+                // forProject(dir) here would invert the project->global lock order.
+                // Cancelled entries are dropped by takeNextIfIdle's stale-head skip
+                // on the next drain instead.
+                if (projectDirectory != null) {
+                    projectQueue.remove(projectDirectory, record.id)
                 }
                 finalizeQueuedBuild(record, BuildTerminalOutcome.Cancelled(reason))
             }
@@ -1031,6 +1036,11 @@ class BuildExecutionManager(
             )
         }
     }
+
+    internal fun queueDepthForTests(projectDirectory: File): Int =
+        synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+            projectQueue.count(projectDirectory)
+        }
 
     internal fun completeBuildForTests(buildId: String, succeeded: Boolean = true): Boolean {
         val record = builds[buildId] ?: return false
