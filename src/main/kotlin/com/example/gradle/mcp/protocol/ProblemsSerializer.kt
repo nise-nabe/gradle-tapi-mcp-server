@@ -2,6 +2,7 @@ package com.example.gradle.mcp.protocol
 
 import com.example.gradle.mcp.build.BuildProblemSnapshot
 import com.example.gradle.mcp.build.ProblemLocationSnapshot
+import com.example.gradle.mcp.model.FailureRecords
 import org.gradle.tooling.Failure
 import org.gradle.tooling.events.FailureResult
 import org.gradle.tooling.events.problems.FileLocation
@@ -92,16 +93,25 @@ internal object ProblemsSerializer {
             }
         }
 
-    private fun collectProblems(failure: Failure, into: MutableList<BuildProblemSnapshot>) {
+    private fun collectProblems(
+        failure: Failure,
+        into: MutableList<BuildProblemSnapshot>,
+        depth: Int = 0,
+    ) {
         runCatching {
             failure.problems.orEmpty().forEach { problem ->
                 into.add(fromProblem(problem))
             }
         }
+        if (depth >= FailureRecords.MAX_CAUSE_DEPTH) {
+            return
+        }
         runCatching {
-            failure.causes.orEmpty().forEach { cause ->
-                collectProblems(cause, into)
-            }
+            failure.causes.orEmpty()
+                .take(FailureRecords.MAX_CAUSES_PER_FAILURE)
+                .forEach { cause ->
+                    collectProblems(cause, into, depth + 1)
+                }
         }
     }
 
