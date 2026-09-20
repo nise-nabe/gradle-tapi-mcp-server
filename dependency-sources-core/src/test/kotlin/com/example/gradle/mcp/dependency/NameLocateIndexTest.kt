@@ -569,7 +569,7 @@ class NameLocateIndexTest {
         manifest.writeText(manifest.readText().replace("\"formatVersion\":${IndexFormat.VERSION}", "\"formatVersion\":2"))
         shouldThrow<UnsupportedIndexFormatException> {
             NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL)
-        }.message shouldContain "format v3"
+        }.message shouldContain "format v${IndexFormat.VERSION}"
     }
 
     @Test

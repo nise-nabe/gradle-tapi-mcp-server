@@ -9,8 +9,12 @@ import java.nio.file.Files
 import java.security.MessageDigest
 
 object IndexFormat {
-    /** v3: postings.bin uses offset table + mmap-backed blobs; occurrence payloads unchanged. */
-    const val VERSION: Int = 3
+    /**
+     * v3: postings.bin uses offset table + mmap-backed blobs; occurrence payloads unchanged.
+     * v4: IdentifierLexer precision fixes (nested comments, backtick names, shebang, CR endings)
+     *     change emitted tokens/positions; binary layout unchanged but indexes must rebuild.
+     */
+    const val VERSION: Int = 4
     const val MAGIC: Int = 0x4D445349 // MDSI
 }
 

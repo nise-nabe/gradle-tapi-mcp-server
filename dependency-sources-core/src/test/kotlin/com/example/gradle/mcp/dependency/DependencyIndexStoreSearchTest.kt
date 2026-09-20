@@ -282,7 +282,7 @@ class DependencyIndexStoreSearchTest {
                 ),
             )
         }
-        error.message shouldContain "format v3"
+        error.message shouldContain "format v${IndexFormat.VERSION}"
     }
 
     @Test
