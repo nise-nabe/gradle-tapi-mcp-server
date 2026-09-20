@@ -15,6 +15,10 @@ import com.example.gradle.mcp.protocol.decodeMcpJsonMap
 import com.example.gradle.mcp.protocol.encodeMcpJson
 import java.io.File
 import java.nio.charset.StandardCharsets
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.time.Instant
 
 class BuildRecordStore {
@@ -379,12 +383,27 @@ class BuildRecordStore {
     }
 
     private fun writeAtomically(target: File, content: String) {
-        target.parentFile?.mkdirs()
-        val temp = File(target.parentFile, "${target.name}.tmp")
-        temp.writeText(content, StandardCharsets.UTF_8)
-        if (!temp.renameTo(target)) {
-            target.writeText(content, StandardCharsets.UTF_8)
-            temp.delete()
+        val targetPath = target.toPath().toAbsolutePath()
+        Files.createDirectories(targetPath.parent)
+        // A unique temp name per write avoids interleaving when the Gradle
+        // init script writes gradle-result.json from a different JVM.
+        val temp = Files.createTempFile(targetPath.parent, "${target.name}.", ".tmp")
+        try {
+            Files.writeString(temp, content, StandardCharsets.UTF_8)
+            moveIntoPlace(temp, targetPath)
+        } catch (exception: Exception) {
+            Files.deleteIfExists(temp)
+            Files.writeString(targetPath, content, StandardCharsets.UTF_8)
+        }
+    }
+
+    private fun moveIntoPlace(temp: Path, targetPath: Path) {
+        try {
+            // REPLACE_EXISTING keeps the move atomic on Windows, where
+            // File.renameTo fails whenever the target already exists.
+            Files.move(temp, targetPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (exception: AtomicMoveNotSupportedException) {
+            Files.move(temp, targetPath, StandardCopyOption.REPLACE_EXISTING)
         }
     }
 }

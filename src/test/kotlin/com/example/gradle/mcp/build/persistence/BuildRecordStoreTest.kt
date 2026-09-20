@@ -191,6 +191,22 @@ class BuildRecordStoreTest {
     }
 
     @Test
+    fun `writeMcpResult overwrites existing files without leaving temp files`(@TempDir projectDir: File) {
+        val record = succeededBuildRecord(projectDir, "rewrite-build")
+        store.writeMcpResult(record, record.progressTracker.snapshot())
+        // Second write exercises the target-exists move path.
+        store.writeMcpResult(record, record.progressTracker.snapshot())
+
+        val recordDir = store.recordDirectory(projectDir, "rewrite-build").shouldNotBeNull()
+        store.readMcpResult(recordDir).shouldNotBeNull().apply {
+            buildId shouldBe "rewrite-build"
+            status shouldBe BuildProgressTracker.STATUS_SUCCEEDED
+        }
+        val tempFiles = recordDir.listFiles { _, name -> name.endsWith(".tmp") }?.toList().orEmpty()
+        tempFiles shouldBe emptyList()
+    }
+
+    @Test
     fun `writeMcpResult merges liveProblems into persisted problems`(@TempDir projectDir: File) {
         val record = testBuildRecord(
             id = "live-problems-build",
