@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
  * through [BuildRegistry].
  *
  * Locking contract:
- * - Per-project mutations run under [ProjectLifecycleLock.forProject].
+ * - Per-project mutations run under [ProjectLifecycleLock.withProjectLock].
  * - disconnect-all/shutdown run under [ProjectLifecycleLock.global] and must
  *   not take per-project locks inside (see [BuildRunner.QueueDrain]).
  */
@@ -46,7 +46,7 @@ class BuildExecutionManager(
 
         val projectDirectory = request.projectDirectory
 
-        synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+        ProjectLifecycleLock.withProjectLock(projectDirectory) {
             if (!registry.hasRunningBuild(projectDirectory) && !registry.hasQueuedBuild(projectDirectory)) {
                 val start = newBuildStart(request, notifier, queued = false)
                 return startImmediately(start, request, projectDirectory)
@@ -116,7 +116,7 @@ class BuildExecutionManager(
         requireMatchingProject(buildId, record, projectDirectoryHint)
         val projectDirectory = record.projectDirectory?.let(::File)
         if (projectDirectory != null) {
-            synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+            ProjectLifecycleLock.withProjectLock(projectDirectory) {
                 return cancelBuildUnderLock(buildId, record, projectDirectory)
             }
         }
@@ -186,7 +186,7 @@ class BuildExecutionManager(
         registry.hasQueuedBuild(projectDirectory)
 
     fun resetBuildState(reason: String, projectDirectory: File? = null) {
-        synchronized(lifecycleLockFor(projectDirectory)) {
+        ProjectLifecycleLock.withLifecycleLock(projectDirectory) {
             runner.markQueuedBuildsCancelled(reason, projectDirectory)
             runner.markRunningBuildsCancelled(reason, projectDirectory)
             if (runner.shouldReplaceExecutor(projectDirectory)) {
@@ -312,7 +312,7 @@ class BuildExecutionManager(
         try {
             runner.execute(work)
         } catch (_: RejectedExecutionException) {
-            synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+            ProjectLifecycleLock.withProjectLock(projectDirectory) {
                 registry.records.remove(buildId)
             }
             throw maxConcurrentBuildsException()
@@ -320,7 +320,7 @@ class BuildExecutionManager(
     }
 
     private fun registerImmediateBuildStart(start: BuildStart, projectDirectory: File): String {
-        synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+        ProjectLifecycleLock.withProjectLock(projectDirectory) {
             if (registry.hasActiveBuild(projectDirectory)) {
                 throw buildAlreadyRunningForProjectException(projectDirectory)
             }
@@ -336,12 +336,6 @@ class BuildExecutionManager(
         return registerImmediateBuildStart(start, projectDirectory)
     }
 
-    private fun lifecycleLockFor(projectDirectory: File?): Any =
-        if (projectDirectory != null) {
-            ProjectLifecycleLock.forProject(projectDirectory)
-        } else {
-            ProjectLifecycleLock.global()
-        }
 
     private fun buildAlreadyRunningForProjectException(projectDirectory: File): McpException =
         McpException(
@@ -380,7 +374,7 @@ class BuildExecutionManager(
     internal fun seedQueuedBuildForTests(record: BuildRecord, request: BuildRunRequest) {
         registry.records[record.id] = record
         val projectDirectory = record.projectDirectory?.let(::File) ?: return
-        synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+        ProjectLifecycleLock.withProjectLock(projectDirectory) {
             registry.projectQueue.enqueue(
                 projectDirectory,
                 ProjectBuildQueue.QueuedBuild(
@@ -393,7 +387,7 @@ class BuildExecutionManager(
     }
 
     internal fun queueDepthForTests(projectDirectory: File): Int =
-        synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+        ProjectLifecycleLock.withProjectLock(projectDirectory) {
             registry.projectQueue.count(projectDirectory)
         }
 

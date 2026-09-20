@@ -181,7 +181,7 @@ class GradleConnectionManagerTest {
         val missingDirectory = File("build/tmp/nonexistent-project-dir").absolutePath
 
         val error = shouldThrow<McpException> {
-            manager.connect(ConnectionConfig(projectDirectory = missingDirectory))
+            manager.ensureConnected(ConnectionConfig(projectDirectory = missingDirectory))
         }
 
         error.code shouldBe McpErrorCode.PROJECT_NOT_FOUND
@@ -189,9 +189,9 @@ class GradleConnectionManagerTest {
     }
 
     @Test
-    fun `withConnection requires an active connection`() {
+    fun `withConnectionResult requires an active connection`() {
         val error = shouldThrow<McpException> {
-            manager.withConnection { }
+            manager.withConnectionResult { }
         }
 
         error.code shouldBe McpErrorCode.NOT_CONNECTED
@@ -447,7 +447,7 @@ class GradleConnectionManagerTest {
     }
 
     @Test
-    fun `disconnect does not wait for long withConnection block`() {
+    fun `disconnect does not wait for long withConnectionResult block`() {
         manager.seedNoopConnections(File("."))
 
         val blockEntered = CountDownLatch(1)
@@ -455,7 +455,7 @@ class GradleConnectionManagerTest {
         val disconnectCompleted = AtomicBoolean(false)
 
         val buildThread = Thread {
-            manager.withConnection {
+            manager.withConnectionResult {
                 blockEntered.countDown()
                 releaseBlock.await(5, TimeUnit.SECONDS)
             }
@@ -477,13 +477,13 @@ class GradleConnectionManagerTest {
     }
 
     @Test
-    fun `withConnection allows overlapping operations`() {
+    fun `withConnectionResult allows overlapping operations`() {
         manager.seedNoopConnections(File("."))
 
         val firstEntered = CountDownLatch(1)
         val releaseFirst = CountDownLatch(1)
         val firstThread = Thread {
-            manager.withConnection {
+            manager.withConnectionResult {
                 firstEntered.countDown()
                 releaseFirst.await(5, TimeUnit.SECONDS)
             }
@@ -498,14 +498,14 @@ class GradleConnectionManagerTest {
     }
 
     @Test
-    fun `disconnect allows reconnect after hung withConnection block`() {
+    fun `disconnect allows reconnect after hung withConnectionResult block`() {
         val connection = getModelCountingConnection()
         manager.seedConnectionForTests(connection)
 
         val blockEntered = CountDownLatch(1)
         val releaseBlock = CountDownLatch(1)
         val hungThread = Thread {
-            manager.withConnection {
+            manager.withConnectionResult {
                 blockEntered.countDown()
                 releaseBlock.await(5, TimeUnit.SECONDS)
             }
@@ -517,7 +517,7 @@ class GradleConnectionManagerTest {
         manager.seedConnectionForTests(connection)
 
         var secondOperationRan = false
-        manager.withConnection { secondOperationRan = true }
+        manager.withConnectionResult { secondOperationRan = true }
         secondOperationRan.shouldBeTrue()
 
         releaseBlock.countDown()
@@ -525,7 +525,7 @@ class GradleConnectionManagerTest {
     }
 
     @Test
-    fun `withConnection on different projects does not block each other`(
+    fun `withConnectionResult on different projects does not block each other`(
         @TempDir projectA: File,
         @TempDir projectB: File,
     ) {
@@ -534,7 +534,7 @@ class GradleConnectionManagerTest {
         val blockEntered = CountDownLatch(1)
         val releaseBlock = CountDownLatch(1)
         val buildThread = Thread {
-            manager.withConnection(projectA) {
+            manager.withConnectionResult(projectA) {
                 blockEntered.countDown()
                 releaseBlock.await(5, TimeUnit.SECONDS)
             }

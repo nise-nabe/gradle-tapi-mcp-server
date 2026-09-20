@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap
  * Shared build state: the record map, the per-project queue, and the
  * last-completed snapshot cache. Lock-free reads go through the concurrent
  * maps; every [ProjectBuildQueue] access must run under
- * [ProjectLifecycleLock.forProject] for that directory.
+ * [ProjectLifecycleLock.withProjectLock] for that directory.
  */
 internal class BuildRegistry {
     val records = ConcurrentHashMap<String, BuildRecord>()
@@ -45,7 +45,7 @@ internal class BuildRegistry {
         }
 
     fun activeBuildSnapshot(projectDirectory: File): ActiveBuildSnapshot? =
-        synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+        ProjectLifecycleLock.withProjectLock(projectDirectory) {
             ActiveBuildSnapshot.forProject(
                 builds = records.values,
                 projectDirectory = projectDirectory,

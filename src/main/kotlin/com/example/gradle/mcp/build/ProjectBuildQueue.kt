@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap
  * Per-project FIFO queue of pending background builds.
  *
  * All mutations and reads of a project's deque must run under
- * [com.example.gradle.mcp.connection.ProjectLifecycleLock.forProject] for that directory.
+ * [com.example.gradle.mcp.connection.ProjectLifecycleLock.withProjectLock] for that directory.
  */
 internal class ProjectBuildQueue {
     private val queues = ConcurrentHashMap<String, ArrayDeque<QueuedBuild>>()

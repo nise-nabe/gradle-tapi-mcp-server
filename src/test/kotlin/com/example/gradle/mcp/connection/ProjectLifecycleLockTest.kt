@@ -38,6 +38,35 @@ class ProjectLifecycleLockTest {
     }
 
     @Test
+    fun `withProjectLock evicts the project monitor once the last caller exits`() {
+        val project = File("build/tmp/lifecycle-lock-evict-project").absoluteFile
+        val key = ProjectDirectoryResolver.canonicalKey(project)
+
+        var monitorInside: Any? = null
+        ProjectLifecycleLock.withProjectLock(project) {
+            monitorInside = ProjectLifecycleLock.projectLocks[key]
+        }
+
+        monitorInside shouldNotBe null
+        ProjectLifecycleLock.projectLocks[key] shouldBe null
+    }
+
+    @Test
+    fun `withProjectLock serializes callers on the same project monitor`() {
+        val project = File("build/tmp/lifecycle-lock-serialize-project").absoluteFile
+        val raw = ProjectLifecycleLock.forProject(project)
+
+        var monitorInside: Any? = null
+        ProjectLifecycleLock.withProjectLock(project) {
+            monitorInside = ProjectLifecycleLock.projectLocks[
+                ProjectDirectoryResolver.canonicalKey(project),
+            ]
+        }
+
+        monitorInside shouldBe raw
+    }
+
+    @Test
     fun `connect rejects project with active build under lifecycle lock`() {
         val connectionManager = GradleConnectionManager()
         val buildManager = BuildExecutionManager(connectionManager)
