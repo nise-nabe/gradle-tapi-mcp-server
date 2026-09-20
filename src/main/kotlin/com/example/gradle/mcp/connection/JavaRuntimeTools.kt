@@ -5,6 +5,7 @@ import com.example.gradle.mcp.build.BuildExecutionManager
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpToolDescriptions
+import com.example.gradle.mcp.protocol.OutputNormalizer
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.objectSchema
@@ -83,7 +84,7 @@ internal object JavaToolchainsParser {
             sections += JavaToolchainsSection(sectionTitle, properties.toMap())
         }
 
-        normalizeOutput(output).lineSequence().forEach { rawLine ->
+        OutputNormalizer.normalizeNewlines(output).lineSequence().forEach { rawLine ->
             val line = rawLine.trimEnd()
             val headerMatch = javaToolchainsSectionRegex.matchEntire(line.trimStart())
             if (headerMatch != null) {
@@ -103,9 +104,6 @@ internal object JavaToolchainsParser {
         return sections.mapNotNull(JavaToolchainsSection::toDetectedJdk)
             .distinctBy(DetectedJdk::javaHome)
     }
-
-    private fun normalizeOutput(text: String): String =
-        text.replace("\r\n", "\n").replace('\r', '\n')
 }
 
 private data class JavaToolchainsSection(

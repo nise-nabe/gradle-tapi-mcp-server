@@ -1,12 +1,14 @@
 package com.example.gradle.mcp.build
 
+import com.example.gradle.mcp.protocol.OutputNormalizer
+
 object BuildOutputParser {
     private val buildResultRegex = Regex("""BUILD (SUCCESSFUL|FAILED) in .+""")
     private val taskSummaryRegex = Regex("""\d+ actionable tasks?: .+""")
     private val gradleFailureLineRegex = Regex("""^> (?:Task )?(.+?) FAILED\s*$""")
 
     fun parse(stdout: String): BuildSummary {
-        val lines = normalizeNewlines(stdout).lines()
+        val lines = OutputNormalizer.normalizeNewlines(stdout).lines()
         val resultLine = lines.asReversed().firstOrNull { buildResultRegex.containsMatchIn(it) }
         val taskSummaryLine = lines.asReversed().firstOrNull { taskSummaryRegex.containsMatchIn(it) }
         val failureSummary = lines.mapNotNull { line ->
@@ -42,7 +44,4 @@ object BuildOutputParser {
             BuildProgressTracker.STATUS_CANCELLED -> "CANCELLED"
             else -> null
         }
-
-    private fun normalizeNewlines(text: String): String =
-        text.replace("\r\n", "\n").replace('\r', '\n')
 }

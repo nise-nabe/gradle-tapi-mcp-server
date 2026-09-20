@@ -11,7 +11,7 @@ class TailCapturingStream(
 ) {
     private val lock = Any()
     private val buffer = StringBuilder()
-    private var pendingBytes = ByteArray(0)
+    private val decoder = Utf8StreamAccumulator()
     private var totalChars = 0
 
     fun append(bytes: ByteArray, offset: Int, length: Int) {
@@ -19,18 +19,7 @@ class TailCapturingStream(
             return
         }
         synchronized(lock) {
-            val incoming = bytes.copyOfRange(offset, offset + length)
-            val combined = if (pendingBytes.isEmpty()) incoming else pendingBytes + incoming
-            val completeLength = Utf8ByteDecoder.completePrefixLength(combined)
-            if (completeLength > 0) {
-                val decoded = String(combined, 0, completeLength, StandardCharsets.UTF_8)
-                appendNormalizedText(decoded)
-            }
-            pendingBytes = if (completeLength < combined.size) {
-                combined.copyOfRange(completeLength, combined.size)
-            } else {
-                ByteArray(0)
-            }
+            decoder.feed(bytes, offset, length, ::appendNormalizedText)
         }
     }
 
@@ -46,11 +35,7 @@ class TailCapturingStream(
      */
     fun finish() {
         synchronized(lock) {
-            if (pendingBytes.isNotEmpty()) {
-                val decoded = String(pendingBytes, StandardCharsets.UTF_8)
-                pendingBytes = ByteArray(0)
-                appendNormalizedText(decoded)
-            }
+            decoder.flush(::appendNormalizedText)
             if (buffer.isNotEmpty() && buffer[buffer.length - 1] == '\r') {
                 buffer.setCharAt(buffer.length - 1, '\n')
             }
@@ -108,7 +93,7 @@ class GradlePropertiesStreamCapture(
 ) {
     private val lock = Any()
     private val properties = linkedMapOf<String, String>()
-    private var pendingBytes = ByteArray(0)
+    private val decoder = Utf8StreamAccumulator()
     private val lineBuffer = StringBuilder()
 
     fun asOutputStream(): OutputStream =
@@ -122,17 +107,7 @@ class GradlePropertiesStreamCapture(
                     return
                 }
                 synchronized(lock) {
-                    val incoming = bytes.copyOfRange(offset, offset + length)
-                    val combined = if (pendingBytes.isEmpty()) incoming else pendingBytes + incoming
-                    val completeLength = Utf8ByteDecoder.completePrefixLength(combined)
-                    if (completeLength > 0) {
-                        appendText(String(combined, 0, completeLength, StandardCharsets.UTF_8))
-                    }
-                    pendingBytes = if (completeLength < combined.size) {
-                        combined.copyOfRange(completeLength, combined.size)
-                    } else {
-                        ByteArray(0)
-                    }
+                    decoder.feed(bytes, offset, length, ::appendText)
                 }
             }
         }
@@ -157,10 +132,7 @@ class GradlePropertiesStreamCapture(
     }
 
     private fun flushLineBuffer() {
-        if (pendingBytes.isNotEmpty()) {
-            appendText(String(pendingBytes, StandardCharsets.UTF_8))
-            pendingBytes = ByteArray(0)
-        }
+        decoder.flush(::appendText)
         if (lineBuffer.isNotEmpty()) {
             storeLine(lineBuffer.toString())
             lineBuffer.clear()
@@ -175,8 +147,39 @@ class GradlePropertiesStreamCapture(
     }
 }
 
-private object Utf8ByteDecoder {
-    fun completePrefixLength(bytes: ByteArray): Int {
+/**
+ * Accumulates UTF-8 bytes across writes and emits decoded text only for
+ * complete code-point prefixes, holding a split multi-byte tail as pending.
+ * Not thread-safe; callers synchronize around [feed] and [flush].
+ */
+private class Utf8StreamAccumulator {
+    private var pendingBytes = ByteArray(0)
+
+    fun feed(bytes: ByteArray, offset: Int, length: Int, sink: (String) -> Unit) {
+        val incoming = bytes.copyOfRange(offset, offset + length)
+        val combined = if (pendingBytes.isEmpty()) incoming else pendingBytes + incoming
+        val completeLength = completePrefixLength(combined)
+        if (completeLength > 0) {
+            sink(String(combined, 0, completeLength, StandardCharsets.UTF_8))
+        }
+        pendingBytes = if (completeLength < combined.size) {
+            combined.copyOfRange(completeLength, combined.size)
+        } else {
+            ByteArray(0)
+        }
+    }
+
+    /** Decodes any remainder (an incomplete tail decodes as U+FFFD) and resets. */
+    fun flush(sink: (String) -> Unit) {
+        if (pendingBytes.isEmpty()) {
+            return
+        }
+        val decoded = String(pendingBytes, StandardCharsets.UTF_8)
+        pendingBytes = ByteArray(0)
+        sink(decoded)
+    }
+
+    private fun completePrefixLength(bytes: ByteArray): Int {
         var index = 0
         while (index < bytes.size) {
             val sequenceLength = sequenceLength(bytes[index])
