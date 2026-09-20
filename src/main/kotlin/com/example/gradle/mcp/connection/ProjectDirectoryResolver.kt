@@ -49,7 +49,7 @@ object ProjectDirectoryResolver {
         args: Map<String, Any>,
         connectionManager: GradleConnectionManager,
     ): File {
-        val resolved = resolveConnectedTarget(args, connectionManager)
+        val resolved = resolveWithBoundary(args, connectionManager) { it }
         if (!connectionManager.isConnected(resolved)) {
             throw McpException(
                 McpErrorCode.NOT_CONNECTED,
@@ -82,27 +82,6 @@ object ProjectDirectoryResolver {
         soleConnectedWhenWorkspaceUnset(connectionManager)?.let { return it }
 
         workspaceFromEnvironment()?.let { return boundary(it) }
-
-        throw McpException(
-            McpErrorCode.NOT_CONNECTED,
-            "No projectDirectory specified and GRADLE_PROJECT_DIR is not set. " +
-                "Call gradle_connect or set GRADLE_PROJECT_DIR.",
-        )
-    }
-
-    private fun resolveConnectedTarget(
-        args: Map<String, Any>,
-        connectionManager: GradleConnectionManager,
-    ): File {
-        args.optionalString("projectDirectory")?.let { return canonicalDirectory(it) }
-
-        connectionManager.defaultProjectDirectory()?.let { return it }
-
-        requireExplicitProjectWhenAmbiguous(connectionManager)
-
-        soleConnectedWhenWorkspaceUnset(connectionManager)?.let { return it }
-
-        workspaceFromEnvironment()?.let { return it }
 
         throw McpException(
             McpErrorCode.NOT_CONNECTED,
