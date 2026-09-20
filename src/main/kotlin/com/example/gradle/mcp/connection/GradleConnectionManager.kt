@@ -8,7 +8,10 @@ import org.gradle.tooling.model.build.BuildEnvironment
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
-class GradleConnectionManager {
+class GradleConnectionManager(
+    private val connectionOpener: (ConnectionConfig, File) -> Pair<ProjectConnection, BuildEnvironmentSnapshot?> =
+        Companion::openConnection,
+) {
     private data class PooledConnection(
         val projectDirectory: File,
         val connection: ProjectConnection,
@@ -19,22 +22,27 @@ class GradleConnectionManager {
 
     private val pool = ConcurrentHashMap<String, PooledConnection>()
 
+    /**
+     * Incremented inside `synchronized(pool)` on every [disconnectAll]. A connect
+     * that captured the epoch before connecting but reaches the pooling step after
+     * a disconnect-all has completed must not be pooled: the pool would otherwise
+     * retain a live connection after the caller observed "everything disconnected".
+     */
+    private var disconnectAllEpoch = 0L
+
     fun ensureConnected(config: ConnectionConfig): ConnectionInfo {
         val projectDir = validateProjectDirectory(config.projectDirectory)
         val key = ProjectDirectoryResolver.canonicalKey(projectDir)
         val normalizedConfig = config.copy(projectDirectory = projectDir.path)
 
-        pool[key]?.let { existing ->
-            return existingConnectionInfo(existing, normalizedConfig, projectDir)
+        val epochAtStart = synchronized(pool) {
+            pool[key]?.let { existing ->
+                return existingConnectionInfo(existing, normalizedConfig, projectDir)
+            }
+            disconnectAllEpoch
         }
 
-        val connector = GradleConnector.newConnector().forProjectDirectory(projectDir)
-        normalizedConfig.gradleInstallation?.let { connector.useInstallation(File(it).absoluteFile) }
-        normalizedConfig.gradleVersion?.let { connector.useGradleVersion(it) }
-        normalizedConfig.gradleUserHome?.let { connector.useGradleUserHomeDir(File(it).absoluteFile) }
-
-        val newConnection = connector.connect()
-        val snapshot = loadEnvironmentSnapshot(newConnection)
+        val (newConnection, snapshot) = connectionOpener(normalizedConfig, projectDir)
         val newPooled = PooledConnection(
             projectDirectory = projectDir,
             connection = newConnection,
@@ -43,6 +51,10 @@ class GradleConnectionManager {
         )
 
         synchronized(pool) {
+            if (disconnectAllEpoch != epochAtStart) {
+                closeQuietly(newConnection)
+                return ConnectionInfo(projectDir.path, "disconnected")
+            }
             pool.putIfAbsent(key, newPooled)?.let { existing ->
                 closeQuietly(newConnection)
                 return existingConnectionInfo(existing, normalizedConfig, projectDir)
@@ -83,6 +95,7 @@ class GradleConnectionManager {
 
     fun disconnectAll(): List<ConnectionInfo> {
         val removed = synchronized(pool) {
+            disconnectAllEpoch++
             val snapshot = pool.values.toList()
             pool.clear()
             snapshot
@@ -317,21 +330,35 @@ class GradleConnectionManager {
             }
         }
 
-    private fun loadEnvironmentSnapshot(connection: ProjectConnection): BuildEnvironmentSnapshot? =
-        try {
-            buildEnvironmentSnapshotFrom(connection.getModel(BuildEnvironment::class.java))
-        } catch (exception: Exception) {
-            if (exception is InterruptedException) {
-                Thread.currentThread().interrupt()
-            }
-            null
-        }
-
     private fun closeQuietly(connection: ProjectConnection) {
         try {
             connection.close()
         } catch (_: Exception) {
             // Best-effort close.
         }
+    }
+
+    companion object {
+        private fun openConnection(
+            config: ConnectionConfig,
+            projectDir: File,
+        ): Pair<ProjectConnection, BuildEnvironmentSnapshot?> {
+            val connector = GradleConnector.newConnector().forProjectDirectory(projectDir)
+            config.gradleInstallation?.let { connector.useInstallation(File(it).absoluteFile) }
+            config.gradleVersion?.let { connector.useGradleVersion(it) }
+            config.gradleUserHome?.let { connector.useGradleUserHomeDir(File(it).absoluteFile) }
+            val connection = connector.connect()
+            return connection to loadEnvironmentSnapshot(connection)
+        }
+
+        private fun loadEnvironmentSnapshot(connection: ProjectConnection): BuildEnvironmentSnapshot? =
+            try {
+                buildEnvironmentSnapshotFrom(connection.getModel(BuildEnvironment::class.java))
+            } catch (exception: Exception) {
+                if (exception is InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+                null
+            }
     }
 }
