@@ -219,8 +219,16 @@ public final class ResolutionResultMapper {
         }
     }
 
-    private static String componentKey(McpResolvedComponentIdentity identity) {
-        return identity.getDisplayName();
+    static String componentKey(McpResolvedComponentIdentity identity) {
+        if (identity.getGroup() != null && identity.getModule() != null) {
+            // Module component: group:module:version is a stable unique key.
+            return "m:" + moduleCoordinate(identity);
+        }
+        if (identity.getModule() != null) {
+            // Project components carry the project path in the module slot.
+            return "p:" + identity.getModule();
+        }
+        return "d:" + identity.getDisplayName();
     }
 
     private static String moduleCoordinate(McpResolvedComponentIdentity identity) {
