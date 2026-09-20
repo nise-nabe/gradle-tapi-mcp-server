@@ -4,7 +4,6 @@ import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.connection.ProjectLifecycleGuard
 import com.example.gradle.mcp.dependency.mcp.DependencySourceToolCatalog
-import com.example.gradle.mcp.dependency.mcp.DependencySourcesFacade
 import com.example.gradle.mcp.dependency.mcp.DependencySourcesGradleAccess
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
@@ -12,11 +11,10 @@ import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.rejectUnsupportedProjectPath
 import com.example.gradle.mcp.protocol.registerTool
 import io.modelcontextprotocol.kotlin.sdk.server.Server
+import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import kotlinx.coroutines.CoroutineScope
 import org.gradle.tooling.ProjectConnection
 import java.io.File
-
-private val dependencySourcesFacade = DependencySourcesFacade()
 
 context(runtime: GradleMcpRuntime)
 fun Server.registerDependencySourceTools(scope: CoroutineScope) {
@@ -28,10 +26,7 @@ fun Server.registerDependencySourceTools(scope: CoroutineScope) {
         description = DependencySourceToolCatalog.INDEX_DESCRIPTION,
         schema = DependencySourceToolCatalog.indexSchema(),
     ) { args ->
-        jsonResult(
-            runCatching { dependencySourcesFacade.index(args, access) }
-                .getOrElse { throw mapDependencySourcesError(it) },
-        )
+        dependencySourcesResult { runtime.dependencySourcesFacade.index(args, access) }
     }
 
     registerTool(
@@ -41,10 +36,7 @@ fun Server.registerDependencySourceTools(scope: CoroutineScope) {
         schema = DependencySourceToolCatalog.indexStatusSchema(),
     ) { args ->
         rejectUnsupportedProjectPath(args, DependencySourceToolCatalog.INDEX_STATUS_TOOL)
-        jsonResult(
-            runCatching { dependencySourcesFacade.indexStatus(args) }
-                .getOrElse { throw mapDependencySourcesError(it) },
-        )
+        dependencySourcesResult { runtime.dependencySourcesFacade.indexStatus(args) }
     }
 
     registerTool(
@@ -54,10 +46,7 @@ fun Server.registerDependencySourceTools(scope: CoroutineScope) {
         schema = DependencySourceToolCatalog.searchSchema(),
     ) { args ->
         rejectUnsupportedProjectPath(args, DependencySourceToolCatalog.SEARCH_TOOL)
-        jsonResult(
-            runCatching { dependencySourcesFacade.search(args, access) }
-                .getOrElse { throw mapDependencySourcesError(it) },
-        )
+        dependencySourcesResult { runtime.dependencySourcesFacade.search(args, access) }
     }
 
     registerTool(
@@ -67,10 +56,7 @@ fun Server.registerDependencySourceTools(scope: CoroutineScope) {
         schema = DependencySourceToolCatalog.searchMultiSchema(),
     ) { args ->
         rejectUnsupportedProjectPath(args, DependencySourceToolCatalog.SEARCH_MULTI_TOOL)
-        jsonResult(
-            runCatching { dependencySourcesFacade.searchMulti(args, access) }
-                .getOrElse { throw mapDependencySourcesError(it) },
-        )
+        dependencySourcesResult { runtime.dependencySourcesFacade.searchMulti(args, access) }
     }
 
     registerTool(
@@ -80,12 +66,12 @@ fun Server.registerDependencySourceTools(scope: CoroutineScope) {
         schema = DependencySourceToolCatalog.readSchema(),
     ) { args ->
         rejectUnsupportedProjectPath(args, DependencySourceToolCatalog.READ_TOOL)
-        jsonResult(
-            runCatching { dependencySourcesFacade.read(args, access) }
-                .getOrElse { throw mapDependencySourcesError(it) },
-        )
+        dependencySourcesResult { runtime.dependencySourcesFacade.read(args, access) }
     }
 }
+
+private inline fun dependencySourcesResult(block: () -> Map<String, Any?>): CallToolResult =
+    jsonResult(runCatching(block).getOrElse { throw mapDependencySourcesError(it) })
 
 private class RuntimeDependencySourcesAccess(
     private val runtime: GradleMcpRuntime,

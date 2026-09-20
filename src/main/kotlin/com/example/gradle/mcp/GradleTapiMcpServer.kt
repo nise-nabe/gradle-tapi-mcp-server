@@ -83,6 +83,7 @@ fun runGradleTapiMcpServer() {
             return
         }
         runCatching { buildExecutionManager.shutdown() }
+        runCatching { runtime.shutdownDependencySources() }
         runCatching { connectionManager.disconnectAll() }
         runCatching { server.close() }
         runCatching { serverScope.cancel() }

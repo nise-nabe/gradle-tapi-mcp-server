@@ -91,6 +91,11 @@ class DependencySourcesIndexJobs(
         return job.statusResponse()
     }
 
+    /** Stops accepting new work; daemon threads let the JVM exit without waiting. */
+    fun shutdown() {
+        executor.shutdown()
+    }
+
     private fun pruneFinished() {
         if (jobs.size <= MAX_RETAINED_JOBS) return
         val finished =
