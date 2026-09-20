@@ -71,6 +71,77 @@ class ProblemsSerializerTest {
     }
 
     @Test
+    fun `fromFailure caps cause traversal at MAX_CAUSE_DEPTH`() {
+        fun chain(remaining: Int): Failure {
+            val problem = problemProxy(
+                displayName = "problem-depth-$remaining",
+                details = null,
+                severity = Severity.ERROR,
+            )
+            return failureProxy(
+                message = "failure-$remaining",
+                problems = listOf(problem),
+                causes = if (remaining > 0) listOf(chain(remaining - 1)) else emptyList(),
+            )
+        }
+
+        val extracted = ProblemsSerializer.fromFailure(chain(5))
+
+        extracted.map { it.label } shouldBe listOf(
+            "problem-depth-5",
+            "problem-depth-4",
+            "problem-depth-3",
+        )
+    }
+
+    @Test
+    fun `fromFailure caps causes per failure at MAX_CAUSES_PER_FAILURE`() {
+        val causes = (1..10).map { index ->
+            failureProxy(
+                message = "cause-$index",
+                problems = listOf(
+                    problemProxy(
+                        displayName = "problem-cause-$index",
+                        details = null,
+                        severity = Severity.ERROR,
+                    ),
+                ),
+            )
+        }
+        val failure = failureProxy(message = "root", problems = emptyList(), causes = causes)
+
+        val extracted = ProblemsSerializer.fromFailure(failure)
+
+        extracted.map { it.label } shouldBe (1..5).map { "problem-cause-$it" }
+    }
+
+    @Test
+    fun `fromFailure terminates on cyclic causes`() {
+        val problem = problemProxy(
+            displayName = "cyclic-problem",
+            details = null,
+            severity = Severity.ERROR,
+        )
+        val causes = mutableListOf<Failure>()
+        val cyclic = Proxy.newProxyInstance(
+            Failure::class.java.classLoader,
+            arrayOf(Failure::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getProblems" -> listOf(problem)
+                    "getCauses" -> causes
+                    else -> null
+                }
+            },
+        ) as Failure
+        causes.add(cyclic)
+
+        val extracted = ProblemsSerializer.fromFailure(cyclic)
+
+        extracted.map { it.label } shouldBe List(3) { "cyclic-problem" }
+    }
+
+    @Test
     fun `fromProblemEvent extracts single problems`() {
         val problem = problemProxy(
             displayName = "Deprecated API usage",
