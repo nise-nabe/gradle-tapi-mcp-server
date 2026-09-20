@@ -889,6 +889,32 @@ class NameLocateIndexTest {
         documentsFile.writeBytes(bytes)
         NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL) shouldBe null
     }
+
+    @Test
+    fun `writeTo sweeps stale tmp and old sibling directories`() {
+        val sources = File(tempDir, "src-sweep").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}")
+        val members = listOf(KeepSetMember(gav = "g:a:1", sourceRoot = sources))
+        val fingerprint = KeepSetFingerprint.compute(TokenMode.ALL, "explicit", members)
+        val index = NameLocateIndex.build(members, TokenMode.ALL, fingerprint, "explicit")
+        val indexDir = File(tempDir, "idx-sweep")
+        index.writeTo(indexDir)
+
+        val staleTmp = File(tempDir, "idx-sweep.tmp-111").apply { mkdirs() }
+        File(staleTmp, "leftover.bin").writeText("x")
+        val staleOld = File(tempDir, "idx-sweep.old-222").apply { mkdirs() }
+        File(staleOld, "leftover.bin").writeText("x")
+        val backdated = System.currentTimeMillis() - 60_000
+        staleTmp.setLastModified(backdated) shouldBe true
+        staleOld.setLastModified(backdated) shouldBe true
+
+        index.writeTo(indexDir)
+
+        staleTmp.exists() shouldBe false
+        staleOld.exists() shouldBe false
+        indexDir.exists() shouldBe true
+        NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL).trackForClose().shouldNotBeNull()
+    }
 }
 
 private fun readV3PostingEntries(file: File): List<Pair<ByteArray, Int>> {
