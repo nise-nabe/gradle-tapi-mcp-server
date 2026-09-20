@@ -538,8 +538,42 @@ class BuildExecutionManager(
             }
             .forEach { record ->
                 record.cancellationTokenSource.cancel()
-                finalizeBuild(record, BuildTerminalOutcome.Cancelled(reason), drainOtherProjectQueues = false)
+                // The per-project reset path holds forProject(projectDirectory),
+                // so draining that project's queue is safe. The global path
+                // (disconnect-all/shutdown) holds only global(); draining would
+                // take forProject(dir) in drainProjectQueue and invert the
+                // project->global lock order. Queued builds are already
+                // cancelled, and disconnect callers run wakeQueuedBuilds() after
+                // releasing the global lock, so the global path skips draining.
+                finalizeBuild(
+                    record,
+                    BuildTerminalOutcome.Cancelled(reason),
+                    queueDrain = if (projectDirectory == null) {
+                        QueueDrain.NONE
+                    } else {
+                        QueueDrain.OWN_PROJECT
+                    },
+                )
             }
+    }
+
+    /**
+     * Which project queues to drain after a running build frees its executor slot.
+     */
+    private enum class QueueDrain {
+        /** Drain the finished build's project queue, then every other queued project. */
+        ALL,
+
+        /** Drain only the finished build's own project queue. */
+        OWN_PROJECT,
+
+        /**
+         * No queue drain. Required on the global lifecycle path
+         * (disconnect-all/shutdown), which holds only global(): taking
+         * forProject(dir) in drainProjectQueue would invert the
+         * project->global lock order.
+         */
+        NONE,
     }
 
     private sealed interface BuildTerminalOutcome {
@@ -553,7 +587,7 @@ class BuildExecutionManager(
     private fun finalizeBuild(
         record: BuildRecord,
         outcome: BuildTerminalOutcome,
-        drainOtherProjectQueues: Boolean = true,
+        queueDrain: QueueDrain = QueueDrain.ALL,
     ): Boolean {
         if (record.progressTracker.snapshot().status != BuildProgressTracker.STATUS_RUNNING) {
             return false
@@ -594,7 +628,7 @@ class BuildExecutionManager(
         }
         rememberCompletedBuild(record, outcome)
         buildRecordStore.writeMcpResult(record, record.progressTracker.snapshot())
-        afterBuildSlotFreed(record, drainOtherProjectQueues)
+        afterBuildSlotFreed(record, queueDrain)
         return true
     }
 
@@ -608,10 +642,13 @@ class BuildExecutionManager(
         return true
     }
 
-    private fun afterBuildSlotFreed(record: BuildRecord, drainOtherProjectQueues: Boolean) {
+    private fun afterBuildSlotFreed(record: BuildRecord, queueDrain: QueueDrain) {
+        if (queueDrain == QueueDrain.NONE) {
+            return
+        }
         val projectDirectory = record.projectDirectory?.let(::File) ?: return
         drainProjectQueue(projectDirectory)
-        if (drainOtherProjectQueues) {
+        if (queueDrain == QueueDrain.ALL) {
             // Global executor may have freed a slot used by another project's requeued head.
             drainAllProjectQueues()
         }
