@@ -159,7 +159,6 @@ internal fun ensureTestRunProjectScope(
         if (project.children.isEmpty()) {
             return@withConnectionResult TestRunScopeResolution(options)
         }
-        connectionManager.cacheHasSubprojects(projectDirectory, hasSubprojects = true)
         TestRunPreflight.validateProjectScope(options, project)
     }
 }

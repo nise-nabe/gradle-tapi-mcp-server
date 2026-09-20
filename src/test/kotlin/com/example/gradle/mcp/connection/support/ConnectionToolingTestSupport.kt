@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.connection.support
 
+import com.example.gradle.mcp.support.selfReturningProxy
 import org.gradle.tooling.BuildLauncher
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.model.UnsupportedMethodException
@@ -99,41 +100,36 @@ internal fun recordingBuildLauncher(
     val arguments = mutableListOf<String>()
     val stdout = arrayOfNulls<PrintStream>(1)
     val stderr = arrayOfNulls<PrintStream>(1)
-    val self = arrayOfNulls<Any>(1)
-    self[0] = Proxy.newProxyInstance(
-        BuildLauncher::class.java.classLoader,
-        arrayOf(BuildLauncher::class.java),
-        InvocationHandler { _, method: Method, args ->
-            when (method.name) {
-                "forTasks" -> {
-                    tasks += normalizeStrings(args)
-                    self[0]
-                }
-                "addArguments" -> {
-                    arguments += normalizeStrings(args)
-                    self[0]
-                }
-                "setStandardOutput" -> {
-                    stdout[0] = args?.get(0) as PrintStream
-                    self[0]
-                }
-                "setStandardError" -> {
-                    stderr[0] = args?.get(0) as PrintStream
-                    self[0]
-                }
-                "run" -> {
-                    stdout[0]?.print(stdoutText)
-                    stdout[0]?.flush()
-                    stderr[0]?.print(stderrText)
-                    stderr[0]?.flush()
-                    runException?.let { throw it }
-                    null
-                }
-                else -> self[0]
+    val launcher = selfReturningProxy(BuildLauncher::class.java) { self, method, args ->
+        when (method.name) {
+            "forTasks" -> {
+                tasks += normalizeStrings(args)
+                self
             }
-        },
-    )
-    return RecordingBuildLauncher(self[0] as BuildLauncher, tasks, arguments)
+            "addArguments" -> {
+                arguments += normalizeStrings(args)
+                self
+            }
+            "setStandardOutput" -> {
+                stdout[0] = args?.get(0) as PrintStream
+                self
+            }
+            "setStandardError" -> {
+                stderr[0] = args?.get(0) as PrintStream
+                self
+            }
+            "run" -> {
+                stdout[0]?.print(stdoutText)
+                stdout[0]?.flush()
+                stderr[0]?.print(stderrText)
+                stderr[0]?.flush()
+                runException?.let { throw it }
+                null
+            }
+            else -> self
+        }
+    } as BuildLauncher
+    return RecordingBuildLauncher(launcher, tasks, arguments)
 }
 
 internal fun projectConnectionProxy(

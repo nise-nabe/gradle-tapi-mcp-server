@@ -16,7 +16,6 @@ class GradleConnectionManager(
         val projectDirectory: File,
         val connection: ProjectConnection,
         val cachedEnvironment: BuildEnvironmentSnapshot?,
-        val cachedHasSubprojects: Boolean? = null,
         val config: ConnectionConfig,
     )
 
@@ -142,20 +141,6 @@ class GradleConnectionManager(
         return null
     }
 
-    fun cachedHasSubprojects(projectDirectory: File): Boolean? =
-        pool[ProjectDirectoryResolver.canonicalKey(projectDirectory)]?.cachedHasSubprojects
-
-    fun cacheHasSubprojects(projectDirectory: File, hasSubprojects: Boolean) {
-        if (!hasSubprojects) {
-            return
-        }
-        val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
-        synchronized(pool) {
-            val existing = pool[key] ?: return
-            pool[key] = existing.copy(cachedHasSubprojects = true)
-        }
-    }
-
     fun cacheEnvironmentSnapshot(projectDirectory: File, snapshot: BuildEnvironmentSnapshot) {
         val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
         synchronized(pool) {
@@ -228,7 +213,6 @@ class GradleConnectionManager(
         connection: ProjectConnection,
         projectDirectory: File = File("."),
         environment: BuildEnvironmentSnapshot? = null,
-        cachedHasSubprojects: Boolean? = null,
         config: ConnectionConfig? = null,
     ) {
         val canonical = projectDirectory.canonicalFile
@@ -237,7 +221,6 @@ class GradleConnectionManager(
                 projectDirectory = canonical,
                 connection = connection,
                 cachedEnvironment = environment,
-                cachedHasSubprojects = cachedHasSubprojects,
                 config = config ?: ConnectionConfig(projectDirectory = canonical.path),
             )
     }

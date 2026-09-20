@@ -126,17 +126,6 @@ class GradleConnectionManagerTest {
     }
 
     @Test
-    fun `cacheHasSubprojects only caches true`() {
-        manager.seedConnectionForTests(getModelCountingConnection(), environment = null)
-
-        manager.cachedHasSubprojects(File(".")).shouldBeNull()
-        manager.cacheHasSubprojects(File("."), hasSubprojects = false)
-        manager.cachedHasSubprojects(File(".")).shouldBeNull()
-        manager.cacheHasSubprojects(File("."), hasSubprojects = true)
-        manager.cachedHasSubprojects(File(".")).shouldBeTrue()
-    }
-
-    @Test
     fun `status does not refresh missing cached environment by default`() {
         val getModelCalls = AtomicInteger(0)
         manager.seedConnectionForTests(getModelCountingConnection(getModelCalls), environment = null)

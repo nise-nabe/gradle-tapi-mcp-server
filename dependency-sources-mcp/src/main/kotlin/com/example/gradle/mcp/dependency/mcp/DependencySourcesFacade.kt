@@ -203,7 +203,8 @@ class DependencySourcesFacade(
         if (sourceRoot == null) {
             val tokenMode = args.optionalString("tokenMode")?.let(TokenMode::parse)
             sourceRoot = resolveIndexedSourceRoot(
-                projectDirectory = projectDirectory!!,
+                // projectDirectory is resolved above whenever sourceRoot is absent
+                projectDirectory = requireNotNull(projectDirectory),
                 artifact = artifact,
                 path = path,
                 indexDir = args.optionalString("indexDir")?.let(::File),
