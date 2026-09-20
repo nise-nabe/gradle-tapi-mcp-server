@@ -235,6 +235,63 @@ class IdentifierLexerTest {
 
         idents shouldContainExactly listOf("val", "a", "val", "After")
     }
+
+    @Test
+    fun `idents tracks nested block comment depth`() {
+        val source =
+            "/* outer /* inner */ Hidden */ val Visible = 1\n" +
+                "val After = 2\n"
+
+        val idents = IdentifierLexer.tokenize(source, TokenMode.IDENTS).map { it.name }
+
+        idents shouldContainExactly listOf("val", "Visible", "val", "After")
+    }
+
+    @Test
+    fun `idents treats unterminated nested block comment as consuming the rest`() {
+        val source =
+            "val Before = 1\n" +
+                "/* outer /* inner */ still open\n" +
+                "val Hidden = 2\n"
+
+        val idents = IdentifierLexer.tokenize(source, TokenMode.IDENTS).map { it.name }
+
+        idents shouldContainExactly listOf("val", "Before")
+    }
+
+    @Test
+    fun `idents emits backtick identifier contents as a single name`() {
+        val source = "fun `strange name`() {}\nval After = 1\n"
+
+        val occurrences = IdentifierLexer.tokenize(source, TokenMode.IDENTS)
+
+        occurrences.map { it.name } shouldContainExactly listOf("fun", "strange name", "val", "After")
+        occurrences.first { it.name == "strange name" }.column shouldBe 6
+    }
+
+    @Test
+    fun `idents skips a leading shebang line`() {
+        val source = "#!/usr/bin/env kotlin\nval After = 1\n"
+
+        val occurrences = IdentifierLexer.tokenize(source, TokenMode.IDENTS)
+
+        occurrences.map { it.name } shouldContainExactly listOf("val", "After")
+        occurrences.first { it.name == "After" }.line shouldBe 2
+    }
+
+    @Test
+    fun `carriage return counts as a line break`() {
+        val source = "val a = 1\rval b = 2\r\nval c = 3"
+
+        IdentifierLexer.tokenize(source, TokenMode.IDENTS).let { occurrences ->
+            occurrences.first { it.name == "b" }.line shouldBe 2
+            occurrences.first { it.name == "c" }.line shouldBe 3
+        }
+        IdentifierLexer.tokenize(source, TokenMode.ALL).let { occurrences ->
+            occurrences.first { it.name == "b" }.line shouldBe 2
+            occurrences.first { it.name == "c" }.line shouldBe 3
+        }
+    }
 }
 
 class NameLocateIndexTest {

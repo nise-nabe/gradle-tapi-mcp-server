@@ -18,12 +18,18 @@ object IdentifierLexer {
         var line = 1
         var lineStart = 0
         var i = 0
+
+        fun consumeLineTerminator() {
+            if (source[i] == '\r' && i + 1 < source.length && source[i + 1] == '\n') i += 1
+            i += 1
+            line += 1
+            lineStart = i
+        }
+
         while (i < source.length) {
             val c = source[i]
-            if (c == '\n') {
-                line += 1
-                lineStart = i + 1
-                i += 1
+            if (isLineTerminator(c)) {
+                consumeLineTerminator()
                 continue
             }
             if (isIdentStart(c)) {
@@ -51,29 +57,48 @@ object IdentifierLexer {
         var line = 1
         var lineStart = 0
         var i = 0
+
+        fun consumeLineTerminator() {
+            if (source[i] == '\r' && i + 1 < source.length && source[i + 1] == '\n') i += 1
+            i += 1
+            line += 1
+            lineStart = i
+        }
+
+        // Kotlin scripts may open with a #! shebang line; it is not source text.
+        if (source.startsWith("#!")) {
+            while (i < source.length && !isLineTerminator(source[i])) i += 1
+        }
+
         while (i < source.length) {
             val c = source[i]
-            if (c == '\n') {
-                line += 1
-                lineStart = i + 1
-                i += 1
+            if (isLineTerminator(c)) {
+                consumeLineTerminator()
                 continue
             }
             when {
                 c == '/' && i + 1 < source.length && source[i + 1] == '/' -> {
                     i += 2
-                    while (i < source.length && source[i] != '\n') i += 1
+                    while (i < source.length && !isLineTerminator(source[i])) i += 1
                 }
                 c == '/' && i + 1 < source.length && source[i + 1] == '*' -> {
+                    // Kotlin block comments nest; stay in comment until depth balances.
                     i += 2
-                    while (i + 1 < source.length && !(source[i] == '*' && source[i + 1] == '/')) {
-                        if (source[i] == '\n') {
-                            line += 1
-                            lineStart = i + 1
+                    var depth = 1
+                    while (i < source.length && depth > 0) {
+                        when {
+                            isLineTerminator(source[i]) -> consumeLineTerminator()
+                            source[i] == '/' && i + 1 < source.length && source[i + 1] == '*' -> {
+                                depth += 1
+                                i += 2
+                            }
+                            source[i] == '*' && i + 1 < source.length && source[i + 1] == '/' -> {
+                                depth -= 1
+                                i += 2
+                            }
+                            else -> i += 1
                         }
-                        i += 1
                     }
-                    if (i + 1 < source.length) i += 2
                 }
                 c == '"' && i + 2 < source.length &&
                     source[i + 1] == '"' && source[i + 2] == '"' -> {
@@ -81,11 +106,7 @@ object IdentifierLexer {
                     i += 3
                     while (i < source.length) {
                         when {
-                            source[i] == '\n' -> {
-                                line += 1
-                                lineStart = i + 1
-                                i += 1
-                            }
+                            isLineTerminator(source[i]) -> consumeLineTerminator()
                             i + 2 < source.length &&
                                 source[i] == '"' && source[i + 1] == '"' && source[i + 2] == '"' -> {
                                 i += 3
@@ -95,18 +116,30 @@ object IdentifierLexer {
                         }
                     }
                 }
-                c == '"' || c == '\'' || c == '`' -> {
+                c == '`' -> {
+                    // Kotlin backtick identifier: the span between backticks is one name.
+                    i += 1
+                    val start = i
+                    while (i < source.length && source[i] != '`' && !isLineTerminator(source[i])) i += 1
+                    if (i > start) {
+                        out.add(
+                            IdentifierOccurrence(
+                                name = source.substring(start, i),
+                                line = line,
+                                column = start - lineStart + 1,
+                            ),
+                        )
+                    }
+                    if (i < source.length && source[i] == '`') i += 1
+                }
+                c == '"' || c == '\'' -> {
                     val quote = c
                     i += 1
                     while (i < source.length) {
                         val ch = source[i]
                         when {
                             ch == '\\' && i + 1 < source.length -> i += 2
-                            ch == '\n' -> {
-                                line += 1
-                                lineStart = i + 1
-                                i += 1
-                            }
+                            isLineTerminator(ch) -> consumeLineTerminator()
                             ch == quote -> {
                                 i += 1
                                 break
@@ -132,6 +165,8 @@ object IdentifierLexer {
         }
         return out
     }
+
+    private fun isLineTerminator(c: Char): Boolean = c == '\n' || c == '\r'
 
     private fun isIdentStart(c: Char): Boolean = c.isLetter() || c == '_' || c == '$'
 
