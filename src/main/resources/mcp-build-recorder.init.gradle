@@ -136,7 +136,7 @@ class McpBuildRecorderSupport {
     }
 
     static boolean isSafeRecordDir(File projectDirectory, String buildId, File recordDir) {
-        if (!buildId || buildId == '.' || buildId == '..' || buildId.contains('/') || buildId.contains('\\') || buildId.contains('..')) {
+        if (!projectDirectory || !buildId || buildId == '.' || buildId == '..' || buildId.contains('/') || buildId.contains('\\') || buildId.contains('..')) {
             return false
         }
         def recordsRoot = new File(projectDirectory, ".gradle/mcp-builds").canonicalFile
@@ -156,7 +156,7 @@ gradle.ext.mcpEnsureLauncherContext = { ->
     if (gradle.ext.mcpRecordDirPath == null) {
         def context = McpBuildRecorderSupport.readLauncherMetadata(
             gradle.ext.mcpLauncherMetadataPath,
-            gradle.rootProject.projectDir,
+            McpBuildRecorderSupport.projectDirectoryFromMetadataPath(gradle.ext.mcpLauncherMetadataPath),
         )
         gradle.ext.mcpRecordDirPath = context.recordDirPath
         gradle.ext.mcpBuildId = context.buildId
