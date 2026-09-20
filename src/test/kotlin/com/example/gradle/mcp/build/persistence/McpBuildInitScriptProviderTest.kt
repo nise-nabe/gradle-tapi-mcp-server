@@ -14,6 +14,19 @@ class McpBuildInitScriptProviderTest {
     }
 
     @Test
+    fun `init scripts write gradle result through uniquely named temp files`() {
+        listOf(
+            "/mcp-build-recorder.init.gradle",
+            "/mcp-build-recorder-configuration-cache.init.gradle",
+        ).forEach { path ->
+            val script = readResource(path)
+
+            script shouldContain "Files.createTempFile"
+            script shouldNotContain "gradle-result.json.tmp"
+        }
+    }
+
+    @Test
     fun `configuration cache init script delegates appendEvent to McpBuildRecorderSupport`() {
         val script = readResource("/mcp-build-recorder-configuration-cache.init.gradle")
 

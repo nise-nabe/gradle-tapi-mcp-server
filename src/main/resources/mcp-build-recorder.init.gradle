@@ -43,12 +43,27 @@ class McpBuildRecorderSupport {
 
     static void writeGradleResult(String dirPath, Map data) {
         def target = new File(dirPath, "gradle-result.json")
-        def tmp = new File(dirPath, "gradle-result.json.tmp")
+        target.parentFile.mkdirs()
         def json = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(data))
-        tmp.withWriter('UTF-8') { writer -> writer.write(json) }
-        if (!tmp.renameTo(target)) {
+        // Unique temp name per write: the MCP server (Kotlin) writes
+        // gradle-result.json from a different JVM, so a fixed name could
+        // interleave content between writers.
+        def tmp = java.nio.file.Files.createTempFile(target.parentFile.toPath(), "gradle-result-", ".tmp")
+        try {
+            java.nio.file.Files.write(tmp, json.getBytes('UTF-8'))
+            try {
+                // REPLACE_EXISTING keeps the move atomic on Windows, where
+                // File.renameTo fails whenever the target already exists.
+                java.nio.file.Files.move(tmp, target.toPath(),
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                java.nio.file.Files.move(tmp, target.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+        } catch (Exception ignored) {
+            java.nio.file.Files.deleteIfExists(tmp)
             target.withWriter('UTF-8') { writer -> writer.write(json) }
-            tmp.delete()
         }
     }
 
