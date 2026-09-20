@@ -2,6 +2,7 @@ package com.example.gradle.mcp.connection
 
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.support.defaultProxyReturn
 import com.example.gradle.mcp.support.getModelCountingConnection
 import com.example.gradle.mcp.support.seedCountingConnections
 import com.example.gradle.mcp.support.seedNoopConnections
@@ -13,14 +14,19 @@ import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import org.gradle.tooling.ProjectConnection
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.lang.reflect.InvocationHandler
+import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 class GradleConnectionManagerTest {
     private val manager = GradleConnectionManager()
@@ -551,5 +557,46 @@ class GradleConnectionManagerTest {
 
         releaseBlock.countDown()
         buildThread.join(2_000)
+    }
+
+    @Test
+    fun `connect finishing after disconnectAll is closed and reported disconnected`(
+        @TempDir project: File,
+    ) {
+        val connectReturned = CountDownLatch(1)
+        val allowPooling = CountDownLatch(1)
+        val closeCount = AtomicInteger(0)
+        val connection = Proxy.newProxyInstance(
+            ProjectConnection::class.java.classLoader,
+            arrayOf(ProjectConnection::class.java),
+            InvocationHandler { _, method, _ ->
+                if (method.name == "close") {
+                    closeCount.incrementAndGet()
+                }
+                defaultProxyReturn(method)
+            },
+        ) as ProjectConnection
+        val manager = GradleConnectionManager { _, _ ->
+            connectReturned.countDown()
+            // Block between the disconnectAll-epoch capture and the pooling step so
+            // the test can interleave disconnectAll deterministically.
+            allowPooling.await(5, TimeUnit.SECONDS)
+            connection to null
+        }
+
+        val resultRef = AtomicReference<ConnectionInfo>()
+        val connectThread = Thread {
+            resultRef.set(manager.ensureConnected(ConnectionConfig(projectDirectory = project.path)))
+        }.apply { isDaemon = true }
+        connectThread.start()
+
+        connectReturned.await(5, TimeUnit.SECONDS).shouldBeTrue()
+        manager.disconnectAll()
+        allowPooling.countDown()
+        connectThread.join(5_000)
+
+        resultRef.get().shouldNotBeNull().state shouldBe "disconnected"
+        manager.isConnected(project).shouldBeFalse()
+        closeCount.get() shouldBe 1
     }
 }
