@@ -2,12 +2,19 @@ package com.example.gradle.mcp.connection
 
 import com.example.gradle.mcp.DefaultGradleMcpRuntime
 import com.example.gradle.mcp.build.BuildExecutionManager
+import com.example.gradle.mcp.connection.support.buildEnvironmentProxy
+import com.example.gradle.mcp.connection.support.projectConnectionProxy
+import com.example.gradle.mcp.connection.support.recordingBuildLauncher
+import com.example.gradle.mcp.protocol.McpErrorCode
+import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.support.defaultProxyReturn
 import com.example.gradle.mcp.support.noopProjectConnection
 import com.example.gradle.mcp.support.runningTracker
 import com.example.gradle.mcp.support.testBuildRecord
 import com.example.gradle.mcp.support.testExecutor
 import com.example.gradle.mcp.support.testProjectDirectory
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -21,6 +28,7 @@ import java.io.File
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 class ConnectionToolsTest {
     @Test
@@ -117,6 +125,139 @@ class ConnectionToolsTest {
         disconnectProjects(runtime, projectA.absolutePath)
 
         buildExecutionManager.testExecutor() shouldBe executorBefore
+    }
+
+    @Test
+    fun `connection status refresh skips getModel while a build is active`() {
+        val connectionManager = GradleConnectionManager()
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        val getModelCalls = AtomicInteger(0)
+        connectionManager.seedConnectionForTests(
+            projectConnectionProxy(
+                getModelCalls = getModelCalls,
+                buildEnvironment = buildEnvironmentProxy(),
+                launcher = recordingBuildLauncher().launcher,
+            ),
+            testProjectDirectory,
+        )
+        buildExecutionManager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "active-build",
+                tracker = runningTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+            ),
+        )
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+
+        val payload = connectionStatusPayload(
+            runtime,
+            mapOf(
+                "projectDirectory" to testProjectDirectory.absolutePath,
+                "refresh" to true,
+            ),
+        )
+
+        getModelCalls.get() shouldBe 0
+        payload["runtimeStackAvailable"] shouldBe false
+    }
+
+    @Test
+    fun `connection status refresh fetches environment when no build is active`() {
+        val connectionManager = GradleConnectionManager()
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        val getModelCalls = AtomicInteger(0)
+        connectionManager.seedConnectionForTests(
+            projectConnectionProxy(
+                getModelCalls = getModelCalls,
+                buildEnvironment = buildEnvironmentProxy(),
+                launcher = recordingBuildLauncher().launcher,
+            ),
+            testProjectDirectory,
+        )
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+
+        val payload = connectionStatusPayload(
+            runtime,
+            mapOf(
+                "projectDirectory" to testProjectDirectory.absolutePath,
+                "refresh" to true,
+            ),
+        )
+
+        getModelCalls.get() shouldBe 1
+        payload["runtimeStackAvailable"] shouldBe true
+    }
+
+    @Test
+    fun `build environment returns cached snapshot while a build is active`() {
+        val connectionManager = GradleConnectionManager()
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        val getModelCalls = AtomicInteger(0)
+        connectionManager.seedConnectionForTests(
+            connection = projectConnectionProxy(
+                getModelCalls = getModelCalls,
+                buildEnvironment = buildEnvironmentProxy(),
+                launcher = recordingBuildLauncher().launcher,
+            ),
+            projectDirectory = testProjectDirectory,
+            environment = BuildEnvironmentSnapshot(
+                gradleVersion = "9.6",
+                gradleUserHome = "/gradle/home",
+                javaHome = "/jdk/home",
+                javaVersion = "21.0.2",
+                jvmArguments = emptyList(),
+            ),
+        )
+        buildExecutionManager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "active-build",
+                tracker = runningTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+            ),
+        )
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+
+        val payload = buildEnvironmentPayload(
+            runtime,
+            mapOf("projectDirectory" to testProjectDirectory.absolutePath),
+        )
+
+        getModelCalls.get() shouldBe 0
+        @Suppress("UNCHECKED_CAST")
+        (payload["gradle"] as Map<String, Any?>)["gradleVersion"] shouldBe "9.6"
+    }
+
+    @Test
+    fun `build environment throws BUILD_ALREADY_RUNNING while a build is active without cache`() {
+        val connectionManager = GradleConnectionManager()
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        val getModelCalls = AtomicInteger(0)
+        connectionManager.seedConnectionForTests(
+            projectConnectionProxy(
+                getModelCalls = getModelCalls,
+                buildEnvironment = buildEnvironmentProxy(),
+                launcher = recordingBuildLauncher().launcher,
+            ),
+            testProjectDirectory,
+        )
+        buildExecutionManager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "active-build",
+                tracker = runningTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+            ),
+        )
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+
+        val error = shouldThrow<McpException> {
+            buildEnvironmentPayload(
+                runtime,
+                mapOf("projectDirectory" to testProjectDirectory.absolutePath),
+            )
+        }
+
+        error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+        getModelCalls.get() shouldBe 0
     }
 
     private fun closeTrackingConnection(
