@@ -95,7 +95,7 @@ class DependencySourcesIndexJobs(
         if (jobs.size <= MAX_RETAINED_JOBS) return
         val finished =
             jobs.values
-                .filter { it.isTerminal() }
+                .filter { it.isTerminal() && it.finishedAtMs.get() != null }
                 .sortedBy { it.finishedAtMs.get() ?: 0L }
         val overflow = jobs.size - MAX_RETAINED_JOBS
         finished.take(overflow).forEach { jobs.remove(it.indexId, it) }
@@ -143,16 +143,16 @@ class IndexJob(
         result.set(response)
         (response["memberCount"] as? Number)?.toInt()?.let { memberCount.set(it) }
         phase.set("done")
-        status.set(STATUS_SUCCEEDED)
         finishedAtMs.set(System.currentTimeMillis())
+        status.set(STATUS_SUCCEEDED)
         completion.countDown()
     }
 
     fun markFailed(error: Throwable) {
         failure.set(error)
         phase.set("failed")
-        status.set(STATUS_FAILED)
         finishedAtMs.set(System.currentTimeMillis())
+        status.set(STATUS_FAILED)
         completion.countDown()
     }
 

@@ -13,6 +13,7 @@ import org.gradle.tooling.ProjectConnection
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 
 class DependencySourcesFacadeTest {
     @TempDir
@@ -871,6 +872,57 @@ class DependencySourcesFacadeTest {
             Thread.sleep(20)
         }
         jobs.statusResponse(first.indexId)["status"] shouldBe "succeeded"
+    }
+
+    @Test
+    fun `terminal status is never observed without finishedAtMs`() {
+        val project = File(tempDir, "proj-order").apply { mkdirs() }
+        repeat(500) { iteration ->
+            val job = IndexJob("idx-order-$iteration", project, "idents", null)
+            val sawTerminalWithoutFinishedAt = AtomicBoolean(false)
+            val reader =
+                Thread {
+                    while (!job.isTerminal() && !Thread.currentThread().isInterrupted) {
+                        // spin until the job reaches a terminal state
+                    }
+                    if (job.isTerminal()) {
+                        sawTerminalWithoutFinishedAt.set(job.finishedAtMs.get() == null)
+                    }
+                }
+            reader.start()
+            job.markSucceeded(mapOf("docCount" to 1))
+            reader.join(5_000)
+            sawTerminalWithoutFinishedAt.get() shouldBe false
+        }
+    }
+
+    @Test
+    fun `prune retains the most recently finished job when retention overflows`() {
+        val jobs = DependencySourcesIndexJobs()
+        val started =
+            (1..65).map { i ->
+                jobs.start(
+                    projectDirectory = File(tempDir, "proj-prune-$i").apply { mkdirs() },
+                    tokenMode = "idents",
+                    projectPath = null,
+                ) {
+                    mapOf("docCount" to 1)
+                }
+            }
+        started.forEach { it.await(10_000) shouldBe true }
+
+        // pruneFinished runs in each worker's finally after completion.countDown(),
+        // so wait until the overflow has actually been evicted.
+        val deadline = System.currentTimeMillis() + 10_000
+        var retained = started.count { jobs.get(it.indexId) != null }
+        while (retained > 64 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20)
+            retained = started.count { jobs.get(it.indexId) != null }
+        }
+
+        val newest = started.maxBy { it.finishedAtMs.get() ?: Long.MIN_VALUE }
+        jobs.statusResponse(newest.indexId)["status"] shouldBe "succeeded"
+        (retained <= 64) shouldBe true
     }
 
     private fun placeSourcesJar(
