@@ -111,34 +111,40 @@ class DependencyIndexStore : AutoCloseable {
         if (request.forceReindex) {
             cacheLock.writeLock().withLock { memory.remove(key)?.close() }
         } else {
-            val loaded =
-                try {
-                    NameLocateIndex.tryLoad(
-                        directory = indexDir,
-                        expectedFingerprint = fingerprint,
-                        expectedTokenMode = request.tokenMode,
-                    )
-                } catch (_: UnsupportedIndexFormatException) {
-                    null
-                }
-            if (loaded != null) {
+            // Load, publish, and side-car write under the write lock so a concurrent
+            // rebuild cannot swap on-disk files between tryLoad and memory.put, and
+            // cannot evict/close a buffer the load is still mapping.
+            val cached =
                 cacheLock.writeLock().withLock {
-                    memory.put(key, loaded)?.takeIf { it !== loaded }?.close()
-                }
-                val sideCar = File(indexDir, IndexSourceRoots.FILE_NAME)
-                try {
-                    IndexSourceRoots.write(indexDir, keepSet.members)
-                } catch (error: Exception) {
-                    if (!sideCar.isFile) {
-                        throw IllegalStateException(
-                            "Failed to write ${IndexSourceRoots.FILE_NAME} for cached index at " +
-                                "${indexDir.absolutePath}: ${error.message}",
-                            error,
-                        )
+                    val loaded =
+                        try {
+                            NameLocateIndex.tryLoad(
+                                directory = indexDir,
+                                expectedFingerprint = fingerprint,
+                                expectedTokenMode = request.tokenMode,
+                            )
+                        } catch (_: UnsupportedIndexFormatException) {
+                            null
+                        }
+                    loaded?.also {
+                        memory.put(key, it)?.takeIf { prev -> prev !== it }?.close()
+                        val sideCar = File(indexDir, IndexSourceRoots.FILE_NAME)
+                        try {
+                            IndexSourceRoots.write(indexDir, keepSet.members)
+                        } catch (error: Exception) {
+                            if (!sideCar.isFile) {
+                                throw IllegalStateException(
+                                    "Failed to write ${IndexSourceRoots.FILE_NAME} for cached index at " +
+                                        "${indexDir.absolutePath}: ${error.message}",
+                                    error,
+                                )
+                            }
+                        }
                     }
                 }
+            if (cached != null) {
                 return IndexResult(
-                    stats = loaded.stats(indexDir, cacheHit = true),
+                    stats = cached.stats(indexDir, cacheHit = true),
                     memberCount = keepSet.members.size,
                 )
             }

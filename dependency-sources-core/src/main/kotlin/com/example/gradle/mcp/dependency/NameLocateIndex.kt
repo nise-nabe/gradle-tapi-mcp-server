@@ -173,6 +173,7 @@ class NameLocateIndex private constructor(
 
     fun writeTo(directory: File) {
         directory.parentFile?.mkdirs()
+        sweepStaleSiblingDirs(directory, olderThanMs = System.currentTimeMillis())
         val tmp = File(directory.parentFile, "${directory.name}.tmp-${System.nanoTime()}")
         tmp.mkdirs()
         try {
@@ -198,13 +199,15 @@ class NameLocateIndex private constructor(
                 Files.move(directory.toPath(), backup.toPath())
                 try {
                     Files.move(tmp.toPath(), directory.toPath())
-                    backup.deleteRecursively()
                 } catch (error: Exception) {
                     if (!directory.exists() && backup.exists()) {
                         runCatching { Files.move(backup.toPath(), directory.toPath()) }
                     }
                     throw error
                 }
+                // Best-effort: an unmapped leftover (e.g. mmap'd postings.bin on
+                // Windows) is swept by the next writeTo instead of failing here.
+                backup.deleteRecursively()
             } else {
                 Files.move(tmp.toPath(), directory.toPath())
             }
@@ -212,6 +215,24 @@ class NameLocateIndex private constructor(
             tmp.deleteRecursively()
             throw error
         }
+    }
+
+    /**
+     * Best-effort cleanup of `.tmp-*` / `.old-*` sibling directories left behind by
+     * crashed writes or backups that could not be deleted. Only entries last
+     * modified before this call are removed so in-flight writers are not disturbed.
+     */
+    private fun sweepStaleSiblingDirs(directory: File, olderThanMs: Long) {
+        val parent = directory.parentFile ?: return
+        val tmpPrefix = "${directory.name}.tmp-"
+        val oldPrefix = "${directory.name}.old-"
+        parent.listFiles()
+            ?.filter {
+                it.isDirectory &&
+                    (it.name.startsWith(tmpPrefix) || it.name.startsWith(oldPrefix)) &&
+                    it.lastModified() < olderThanMs
+            }
+            ?.forEach { it.deleteRecursively() }
     }
 
     private fun writeDictionary(directory: File) {
