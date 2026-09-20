@@ -3,8 +3,12 @@ package com.example.gradle.mcp.build
 import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.connection.ProjectLifecycleGuard
+import com.example.gradle.mcp.model.ModelFetchPhase
+import com.example.gradle.mcp.model.fetchResilientModel
+import com.example.gradle.mcp.model.modelFetchFailed
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import org.gradle.tooling.GradleConnectionException
 import org.gradle.tooling.model.GradleProject
 import java.io.File
 
@@ -155,10 +159,24 @@ internal fun ensureTestRunProjectScope(
         return TestRunScopeResolution(options)
     }
     return connectionManager.withConnectionResult(projectDirectory) { connection ->
-        val project = connection.getModel(GradleProject::class.java)
-        if (project.children.isEmpty()) {
+        val gradleVersion = connectionManager.cachedEnvironment(projectDirectory)?.gradleVersion
+        val result = connection.fetchResilientModel(
+            GradleProject::class.java,
+            ModelFetchPhase.BUILD_FINISHED,
+            prepareTasks = emptyList(),
+            gradleVersion = gradleVersion,
+        )
+        if (result.partial) {
+            throw modelFetchFailed(
+                "GradleProject",
+                GradleConnectionException("model contains ${result.failures.size} project failure(s)"),
+                result.failures,
+                result.failuresTruncated,
+            )
+        }
+        if (result.model.children.isEmpty()) {
             return@withConnectionResult TestRunScopeResolution(options)
         }
-        TestRunPreflight.validateProjectScope(options, project)
+        TestRunPreflight.validateProjectScope(options, result.model)
     }
 }

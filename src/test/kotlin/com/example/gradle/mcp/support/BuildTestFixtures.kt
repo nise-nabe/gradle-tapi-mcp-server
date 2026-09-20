@@ -8,6 +8,8 @@ import com.example.gradle.mcp.build.CapturingStreams
 import com.example.gradle.mcp.build.TestRunSelection
 import com.example.gradle.mcp.cache.CompletedBuildSnapshot
 import com.example.gradle.mcp.connection.GradleConnectionManager
+import com.example.gradle.mcp.model.ResilientModelPayload
+import com.example.gradle.mcp.model.phasedConnection
 import org.gradle.tooling.CancellationTokenSource
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
@@ -148,6 +150,12 @@ internal fun testRunProjectConnection(
                     Class.forName("org.gradle.tooling.TestLauncher"),
                     onRun = {},
                 )
+                "action" -> {
+                    getModelCalls.incrementAndGet()
+                    phasedConnection(
+                        ResilientModelPayload(project, emptyList(), false),
+                    ).connection.action()
+                }
                 else -> defaultProxyReturn(method)
             }
         },
