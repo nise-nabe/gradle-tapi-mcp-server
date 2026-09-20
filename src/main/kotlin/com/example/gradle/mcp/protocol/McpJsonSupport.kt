@@ -48,9 +48,11 @@ internal fun Any?.toJsonElement(): JsonElement =
         is Boolean -> JsonPrimitive(this)
         is Int -> JsonPrimitive(this)
         is Long -> JsonPrimitive(this)
-        is Double -> JsonPrimitive(this)
-        is Float -> JsonPrimitive(this.toDouble())
-        is Number -> JsonPrimitive(this.toDouble())
+        is Double -> if (isFinite()) JsonPrimitive(this) else JsonPrimitive(toString())
+        is Float -> if (isFinite()) JsonPrimitive(this.toDouble()) else JsonPrimitive(toString())
+        is Number -> this.toDouble().let { double ->
+            if (double.isFinite()) JsonPrimitive(double) else JsonPrimitive(toString())
+        }
         is String -> JsonPrimitive(this)
         is Map<*, *> -> {
             @Suppress("UNCHECKED_CAST")
