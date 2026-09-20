@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.dependency.mcp
 
+import com.example.gradle.mcp.dependency.IndexFormat
 import com.example.gradle.mcp.dependency.SourcesJarFetcher
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContain
@@ -39,7 +40,7 @@ class DependencySourcesFacadeTest {
         )
         indexed["cacheHit"] shouldBe false
         indexed["tokenMode"] shouldBe "all"
-        indexed["formatVersion"] shouldBe 3
+        indexed["formatVersion"] shouldBe IndexFormat.VERSION
 
         val searchAll = facade.search(
             mapOf("query" to "Foo", "tokenMode" to "all"),
