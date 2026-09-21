@@ -9,13 +9,13 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
+/** A second index run was requested while [DependencySourcesIndexJobs] is already indexing the project. */
+class DependencySourcesIndexingConflictException(message: String) : IllegalStateException(message)
+
 /**
  * Tracks long-running `gradle_index_dependency_sources` jobs so clients can poll
  * instead of holding an MCP request open (large Idea keep-sets often exceed host timeouts).
  */
-/** A second index run was requested while [DependencySourcesIndexJobs] is already indexing the project. */
-class DependencySourcesIndexingConflictException(message: String) : IllegalStateException(message)
-
 class DependencySourcesIndexJobs(
     private val foregroundDetachTimeoutMs: Long = DEFAULT_FOREGROUND_DETACH_TIMEOUT_MS,
 ) {
