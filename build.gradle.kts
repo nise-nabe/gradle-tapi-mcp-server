@@ -13,23 +13,21 @@ java {
     }
 }
 
-dependencies {
-    implementation(libs.mcp.kotlin.server)
-    implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.kotlinx.serialization.json)
-    implementation(libs.gradle.tooling.api)
-    implementation(project(":mcp-toolkit"))
-    implementation(project(":dependency-sources-mcp"))
-    implementation(project(":resolution-model"))
-    runtimeOnly(libs.slf4j.simple)
-}
-
 val resolutionModelEmbed = configurations.create("resolutionModelEmbed") {
     isCanBeConsumed = false
     isCanBeResolved = true
 }
 
 dependencies {
+    implementation(libs.mcp.kotlin.server)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.gradle.tooling.api)
+    implementation(libs.kotlin.logging)
+    implementation(project(":mcp-toolkit"))
+    implementation(project(":dependency-sources-mcp"))
+    implementation(project(":resolution-model"))
+    runtimeOnly(libs.slf4j.simple)
     resolutionModelEmbed(project(path = ":resolution-model", configuration = "runtimeElements"))
 }
 
@@ -80,5 +78,25 @@ tasks.withType<Test>().configureEach {
 }
 
 tasks.named<Test>("test") {
+    filter {
+        excludeTestsMatching("com.example.gradle.mcp.GradleTapiMcpServerLauncherSmokeTest")
+    }
+}
+
+val launcherSmokeTest = tasks.register<Test>("launcherSmokeTest") {
+    description = "Runs the fat-jar launcher smoke test against the assembled jar."
+    group = "verification"
+    val testSuite = testing.suites.getByName<JvmTestSuite>("test")
+    testClassesDirs = testSuite.sources.output.classesDirs
+    classpath = files(testSuite.sources.runtimeClasspath)
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching("com.example.gradle.mcp.GradleTapiMcpServerLauncherSmokeTest")
+    }
     dependsOn(tasks.jar)
 }
+
+tasks.check {
+    dependsOn(launcherSmokeTest)
+}
+
