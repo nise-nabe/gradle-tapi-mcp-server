@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.support
 
+import com.example.gradle.mcp.model.FailureRecord
 import com.example.gradle.mcp.model.ResilientModelPayload
 import com.example.gradle.mcp.model.phasedConnection
 import org.gradle.tooling.ProjectConnection
@@ -74,6 +75,7 @@ internal fun gradleProjectConnectionProxy(
     project: GradleProject,
     getModelCalls: AtomicInteger? = null,
     projectSequence: List<GradleProject>? = null,
+    payloadFailures: List<FailureRecord> = emptyList(),
 ): ProjectConnection {
     val sequenceIndex = AtomicInteger(0)
     val nextProject = {
@@ -98,7 +100,7 @@ internal fun gradleProjectConnectionProxy(
             "action" -> {
                 getModelCalls?.incrementAndGet()
                 phasedConnection(
-                    ResilientModelPayload(nextProject(), emptyList(), false),
+                    ResilientModelPayload(nextProject(), payloadFailures, false),
                 ).connection.action()
             }
             else -> defaultProxyReturn(method)
