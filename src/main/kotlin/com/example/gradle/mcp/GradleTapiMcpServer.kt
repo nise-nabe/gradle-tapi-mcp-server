@@ -12,6 +12,9 @@ import com.example.gradle.mcp.model.resolution.registerDependencyResolutionTools
 import com.example.gradle.mcp.protocol.QueryStrippingPathSegmentMatcher
 import com.example.gradle.mcp.protocol.registerGradleTapiResources
 import com.example.gradle.mcp.server.EofSignalingInputStream
+import com.example.gradle.mcp.server.McpTransport
+import com.example.gradle.mcp.server.ServerCliOptions
+import com.example.gradle.mcp.server.serveStreamableHttp
 import io.ktor.utils.io.streams.asInput
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
@@ -30,14 +33,36 @@ import kotlin.time.Duration.Companion.minutes
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 
-fun runGradleTapiMcpServer() {
+fun runGradleTapiMcpServer(options: ServerCliOptions = ServerCliOptions()) {
     val connectionManager = GradleConnectionManager()
     val buildExecutionManager = BuildExecutionManager(connectionManager)
     connectionManager.tryAutoConnectFromEnvironment()
 
-    val transportClosed = CountDownLatch(1)
     val serverScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+
+    val shutdownOnce = AtomicBoolean(false)
+    suspend fun shutdownRuntime() {
+        if (!shutdownOnce.compareAndSet(false, true)) {
+            return
+        }
+        runCatching { buildExecutionManager.shutdown() }
+        runCatching { runtime.shutdownDependencySources() }
+        runCatching { connectionManager.disconnectAll() }
+        runCatching { serverScope.cancel() }
+    }
+
+    when (options.transport) {
+        McpTransport.STDIO -> serveStdio(runtime, serverScope, ::shutdownRuntime)
+        McpTransport.STREAMABLE_HTTP -> serveStreamableHttp(
+            endpoint = options.http,
+            newServer = { createGradleTapiServer(runtime, serverScope) },
+            shutdownRuntime = ::shutdownRuntime,
+        )
+    }
+}
+
+internal fun createGradleTapiServer(runtime: GradleMcpRuntime, serverScope: CoroutineScope): Server {
     val server = Server(
         serverInfo = Implementation(
             name = "gradle-tapi-mcp-server",
@@ -68,7 +93,16 @@ fun runGradleTapiMcpServer() {
         server.registerDependencySourceTools(serverScope)
         server.registerGradleTapiResources()
     }
+    return server
+}
 
+private fun serveStdio(
+    runtime: GradleMcpRuntime,
+    serverScope: CoroutineScope,
+    shutdownRuntime: suspend () -> Unit,
+) {
+    val transportClosed = CountDownLatch(1)
+    val server = createGradleTapiServer(runtime, serverScope)
     val transport = StdioServerTransport(
         input = EofSignalingInputStream(System.`in`, transportClosed).asInput(),
         output = System.out.asSink().buffered(),
@@ -77,20 +111,13 @@ fun runGradleTapiMcpServer() {
         ioDispatcher = Dispatchers.IO
     }
 
-    val shutdownOnce = AtomicBoolean(false)
-    suspend fun shutdownBestEffort() {
-        if (!shutdownOnce.compareAndSet(false, true)) {
-            return
-        }
-        runCatching { buildExecutionManager.shutdown() }
-        runCatching { runtime.shutdownDependencySources() }
-        runCatching { connectionManager.disconnectAll() }
+    suspend fun shutdown() {
         runCatching { server.close() }
-        runCatching { serverScope.cancel() }
         transportClosed.countDown()
+        shutdownRuntime()
     }
 
-    Runtime.getRuntime().addShutdownHook(Thread { runBlocking { shutdownBestEffort() } })
+    Runtime.getRuntime().addShutdownHook(Thread { runBlocking { shutdown() } })
 
     runBlocking {
         val session = server.createSession(transport)
@@ -101,7 +128,7 @@ fun runGradleTapiMcpServer() {
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
         } finally {
-            shutdownBestEffort()
+            shutdown()
             done.join()
         }
     }

@@ -20,6 +20,7 @@ val resolutionModelEmbed = configurations.create("resolutionModelEmbed") {
 
 dependencies {
     implementation(libs.mcp.kotlin.server)
+    implementation(libs.ktor.server.cio)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.gradle.tooling.api)
