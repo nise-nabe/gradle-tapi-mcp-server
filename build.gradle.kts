@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.example"
-version = "0.13.3"
+version = "0.13.4"
 
 java {
     toolchain {
