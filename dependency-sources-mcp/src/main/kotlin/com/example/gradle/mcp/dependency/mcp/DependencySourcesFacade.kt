@@ -15,6 +15,13 @@ import com.example.gradle.mcp.dependency.SourcePathRef
 import com.example.gradle.mcp.dependency.SourcesJarCacheLayout
 import com.example.gradle.mcp.dependency.SourcesJarFetcher
 import com.example.gradle.mcp.dependency.TokenMode
+import com.example.gradle.mcp.protocol.optionalBoolean
+import com.example.gradle.mcp.protocol.optionalNonNegativeInt
+import com.example.gradle.mcp.protocol.optionalNonNegativeIntWithAlias
+import com.example.gradle.mcp.protocol.optionalPositiveInt
+import com.example.gradle.mcp.protocol.optionalString
+import com.example.gradle.mcp.protocol.requiredString
+import com.example.gradle.mcp.protocol.requiredStringList
 import java.io.File
 
 class DependencySourcesFacade(
@@ -149,7 +156,7 @@ class DependencySourcesFacade(
         val projectDirectory = access.resolveProjectDirectory(args)
         val query = args.requiredString("query")
         val tokenMode = args.optionalString("tokenMode")?.let(TokenMode::parse)
-        val limit = args.optionalLimitInt("limit")
+        val limit = args.optionalNonNegativeInt("limit")
         val indexDir = args.optionalString("indexDir")?.let(::File)
 
         val result = store.search(
@@ -168,8 +175,8 @@ class DependencySourcesFacade(
         val projectDirectory = access.resolveProjectDirectory(args)
         val queries = args.requiredStringList("queries")
         val tokenMode = args.optionalString("tokenMode")?.let(TokenMode::parse)
-        val limit = args.optionalLimitInt("limit")
-        val perQueryLimit = args.optionalLimitIntWithAlias("perQueryLimit", "per_query_limit")
+        val limit = args.optionalNonNegativeInt("limit")
+        val perQueryLimit = args.optionalNonNegativeIntWithAlias("perQueryLimit", "per_query_limit")
         val indexDir = args.optionalString("indexDir")?.let(::File)
 
         val result = store.searchMulti(
@@ -189,10 +196,8 @@ class DependencySourcesFacade(
         val artifact = parseReadArtifact(args)
         val path = args.requiredString("path")
         val line = args.optionalPositiveInt("line")
-        val contextLines = args.optionalNonNegativeInt(
-            "contextLines",
-            default = ReadSourceRequest.DEFAULT_CONTEXT_LINES,
-        )
+        val contextLines = args.optionalNonNegativeInt("contextLines")
+            ?: ReadSourceRequest.DEFAULT_CONTEXT_LINES
         val maxLines = args.optionalPositiveInt(
             "maxLines",
         ) ?: ReadSourceRequest.DEFAULT_MAX_LINES
@@ -403,120 +408,6 @@ class DependencySourcesFacade(
             )
         }
         return null
-    }
-}
-
-private fun Map<String, Any>.requiredString(key: String): String {
-    val value = this[key]
-    if (value is String && value.isNotBlank()) return value
-    throw IllegalArgumentException(
-        when (value) {
-            null -> "Missing required argument: $key"
-            is String -> "Required argument must not be blank: $key"
-            else -> "Required argument must be a string: $key"
-        },
-    )
-}
-
-private fun Map<String, Any>.optionalString(key: String): String? =
-    (this[key] as? String)?.takeIf { it.isNotBlank() }
-
-private fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boolean =
-    when (val value = this[key]) {
-        null -> default
-        is Boolean -> value
-        is String -> when (value.lowercase()) {
-            "true" -> true
-            "false" -> false
-            else -> throw IllegalArgumentException("Argument must be a boolean: $key")
-        }
-        else -> throw IllegalArgumentException("Argument must be a boolean: $key")
-    }
-
-private fun Map<String, Any>.optionalLimitInt(key: String): Int? {
-    if (!containsKey(key)) return null
-    val parsed = when (val value = this[key]) {
-        null -> return null
-        is Number -> value.toExactLimitIntOrNull()
-        is String -> value.toIntOrNull()
-        else -> null
-    } ?: throw IllegalArgumentException("Argument must be a non-negative integer: $key")
-    if (parsed < 0) {
-        throw IllegalArgumentException("Argument must be non-negative: $key")
-    }
-    return parsed
-}
-
-private fun Map<String, Any>.optionalLimitIntWithAlias(primaryKey: String, aliasKey: String): Int? =
-    if (containsKey(primaryKey)) {
-        optionalLimitInt(primaryKey)
-    } else {
-        optionalLimitInt(aliasKey)
-    }
-
-private fun Map<String, Any>.optionalPositiveInt(key: String): Int? {
-    if (!containsKey(key)) return null
-    val parsed = optionalExactInt(key) ?: throw IllegalArgumentException("Argument must be an integer: $key")
-    if (parsed < 1) {
-        throw IllegalArgumentException("Argument must be >= 1: $key")
-    }
-    return parsed
-}
-
-private fun Map<String, Any>.optionalNonNegativeInt(key: String, default: Int): Int {
-    if (!containsKey(key)) return default
-    val parsed = optionalExactInt(key) ?: throw IllegalArgumentException("Argument must be an integer: $key")
-    if (parsed < 0) {
-        throw IllegalArgumentException("Argument must be non-negative: $key")
-    }
-    return parsed
-}
-
-private fun Map<String, Any>.optionalExactInt(key: String): Int? {
-    return when (val value = this[key]) {
-        null -> null
-        is Number -> value.toExactLimitIntOrNull()
-        is String -> value.toIntOrNull()
-        else -> null
-    }
-}
-
-private fun Number.toExactLimitIntOrNull(): Int? {
-    val longValue = when (this) {
-        is Int -> return this
-        is Long -> this
-        is Short -> toLong()
-        is Byte -> toLong()
-        else -> {
-            val doubleValue = toDouble()
-            if (!doubleValue.isFinite() || doubleValue != kotlin.math.truncate(doubleValue)) {
-                return null
-            }
-            doubleValue.toLong()
-        }
-    }
-    return if (longValue in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) {
-        longValue.toInt()
-    } else {
-        null
-    }
-}
-
-@Suppress("UNCHECKED_CAST")
-private fun Map<String, Any>.requiredStringList(key: String): List<String> {
-    val value = this[key]
-        ?: throw IllegalArgumentException("Missing required argument: $key")
-    val list = value as? List<*>
-        ?: throw IllegalArgumentException("Required argument must be a string array: $key")
-    if (list.isEmpty()) {
-        throw IllegalArgumentException("Required argument must be a non-empty string array: $key")
-    }
-    return list.mapIndexed { index, item ->
-        val string = item as? String
-        if (string == null || string.isBlank()) {
-            throw IllegalArgumentException("Required argument must contain only non-blank strings: $key[$index]")
-        }
-        string
     }
 }
 

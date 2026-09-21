@@ -2,6 +2,7 @@ package com.example.gradle.mcp.dependency.mcp
 
 import com.example.gradle.mcp.dependency.IndexFormat
 import com.example.gradle.mcp.dependency.SourcesJarFetcher
+import com.example.gradle.mcp.protocol.McpException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
@@ -252,7 +253,7 @@ class DependencySourcesFacadeTest {
             access,
         )
 
-        val error = shouldThrow<IllegalArgumentException> {
+        val error = shouldThrow<McpException> {
             facade.search(mapOf("query" to "Foo", "tokenMode" to "idents", "limit" to -1), access)
         }
         error.message shouldContain "non-negative"
@@ -273,7 +274,7 @@ class DependencySourcesFacadeTest {
             access,
         )
 
-        val error = shouldThrow<IllegalArgumentException> {
+        val error = shouldThrow<McpException> {
             facade.search(mapOf("query" to "Foo", "tokenMode" to "idents", "limit" to 1.5), access)
         }
         error.message shouldContain "non-negative integer"
@@ -480,7 +481,7 @@ class DependencySourcesFacadeTest {
     fun `downloadSources non-boolean is rejected`() {
         val project = File(tempDir, "proj-bool-bad").apply { mkdirs() }
         val access = StubAccess(project)
-        shouldThrow<IllegalArgumentException> {
+        shouldThrow<McpException> {
             DependencySourcesFacade().index(
                 mapOf(
                     "artifacts" to listOf(
