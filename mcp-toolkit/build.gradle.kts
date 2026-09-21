@@ -10,13 +10,6 @@ java {
     }
 }
 
-dependencies {
-    api(project(":dependency-sources-core"))
-    api(project(":mcp-toolkit"))
-    // Tooling API types only (ProjectConnection in the access bridge). MCP SDK stays in the root server.
-    implementation(libs.gradle.tooling.api)
-}
-
 testing {
     suites {
         @Suppress("UnstableApiUsage")

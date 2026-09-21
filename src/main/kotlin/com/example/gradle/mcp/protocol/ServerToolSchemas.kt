@@ -1,23 +1,5 @@
 package com.example.gradle.mcp.protocol
 
-internal fun emptyObjectSchema(): Map<String, Any> =
-    mapOf("type" to "object", "properties" to emptyMap<String, Any>())
-
-internal fun objectSchema(
-    required: List<String> = emptyList(),
-    properties: Map<String, Any>,
-): Map<String, Any> =
-    buildMap {
-        put("type", "object")
-        put("properties", properties)
-        if (required.isNotEmpty()) {
-            put("required", required)
-        }
-    }
-
-internal fun stringProperty(description: String): Map<String, String> =
-    mapOf("type" to "string", "description" to description)
-
 internal fun projectDirectoryProperty(description: String): Map<String, String> =
     stringProperty(description)
 
@@ -32,22 +14,6 @@ internal fun optionalProjectDirectoryProperty(): Map<String, String> =
 
 internal fun resolveRequiredProjectDirectoryProperty(): Map<String, String> =
     projectDirectoryProperty(PROJECT_DIRECTORY_RESOLVE_HINT)
-
-internal fun stringArrayProperty(description: String, minItems: Int? = null): Map<String, Any> =
-    buildMap {
-        put("type", "array")
-        put("description", description)
-        put("items", mapOf("type" to "string"))
-        if (minItems != null) {
-            put("minItems", minItems)
-        }
-    }
-
-internal fun booleanProperty(description: String): Map<String, String> =
-    mapOf("type" to "boolean", "description" to description)
-
-internal fun integerProperty(description: String): Map<String, String> =
-    mapOf("type" to "integer", "description" to description)
 
 internal fun prepareTasksProperty(): Map<String, Any> =
     stringArrayProperty("Prefetch tasks (e.g. [\":app:compileJava\"])")

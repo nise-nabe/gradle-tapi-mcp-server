@@ -1,5 +1,13 @@
 package com.example.gradle.mcp.dependency.mcp
 
+import com.example.gradle.mcp.protocol.booleanProperty
+import com.example.gradle.mcp.protocol.integerProperty
+import com.example.gradle.mcp.protocol.nullableIntegerProperty
+import com.example.gradle.mcp.protocol.objectArrayProperty
+import com.example.gradle.mcp.protocol.objectSchema
+import com.example.gradle.mcp.protocol.stringArrayProperty
+import com.example.gradle.mcp.protocol.stringProperty
+
 data class DependencySourceToolSpec(
     val name: String,
     val description: String,
@@ -42,45 +50,45 @@ object DependencySourceToolCatalog {
     fun indexSchema(): Map<String, Any> =
         objectSchema(
             properties = mapOf(
-                "projectDirectory" to stringProp("Project root; omit for GRADLE_PROJECT_DIR."),
-                "tokenMode" to stringProp("all (default) or idents."),
-                "projectPath" to stringProp("Idea only: scope subtree (e.g. :worker)."),
-                "artifacts" to arrayOfObjects(
+                "projectDirectory" to stringProperty("Project root; omit for GRADLE_PROJECT_DIR."),
+                "tokenMode" to stringProperty("all (default) or idents."),
+                "projectPath" to stringProperty("Idea only: scope subtree (e.g. :worker)."),
+                "artifacts" to objectArrayProperty(
                     description = "GAVs; skips Idea keep-set.",
                     itemProperties = mapOf(
-                        "group" to stringProp("Group"),
-                        "name" to stringProp("Name"),
-                        "version" to stringProp("Version"),
+                        "group" to stringProperty("Group"),
+                        "name" to stringProperty("Name"),
+                        "version" to stringProperty("Version"),
                     ),
                     required = listOf("group", "name", "version"),
                 ),
-                "sourcePaths" to arrayOfObjects(
+                "sourcePaths" to objectArrayProperty(
                     description = "Local trees/jars.",
                     itemProperties = mapOf(
-                        "path" to stringProp("Directory, jar, or zip"),
-                        "group" to stringProp("Group label"),
-                        "name" to stringProp("Name label"),
-                        "version" to stringProp("Version label"),
+                        "path" to stringProperty("Directory, jar, or zip"),
+                        "group" to stringProperty("Group label"),
+                        "name" to stringProperty("Name label"),
+                        "version" to stringProperty("Version label"),
                     ),
                     required = listOf("path"),
                 ),
-                "downloadSources" to booleanProp(
+                "downloadSources" to booleanProperty(
                     "Fetch missing artifacts[] jars (default false).",
                 ),
-                "sourcesRepositories" to stringArrayProp(
+                "sourcesRepositories" to stringArrayProperty(
                     description = "Maven bases for downloadSources (omit=Central).",
                 ),
-                "gradleUserHome" to stringProp("Cache home; else connected."),
-                "indexDir" to stringProp("Override (<dir>/<tokenMode>/)."),
-                "forceReindex" to booleanProp("Rebuild on hit."),
-                "background" to booleanProp("Return indexId immediately (default false)."),
+                "gradleUserHome" to stringProperty("Cache home; else connected."),
+                "indexDir" to stringProperty("Override (<dir>/<tokenMode>/)."),
+                "forceReindex" to booleanProperty("Rebuild on hit."),
+                "background" to booleanProperty("Return indexId immediately (default false)."),
             ),
         )
 
     fun indexStatusSchema(): Map<String, Any> =
         objectSchema(
             properties = mapOf(
-                "indexId" to stringProp("Job id from gradle_index_dependency_sources."),
+                "indexId" to stringProperty("Job id from gradle_index_dependency_sources."),
             ),
             required = listOf("indexId"),
         )
@@ -88,11 +96,11 @@ object DependencySourceToolCatalog {
     fun searchSchema(): Map<String, Any> =
         objectSchema(
             properties = mapOf(
-                "projectDirectory" to stringProp("Project root; omit for default/GRADLE_PROJECT_DIR."),
-                "query" to stringProp("Exact simple-name to locate"),
-                "tokenMode" to stringProp("Must match an index (all|idents). Prefer all."),
-                "limit" to nullableIntegerProp("Max hits; omit/null=unlimited, 0=empty."),
-                "indexDir" to stringProp("Override dir (reads <dir>/<tokenMode>/)."),
+                "projectDirectory" to stringProperty("Project root; omit for default/GRADLE_PROJECT_DIR."),
+                "query" to stringProperty("Exact simple-name to locate"),
+                "tokenMode" to stringProperty("Must match an index (all|idents). Prefer all."),
+                "limit" to nullableIntegerProperty("Max hits; omit/null=unlimited, 0=empty."),
+                "indexDir" to stringProperty("Override dir (reads <dir>/<tokenMode>/)."),
             ),
             required = listOf("query"),
         )
@@ -100,18 +108,18 @@ object DependencySourceToolCatalog {
     fun searchMultiSchema(): Map<String, Any> =
         objectSchema(
             properties = mapOf(
-                "projectDirectory" to stringProp("Project root; omit for default/GRADLE_PROJECT_DIR."),
-                "queries" to stringArrayProp(
+                "projectDirectory" to stringProperty("Project root; omit for default/GRADLE_PROJECT_DIR."),
+                "queries" to stringArrayProperty(
                     description = "Non-empty simple names (OR).",
                     minItems = 1,
                     itemMinLength = 1,
                 ),
-                "tokenMode" to stringProp("Must match an index (all|idents). Prefer all."),
-                "limit" to nullableIntegerProp("Overall max after merge/sort; omit/null=unlimited, 0=empty."),
-                "perQueryLimit" to nullableIntegerProp(
+                "tokenMode" to stringProperty("Must match an index (all|idents). Prefer all."),
+                "limit" to nullableIntegerProperty("Overall max after merge/sort; omit/null=unlimited, 0=empty."),
+                "perQueryLimit" to nullableIntegerProperty(
                     "Per-query cap; omit/null=unlimited, 0=empty. Alias: per_query_limit.",
                 ),
-                "indexDir" to stringProp("Override dir (reads <dir>/<tokenMode>/)."),
+                "indexDir" to stringProperty("Override dir (reads <dir>/<tokenMode>/)."),
             ),
             required = listOf("queries"),
         )
@@ -119,75 +127,20 @@ object DependencySourceToolCatalog {
     fun readSchema(): Map<String, Any> =
         objectSchema(
             properties = mapOf(
-                "projectDirectory" to stringProp("Project root; omit for default/GRADLE_PROJECT_DIR."),
-                "gav" to stringProp("Required unless group+name+version: group:name:version."),
-                "group" to stringProp("With name+version when gav omitted."),
-                "name" to stringProp("With group+version when gav omitted."),
-                "version" to stringProp("With group+name when gav omitted."),
-                "path" to stringProp("Path inside sources jar/tree (from search hit)."),
-                "line" to integerProp("Optional 1-based anchor; must be within file."),
-                "contextLines" to integerProp("Lines before/after line (default 10, max 100)."),
-                "maxLines" to integerProp("Whole-file cap when line omitted (default 200, max 2000)."),
-                "sourceRoot" to stringProp("Jar/zip/dir/file override; else hit/index/cache."),
-                "tokenMode" to stringProp("Index mode for roots lookup (all|idents)."),
-                "indexDir" to stringProp("Override index dir (<dir>/<tokenMode>/)."),
-                "gradleUserHome" to stringProp("Cache home for *-sources.jar; else connected."),
+                "projectDirectory" to stringProperty("Project root; omit for default/GRADLE_PROJECT_DIR."),
+                "gav" to stringProperty("Required unless group+name+version: group:name:version."),
+                "group" to stringProperty("With name+version when gav omitted."),
+                "name" to stringProperty("With group+version when gav omitted."),
+                "version" to stringProperty("With group+name when gav omitted."),
+                "path" to stringProperty("Path inside sources jar/tree (from search hit)."),
+                "line" to integerProperty("Optional 1-based anchor; must be within file."),
+                "contextLines" to integerProperty("Lines before/after line (default 10, max 100)."),
+                "maxLines" to integerProperty("Whole-file cap when line omitted (default 200, max 2000)."),
+                "sourceRoot" to stringProperty("Jar/zip/dir/file override; else hit/index/cache."),
+                "tokenMode" to stringProperty("Index mode for roots lookup (all|idents)."),
+                "indexDir" to stringProperty("Override index dir (<dir>/<tokenMode>/)."),
+                "gradleUserHome" to stringProperty("Cache home for *-sources.jar; else connected."),
             ),
             required = listOf("path"),
-        )
-
-    private fun objectSchema(
-        properties: Map<String, Any>,
-        required: List<String> = emptyList(),
-    ): Map<String, Any> =
-        buildMap {
-            put("type", "object")
-            put("properties", properties)
-            if (required.isNotEmpty()) put("required", required)
-        }
-
-    private fun stringProp(description: String): Map<String, String> =
-        mapOf("type" to "string", "description" to description)
-
-    private fun booleanProp(description: String): Map<String, String> =
-        mapOf("type" to "boolean", "description" to description)
-
-    private fun integerProp(description: String): Map<String, String> =
-        mapOf("type" to "integer", "description" to description)
-
-    private fun nullableIntegerProp(description: String): Map<String, Any> =
-        mapOf("type" to listOf("integer", "null"), "description" to description)
-
-    private fun stringArrayProp(
-        description: String,
-        minItems: Int? = null,
-        itemMinLength: Int? = null,
-    ): Map<String, Any> =
-        buildMap {
-            put("type", "array")
-            put("description", description)
-            put(
-                "items",
-                buildMap {
-                    put("type", "string")
-                    if (itemMinLength != null) {
-                        put("minLength", itemMinLength)
-                    }
-                },
-            )
-            if (minItems != null) {
-                put("minItems", minItems)
-            }
-        }
-
-    private fun arrayOfObjects(
-        description: String,
-        itemProperties: Map<String, Any>,
-        required: List<String>,
-    ): Map<String, Any> =
-        mapOf(
-            "type" to "array",
-            "description" to description,
-            "items" to objectSchema(properties = itemProperties, required = required),
         )
 }

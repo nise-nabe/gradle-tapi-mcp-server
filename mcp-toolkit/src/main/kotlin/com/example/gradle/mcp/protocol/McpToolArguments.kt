@@ -20,20 +20,23 @@ fun Map<String, Any>.requiredString(key: String): String {
 fun Map<String, Any>.optionalString(key: String): String? =
     (this[key] as? String)?.takeIf { it.isNotBlank() }
 
-@Suppress("UNCHECKED_CAST")
 fun Map<String, Any>.requiredStringList(key: String): List<String> {
     when (val value = this[key]) {
         null -> throw McpException(McpErrorCode.INVALID_ARGUMENT, "Missing required argument: $key")
         !is List<*> -> throw McpException(McpErrorCode.INVALID_ARGUMENT, "Required argument must be a string array: $key")
         else -> {
-            if (value.any { it !is String }) {
-                throw McpException(McpErrorCode.INVALID_ARGUMENT, "Required argument must contain only strings: $key")
-            }
-            val strings = value.filterIsInstance<String>()
-            if (strings.isEmpty()) {
+            if (value.isEmpty()) {
                 throw McpException(McpErrorCode.INVALID_ARGUMENT, "Required argument must be a non-empty string array: $key")
             }
-            return strings
+            return value.mapIndexed { index, item ->
+                if (item !is String || item.isBlank()) {
+                    throw McpException(
+                        McpErrorCode.INVALID_ARGUMENT,
+                        "Required argument must contain only non-blank strings: $key[$index]",
+                    )
+                }
+                item
+            }
         }
     }
 }
@@ -60,6 +63,16 @@ fun Map<String, Any>.optionalBoolean(key: String, default: Boolean): Boolean =
     when (val value = this[key]) {
         null -> default
         is Boolean -> value
+        // MCP clients (LLMs) sometimes encode booleans as strings; accept the
+        // canonical "true"/"false" spellings instead of rejecting them.
+        is String -> when (value.lowercase()) {
+            "true" -> true
+            "false" -> false
+            else -> throw McpException(
+                McpErrorCode.INVALID_ARGUMENT,
+                "Optional argument must be a boolean: $key",
+            )
+        }
         else -> throw McpException(
             McpErrorCode.INVALID_ARGUMENT,
             "Optional argument must be a boolean: $key",
@@ -71,6 +84,13 @@ fun Map<String, Any>.optionalPositiveInt(key: String): Int? =
 
 fun Map<String, Any>.optionalNonNegativeInt(key: String): Int? =
     parseOptionalInt(key, "a non-negative integer") { it >= 0 }
+
+fun Map<String, Any>.optionalNonNegativeIntWithAlias(primaryKey: String, aliasKey: String): Int? =
+    if (containsKey(primaryKey)) {
+        optionalNonNegativeInt(primaryKey)
+    } else {
+        optionalNonNegativeInt(aliasKey)
+    }
 
 fun rejectUnsupportedProjectPath(args: Map<String, Any>, toolName: String) {
     val projectPath = args.optionalString("projectPath")

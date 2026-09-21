@@ -89,9 +89,17 @@ class McpToolArgumentsTest {
     }
 
     @Test
+    fun `optionalBoolean accepts canonical boolean strings`() {
+        // LLM clients sometimes encode booleans as strings.
+        mapOf("flag" to "true").optionalBoolean("flag", default = false) shouldBe true
+        mapOf("flag" to "false").optionalBoolean("flag", default = true) shouldBe false
+        mapOf("flag" to "TRUE").optionalBoolean("flag", default = false) shouldBe true
+    }
+
+    @Test
     fun `optionalBoolean rejects non-boolean values`() {
         val error = shouldThrow<McpException> {
-            mapOf("flag" to "true").optionalBoolean("flag", default = false)
+            mapOf("flag" to "yes").optionalBoolean("flag", default = false)
         }
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
         error.message shouldContain "flag"

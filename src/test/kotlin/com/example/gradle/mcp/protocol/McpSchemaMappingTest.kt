@@ -1,5 +1,7 @@
 package com.example.gradle.mcp.protocol
 
+import com.example.gradle.mcp.protocol.objectSchema
+import com.example.gradle.mcp.protocol.stringArrayProperty
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.modelcontextprotocol.kotlin.sdk.types.RequestMeta
