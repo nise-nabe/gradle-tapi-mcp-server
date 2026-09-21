@@ -2,6 +2,7 @@ package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.DefaultGradleMcpRuntime
 import com.example.gradle.mcp.connection.GradleConnectionManager
+import com.example.gradle.mcp.model.FailureRecord
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.support.defaultProxyReturn
@@ -296,6 +297,32 @@ class TestRunPreflightTest {
 
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
         error.errorDetails["suggestedTaskPaths"] shouldBe listOf(":app:test", ":lib:test")
+    }
+
+    @Test
+    fun `ensureTestRunProjectScope rejects partial model with failure details`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            connection = gradleProjectConnectionProxy(
+                gradleProjectProxy(),
+                payloadFailures = listOf(
+                    FailureRecord("subproject configuration failed", null, emptyList(), emptyList()),
+                ),
+            ),
+            projectDirectory = projectDirectory,
+        )
+
+        val error = shouldThrow<McpException> {
+            ensureTestRunProjectScope(
+                connectionManager,
+                projectDirectory,
+                TestRunOptions(selection = TestRunSelection.Classes(listOf("com.example.FooTest"))),
+            )
+        }
+
+        error.code shouldBe McpErrorCode.BUILD_FAILED
+        error.message shouldContain "Failed to fetch GradleProject"
+        (error.errorDetails["failures"] as List<*>).shouldHaveSize(1)
     }
 
     @Test
