@@ -21,7 +21,13 @@ class DependencySourcesFacade(
     private val store: DependencyIndexStore = DependencyIndexStore(),
     private val sourcesJarFetcher: SourcesJarFetcher = MavenCentralSourcesJarFetcher,
     private val indexJobs: DependencySourcesIndexJobs = DependencySourcesIndexJobs(),
-) {
+) : AutoCloseable {
+
+    override fun close() {
+        runCatching { indexJobs.shutdown() }
+        runCatching { store.close() }
+    }
+
     fun index(args: Map<String, Any>, access: DependencySourcesGradleAccess): Map<String, Any?> {
         val projectDirectory = access.resolveProjectDirectory(args)
         val tokenMode = TokenMode.parse(args.optionalString("tokenMode"))

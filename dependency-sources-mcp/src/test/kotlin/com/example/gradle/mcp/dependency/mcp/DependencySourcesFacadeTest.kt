@@ -942,6 +942,48 @@ class DependencySourcesFacadeTest {
         (retained <= 64) shouldBe true
     }
 
+    @Test
+    fun `index jobs reject new work after shutdown`() {
+        val jobs = DependencySourcesIndexJobs()
+        jobs.shutdown()
+
+        val error =
+            shouldThrow<IllegalStateException> {
+                jobs.start(
+                    projectDirectory = File(tempDir, "proj-closed").apply { mkdirs() },
+                    tokenMode = "idents",
+                    projectPath = null,
+                ) {
+                    mapOf("docCount" to 1)
+                }
+            }
+        error.message shouldContain "Unable to schedule dependency-sources indexing"
+    }
+
+    @Test
+    fun `close stops accepting new index jobs and is idempotent`() {
+        val sources = File(tempDir, "src-close").apply { mkdirs() }
+        File(sources, "Demo.kt").writeText("class Bar\n")
+        val project = File(tempDir, "project-close").apply { mkdirs() }
+        val facade = DependencySourcesFacade()
+
+        facade.close()
+        facade.close()
+
+        val error =
+            shouldThrow<IllegalStateException> {
+                facade.index(
+                    mapOf(
+                        "sourcePaths" to listOf(mapOf("path" to sources.absolutePath)),
+                        "tokenMode" to "all",
+                        "background" to true,
+                    ),
+                    StubAccess(project),
+                )
+            }
+        error.message shouldContain "Unable to schedule dependency-sources indexing"
+    }
+
     private fun placeSourcesJar(
         gradleUserHome: File,
         group: String,
