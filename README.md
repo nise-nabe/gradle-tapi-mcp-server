@@ -8,7 +8,7 @@ MCP server that exposes [Gradle Tooling API](https://docs.gradle.org/current/use
 ./gradlew jar
 ```
 
-The fat JAR is written to `build/libs/gradle-tapi-mcp-server-0.13.3.jar`.
+The fat JAR is written to `build/libs/gradle-tapi-mcp-server-0.13.4.jar`.
 
 ## Plugin marketplace
 
@@ -49,7 +49,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
       "command": "java",
       "args": [
         "-jar",
-        "/path/to/gradle-tapi-mcp-server/build/libs/gradle-tapi-mcp-server-0.13.3.jar"
+        "/path/to/gradle-tapi-mcp-server/build/libs/gradle-tapi-mcp-server-0.13.4.jar"
       ],
       "env": {
         "GRADLE_PROJECT_DIR": "${workspaceFolder}"
@@ -66,7 +66,7 @@ The server speaks **stdio** by default (subprocess per MCP client). To serve MCP
 instead:
 
 ```bash
-java -jar gradle-tapi-mcp-server-0.13.3.jar \
+java -jar gradle-tapi-mcp-server-0.13.4.jar \
   --transport=streamable-http --host=127.0.0.1 --port=8080 --path=/mcp
 ```
 
