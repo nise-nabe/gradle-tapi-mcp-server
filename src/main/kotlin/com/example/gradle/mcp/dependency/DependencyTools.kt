@@ -5,6 +5,7 @@ import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.connection.ProjectLifecycleGuard
 import com.example.gradle.mcp.dependency.mcp.DependencySourceToolCatalog
 import com.example.gradle.mcp.dependency.mcp.DependencySourcesGradleAccess
+import com.example.gradle.mcp.dependency.mcp.DependencySourcesIndexingConflictException
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.jsonResult
@@ -101,13 +102,9 @@ private fun mapDependencySourcesError(error: Throwable): Throwable =
         is McpException -> error
         is IllegalArgumentException ->
             McpException(McpErrorCode.INVALID_ARGUMENT, error.message ?: "Invalid argument", error)
-        is IllegalStateException -> {
-            val message = error.message ?: "Internal error"
-            if (message.contains("already running", ignoreCase = true)) {
-                McpException(McpErrorCode.BUILD_ALREADY_RUNNING, message, error)
-            } else {
-                McpException(McpErrorCode.INTERNAL_ERROR, message, error)
-            }
-        }
+        is DependencySourcesIndexingConflictException ->
+            McpException(McpErrorCode.BUILD_ALREADY_RUNNING, error.message ?: "Indexing already running", error)
+        is IllegalStateException ->
+            McpException(McpErrorCode.INTERNAL_ERROR, error.message ?: "Internal error", error)
         else -> error
     }

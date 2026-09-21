@@ -9,6 +9,9 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
+/** A second index run was requested while [DependencySourcesIndexJobs] is already indexing the project. */
+class DependencySourcesIndexingConflictException(message: String) : IllegalStateException(message)
+
 /**
  * Tracks long-running `gradle_index_dependency_sources` jobs so clients can poll
  * instead of holding an MCP request open (large Idea keep-sets often exceed host timeouts).
@@ -41,7 +44,7 @@ class DependencySourcesIndexJobs(
         val previous = activeByProject.putIfAbsent(projectKey, indexId)
         if (previous != null) {
             val active = jobs[previous]
-            throw IllegalStateException(
+            throw DependencySourcesIndexingConflictException(
                 "Dependency-sources indexing already running for ${projectDirectory.path} " +
                     "(indexId=$previous, status=${active?.status() ?: "unknown"}). " +
                     "Poll gradle_get_dependency_sources_index_status or wait for completion.",
