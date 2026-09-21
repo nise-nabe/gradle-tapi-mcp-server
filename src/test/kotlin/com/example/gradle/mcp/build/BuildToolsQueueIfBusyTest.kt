@@ -10,33 +10,34 @@ import org.junit.jupiter.api.Test
 class BuildToolsQueueIfBusyTest {
     @Test
     fun `omitted queueIfBusy is false without background`() {
-        requireQueueIfBusyWithBackground(emptyMap()) shouldBe false
-        requireQueueIfBusyWithBackground(mapOf("background" to false)) shouldBe false
+        requireQueueIfBusyWithBackground(emptyMap(), background = false) shouldBe false
     }
 
     @Test
     fun `omitted queueIfBusy is true when background is true`() {
-        requireQueueIfBusyWithBackground(mapOf("background" to true)) shouldBe true
+        requireQueueIfBusyWithBackground(emptyMap(), background = true) shouldBe true
     }
 
     @Test
     fun `explicit queueIfBusy false is preserved with background`() {
         requireQueueIfBusyWithBackground(
-            mapOf("background" to true, "queueIfBusy" to false),
+            mapOf("queueIfBusy" to false),
+            background = true,
         ) shouldBe false
     }
 
     @Test
     fun `explicit queueIfBusy true is preserved with background`() {
         requireQueueIfBusyWithBackground(
-            mapOf("background" to true, "queueIfBusy" to true),
+            mapOf("queueIfBusy" to true),
+            background = true,
         ) shouldBe true
     }
 
     @Test
     fun `queueIfBusy true without background is invalid`() {
         val error = shouldThrow<McpException> {
-            requireQueueIfBusyWithBackground(mapOf("queueIfBusy" to true))
+            requireQueueIfBusyWithBackground(mapOf("queueIfBusy" to true), background = false)
         }
         error.code shouldBe McpErrorCode.INVALID_ARGUMENT
         error.message shouldContain "queueIfBusy requires background=true"

@@ -212,7 +212,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
             progressOptions = ProgressResponseOptions.fromArgs(args),
         )
         val background = args.optionalBoolean("background", default = false)
-        val queueIfBusy = requireQueueIfBusyWithBackground(args)
+        val queueIfBusy = requireQueueIfBusyWithBackground(args, background)
         if (background) {
             jsonResult(runtime.buildExecutionManager.startBackground(request, notifier, queueIfBusy))
         } else {
@@ -229,7 +229,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         val parsed = parseTestRunOptions(args)
         val testOptions = parsed.options.validate(args.optionalString("taskPath"))
         val background = args.optionalBoolean("background", default = false)
-        val queueIfBusy = requireQueueIfBusyWithBackground(args)
+        val queueIfBusy = requireQueueIfBusyWithBackground(args, background)
         val deferScopeModelCheck = background && queueIfBusy
         val scopeResolution = preflightRunTests(
             projectDirectory,
@@ -262,8 +262,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
     }
 }
 
-internal fun requireQueueIfBusyWithBackground(args: Map<String, Any>): Boolean {
-    val background = args.optionalBoolean("background", default = false)
+internal fun requireQueueIfBusyWithBackground(args: Map<String, Any>, background: Boolean): Boolean {
     val queueIfBusy = args.optionalBoolean("queueIfBusy", default = background)
     if (queueIfBusy && !background) {
         throw McpException(
