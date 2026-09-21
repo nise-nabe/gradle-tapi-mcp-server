@@ -62,20 +62,10 @@ class GradleConnectionManager(
         return ConnectionInfo(projectDir.path, "connected")
     }
 
-    fun connect(config: ConnectionConfig): ConnectionInfo = ensureConnected(config)
-
     fun requireConnection(projectDirectory: File): ProjectConnection = borrowConnection(projectDirectory)
-
-    fun withConnection(projectDirectory: File, block: (ProjectConnection) -> Unit) {
-        block(borrowConnection(projectDirectory))
-    }
 
     fun <T> withConnectionResult(projectDirectory: File, block: (ProjectConnection) -> T): T =
         block(borrowConnection(projectDirectory))
-
-    fun withConnection(block: (ProjectConnection) -> Unit) {
-        withConnection(requireDefaultProjectDirectory(), block)
-    }
 
     fun <T> withConnectionResult(block: (ProjectConnection) -> T): T =
         withConnectionResult(requireDefaultProjectDirectory(), block)
@@ -104,8 +94,6 @@ class GradleConnectionManager(
             ConnectionInfo(pooled.projectDirectory.path, "disconnected")
         }
     }
-
-    fun connectedProjectDirectory(): File? = defaultProjectDirectory()
 
     fun defaultProjectDirectory(): File? {
         val workspace = ProjectDirectoryResolver.workspaceFromEnvironment()
@@ -192,7 +180,7 @@ class GradleConnectionManager(
             return
         }
         try {
-            connect(
+            ensureConnected(
                 ConnectionConfig(
                     projectDirectory = projectDirectory.canonicalFile.path,
                     gradleUserHome = System.getenv("GRADLE_USER_HOME")?.takeIf { it.isNotBlank() },
@@ -304,7 +292,7 @@ class GradleConnectionManager(
         projectDirectory: File,
         isBuildActive: (File) -> Boolean,
     ): BuildEnvironmentSnapshot? =
-        synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+        ProjectLifecycleLock.withProjectLock(projectDirectory) {
             val pooled = pool[ProjectDirectoryResolver.canonicalKey(projectDirectory)]
             if (pooled == null || isBuildActive(projectDirectory)) {
                 null

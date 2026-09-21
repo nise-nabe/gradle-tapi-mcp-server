@@ -11,7 +11,7 @@ internal object ProjectLifecycleGuard {
         buildExecutionManager: BuildExecutionManager,
         message: (File) -> String,
         block: () -> T,
-    ): T = synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+    ): T = ProjectLifecycleLock.withProjectLock(projectDirectory) {
         val activeBuild = buildExecutionManager.activeBuildSnapshot(projectDirectory)
         if (activeBuild != null) {
             throw McpException(

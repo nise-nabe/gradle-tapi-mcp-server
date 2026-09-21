@@ -206,7 +206,7 @@ internal class BuildStatusQuery(
         if (status != BuildProgressTracker.STATUS_QUEUED || projectDirectory == null) {
             return response
         }
-        return synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+        return ProjectLifecycleLock.withProjectLock(projectDirectory) {
             response + buildMap {
                 registry.projectQueue.position(projectDirectory, buildId)?.let { put("queuePosition", it) }
                 registry.projectQueue.behindBuildId(projectDirectory, buildId, registry.runningBuildId(projectDirectory))
@@ -219,7 +219,7 @@ internal class BuildStatusQuery(
         if (projectDirectory == null) {
             return null
         }
-        return synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+        return ProjectLifecycleLock.withProjectLock(projectDirectory) {
             block(projectDirectory)
         }
     }

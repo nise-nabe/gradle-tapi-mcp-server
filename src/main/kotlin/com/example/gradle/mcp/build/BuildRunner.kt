@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * handles finalization, queue drains, and lifecycle resets.
  *
  * Locking contract: [ProjectBuildQueue] access requires the caller to hold
- * [ProjectLifecycleLock.forProject] for that directory; the global lifecycle
+ * [ProjectLifecycleLock.withProjectLock] for that directory; the global lifecycle
  * lock must never be held while taking a per-project lock (see [QueueDrain]).
  */
 internal class BuildRunner(
@@ -46,7 +46,7 @@ internal class BuildRunner(
         notifier: BuildProgressNotifier,
     ) {
         try {
-            connectionManager.withConnection(request.projectDirectory) { connection ->
+            connectionManager.withConnectionResult(request.projectDirectory) { connection ->
                 runBuild(record, request, connection, record.streams, record.progressTracker, notifier)
             }
         } catch (exception: Exception) {
@@ -301,9 +301,9 @@ internal class BuildRunner(
             }
             .forEach { record ->
                 // ProjectBuildQueue requires the per-project lifecycle lock. The
-                // per-project reset path holds forProject(projectDirectory), but the
+                // per-project reset path holds withProjectLock(projectDirectory), but the
                 // global path (disconnect-all/shutdown) holds only global(); taking
-                // forProject(dir) here would invert the project->global lock order.
+                // the project lock here would invert the project->global lock order.
                 // Cancelled entries are dropped by takeNextIfIdle's stale-head skip
                 // on the next drain instead.
                 if (projectDirectory != null) {
@@ -321,10 +321,10 @@ internal class BuildRunner(
             }
             .forEach { record ->
                 record.cancellationTokenSource.cancel()
-                // The per-project reset path holds forProject(projectDirectory),
+                // The per-project reset path holds withProjectLock(projectDirectory),
                 // so draining that project's queue is safe. The global path
                 // (disconnect-all/shutdown) holds only global(); draining would
-                // take forProject(dir) in drainProjectQueue and invert the
+                // take the project lock in drainProjectQueue and invert the
                 // project->global lock order. Queued builds are already
                 // cancelled, and disconnect callers run wakeQueuedBuilds() after
                 // releasing the global lock, so the global path skips draining.
@@ -353,7 +353,7 @@ internal class BuildRunner(
         /**
          * No queue drain. Required on the global lifecycle path
          * (disconnect-all/shutdown), which holds only global(): taking
-         * forProject(dir) in drainProjectQueue would invert the
+         * the project lock in drainProjectQueue would invert the
          * project->global lock order.
          */
         NONE,
@@ -391,7 +391,7 @@ internal class BuildRunner(
 
     fun drainProjectQueue(projectDirectory: File) {
         while (true) {
-            val queued = synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+            val queued = ProjectLifecycleLock.withProjectLock(projectDirectory) {
                 when (
                     val result = registry.projectQueue.takeNextIfIdle(
                         projectDirectory,
@@ -411,7 +411,7 @@ internal class BuildRunner(
             try {
                 executor.execute { queued.work() }
             } catch (_: RejectedExecutionException) {
-                synchronized(ProjectLifecycleLock.forProject(projectDirectory)) {
+                ProjectLifecycleLock.withProjectLock(projectDirectory) {
                     registry.projectQueue.requeueAtFront(projectDirectory, queued)
                 }
                 return
