@@ -14,14 +14,40 @@ import com.example.gradle.mcp.protocol.decodeMcpJson
 import com.example.gradle.mcp.protocol.decodeMcpJsonMap
 import com.example.gradle.mcp.protocol.encodeMcpJson
 import java.io.File
+import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 
 class BuildRecordStore {
+    private class CachedFileValue(
+        val fileKey: Any?,
+        val lastModifiedMillis: Long,
+        val size: Long,
+        val value: Any?,
+    )
+
+    private class CachedEventLog(
+        val fileKey: Any?,
+        val lastModifiedMillis: Long,
+        val size: Long,
+        /** Bytes consumed into [events]; always ends just past a newline. */
+        val offset: Long,
+        /** First bytes of the file; guards against in-place rewrites. */
+        val head: ByteArray,
+        val events: List<DiskBuildEvent>,
+        /** Events parsed from the unterminated tail; re-parsed on the next miss. */
+        val tailEvents: List<DiskBuildEvent>,
+    )
+
+    private val fileValueCache = ConcurrentHashMap<Path, CachedFileValue>()
+    private val eventLogCache = ConcurrentHashMap<Path, CachedEventLog>()
+
     fun recordDirectory(projectDirectory: File, buildId: String): File? =
         McpBuildRecordPaths.recordDirectory(projectDirectory, buildId)
 
@@ -287,14 +313,130 @@ class BuildRecordStore {
     internal fun readEvents(recordDir: File): List<DiskBuildEvent> {
         val file = McpBuildRecordPaths.safeRecordFile(recordDir, McpBuildRecordPaths.EVENTS_FILE)
             ?: return emptyList()
-        return file.bufferedReader(StandardCharsets.UTF_8).useLines { lines ->
-            lines.mapNotNull { line ->
-                if (line.isBlank()) {
-                    return@mapNotNull null
-                }
-                runCatching { parseEventLine(line) }.getOrNull()
-            }.toList()
+        val path = file.toPath().toAbsolutePath().normalize()
+        val attrs = readAttributes(file) ?: return emptyList()
+        val size = attrs.size()
+        val modified = attrs.lastModifiedTime().toMillis()
+        val cached = eventLogCache[path]
+        if (cached != null &&
+            cached.size == size &&
+            cached.lastModifiedMillis == modified &&
+            cached.fileKey == attrs.fileKey()
+        ) {
+            return cached.events + cached.tailEvents
         }
+        // events.ndjson is append-only, so a matching fileKey plus an unchanged
+        // head prefix proves the consumed region is intact and only the appended
+        // segment needs parsing. A replaced or rewritten file (different key,
+        // filesystem without keys, or a head mismatch) falls back to a full read.
+        val base = if (cached != null &&
+            cached.fileKey != null &&
+            cached.fileKey == attrs.fileKey() &&
+            size >= cached.offset &&
+            headMatches(file, cached.head)
+        ) {
+            cached
+        } else {
+            null
+        }
+        val startOffset = base?.offset ?: 0L
+        val bytes = readBytesFrom(file, startOffset, size)
+        val lastNewline = lastNewlineIndex(bytes)
+        val committedEnd = lastNewline + 1
+        val events = (base?.events ?: emptyList()) +
+            parseEventsText(String(bytes, 0, committedEnd, StandardCharsets.UTF_8))
+        val tailEvents =
+            parseEventsText(String(bytes, committedEnd, bytes.size - committedEnd, StandardCharsets.UTF_8))
+        if (eventLogCache.size >= MAX_CACHED_FILES) {
+            eventLogCache.clear()
+        }
+        eventLogCache[path] = CachedEventLog(
+            fileKey = attrs.fileKey(),
+            lastModifiedMillis = modified,
+            size = size,
+            offset = startOffset + committedEnd,
+            head = base?.head ?: bytes.copyOf(minOf(HEAD_PREFIX_BYTES, bytes.size)),
+            events = events,
+            tailEvents = tailEvents,
+        )
+        return events + tailEvents
+    }
+
+    private fun headMatches(file: File, head: ByteArray): Boolean {
+        if (head.isEmpty()) {
+            return true
+        }
+        val current = readBytesFrom(file, 0, head.size.toLong())
+        return current.contentEquals(head)
+    }
+
+    private fun readAttributes(file: File): BasicFileAttributes? =
+        runCatching { Files.readAttributes(file.toPath(), BasicFileAttributes::class.java) }.getOrNull()
+
+    private fun readBytesFrom(file: File, offset: Long, size: Long): ByteArray {
+        val length = (size - offset).coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
+        if (length == 0) {
+            return ByteArray(0)
+        }
+        Files.newByteChannel(file.toPath()).use { channel ->
+            channel.position(offset)
+            val buffer = ByteBuffer.allocate(length)
+            while (buffer.hasRemaining() && channel.read(buffer) != -1) {
+                // keep filling until the requested range is read or EOF
+            }
+            return if (buffer.hasRemaining()) {
+                buffer.array().copyOf(buffer.position())
+            } else {
+                buffer.array()
+            }
+        }
+    }
+
+    private fun lastNewlineIndex(bytes: ByteArray): Int {
+        for (i in bytes.size - 1 downTo 0) {
+            if (bytes[i] == '\n'.code.toByte()) {
+                return i
+            }
+        }
+        return -1
+    }
+
+    private fun parseEventsText(text: String): List<DiskBuildEvent> =
+        text.lineSequence()
+            .mapNotNull { line ->
+                if (line.isBlank()) {
+                    null
+                } else {
+                    runCatching { parseEventLine(line) }.getOrNull()
+                }
+            }
+            .toList()
+
+    private fun <T> cachedFileValue(file: File, compute: (File) -> T): T {
+        val path = file.toPath().toAbsolutePath().normalize()
+        val attrs = readAttributes(file)
+        val cached = fileValueCache[path]
+        if (attrs != null && cached != null &&
+            cached.size == attrs.size() &&
+            cached.lastModifiedMillis == attrs.lastModifiedTime().toMillis() &&
+            cached.fileKey == attrs.fileKey()
+        ) {
+            @Suppress("UNCHECKED_CAST")
+            return cached.value as T
+        }
+        val value = compute(file)
+        if (attrs != null) {
+            if (fileValueCache.size >= MAX_CACHED_FILES) {
+                fileValueCache.clear()
+            }
+            fileValueCache[path] = CachedFileValue(
+                fileKey = attrs.fileKey(),
+                lastModifiedMillis = attrs.lastModifiedTime().toMillis(),
+                size = attrs.size(),
+                value = value,
+            )
+        }
+        return value
     }
 
     internal fun eventsFileLastModified(recordDir: File): Instant? =
@@ -319,7 +461,9 @@ class BuildRecordStore {
     }
 
     private inline fun <reified T> readJsonFile(file: File): T? =
-        runCatching { decodeMcpJson<T>(file.readText(StandardCharsets.UTF_8)) }.getOrNull()
+        cachedFileValue(file) { target ->
+            runCatching { decodeMcpJson<T>(target.readText(StandardCharsets.UTF_8)) }.getOrNull()
+        }
 
     private fun readLogFile(
         recordDir: File,
@@ -328,7 +472,7 @@ class BuildRecordStore {
     ): CapturedStreamSnapshot {
         val file = McpBuildRecordPaths.safeRecordFile(recordDir, name)
             ?: return CapturedStreamSnapshot(text = "", totalChars = persistedTotalChars ?: 0)
-        val text = file.readText(StandardCharsets.UTF_8)
+        val text = cachedFileValue(file) { target -> target.readText(StandardCharsets.UTF_8) }
         val totalChars = if (persistedTotalChars != null) {
             maxOf(persistedTotalChars, text.length)
         } else {
@@ -405,5 +549,10 @@ class BuildRecordStore {
         } catch (exception: AtomicMoveNotSupportedException) {
             Files.move(temp, targetPath, StandardCopyOption.REPLACE_EXISTING)
         }
+    }
+
+    companion object {
+        private const val MAX_CACHED_FILES = 256
+        private const val HEAD_PREFIX_BYTES = 64
     }
 }
