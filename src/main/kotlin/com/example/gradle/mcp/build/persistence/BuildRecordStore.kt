@@ -23,9 +23,11 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.BasicFileAttributes
 import java.time.Instant
-import java.util.concurrent.ConcurrentHashMap
+import java.util.Collections
 
-class BuildRecordStore {
+class BuildRecordStore(
+    maxCachedFiles: Int = MAX_CACHED_FILES,
+) {
     private class CachedFileValue(
         val fileKey: Any?,
         val lastModifiedMillis: Long,
@@ -46,8 +48,8 @@ class BuildRecordStore {
         val tailEvents: List<DiskBuildEvent>,
     )
 
-    private val fileValueCache = ConcurrentHashMap<Path, CachedFileValue>()
-    private val eventLogCache = ConcurrentHashMap<Path, CachedEventLog>()
+    private val fileValueCache = lruCache<Path, CachedFileValue>(maxCachedFiles)
+    private val eventLogCache = lruCache<Path, CachedEventLog>(maxCachedFiles)
 
     fun recordDirectory(projectDirectory: File, buildId: String): File? =
         McpBuildRecordPaths.recordDirectory(projectDirectory, buildId)
@@ -344,9 +346,6 @@ class BuildRecordStore {
         val segment = readEventSegment(file, startOffset, size)
         val events = (base?.events ?: emptyList()) + segment.events
         val tailEvents = segment.tailEvents
-        if (eventLogCache.size >= MAX_CACHED_FILES) {
-            eventLogCache.clear()
-        }
         eventLogCache[path] = CachedEventLog(
             fileKey = attrs.fileKey(),
             lastModifiedMillis = modified,
@@ -483,9 +482,6 @@ class BuildRecordStore {
         }
         val value = compute(file)
         if (attrs != null) {
-            if (fileValueCache.size >= MAX_CACHED_FILES) {
-                fileValueCache.clear()
-            }
             fileValueCache[path] = CachedFileValue(
                 fileKey = attrs.fileKey(),
                 lastModifiedMillis = attrs.lastModifiedTime().toMillis(),
@@ -608,9 +604,28 @@ class BuildRecordStore {
         }
     }
 
+    internal fun cachedFileValuePaths(): Set<Path> =
+        synchronized(fileValueCache) { fileValueCache.keys.toSet() }
+
+    internal fun cachedEventLogPaths(): Set<Path> =
+        synchronized(eventLogCache) { eventLogCache.keys.toSet() }
+
     companion object {
         private const val MAX_CACHED_FILES = 256
         private const val HEAD_PREFIX_BYTES = 64
         private const val EVENT_READ_CHUNK_BYTES = 64 * 1024
+
+        /**
+         * An access-order map bounded at [maxEntries]: reads refresh recency and
+         * inserting past the bound evicts the least recently used entry instead
+         * of discarding the whole cache.
+         */
+        private fun <K, V> lruCache(maxEntries: Int): MutableMap<K, V> =
+            Collections.synchronizedMap(
+                object : LinkedHashMap<K, V>(16, 0.75f, true) {
+                    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>): Boolean =
+                        size > maxEntries
+                },
+            )
     }
 }
