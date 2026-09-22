@@ -13,6 +13,7 @@ class TailCapturingStream(
     private val buffer = StringBuilder()
     private val decoder = Utf8StreamAccumulator()
     private var totalChars = 0
+    private var bufferCodePoints = 0
 
     fun append(bytes: ByteArray, offset: Int, length: Int) {
         if (length <= 0) {
@@ -25,7 +26,7 @@ class TailCapturingStream(
 
     fun snapshot(): CapturedStreamSnapshot =
         synchronized(lock) {
-            CapturedStreamSnapshot(text = buffer.toString(), totalChars = totalChars)
+            CapturedStreamSnapshot(text = retainedText(), totalChars = totalChars)
         }
 
     /**
@@ -56,6 +57,7 @@ class TailCapturingStream(
         chunk = normalizeChunkPreservingTrailingCr(chunk)
         totalChars += chunk.length
         buffer.append(chunk)
+        bufferCodePoints += chunk.codePointCount(0, chunk.length)
         trimToRetainedLimit()
     }
 
@@ -67,16 +69,27 @@ class TailCapturingStream(
         return OutputNormalizer.normalizeNewlines(text)
     }
 
+    /**
+     * Amortized trimming: the buffer is allowed to overshoot the cap so a
+     * steady stream of small writes does not rescan the whole buffer on
+     * every append. [snapshot] still returns exactly the last
+     * [maxRetainedChars] code points via [retainedText].
+     */
     private fun trimToRetainedLimit() {
-        if (buffer.length <= maxRetainedChars) {
-            return
-        }
-        val codePointCount = buffer.codePointCount(0, buffer.length)
-        if (codePointCount <= maxRetainedChars) {
+        if (bufferCodePoints <= maxRetainedChars * 2L) {
             return
         }
         val startIndex = buffer.offsetByCodePoints(buffer.length, -maxRetainedChars)
+        bufferCodePoints -= buffer.codePointCount(0, startIndex)
         buffer.delete(0, startIndex)
+    }
+
+    private fun retainedText(): String {
+        if (bufferCodePoints <= maxRetainedChars) {
+            return buffer.toString()
+        }
+        val startIndex = buffer.offsetByCodePoints(buffer.length, -maxRetainedChars)
+        return buffer.substring(startIndex)
     }
 
     companion object {
