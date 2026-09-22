@@ -50,6 +50,7 @@ bump PR で `install.sh` / `server-release.json` の **version だけ**先に上
 |---------|---------|
 | `build.gradle.kts` | `version = "X.Y.Z"`（JAR `Implementation-Version` / MCP `initialize` serverInfo に反映） |
 | `README.md` | JAR パス例 2 箇所（`build/libs/gradle-tapi-mcp-server-X.Y.Z.jar`） |
+| `docs/configuration.md` | `java -jar gradle-tapi-mcp-server-X.Y.Z.jar` 例 |
 | `.cursor-plugin/marketplace.json` | marketplace `metadata.version` と plugin `version` |
 | `.agents/plugins/marketplace.json` | plugin `version`（このカタログに `metadata.version` は無い） |
 | `.github/plugin/marketplace.json` | marketplace `metadata.version` と plugin `version` |
@@ -107,8 +108,8 @@ CI と同等のゲート。失敗時はリリースを止める。
 
 ```bash
 git checkout -b cursor/release-X.Y.Z-<suffix>
-# build.gradle.kts / README.md / marketplace catalogs / plugin.json / AGENTS.md JAR パスを更新
-git add build.gradle.kts README.md \
+# build.gradle.kts / README.md / docs/configuration.md / marketplace catalogs / plugin.json / AGENTS.md JAR パスを更新
+git add build.gradle.kts README.md docs/configuration.md \
   .cursor-plugin/marketplace.json \
   .agents/plugins/marketplace.json \
   .github/plugin/marketplace.json \
@@ -194,7 +195,7 @@ timeout 5 env GRADLE_PROJECT_DIR=/workspace java -jar /tmp/test.jar </dev/null |
 ## チェックリスト
 
 - [ ] `main` で `./gradlew build` 成功
-- [ ] `build.gradle.kts` / `README.md` / marketplace catalogs / plugin.json のバージョン一致
+- [ ] `build.gradle.kts` / `README.md` / `docs/configuration.md` / marketplace catalogs / plugin.json のバージョン一致
 - [ ] bump PR が `main` にマージ済み
 - [ ] `git checkout main && git pull` のあと `./gradlew --no-daemon jar` で fat JAR 生成
 - [ ] `vX.Y.Z` タグを `main` HEAD に push

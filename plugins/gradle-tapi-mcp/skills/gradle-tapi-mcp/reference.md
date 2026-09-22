@@ -281,7 +281,7 @@ Fetches a configuration's `ResolutionResult` via a custom Tooling model (init-sc
 
 ## Dependency sources
 
-Canonical end-user workflow (index → search → read, `tokenMode`, keep-set tips, JSON examples): repository `README.md` section **Dependency sources name locate**.
+Canonical end-user workflow (index → search → read, `tokenMode`, keep-set tips, JSON examples): repository `docs/dependency-sources.md`.
 
 ### gradle_index_dependency_sources
 

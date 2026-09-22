@@ -21,7 +21,7 @@ git log "$(git tag -l --sort=-v:refname | head -1)"..main --oneline   # unreleas
 ## Workflow (summary)
 
 1. **Verify** — `git checkout main && git pull origin main`, then `./gradlew --no-daemon build`
-2. **Bump PR** — `build.gradle.kts` + `README.md` + marketplace catalogs + plugin.json versions; open PR via **ManagePullRequest** (`cloud-github` skill)
+2. **Bump PR** — `build.gradle.kts` + `README.md` + `docs/configuration.md` + marketplace catalogs + plugin.json versions; open PR via **ManagePullRequest** (`cloud-github` skill)
 3. **After merge** — on `main`: `./gradlew --no-daemon jar` → tag `vX.Y.Z` on `main` HEAD → `gh release create` with `--repo nise-nabe/gradle-tapi-mcp-server`
 4. **Cloud bootstrap** (SHA PR only) — `install.sh` + `server-release.json` version and SHA-256 together (do not bump those version fields in the bump PR). Marketplace / plugin `version` are already in step 2.
 
