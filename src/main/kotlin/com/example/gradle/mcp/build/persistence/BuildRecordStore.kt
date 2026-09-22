@@ -13,6 +13,7 @@ import com.example.gradle.mcp.protocol.ProblemsSerializer
 import com.example.gradle.mcp.protocol.decodeMcpJson
 import com.example.gradle.mcp.protocol.decodeMcpJsonMap
 import com.example.gradle.mcp.protocol.encodeMcpJson
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
@@ -340,13 +341,9 @@ class BuildRecordStore {
             null
         }
         val startOffset = base?.offset ?: 0L
-        val bytes = readBytesFrom(file, startOffset, size)
-        val lastNewline = lastNewlineIndex(bytes)
-        val committedEnd = lastNewline + 1
-        val events = (base?.events ?: emptyList()) +
-            parseEventsText(String(bytes, 0, committedEnd, StandardCharsets.UTF_8))
-        val tailEvents =
-            parseEventsText(String(bytes, committedEnd, bytes.size - committedEnd, StandardCharsets.UTF_8))
+        val segment = readEventSegment(file, startOffset, size)
+        val events = (base?.events ?: emptyList()) + segment.events
+        val tailEvents = segment.tailEvents
         if (eventLogCache.size >= MAX_CACHED_FILES) {
             eventLogCache.clear()
         }
@@ -354,12 +351,81 @@ class BuildRecordStore {
             fileKey = attrs.fileKey(),
             lastModifiedMillis = modified,
             size = size,
-            offset = startOffset + committedEnd,
-            head = base?.head ?: bytes.copyOf(minOf(HEAD_PREFIX_BYTES, bytes.size)),
+            offset = startOffset + segment.committedLength,
+            head = base?.head ?: segment.head,
             events = events,
             tailEvents = tailEvents,
         )
         return events + tailEvents
+    }
+
+    private class ParsedEventSegment(
+        val events: List<DiskBuildEvent>,
+        val tailEvents: List<DiskBuildEvent>,
+        /** Bytes consumed including the last newline, relative to the read offset. */
+        val committedLength: Long,
+        val head: ByteArray,
+    )
+
+    /**
+     * Streams [file] over the range [offset, size) in fixed-size chunks and
+     * parses newline-delimited events as they arrive, so the full file is
+     * never materialized as a single buffer or string.
+     */
+    private fun readEventSegment(file: File, offset: Long, size: Long): ParsedEventSegment {
+        val length = (size - offset).coerceIn(0L, Long.MAX_VALUE)
+        if (length == 0L) {
+            return ParsedEventSegment(emptyList(), emptyList(), 0L, ByteArray(0))
+        }
+        Files.newByteChannel(file.toPath()).use { channel ->
+            channel.position(offset)
+            val buffer = ByteBuffer.allocate(EVENT_READ_CHUNK_BYTES)
+            val events = ArrayList<DiskBuildEvent>()
+            val head = ByteArrayOutputStream()
+            val line = ByteArrayOutputStream()
+            var remaining = length
+            var consumed = 0L
+            var committed = 0L
+            while (remaining > 0) {
+                buffer.clear()
+                buffer.limit(minOf(buffer.capacity().toLong(), remaining).toInt())
+                val read = channel.read(buffer)
+                if (read == -1) {
+                    break
+                }
+                remaining -= read
+                buffer.flip()
+                val array = buffer.array()
+                var position = buffer.position()
+                val limit = buffer.limit()
+                while (position < limit) {
+                    var newline = position
+                    while (newline < limit && array[newline] != '\n'.code.toByte()) {
+                        newline++
+                    }
+                    val end = if (newline < limit) newline + 1 else limit
+                    val count = end - position
+                    if (consumed < HEAD_PREFIX_BYTES) {
+                        head.write(array, position, minOf(count, HEAD_PREFIX_BYTES - consumed.toInt()))
+                    }
+                    line.write(array, position, count)
+                    consumed += count
+                    position = end
+                    if (newline < limit) {
+                        committed = consumed
+                        val text = line.toString(StandardCharsets.UTF_8)
+                            .removeSuffix("\n")
+                            .removeSuffix("\r")
+                        if (text.isNotBlank()) {
+                            runCatching { parseEventLine(text) }.getOrNull()?.let(events::add)
+                        }
+                        line.reset()
+                    }
+                }
+            }
+            val tailEvents = parseEventsText(line.toString(StandardCharsets.UTF_8))
+            return ParsedEventSegment(events, tailEvents, committed, head.toByteArray())
+        }
     }
 
     private fun headMatches(file: File, head: ByteArray): Boolean {
@@ -390,15 +456,6 @@ class BuildRecordStore {
                 buffer.array()
             }
         }
-    }
-
-    private fun lastNewlineIndex(bytes: ByteArray): Int {
-        for (i in bytes.size - 1 downTo 0) {
-            if (bytes[i] == '\n'.code.toByte()) {
-                return i
-            }
-        }
-        return -1
     }
 
     private fun parseEventsText(text: String): List<DiskBuildEvent> =
@@ -554,5 +611,6 @@ class BuildRecordStore {
     companion object {
         private const val MAX_CACHED_FILES = 256
         private const val HEAD_PREFIX_BYTES = 64
+        private const val EVENT_READ_CHUNK_BYTES = 64 * 1024
     }
 }
