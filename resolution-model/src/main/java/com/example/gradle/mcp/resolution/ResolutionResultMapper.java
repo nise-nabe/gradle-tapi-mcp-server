@@ -45,39 +45,36 @@ public final class ResolutionResultMapper {
         int componentLimit = maxComponents > 0 ? maxComponents : DEFAULT_MAX_COMPONENTS;
         String filter = normalizeFilter(dependencyFilter);
 
-        List<McpResolvedDependencyEdge> allEdges = new ArrayList<>();
+        // Count every matching element for the truncation flags, but stop
+        // materializing mapped objects once the response cap is reached.
+        List<McpResolvedDependencyEdge> edges = new ArrayList<>();
+        Set<String> includedComponentKeys = filter == null ? null : new LinkedHashSet<>();
+        int totalDependencies = 0;
         for (DependencyResult dependency : resolutionResult.getAllDependencies()) {
-            McpResolvedDependencyEdge edge = toEdge(dependency);
-            if (matchesFilter(edge, filter)) {
-                allEdges.add(edge);
+            if (filter != null && !matchesFilter(dependency, filter)) {
+                continue;
+            }
+            totalDependencies++;
+            if (includedComponentKeys != null) {
+                addComponentKeys(includedComponentKeys, dependency);
+            }
+            if (edges.size() < depLimit) {
+                edges.add(toEdge(dependency));
             }
         }
 
-        List<McpResolvedComponent> allComponents = new ArrayList<>();
-        Set<String> includedComponentKeys = new LinkedHashSet<>();
-        if (filter == null) {
-            for (ResolvedComponentResult component : resolutionResult.getAllComponents()) {
-                allComponents.add(toComponent(component));
+        List<McpResolvedComponent> components = new ArrayList<>();
+        int totalComponents = 0;
+        for (ResolvedComponentResult component : resolutionResult.getAllComponents()) {
+            if (includedComponentKeys != null
+                    && !includedComponentKeys.contains(componentKey(component.getId()))) {
+                continue;
             }
-        } else {
-            for (McpResolvedDependencyEdge edge : allEdges) {
-                addComponentKey(includedComponentKeys, edge.getFrom());
-                addComponentKey(includedComponentKeys, edge.getSelected());
-            }
-            for (ResolvedComponentResult component : resolutionResult.getAllComponents()) {
-                McpResolvedComponent mapped = toComponent(component);
-                if (includedComponentKeys.contains(componentKey(mapped.getId()))) {
-                    allComponents.add(mapped);
-                }
+            totalComponents++;
+            if (components.size() < componentLimit) {
+                components.add(toComponent(component));
             }
         }
-
-        boolean dependenciesTruncated = allEdges.size() > depLimit;
-        boolean componentsTruncated = allComponents.size() > componentLimit;
-        List<McpResolvedDependencyEdge> edges =
-                dependenciesTruncated ? new ArrayList<>(allEdges.subList(0, depLimit)) : allEdges;
-        List<McpResolvedComponent> components =
-                componentsTruncated ? new ArrayList<>(allComponents.subList(0, componentLimit)) : allComponents;
 
         ResolvedComponentResult root = resolutionResult.getRoot();
         return new DefaultMcpDependencyResolution(
@@ -87,10 +84,10 @@ public final class ResolutionResultMapper {
                 toIdentity(root.getId()),
                 components,
                 edges,
-                componentsTruncated,
-                dependenciesTruncated,
-                allComponents.size(),
-                allEdges.size()
+                totalComponents > componentLimit,
+                totalDependencies > depLimit,
+                totalComponents,
+                totalDependencies
         );
     }
 
@@ -108,6 +105,39 @@ public final class ResolutionResultMapper {
             return true;
         }
         return edge.getFrom() != null && containsIgnoreCase(edge.getFrom().getDisplayName(), filter);
+    }
+
+    /**
+     * Filter evaluation on the raw {@link DependencyResult}, equivalent to
+     * {@link #matchesFilter(McpResolvedDependencyEdge, String)} but without
+     * materializing the mapped edge. Used so edges that never enter the
+     * response can be filtered and counted without object allocation.
+     */
+    private static boolean matchesFilter(DependencyResult dependency, String filter) {
+        ComponentSelector requested;
+        ResolvedComponentResult selected = null;
+        ComponentIdentifier from;
+        if (dependency instanceof ResolvedDependencyResult resolved) {
+            requested = resolved.getRequested();
+            selected = resolved.getSelected();
+            from = resolved.getFrom().getId();
+        } else {
+            UnresolvedDependencyResult unresolved = (UnresolvedDependencyResult) dependency;
+            requested = unresolved.getRequested();
+            from = unresolved.getFrom().getId();
+        }
+        if (containsIgnoreCase(requestedDisplay(requested), filter)) {
+            return true;
+        }
+        if (selected != null) {
+            if (containsIgnoreCase(selected.getId().getDisplayName(), filter)) {
+                return true;
+            }
+            if (containsIgnoreCase(moduleCoordinate(selected.getId()), filter)) {
+                return true;
+            }
+        }
+        return containsIgnoreCase(from.getDisplayName(), filter);
     }
 
     static String normalizeFilter(String dependencyFilter) {
@@ -213,9 +243,12 @@ public final class ResolutionResultMapper {
         return selector.getDisplayName();
     }
 
-    private static void addComponentKey(Set<String> keys, McpResolvedComponentIdentity identity) {
-        if (identity != null) {
-            keys.add(componentKey(identity));
+    private static void addComponentKeys(Set<String> keys, DependencyResult dependency) {
+        if (dependency instanceof ResolvedDependencyResult resolved) {
+            keys.add(componentKey(resolved.getFrom().getId()));
+            keys.add(componentKey(resolved.getSelected().getId()));
+        } else {
+            keys.add(componentKey(((UnresolvedDependencyResult) dependency).getFrom().getId()));
         }
     }
 
@@ -231,12 +264,36 @@ public final class ResolutionResultMapper {
         return "d:" + identity.getDisplayName();
     }
 
+    /**
+     * {@link #componentKey(McpResolvedComponentIdentity)} on the raw
+     * {@link ComponentIdentifier}; produces the same keys without allocating
+     * the mapped identity.
+     */
+    static String componentKey(ComponentIdentifier id) {
+        if (id instanceof ModuleComponentIdentifier module) {
+            String version = module.getVersion() == null ? "" : module.getVersion();
+            return "m:" + module.getGroup() + ":" + module.getModule() + ":" + version;
+        }
+        if (id instanceof ProjectComponentIdentifier project) {
+            return "p:" + project.getProjectPath();
+        }
+        return "d:" + id.getDisplayName();
+    }
+
     private static String moduleCoordinate(McpResolvedComponentIdentity identity) {
         if (identity.getGroup() == null || identity.getModule() == null) {
             return identity.getDisplayName();
         }
         String version = identity.getVersion() == null ? "" : identity.getVersion();
         return identity.getGroup() + ":" + identity.getModule() + ":" + version;
+    }
+
+    private static String moduleCoordinate(ComponentIdentifier id) {
+        if (id instanceof ModuleComponentIdentifier module) {
+            String version = module.getVersion() == null ? "" : module.getVersion();
+            return module.getGroup() + ":" + module.getModule() + ":" + version;
+        }
+        return id.getDisplayName();
     }
 
     private static boolean containsIgnoreCase(String haystack, String needle) {
