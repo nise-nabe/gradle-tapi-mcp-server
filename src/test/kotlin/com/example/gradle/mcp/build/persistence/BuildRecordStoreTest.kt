@@ -124,6 +124,59 @@ class BuildRecordStoreTest {
     }
 
     @Test
+    fun `readEvents returns appended lines across incremental reads`(@TempDir projectDir: File) {
+        val buildId = "incremental-events"
+        store.launcherArguments(projectDir, buildId, listOf(":app:test"))
+        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        val eventsFile = File(recordDir, McpBuildRecordPaths.EVENTS_FILE)
+
+        store.readEvents(recordDir).size shouldBe 1
+
+        eventsFile.appendText(
+            """{"ts":"2026-06-14T10:00:02Z","type":"TASK_SUCCESS","displayName":":app:test"}""" + "\n",
+            StandardCharsets.UTF_8,
+        )
+        val grown = store.readEvents(recordDir)
+        grown.size shouldBe 2
+        grown.last().eventType shouldBe ProgressEventTypes.TASK_SUCCESS
+
+        // A torn tail (no trailing newline yet) still surfaces in results while
+        // remaining unconsumed so its completed form is parsed on the next read.
+        eventsFile.appendText(
+            """{"ts":"2026-06-14T10:00:03Z","type":"BUILD_FINISHED","status":"success"}""",
+            StandardCharsets.UTF_8,
+        )
+        val withTail = store.readEvents(recordDir)
+        withTail.size shouldBe 3
+        withTail.last().eventType shouldBe ProgressEventTypes.BUILD_FINISHED
+        store.readEvents(recordDir).size shouldBe 3
+    }
+
+    @Test
+    fun `readEvents re-reads a replaced events file`(@TempDir projectDir: File) {
+        val buildId = "replaced-events"
+        store.launcherArguments(projectDir, buildId, listOf(":app:test"))
+        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        val eventsFile = File(recordDir, McpBuildRecordPaths.EVENTS_FILE)
+
+        store.readEvents(recordDir).size shouldBe 1
+
+        // Replacing the file wholesale (not appending) must not reuse the
+        // committed prefix from the previous inode.
+        eventsFile.writeText(
+            """{"ts":"2026-06-14T10:00:02Z","type":"TASK_FAIL","displayName":":app:test"}""" + "\n" +
+                """{"ts":"2026-06-14T10:00:03Z","type":"BUILD_FINISHED","status":"failed"}""" + "\n",
+            StandardCharsets.UTF_8,
+        )
+        val events = store.readEvents(recordDir)
+        events.size shouldBe 2
+        events.map { it.eventType } shouldBe listOf(
+            ProgressEventTypes.TASK_FAIL,
+            ProgressEventTypes.BUILD_FINISHED,
+        )
+    }
+
+    @Test
     fun `readMcpResult reconstructs method selection from persisted flat fields`(@TempDir projectDir: File) {
         val record = succeededBuildRecord(projectDir, "method-selection-build").copy(
             kind = BuildKind.TESTS,
