@@ -42,11 +42,14 @@ class BuildExecutionManager(
         notifier: McpBuildNotifier?,
         queueIfBusy: Boolean = false,
     ): Map<String, Any?> {
-        connectionManager.requireConnection(request.projectDirectory)
-
         val projectDirectory = request.projectDirectory
 
         ProjectLifecycleLock.withProjectLock(projectDirectory) {
+            // The connection check runs under the project lock because
+            // disconnect takes the same lock: a build enqueued between an
+            // outside-the-lock check and enqueue would be stranded after
+            // disconnect cancels the existing queue.
+            connectionManager.requireConnection(projectDirectory)
             if (!registry.hasRunningBuild(projectDirectory) && !registry.hasQueuedBuild(projectDirectory)) {
                 val start = newBuildStart(request, notifier, queued = false)
                 return startImmediately(start, request, projectDirectory)
@@ -67,8 +70,6 @@ class BuildExecutionManager(
         notifier: McpBuildNotifier?,
         foregroundDetachTimeoutMs: Long = DEFAULT_FOREGROUND_DETACH_TIMEOUT_MS,
     ): Map<String, Any?> {
-        connectionManager.requireConnection(request.projectDirectory)
-
         val start = newBuildStart(request, notifier)
         val buildId = registerBuildStart(start)
         val completion = CountDownLatch(1)
@@ -321,6 +322,10 @@ class BuildExecutionManager(
 
     private fun registerImmediateBuildStart(start: BuildStart, projectDirectory: File): String {
         ProjectLifecycleLock.withProjectLock(projectDirectory) {
+            // Under the project lock for the same reason as startBackground:
+            // a disconnect must not interleave between this check and record
+            // registration.
+            connectionManager.requireConnection(projectDirectory)
             if (registry.hasActiveBuild(projectDirectory)) {
                 throw buildAlreadyRunningForProjectException(projectDirectory)
             }
