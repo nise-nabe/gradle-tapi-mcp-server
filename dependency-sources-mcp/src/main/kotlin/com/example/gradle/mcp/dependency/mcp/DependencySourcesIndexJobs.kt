@@ -20,7 +20,7 @@ class DependencySourcesIndexJobs(
     private val foregroundDetachTimeoutMs: Long = DEFAULT_FOREGROUND_DETACH_TIMEOUT_MS,
 ) {
     private val jobs = ConcurrentHashMap<String, IndexJob>()
-    private val activeByProject = ConcurrentHashMap<String, String>()
+    private val activeByProject = ConcurrentHashMap<String, IndexJob>()
     private val executor =
         Executors.newCachedThreadPool { runnable ->
             Thread(runnable, "dependency-sources-index").apply { isDaemon = true }
@@ -41,12 +41,11 @@ class DependencySourcesIndexJobs(
                 tokenMode = tokenMode,
                 projectPath = projectPath,
             )
-        val previous = activeByProject.putIfAbsent(projectKey, indexId)
+        val previous = activeByProject.putIfAbsent(projectKey, job)
         if (previous != null) {
-            val active = jobs[previous]
             throw DependencySourcesIndexingConflictException(
                 "Dependency-sources indexing already running for ${projectDirectory.path} " +
-                    "(indexId=$previous, status=${active?.status() ?: "unknown"}). " +
+                    "(indexId=${previous.indexId}, status=${previous.status()}). " +
                     "Poll gradle_get_dependency_sources_index_status or wait for completion.",
             )
         }
@@ -60,12 +59,12 @@ class DependencySourcesIndexJobs(
                 } catch (error: Throwable) {
                     job.markFailed(error)
                 } finally {
-                    activeByProject.remove(projectKey, indexId)
+                    activeByProject.remove(projectKey, job)
                     pruneFinished()
                 }
             }
         } catch (error: RejectedExecutionException) {
-            activeByProject.remove(projectKey, indexId)
+            activeByProject.remove(projectKey, job)
             jobs.remove(indexId)
             throw IllegalStateException(
                 "Unable to schedule dependency-sources indexing: ${error.message}",
