@@ -11,9 +11,18 @@ import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.gradle.tooling.ProjectConnection
+import org.gradle.tooling.model.DomainObjectSet
+import org.gradle.tooling.model.GradleModuleVersion
+import org.gradle.tooling.model.GradleProject
+import org.gradle.tooling.model.idea.IdeaDependency
+import org.gradle.tooling.model.idea.IdeaModule
+import org.gradle.tooling.model.idea.IdeaProject
+import org.gradle.tooling.model.idea.IdeaSingleEntryLibraryDependency
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.lang.reflect.InvocationHandler
+import java.lang.reflect.Proxy
 import java.util.concurrent.atomic.AtomicBoolean
 
 class DependencySourcesFacadeTest {
@@ -670,6 +679,85 @@ class DependencySourcesFacadeTest {
         (read["snippet"] as String) shouldContain "fun target"
         read["sourceRoot"] shouldBe sources.absolutePath
     }
+
+    @Test
+    fun `idea keep-set walks the model after the project lock is released`() {
+        val sources = File(tempDir, "idea-src").apply { mkdirs() }
+        File(sources, "Lib.kt").writeText("class Lib\n")
+        val project = File(tempDir, "proj-idea").apply { mkdirs() }
+        val lockHeld = AtomicBoolean(false)
+        val modulesReadUnderLock = AtomicBoolean(true)
+
+        val moduleVersion = toolingProxy(GradleModuleVersion::class.java) { name ->
+            mapOf("getGroup" to "g", "getName" to "n", "getVersion" to "1")[name]
+        }
+        val dependency = toolingProxy(IdeaSingleEntryLibraryDependency::class.java) { name ->
+            when (name) {
+                "getSource" -> sources
+                "getGradleModuleVersion" -> moduleVersion
+                else -> null
+            }
+        }
+        val dependencies = toolingProxy(DomainObjectSet::class.java) { name ->
+            if (name == "iterator") listOf<IdeaDependency>(dependency).iterator() else null
+        }
+        val gradleProject = toolingProxy(GradleProject::class.java) { name ->
+            if (name == "getPath") ":app" else null
+        }
+        val module = toolingProxy(IdeaModule::class.java) { name ->
+            when (name) {
+                "getGradleProject" -> gradleProject
+                "getDependencies" -> dependencies
+                else -> null
+            }
+        }
+        val modules = toolingProxy(DomainObjectSet::class.java) { name ->
+            if (name == "iterator") listOf(module).iterator() else null
+        }
+        val ideaProject = toolingProxy(IdeaProject::class.java) { name ->
+            if (name == "getModules") {
+                modulesReadUnderLock.set(lockHeld.get())
+                modules
+            } else {
+                null
+            }
+        }
+        val connection = toolingProxy(ProjectConnection::class.java) { name ->
+            if (name == "getModel") ideaProject else null
+        }
+        val access = object : DependencySourcesGradleAccess {
+            override fun resolveProjectDirectory(args: Map<String, Any>): File = project
+
+            override fun <T> withConnection(projectDirectory: File, block: (ProjectConnection) -> T): T =
+                block(connection)
+
+            override fun <T> withNoActiveBuild(projectDirectory: File, block: () -> T): T {
+                lockHeld.set(true)
+                try {
+                    return block()
+                } finally {
+                    lockHeld.set(false)
+                }
+            }
+        }
+
+        val indexed = DependencySourcesFacade().index(
+            mapOf("projectPath" to ":app"),
+            access,
+        )
+
+        modulesReadUnderLock.get() shouldBe false
+        indexed["keepSetMode"] shouldBe "idea::app"
+        indexed["memberCount"] shouldBe 1
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> toolingProxy(iface: Class<T>, handler: (methodName: String) -> Any?): T =
+        Proxy.newProxyInstance(
+            iface.classLoader,
+            arrayOf(iface),
+            InvocationHandler { _, method, _ -> handler(method.name) },
+        ) as T
 
     private fun multilineDemoSource(): String =
         """

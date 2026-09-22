@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.dependency
 
 import org.gradle.tooling.ProjectConnection
+import org.gradle.tooling.model.idea.IdeaProject
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -95,6 +96,22 @@ class DependencyIndexStore : AutoCloseable {
             sourcesJarFetcher = fetcher,
         )
     }
+
+    /**
+     * Idea keep-set variant taking an already-fetched [IdeaProject] so the
+     * caller can bound how long the project lifecycle lock is held — the
+     * Tooling API model fetch serializes against builds sharing the
+     * connection, but member extraction is pure work on the detached model.
+     */
+    fun resolveKeepSet(
+        request: IndexRequest,
+        ideaProject: IdeaProject,
+    ): ResolvedKeepSet =
+        DependencyKeepSetResolver.resolveFromIdeaModel(
+            idea = ideaProject,
+            projectPath = request.projectPath,
+            downloadSources = request.downloadSources,
+        )
 
     fun index(
         request: IndexRequest,
