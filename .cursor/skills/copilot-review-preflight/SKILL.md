@@ -49,7 +49,7 @@ Use as a final pass before requesting review on `nise-nabe/gradle-tapi-mcp-serve
 - [ ] `dependencyResolutionManagement` with `FAIL_ON_PROJECT_REPOS` preserved
 - [ ] JVM Test Suites for tests; Configuration Cache compatibility maintained
 
-### Agent docs and release sync (`.cursor/`, `plugins/`, `skills/`, `AGENTS.md`, `README.md`)
+### Agent docs and release sync (`.cursor/`, `plugins/`, `skills/`, `AGENTS.md`, `README.md`, `docs/`)
 
 - [ ] Version bump PR includes marketplace `metadata.version` / plugin `version` (Cursor + Copilot catalogs) and plugin.json files
 - [ ] `install.sh` / `server-release.json` version + SHA-256 match the published GitHub Release asset (SHA PR after `gh release create`, not the bump PR)

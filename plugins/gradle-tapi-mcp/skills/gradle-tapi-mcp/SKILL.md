@@ -110,7 +110,7 @@ MCP の結果で brief を作るときは、ファイルから得た **宣言** 
 
 依存ソース検索: 先に `gradle_index_dependency_sources`、続けて `gradle_search_dependency_sources` または `gradle_search_dependency_sources_multi`、必要なら `gradle_read_dependency_source`。索引は `.gradle/mcp-dependency-sources/<tokenMode>/`（`manifest.json` / `formatVersion`）。mode 不一致時は暗黙 reindex しない。大規模リポジトリでは `background: true` + `gradle_get_dependency_sources_index_status`、または `projectPath` / `artifacts[]` / `sourcePaths[]`、初回は `tokenMode: idents` を優先。`artifacts[]` でローカルに無い `*-sources.jar` は `downloadSources: true` で取得（既定 Maven Central。社内ミラーは `sourcesRepositories` に Maven レイアウトの base URL のみを渡し Central は試さない。`user:token@` で Basic 認証可）。検索は単純名の exact match のみ（FQN / プレフィックス / ワイルドカード不可）。
 
-エンドユーザー向けの正規ワークフロー（JSON 例付き）はリポジトリ [README.md](../../../../README.md) の **Dependency sources name locate**。詳細な引数は [reference.md](reference.md)。
+エンドユーザー向けの正規ワークフロー（JSON 例付き）はリポジトリ [docs/dependency-sources.md](../../../../docs/dependency-sources.md)。詳細な引数は [reference.md](reference.md)。
 
 ## MCP resources（任意）
 

@@ -69,7 +69,7 @@ Do not use the `gradle` MCP server to compile the server you are editing (see `g
 When bumping the server version, put these in the **version bump PR** (same commit as `build.gradle.kts`):
 
 - `build.gradle.kts` `version`
-- `README.md` JAR path examples
+- `README.md` and `docs/configuration.md` JAR path examples
 - Marketplace catalogs: `.cursor-plugin/marketplace.json` and `.github/plugin/marketplace.json` (`metadata.version` + plugin `version`); `.agents/plugins/marketplace.json` (plugin `version` only)
 - Plugin manifests: `plugins/gradle-tapi-mcp/plugin.json`, `plugins/gradle-tapi-mcp/.cursor-plugin/plugin.json`, `plugins/gradle-tapi-mcp/.codex-plugin/plugin.json`
 - `AGENTS.md` JAR path examples (`build/libs/gradle-tapi-mcp-server-X.Y.Z.jar`)

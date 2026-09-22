@@ -42,7 +42,7 @@ checklist items verifiable by Grep / targeted `Read` on changed paths.
 |--------------|-------------------|
 | `src/main/**`, `src/test/**` | MCP server implementation |
 | `build.gradle.kts`, `gradle/**`, `settings.gradle.kts` | Build / version catalog |
-| `.cursor/`, `skills/`, `AGENTS.md`, `README.md` | Agent docs and release sync |
+| `.cursor/`, `skills/`, `AGENTS.md`, `README.md`, `docs/` | Agent docs and release sync |
 
 Output a **findings table** (id, source, path, priority, action). Sources: `deterministic` only.
 
