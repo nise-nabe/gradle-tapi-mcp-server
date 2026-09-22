@@ -4,8 +4,10 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
 import java.io.FilterInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.nio.file.Files
+import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
 
 object IndexFormat {
@@ -470,29 +472,48 @@ object KeepSetFingerprint {
     }
 
     private fun appendFileFingerprint(digest: MessageDigest, file: File) {
-        if (!file.exists()) {
-            digest.update("missing".toByteArray(Charsets.UTF_8))
-            return
-        }
-        if (file.isFile) {
+        val attrs =
+            try {
+                Files.readAttributes(file.toPath(), BasicFileAttributes::class.java)
+            } catch (error: IOException) {
+                digest.update("missing".toByteArray(Charsets.UTF_8))
+                return
+            }
+        if (attrs.isRegularFile) {
             digest.update(file.absolutePath.toByteArray(Charsets.UTF_8))
             digest.update(0)
-            digest.update(file.length().toString().toByteArray(Charsets.UTF_8))
+            digest.update(attrs.size().toString().toByteArray(Charsets.UTF_8))
             digest.update(0)
-            digest.update(file.lastModified().toString().toByteArray(Charsets.UTF_8))
+            digest.update(attrs.lastModifiedTime().toMillis().toString().toByteArray(Charsets.UTF_8))
             return
         }
         digest.update(file.absolutePath.toByteArray(Charsets.UTF_8))
         digest.update(0)
         file.walkTopDown()
-            .filter { it.isFile && SourcesJarCorpus.isSourceFile(it.name) }
-            .sortedBy { it.absolutePath }
-            .forEach { child ->
+            .mapNotNull { child ->
+                val childAttrs =
+                    try {
+                        Files.readAttributes(child.toPath(), BasicFileAttributes::class.java)
+                    } catch (error: IOException) {
+                        null
+                    }
+                if (childAttrs != null && childAttrs.isRegularFile &&
+                    SourcesJarCorpus.isSourceFile(child.name)
+                ) {
+                    child to childAttrs
+                } else {
+                    null
+                }
+            }
+            .sortedBy { it.first.absolutePath }
+            .forEach { (child, childAttrs) ->
                 digest.update(child.absolutePath.toByteArray(Charsets.UTF_8))
                 digest.update(0)
-                digest.update(child.length().toString().toByteArray(Charsets.UTF_8))
+                digest.update(childAttrs.size().toString().toByteArray(Charsets.UTF_8))
                 digest.update(0)
-                digest.update(child.lastModified().toString().toByteArray(Charsets.UTF_8))
+                digest.update(
+                    childAttrs.lastModifiedTime().toMillis().toString().toByteArray(Charsets.UTF_8),
+                )
                 digest.update(0)
             }
     }
