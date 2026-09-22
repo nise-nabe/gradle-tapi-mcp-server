@@ -904,7 +904,11 @@ class NameLocateIndexTest {
         File(staleTmp, "leftover.bin").writeText("x")
         val staleOld = File(tempDir, "idx-sweep.old-222").apply { mkdirs() }
         File(staleOld, "leftover.bin").writeText("x")
-        val backdated = System.currentTimeMillis() - 60_000
+        // An in-flight writer in another process keeps a fresh mtime; only
+        // directories idle beyond the stale age are swept.
+        val inflightTmp = File(tempDir, "idx-sweep.tmp-333").apply { mkdirs() }
+        File(inflightTmp, "partial.bin").writeText("x")
+        val backdated = System.currentTimeMillis() - NameLocateIndex.STALE_SIBLING_AGE_MS - 60_000
         staleTmp.setLastModified(backdated) shouldBe true
         staleOld.setLastModified(backdated) shouldBe true
 
@@ -912,6 +916,7 @@ class NameLocateIndexTest {
 
         staleTmp.exists() shouldBe false
         staleOld.exists() shouldBe false
+        inflightTmp.exists() shouldBe true
         indexDir.exists() shouldBe true
         NameLocateIndex.tryLoad(indexDir, fingerprint, TokenMode.ALL).trackForClose().shouldNotBeNull()
     }
