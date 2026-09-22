@@ -469,6 +469,25 @@ internal class BuildRunner(
     }
 
     companion object {
-        internal val MAX_CONCURRENT_BUILDS = maxOf(4, Runtime.getRuntime().availableProcessors())
+        /**
+         * Shared executor parallelism. Each running build drives a Gradle daemon
+         * with its own compilation and I/O load, so the pool does not scale with
+         * host core count. `GRADLE_TAPI_MAX_CONCURRENT_BUILDS` overrides the
+         * default for hosts that can sustain more parallel builds.
+         */
+        internal val MAX_CONCURRENT_BUILDS: Int = resolveMaxConcurrentBuilds()
+
+        private const val MIN_CONCURRENT_BUILDS = 4
+        private const val DEFAULT_MAX_CONCURRENT_BUILDS = 8
+        private const val MAX_CONCURRENT_BUILDS_ENV = "GRADLE_TAPI_MAX_CONCURRENT_BUILDS"
+
+        private fun resolveMaxConcurrentBuilds(): Int {
+            val override = System.getenv(MAX_CONCURRENT_BUILDS_ENV)?.trim()?.toIntOrNull()
+            if (override != null && override > 0) {
+                return override
+            }
+            return Runtime.getRuntime().availableProcessors()
+                .coerceIn(MIN_CONCURRENT_BUILDS, DEFAULT_MAX_CONCURRENT_BUILDS)
+        }
     }
 }
