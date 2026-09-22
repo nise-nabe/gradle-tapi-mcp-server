@@ -237,17 +237,21 @@ object GapEliasDeltaCodec {
 }
 
 private class BitWriter {
-    private val bytes = ArrayList<Byte>()
+    private var bytes = ByteArray(256)
+    private var size = 0
     private var bit = 0
 
     fun writeBit(value: Boolean) {
-        if (bit == 0) bytes.add(0)
-        if (value) {
-            val last = bytes.size - 1
-            bytes[last] = ((bytes[last].toInt() and 0xFF) or (1 shl (7 - bit))).toByte()
+        if (bit == 0) {
+            if (size == bytes.size) {
+                bytes = bytes.copyOf(bytes.size * 2)
+            }
+            bytes[size++] = 0
         }
-        bit += 1
-        if (bit == 8) bit = 0
+        if (value) {
+            bytes[size - 1] = (bytes[size - 1].toInt() or (1 shl (7 - bit))).toByte()
+        }
+        bit = (bit + 1) and 7
     }
 
     fun writeBits(value: Long, nbits: Int) {
@@ -268,7 +272,7 @@ private class BitWriter {
         }
     }
 
-    fun finish(): ByteArray = bytes.toByteArray()
+    fun finish(): ByteArray = bytes.copyOf(size)
 }
 
 private class BitReader private constructor(
