@@ -203,16 +203,7 @@ class DependencyIndexStore : AutoCloseable {
                         "Call gradle_index_dependency_sources first.",
                 )
             val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode, request.indexDir)
-            when (val limit = request.limit) {
-                null -> {
-                    val hits = enrichHits(indexDir, index.locate(request.query, limit = null))
-                    SearchResult(
-                        hits = hits,
-                        stats = index.stats(indexDir, cacheHit = true),
-                        hitCount = hits.size,
-                        hitsTruncated = false,
-                    )
-                }
+            when (val limit = request.limit ?: DEFAULT_SEARCH_HIT_LIMIT) {
                 0 -> {
                     index.locate(request.query, limit = 0)
                     SearchResult(
@@ -258,16 +249,7 @@ class DependencyIndexStore : AutoCloseable {
                         "Call gradle_index_dependency_sources first.",
                 )
             val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode, request.indexDir)
-            when (val limit = request.limit) {
-                null -> {
-                    val hits = enrichHits(indexDir, index.searchMulti(request.queries, limit = null, perQueryLimit = request.perQueryLimit))
-                    SearchMultiResult(
-                        hits = hits,
-                        stats = index.stats(indexDir, cacheHit = true),
-                        hitCount = hits.size,
-                        hitsTruncated = perQueryHitsTruncated(index, request.queries, request.perQueryLimit),
-                    )
-                }
+            when (val limit = request.limit ?: DEFAULT_SEARCH_HIT_LIMIT) {
                 0 -> {
                     for (query in request.queries.distinct()) {
                         index.locate(query, limit = 0)
@@ -384,4 +366,12 @@ class DependencyIndexStore : AutoCloseable {
 private fun cacheKey(projectDirectory: File, tokenMode: TokenMode, indexDir: File): String =
         projectDirectory.canonicalFile.absolutePath + "|" + tokenMode.wireName() + "|" +
             indexDir.canonicalFile.absolutePath
+
+    companion object {
+        /**
+         * Server-side hit cap applied when `limit` is omitted so broad queries
+         * cannot produce unbounded responses. `Int.MAX_VALUE` opts out.
+         */
+        const val DEFAULT_SEARCH_HIT_LIMIT: Int = 500
+    }
 }

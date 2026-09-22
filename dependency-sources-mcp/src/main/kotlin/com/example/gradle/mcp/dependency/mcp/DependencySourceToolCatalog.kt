@@ -99,7 +99,7 @@ object DependencySourceToolCatalog {
                 "projectDirectory" to stringProperty("Project root; omit for default/GRADLE_PROJECT_DIR."),
                 "query" to stringProperty("Exact simple-name to locate"),
                 "tokenMode" to stringProperty("Must match an index (all|idents). Prefer all."),
-                "limit" to nullableIntegerProperty("Max hits; omit/null=unlimited, 0=empty."),
+                "limit" to nullableIntegerProperty("Max hits; default 500, 0=empty, max int=unlimited."),
                 "indexDir" to stringProperty("Override dir (reads <dir>/<tokenMode>/)."),
             ),
             required = listOf("query"),
@@ -115,7 +115,9 @@ object DependencySourceToolCatalog {
                     itemMinLength = 1,
                 ),
                 "tokenMode" to stringProperty("Must match an index (all|idents). Prefer all."),
-                "limit" to nullableIntegerProperty("Overall max after merge/sort; omit/null=unlimited, 0=empty."),
+                "limit" to nullableIntegerProperty(
+                    "Overall max after merge/sort; default 500, 0=empty, max int=unlimited.",
+                ),
                 "perQueryLimit" to nullableIntegerProperty(
                     "Per-query cap; omit/null=unlimited, 0=empty. Alias: per_query_limit.",
                 ),

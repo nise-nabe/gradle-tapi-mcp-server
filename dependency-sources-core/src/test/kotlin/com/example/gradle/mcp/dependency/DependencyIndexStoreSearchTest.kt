@@ -51,6 +51,48 @@ class DependencyIndexStoreSearchTest {
     }
 
     @Test
+    fun `omitted limit applies the server-side default cap`() {
+        val sources = File(tempDir, "src-default-cap").apply { mkdirs() }
+        val occurrences = DependencyIndexStore.DEFAULT_SEARCH_HIT_LIMIT + 50
+        File(sources, "A.kt").writeText(
+            "fun Foo() {}\n" +
+                (1..occurrences).joinToString("\n") { "val v$it = Foo()" } + "\n",
+        )
+        val project = File(tempDir, "proj-default-cap").apply { mkdirs() }
+        val store = DependencyIndexStore()
+        store.index(
+            IndexRequest(
+                projectDirectory = project,
+                tokenMode = TokenMode.IDENTS,
+                sourcePaths = listOf(SourcePathRef(path = sources)),
+            ),
+            connection = null,
+        )
+
+        // "Foo" matches the declaration plus every `Foo()` call site.
+        val unlimited = store.search(
+            SearchRequest(
+                projectDirectory = project,
+                query = "Foo",
+                tokenMode = TokenMode.IDENTS,
+                limit = Int.MAX_VALUE,
+            ),
+        )
+        unlimited.hitCount shouldBe occurrences + 1
+        unlimited.hitsTruncated shouldBe false
+
+        val capped = store.search(
+            SearchRequest(
+                projectDirectory = project,
+                query = "Foo",
+                tokenMode = TokenMode.IDENTS,
+            ),
+        )
+        capped.hitCount shouldBe DependencyIndexStore.DEFAULT_SEARCH_HIT_LIMIT
+        capped.hitsTruncated shouldBe true
+    }
+
+    @Test
     fun `Int MAX_VALUE limit does not overflow probe and still returns hits`() {
         val sources = File(tempDir, "src-max").apply { mkdirs() }
         File(sources, "A.kt").writeText("fun Foo() {}\n")
