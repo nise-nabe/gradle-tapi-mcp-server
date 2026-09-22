@@ -175,7 +175,7 @@ class NameLocateIndex private constructor(
 
     fun writeTo(directory: File) {
         directory.parentFile?.mkdirs()
-        sweepStaleSiblingDirs(directory, olderThanMs = System.currentTimeMillis())
+        sweepStaleSiblingDirs(directory)
         val tmp = File(directory.parentFile, "${directory.name}.tmp-${System.nanoTime()}")
         tmp.mkdirs()
         try {
@@ -221,18 +221,21 @@ class NameLocateIndex private constructor(
 
     /**
      * Best-effort cleanup of `.tmp-*` / `.old-*` sibling directories left behind by
-     * crashed writes or backups that could not be deleted. Only entries last
-     * modified before this call are removed so in-flight writers are not disturbed.
+     * crashed writes or backups that could not be deleted. Only entries idle for at
+     * least [STALE_SIBLING_AGE_MS] are removed; a concurrent writer in another
+     * process keeps its directory's mtime recent while creating files, so the
+     * grace period prevents deleting an in-flight write.
      */
-    private fun sweepStaleSiblingDirs(directory: File, olderThanMs: Long) {
+    private fun sweepStaleSiblingDirs(directory: File) {
         val parent = directory.parentFile ?: return
+        val staleBefore = System.currentTimeMillis() - STALE_SIBLING_AGE_MS
         val tmpPrefix = "${directory.name}.tmp-"
         val oldPrefix = "${directory.name}.old-"
         parent.listFiles()
             ?.filter {
                 it.isDirectory &&
                     (it.name.startsWith(tmpPrefix) || it.name.startsWith(oldPrefix)) &&
-                    it.lastModified() < olderThanMs
+                    it.lastModified() < staleBefore
             }
             ?.forEach { it.deleteRecursively() }
     }
@@ -283,6 +286,9 @@ class NameLocateIndex private constructor(
         const val DICTIONARY_NAME: String = "dictionary.bin"
         const val DOCUMENTS_NAME: String = "documents.bin"
         const val POSTINGS_NAME: String = "postings.bin"
+
+        /** Minimum idle time before a `.tmp-*` / `.old-*` sibling is swept. */
+        internal const val STALE_SIBLING_AGE_MS: Long = 10 * 60 * 1000L
 
         fun build(
             members: List<KeepSetMember>,
