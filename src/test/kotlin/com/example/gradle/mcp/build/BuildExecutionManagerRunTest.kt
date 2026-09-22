@@ -889,4 +889,36 @@ class BuildExecutionManagerRunTest {
         // The final notification sends progress == total; it must fire once.
         progressCalls.count { it.first == it.second } shouldBe 1
     }
+
+    @Test
+    fun `error during build run finalizes the record instead of leaving it running`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            com.example.gradle.mcp.support.throwingOnRunProjectConnection(AssertionError("simulated error")),
+        )
+        val runner = BuildRunner(
+            connectionManager,
+            BuildRegistry(),
+            com.example.gradle.mcp.build.persistence.BuildRecordStore(),
+        )
+        val record = testBuildRecord(
+            id = "error-build",
+            tracker = runningTracker(),
+            projectDirectory = testProjectDirectory.absolutePath,
+        )
+
+        shouldThrow<AssertionError> {
+            runner.runBuild(
+                record,
+                BuildRunRequest(
+                    projectDirectory = testProjectDirectory,
+                    kind = BuildKind.TASKS,
+                    tasks = listOf("build"),
+                ),
+                BuildProgressNotifier(null),
+            )
+        }
+
+        record.progressTracker.snapshot().status shouldBe BuildProgressTracker.STATUS_FAILED
+    }
 }

@@ -57,6 +57,19 @@ internal class BuildRunner(
             if (finalizeBuild(record, terminalOutcomeFor(exception, record))) {
                 notifier.notifyFinal(record.progressTracker)
             }
+        } catch (throwable: Throwable) {
+            // Errors bypass the inner Exception catch; finalize so the
+            // record does not stay RUNNING, then rethrow.
+            if (finalizeBuild(
+                    record,
+                    BuildTerminalOutcome.Failed(
+                        BuildFailureClassifier.unwrapBuildFailureMessage(throwable),
+                    ),
+                )
+            ) {
+                notifier.notifyFinal(record.progressTracker)
+            }
+            throw throwable
         } finally {
             registry.pruneCompletedBuilds()
         }
