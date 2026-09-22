@@ -50,8 +50,13 @@ internal class BuildRunner(
                 runBuild(record, request, connection, record.streams, record.progressTracker, notifier)
             }
         } catch (exception: Exception) {
-            finalizeBuild(record, terminalOutcomeFor(exception, record))
-            notifier.notifyFinal(record.progressTracker)
+            // The inner catch already finalized and notified on a build
+            // failure; only notify when this catch is the one that
+            // transitioned the record to a terminal state (e.g. a borrow
+            // failure before the inner runBuild started).
+            if (finalizeBuild(record, terminalOutcomeFor(exception, record))) {
+                notifier.notifyFinal(record.progressTracker)
+            }
         } finally {
             registry.pruneCompletedBuilds()
         }
