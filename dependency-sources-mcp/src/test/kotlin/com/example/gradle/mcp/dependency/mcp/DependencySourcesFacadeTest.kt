@@ -24,6 +24,7 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 
 class DependencySourcesFacadeTest {
@@ -998,6 +999,45 @@ class DependencySourcesFacadeTest {
             Thread.sleep(20)
         }
         jobs.statusResponse(first.indexId)["status"] shouldBe "succeeded"
+    }
+
+    @Test
+    fun `conflict reports the active job status rather than unknown`() {
+        val project = File(tempDir, "proj-conflict-status").apply { mkdirs() }
+        val jobs = DependencySourcesIndexJobs(foregroundDetachTimeoutMs = 5_000)
+        val release = CountDownLatch(1)
+        val first =
+            jobs.start(
+                projectDirectory = project,
+                tokenMode = "idents",
+                projectPath = null,
+            ) {
+                release.await()
+                mapOf("docCount" to 1)
+            }
+        try {
+            val deadline = System.currentTimeMillis() + 10_000
+            while (first.status() != "running" && System.currentTimeMillis() < deadline) {
+                Thread.sleep(10)
+            }
+            first.status() shouldBe "running"
+
+            val error =
+                shouldThrow<DependencySourcesIndexingConflictException> {
+                    jobs.start(
+                        projectDirectory = project,
+                        tokenMode = "idents",
+                        projectPath = null,
+                    ) {
+                        mapOf("docCount" to 2)
+                    }
+                }
+            error.message shouldContain first.indexId
+            error.message shouldContain "status=running"
+        } finally {
+            release.countDown()
+        }
+        first.await(10_000) shouldBe true
     }
 
     @Test
