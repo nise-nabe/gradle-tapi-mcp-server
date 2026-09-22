@@ -23,25 +23,27 @@ object SourcesJarCorpus {
         return ext in sourceExtensions
     }
 
-    fun load(member: KeepSetMember): List<SourceDocument> {
+    fun load(member: KeepSetMember): List<SourceDocument> =
+        buildList { forEachDocument(member, ::add) }
+
+    fun forEachDocument(member: KeepSetMember, consume: (SourceDocument) -> Unit) {
         val root = member.sourceRoot
-        return when {
-            root.isDirectory -> SourceTreeCorpus.load(member)
-            root.isFile && (root.extensionEquals("jar") || root.extensionEquals("zip")) -> loadZip(member)
+        when {
+            root.isDirectory -> SourceTreeCorpus.forEachDocument(member, consume)
+            root.isFile && (root.extensionEquals("jar") || root.extensionEquals("zip")) ->
+                forEachZipEntry(member, consume)
             root.isFile && isSourceFile(root.name) ->
-                listOf(
+                consume(
                     SourceDocument(
                         gav = member.gav,
                         path = root.name,
                         text = root.readText(Charsets.UTF_8),
                     ),
                 )
-            else -> emptyList()
         }
     }
 
-    private fun loadZip(member: KeepSetMember): List<SourceDocument> {
-        val docs = ArrayList<SourceDocument>()
+    private fun forEachZipEntry(member: KeepSetMember, consume: (SourceDocument) -> Unit) {
         ZipFile(member.sourceRoot).use { zip ->
             val entries = zip.entries()
             while (entries.hasMoreElements()) {
@@ -50,7 +52,7 @@ object SourcesJarCorpus {
                     continue
                 }
                 val text = zip.getInputStream(entry).bufferedReader(Charsets.UTF_8).use { it.readText() }
-                docs.add(
+                consume(
                     SourceDocument(
                         gav = member.gav,
                         path = entry.name.trimStart('/'),
@@ -59,7 +61,6 @@ object SourcesJarCorpus {
                 )
             }
         }
-        return docs
     }
 
     private fun File.extensionEquals(ext: String): Boolean =
@@ -67,22 +68,26 @@ object SourcesJarCorpus {
 }
 
 object SourceTreeCorpus {
-    fun load(member: KeepSetMember): List<SourceDocument> {
+    fun load(member: KeepSetMember): List<SourceDocument> =
+        buildList { forEachDocument(member, ::add) }
+
+    fun forEachDocument(member: KeepSetMember, consume: (SourceDocument) -> Unit) {
         val root = member.sourceRoot
         if (!root.isDirectory) {
-            return emptyList()
+            return
         }
         val rootPath = root.toPath()
-        return root.walkTopDown()
+        root.walkTopDown()
             .filter { it.isFile && SourcesJarCorpus.isSourceFile(it.name) }
-            .map { file ->
+            .forEach { file ->
                 val relative = rootPath.relativize(file.toPath()).toString().replace('\\', '/')
-                SourceDocument(
-                    gav = member.gav,
-                    path = relative,
-                    text = file.readText(Charsets.UTF_8),
+                consume(
+                    SourceDocument(
+                        gav = member.gav,
+                        path = relative,
+                        text = file.readText(Charsets.UTF_8),
+                    ),
                 )
             }
-            .toList()
     }
 }
