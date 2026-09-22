@@ -93,23 +93,11 @@ object DependencyKeepSetResolver {
             requireNotNull(connection) {
                 "project connection is required when artifacts/sourcePaths are omitted"
             }
-            val scope = IdeaProjectPathScope.normalizeOrNull(projectPath)
-            val members = resolveFromIdea(connection, scope)
-            if (members.isEmpty()) {
-                val scopeHint = if (scope != null) " for projectPath '$scope'" else ""
-                throw IllegalArgumentException(
-                    "No dependency sources found via IdeaProject$scopeHint. " +
-                        "Download sources, or pass sourcePaths / artifacts" +
-                        (if (downloadSources) " (downloadSources applies only to artifacts[])." else ".") +
-                        (if (scope != null) {
-                            " Check that projectPath matches a Gradle project in the Idea model."
-                        } else {
-                            ""
-                        }),
-                )
-            }
-            val mode = if (scope != null) "idea:$scope" else "idea"
-            return ResolvedKeepSet(mode = mode, members = members)
+            return resolveFromIdeaModel(
+                idea = connection.getModel(IdeaProject::class.java),
+                projectPath = projectPath,
+                downloadSources = downloadSources,
+            )
         }
 
         val members = ArrayList<KeepSetMember>()
@@ -172,12 +160,40 @@ object DependencyKeepSetResolver {
         )
     }
 
-    fun resolveFromIdea(
-        connection: ProjectConnection,
+    /**
+     * Idea keep-set from an already-fetched model. Callers can fetch
+     * [IdeaProject] under the project lifecycle lock and run this pure
+     * extraction outside it so the lock is not held while walking the model.
+     */
+    fun resolveFromIdeaModel(
+        idea: IdeaProject,
+        projectPath: String? = null,
+        downloadSources: Boolean = false,
+    ): ResolvedKeepSet {
+        val scope = IdeaProjectPathScope.normalizeOrNull(projectPath)
+        val members = membersFromIdeaModel(idea, projectPath)
+        if (members.isEmpty()) {
+            val scopeHint = if (scope != null) " for projectPath '$scope'" else ""
+            throw IllegalArgumentException(
+                "No dependency sources found via IdeaProject$scopeHint. " +
+                    "Download sources, or pass sourcePaths / artifacts" +
+                    (if (downloadSources) " (downloadSources applies only to artifacts[])." else ".") +
+                    (if (scope != null) {
+                        " Check that projectPath matches a Gradle project in the Idea model."
+                    } else {
+                        ""
+                    }),
+            )
+        }
+        val mode = if (scope != null) "idea:$scope" else "idea"
+        return ResolvedKeepSet(mode = mode, members = members)
+    }
+
+    private fun membersFromIdeaModel(
+        idea: IdeaProject,
         projectPath: String? = null,
     ): List<KeepSetMember> {
         val scope = IdeaProjectPathScope.normalizeOrNull(projectPath)
-        val idea = connection.getModel(IdeaProject::class.java)
         val members = LinkedHashMap<String, KeepSetMember>()
         var matchedModules = 0
         for (module in idea.modules) {

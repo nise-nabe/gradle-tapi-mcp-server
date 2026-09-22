@@ -22,6 +22,7 @@ import com.example.gradle.mcp.protocol.optionalPositiveInt
 import com.example.gradle.mcp.protocol.optionalString
 import com.example.gradle.mcp.protocol.requiredString
 import com.example.gradle.mcp.protocol.requiredStringList
+import org.gradle.tooling.model.idea.IdeaProject
 import java.io.File
 
 class DependencySourcesFacade(
@@ -121,14 +122,17 @@ class DependencySourcesFacade(
         jobHint: IndexJob? = null,
     ): Map<String, Any?> {
         jobHint?.markPhase("resolving_keep_set")
-        // Hold no-active-build + connection only while resolving the Idea keep-set.
-        // Corpus lex / disk write run unlocked so unrelated builds are not blocked.
+        // The Idea model fetch must serialize with builds sharing the
+        // connection, so it stays under the project lock. Member extraction
+        // walks the detached model and runs unlocked, as do corpus lex /
+        // disk write, so unrelated lifecycle operations are not blocked.
         val keepSet = if (needsConnection) {
-            access.withNoActiveBuild(request.projectDirectory) {
+            val ideaProject = access.withNoActiveBuild(request.projectDirectory) {
                 access.withConnection(request.projectDirectory) { connection ->
-                    store.resolveKeepSet(request, connection)
+                    connection.getModel(IdeaProject::class.java)
                 }
             }
+            store.resolveKeepSet(request, ideaProject)
         } else {
             store.resolveKeepSet(request, connection = null)
         }
