@@ -847,4 +847,46 @@ class BuildExecutionManagerRunTest {
         buildLauncherRunCount.get() shouldBe 0
         buildLauncherCalls.size shouldBe 0
     }
+
+    @Test
+    fun `interrupted build emits exactly one final progress notification`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            com.example.gradle.mcp.support.interruptedOnRunProjectConnection(),
+        )
+        val runner = BuildRunner(
+            connectionManager,
+            BuildRegistry(),
+            com.example.gradle.mcp.build.persistence.BuildRecordStore(),
+        )
+        val record = testBuildRecord(
+            id = "interrupted-build",
+            tracker = runningTracker(),
+            projectDirectory = testProjectDirectory.absolutePath,
+        )
+        val progressCalls = java.util.concurrent.CopyOnWriteArrayList<Pair<Double, Double>>()
+        val notifier = BuildProgressNotifier(
+            object : com.example.gradle.mcp.protocol.McpBuildNotifier {
+                override fun notifyProgress(progress: Double, total: Double, message: String) {
+                    progressCalls += progress to total
+                }
+
+                override fun notifyLog(message: String, level: io.modelcontextprotocol.kotlin.sdk.types.LoggingLevel) = Unit
+            },
+        )
+
+        runner.runBuild(
+            record,
+            BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TASKS,
+                tasks = listOf("build"),
+            ),
+            notifier,
+        )
+
+        record.progressTracker.snapshot().status shouldBe BuildProgressTracker.STATUS_CANCELLED
+        // The final notification sends progress == total; it must fire once.
+        progressCalls.count { it.first == it.second } shouldBe 1
+    }
 }
