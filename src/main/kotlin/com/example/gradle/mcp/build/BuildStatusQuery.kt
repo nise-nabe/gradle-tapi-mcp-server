@@ -95,16 +95,14 @@ internal class BuildStatusQuery(
                 entries[record.id] = listEntryFromRecord(record, diskProjectDirectory)
             }
 
-        val totalAvailable = if (diskProjectDirectory != null) {
-            val diskBuildIds = buildRecordStore.listBuildIds(diskProjectDirectory)
-            entries.size + diskBuildIds.count { it !in entries }
-        } else {
-            entries.size
-        }
+        val diskEntries = diskProjectDirectory
+            ?.let { buildRecordStore.listBuildSortEntries(it) }
+            .orEmpty()
+
+        val totalAvailable = entries.size + diskEntries.count { it.buildId !in entries }
 
         if (diskProjectDirectory != null) {
-            val diskCandidates = buildRecordStore.listBuildSortEntries(diskProjectDirectory)
-                .filter { it.buildId !in entries }
+            val diskCandidates = diskEntries.filter { it.buildId !in entries }
             val topDiskIds = buildList {
                 entries.forEach { (buildId, entry) ->
                     add(buildId to entry.sortInstant().toEpochMilli())
