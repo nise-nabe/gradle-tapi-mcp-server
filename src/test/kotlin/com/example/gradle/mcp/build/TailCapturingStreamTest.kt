@@ -165,4 +165,26 @@ class TailCapturingStreamTest {
         stream.snapshot().text shouldBe "a\n"
         stream.snapshot().totalChars shouldBe 2
     }
+
+    @Test
+    fun `amortized trim past twice the cap keeps the exact code point tail`() {
+        val stream = TailCapturingStream(maxRetainedChars = 6)
+        // 6 code points: fits under 2x cap, no trim yet.
+        stream.appendUtf8("😀😀0123")
+        // 14 code points total > 12: real trim; the dropped region contains
+        // surrogate pairs, exercising the code-point decrement accounting.
+        stream.appendUtf8("456789AB")
+        // Stays under 2x cap after the trim: snapshot caps the view itself.
+        stream.appendUtf8("cd")
+
+        val snapshot = stream.snapshot()
+        snapshot.text shouldBe "89ABcd"
+        snapshot.text shouldNotContain "\uFFFD"
+        snapshot.totalChars shouldBe 18
+    }
+
+    private fun TailCapturingStream.appendUtf8(text: String) {
+        val bytes = text.toByteArray(StandardCharsets.UTF_8)
+        append(bytes, 0, bytes.size)
+    }
 }
