@@ -67,6 +67,12 @@ class DependencyIndexStore : AutoCloseable {
     // evict-and-replace-files section.
     private val cacheLock = ReentrantReadWriteLock()
 
+    /**
+     * Jar entry listings shared across searches so large archives are not
+     * re-enumerated per query; validated by last-modified time inside.
+     */
+    private val jarEntries = IndexSourceRoots.JarEntriesCache()
+
     fun defaultIndexDir(projectDirectory: File, tokenMode: TokenMode): File =
         File(projectDirectory, ".gradle/mcp-dependency-sources/${tokenMode.wireName()}")
 
@@ -196,7 +202,9 @@ class DependencyIndexStore : AutoCloseable {
     fun search(request: SearchRequest): SearchResult {
         require(request.query.isNotBlank()) { "query must not be blank" }
         require(request.limit == null || request.limit >= 0) { "limit must be non-negative" }
-        return cacheLock.readLock().withLock {
+        // Only the index reads need the lock; enriching hits touches the
+        // filesystem (source-roots.tsv + source jars), not mapped buffers.
+        val stage = cacheLock.readLock().withLock {
             val index = loadForSearch(request.projectDirectory, request.tokenMode, request.indexDir)
                 ?: throw IllegalArgumentException(
                     "No dependency-sources index found for this project/tokenMode. " +
@@ -206,11 +214,11 @@ class DependencyIndexStore : AutoCloseable {
             when (val limit = request.limit ?: DEFAULT_SEARCH_HIT_LIMIT) {
                 0 -> {
                     index.locate(request.query, limit = 0)
-                    SearchResult(
+                    SearchStage(
+                        indexDir = indexDir,
                         hits = emptyList(),
                         stats = index.stats(indexDir, cacheHit = true),
-                        hitCount = 0,
-                        hitsTruncated = index.postingCount(request.query) > 0,
+                        truncated = index.postingCount(request.query) > 0,
                     )
                 }
                 else -> {
@@ -223,16 +231,22 @@ class DependencyIndexStore : AutoCloseable {
                             index.locate(request.query, limit = limit + 1)
                         }
                     val truncated = limit < Int.MAX_VALUE && probed.size > limit
-                    val hits = enrichHits(indexDir, if (truncated) probed.take(limit) else probed)
-                    SearchResult(
-                        hits = hits,
+                    SearchStage(
+                        indexDir = indexDir,
+                        hits = if (truncated) probed.take(limit) else probed,
                         stats = index.stats(indexDir, cacheHit = true),
-                        hitCount = hits.size,
-                        hitsTruncated = truncated,
+                        truncated = truncated,
                     )
                 }
             }
         }
+        val hits = enrichHits(stage.indexDir, stage.hits)
+        return SearchResult(
+            hits = hits,
+            stats = stage.stats,
+            hitCount = hits.size,
+            hitsTruncated = stage.truncated,
+        )
     }
 
     fun searchMulti(request: SearchMultiRequest): SearchMultiResult {
@@ -242,7 +256,7 @@ class DependencyIndexStore : AutoCloseable {
         require(request.perQueryLimit == null || request.perQueryLimit >= 0) {
             "perQueryLimit must be non-negative"
         }
-        return cacheLock.readLock().withLock {
+        val stage = cacheLock.readLock().withLock {
             val index = loadForSearch(request.projectDirectory, request.tokenMode, request.indexDir)
                 ?: throw IllegalArgumentException(
                     "No dependency-sources index found for this project/tokenMode. " +
@@ -254,11 +268,11 @@ class DependencyIndexStore : AutoCloseable {
                     for (query in request.queries.distinct()) {
                         index.locate(query, limit = 0)
                     }
-                    SearchMultiResult(
+                    SearchStage(
+                        indexDir = indexDir,
                         hits = emptyList(),
                         stats = index.stats(indexDir, cacheHit = true),
-                        hitCount = 0,
-                        hitsTruncated = request.queries.any { index.postingCount(it) > 0 } ||
+                        truncated = request.queries.any { index.postingCount(it) > 0 } ||
                             perQueryHitsTruncated(index, request.queries, request.perQueryLimit),
                     )
                 }
@@ -278,17 +292,23 @@ class DependencyIndexStore : AutoCloseable {
                             )
                         }
                     val truncated = limit < Int.MAX_VALUE && probed.size > limit
-                    val hits = enrichHits(indexDir, if (truncated) probed.take(limit) else probed)
-                    SearchMultiResult(
-                        hits = hits,
+                    SearchStage(
+                        indexDir = indexDir,
+                        hits = if (truncated) probed.take(limit) else probed,
                         stats = index.stats(indexDir, cacheHit = true),
-                        hitCount = hits.size,
-                        hitsTruncated = truncated ||
+                        truncated = truncated ||
                             perQueryHitsTruncated(index, request.queries, request.perQueryLimit),
                     )
                 }
             }
         }
+        val hits = enrichHits(stage.indexDir, stage.hits)
+        return SearchMultiResult(
+            hits = hits,
+            stats = stage.stats,
+            hitCount = hits.size,
+            hitsTruncated = stage.truncated,
+        )
     }
 
     private fun perQueryHitsTruncated(
@@ -346,17 +366,24 @@ class DependencyIndexStore : AutoCloseable {
             memory.values.forEach { runCatching { it.close() } }
             memory.clear()
         }
+        jarEntries.clear()
     }
 
     
+    private class SearchStage(
+        val indexDir: File,
+        val hits: List<LocateHit>,
+        val stats: IndexStats,
+        val truncated: Boolean,
+    )
+
     private fun enrichHits(indexDir: File, hits: List<LocateHit>): List<LocateHit> {
         if (hits.isEmpty()) return hits
         val roots = IndexSourceRoots.load(indexDir)
         if (roots.isEmpty()) return hits
-        val jarEntriesCache = HashMap<String, Set<String>>()
         return hits.map { hit ->
             if (hit.sourceRoot != null) return@map hit
-            when (val resolved = IndexSourceRoots.resolve(roots, hit.gav, hit.path, jarEntriesCache)) {
+            when (val resolved = IndexSourceRoots.resolve(roots, hit.gav, hit.path, jarEntries)) {
                 is SourceRootResolution.Found -> hit.copy(sourceRoot = resolved.root.absolutePath)
                 SourceRootResolution.Missing, SourceRootResolution.Ambiguous -> hit
             }

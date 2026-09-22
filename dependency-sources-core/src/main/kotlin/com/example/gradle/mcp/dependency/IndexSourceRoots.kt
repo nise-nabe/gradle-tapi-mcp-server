@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.dependency
 
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipFile
 
 /**
@@ -49,16 +50,48 @@ object IndexSourceRoots {
     }
 
     /**
+     * Cross-call cache of jar/zip entry names keyed by absolute path and
+     * validated by last-modified time, so repeated lookups do not re-enumerate
+     * the same archives.
+     */
+    class JarEntriesCache(private val maxEntries: Int = DEFAULT_MAX_ENTRIES) {
+        private val entries = ConcurrentHashMap<String, Pair<Long, Set<String>>>()
+
+        fun entriesFor(jar: File): Set<String> {
+            val path = jar.absolutePath
+            val modified = jar.lastModified()
+            val cached = entries[path]
+            if (cached != null && cached.first == modified) {
+                return cached.second
+            }
+            val loaded = loadJarEntries(jar)
+            if (entries.size >= maxEntries) {
+                entries.clear()
+            }
+            entries[path] = modified to loaded
+            return loaded
+        }
+
+        fun clear() {
+            entries.clear()
+        }
+
+        companion object {
+            const val DEFAULT_MAX_ENTRIES = 512
+        }
+    }
+
+    /**
      * Return a root that contains [path], or null.
      *
-     * [jarEntriesCache] maps absolute jar/zip path → entry names (without leading `/`).
-     * Callers enriching many hits should reuse one cache so each jar is opened once.
+     * [jarEntriesCache] avoids re-opening and re-listing archives across calls;
+     * callers enriching many hits should share one instance.
      */
     fun resolve(
         rootsByGav: Map<String, List<File>>,
         gav: String,
         path: String,
-        jarEntriesCache: MutableMap<String, Set<String>>? = null,
+        jarEntriesCache: JarEntriesCache? = null,
     ): SourceRootResolution {
         val roots = rootsByGav[gav].orEmpty().filter { it.exists() }
         if (roots.isEmpty()) return SourceRootResolution.Missing
@@ -87,18 +120,13 @@ object IndexSourceRoots {
     internal fun containsPath(
         root: File,
         path: String,
-        jarEntriesCache: MutableMap<String, Set<String>>? = null,
+        jarEntriesCache: JarEntriesCache? = null,
     ): Boolean =
         when {
             root.isDirectory -> File(root, path).isFile
             root.isFile && (root.name.endsWith(".jar", ignoreCase = true) ||
                 root.name.endsWith(".zip", ignoreCase = true)) -> {
-                val entries =
-                    if (jarEntriesCache != null) {
-                        jarEntriesCache.getOrPut(root.absolutePath) { loadJarEntries(root) }
-                    } else {
-                        loadJarEntries(root)
-                    }
+                val entries = jarEntriesCache?.entriesFor(root) ?: loadJarEntries(root)
                 path in entries || "/$path" in entries
             }
             root.isFile && SourcesJarCorpus.isSourceFile(root.name) ->
