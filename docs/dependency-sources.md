@@ -41,7 +41,7 @@ When `artifacts[]` jars are missing locally, pass **`downloadSources: true`** to
 
 - Query is an **exact simple name** match only (for example `SpringBootApplication`).
 - Not FQN (`org.springframework.boot.autoconfigure.SpringBootApplication`), not prefix, and not wildcard.
-- `limit` / `perQueryLimit` are query-time only (no `formatVersion` bump): omit or null = unlimited; `0` = empty. `per_query_limit` is an alias for `perQueryLimit`.
+- `limit` / `perQueryLimit` are query-time only (no `formatVersion` bump): omit or null = server-side default cap (500 for `limit`; `hitsTruncated` reports overflow); `0` = empty; `2147483647` (`Int.MAX_VALUE`) = unlimited. `per_query_limit` is an alias for `perQueryLimit`.
 - Single search returns hits in posting order; multi search merges, dedups, sorts by `(gav, path, line, column)`, then applies the overall `limit`.
 
 ## Minimal JSON example
