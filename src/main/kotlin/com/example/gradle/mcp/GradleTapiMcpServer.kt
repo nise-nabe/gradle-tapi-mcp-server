@@ -21,12 +21,14 @@ import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
+import kotlinx.coroutines.CompletableJob
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.asSink
 import kotlinx.io.buffered
 import kotlin.time.Duration.Companion.minutes
@@ -129,10 +131,22 @@ private fun serveStdio(
             Thread.currentThread().interrupt()
         } finally {
             shutdown()
-            done.join()
+            awaitSessionClose(done, SESSION_CLOSE_TIMEOUT_MS)
         }
     }
 }
+
+/**
+ * Waits for the session's onClose callback so transport teardown can finish,
+ * bounded so a session that never fires onClose cannot hang the JVM forever.
+ */
+internal suspend fun awaitSessionClose(done: CompletableJob, timeoutMs: Long): Boolean =
+    withTimeoutOrNull(timeoutMs) {
+        done.join()
+        true
+    } ?: false
+
+private const val SESSION_CLOSE_TIMEOUT_MS = 10_000L
 
 private fun mcpServerVersion(): String =
     GradleTapiMcpServerLauncher::class.java.`package`?.implementationVersion ?: "dev"
