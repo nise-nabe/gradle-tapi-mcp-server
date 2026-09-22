@@ -284,6 +284,44 @@ class BuildExecutionManagerRunTest {
     }
 
     @Test
+    fun `rejected submit removes the registered build record`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedNoopConnection()
+        val manager = BuildExecutionManager(connectionManager)
+        val executor = manager.testExecutor()
+        val maxBuilds = manager.maxConcurrentBackgroundBuilds()
+        val tasksStarted = CountDownLatch(maxBuilds)
+        val releaseTasks = CountDownLatch(1)
+        repeat(maxBuilds) {
+            executor.execute {
+                tasksStarted.countDown()
+                releaseTasks.await(5, TimeUnit.SECONDS)
+            }
+        }
+        tasksStarted.await(5, TimeUnit.SECONDS).shouldBeTrue()
+
+        try {
+            val error = shouldThrow<McpException> {
+                manager.startBackground(
+                    request = BuildRunRequest(
+                        projectDirectory = testProjectDirectory,
+                        kind = BuildKind.TASKS,
+                        tasks = listOf("other"),
+                    ),
+                    notifier = null,
+                )
+            }
+            error.code shouldBe McpErrorCode.BUILD_ALREADY_RUNNING
+            // The just-registered record must be dropped so the project does
+            // not look busy after the rejection.
+            manager.hasActiveBuild().shouldBeFalse()
+        } finally {
+            releaseTasks.countDown()
+            manager.shutdown()
+        }
+    }
+
+    @Test
     fun `runForeground rejects when another build is running for same project`() {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnection()

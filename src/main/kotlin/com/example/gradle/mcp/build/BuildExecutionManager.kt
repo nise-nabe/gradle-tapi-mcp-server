@@ -313,9 +313,11 @@ class BuildExecutionManager(
         try {
             runner.execute(work)
         } catch (_: RejectedExecutionException) {
-            ProjectLifecycleLock.withProjectLock(projectDirectory) {
-                registry.records.remove(buildId)
-            }
+            // registry.records is a ConcurrentHashMap, so dropping the
+            // just-registered record needs no project lock — keeping the
+            // rejection path free of lifecycle locks avoids waiting on the
+            // global monitor while a project lock is held.
+            registry.records.remove(buildId)
             throw maxConcurrentBuildsException()
         }
     }
@@ -361,9 +363,11 @@ class BuildExecutionManager(
         )
 
     private fun maxConcurrentBuildsException(): McpException {
-        val errorDetails = synchronized(ProjectLifecycleLock.global()) {
+        // callers reach this from submitBuild while holding the project lock,
+        // so the error details must not take the global lifecycle lock; the
+        // records map is a ConcurrentHashMap and stays safe to snapshot.
+        val errorDetails =
             ActiveBuildSnapshot.maxConcurrentBuildErrorDetails(registry.runningRecords())
-        }
         return McpException(
             McpErrorCode.BUILD_ALREADY_RUNNING,
             "Maximum concurrent builds (${BuildRunner.MAX_CONCURRENT_BUILDS}) reached. " +
