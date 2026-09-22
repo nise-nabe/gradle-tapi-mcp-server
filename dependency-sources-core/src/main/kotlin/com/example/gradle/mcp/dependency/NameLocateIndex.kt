@@ -300,7 +300,7 @@ class NameLocateIndex private constructor(
             }
 
             for (member in members) {
-                for (doc in SourcesJarCorpus.load(member)) {
+                SourcesJarCorpus.forEachDocument(member) { doc ->
                     val docId = documents.size
                     documents.add(DocMeta(doc.gav, doc.path))
                     IdentifierLexer.tokenize(doc.text, tokenMode) { name, line, column ->
