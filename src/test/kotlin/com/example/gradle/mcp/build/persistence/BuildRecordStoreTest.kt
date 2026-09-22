@@ -153,6 +153,34 @@ class BuildRecordStoreTest {
     }
 
     @Test
+    fun `readEvents parses event lines spanning the read chunk boundary`(@TempDir projectDir: File) {
+        val buildId = "chunk-boundary-events"
+        store.launcherArguments(projectDir, buildId, listOf(":app:test"))
+        val recordDir = store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        val eventsFile = File(recordDir, McpBuildRecordPaths.EVENTS_FILE)
+
+        store.readEvents(recordDir).size shouldBe 1
+
+        // Pad displayName so this line's newline lands past the 64 KiB read
+        // chunk, splitting the event across multiple chunk reads.
+        val padding = "x".repeat(70 * 1024)
+        eventsFile.appendText(
+            """{"ts":"2026-06-14T10:00:02Z","type":"TASK_SUCCESS","displayName":"$padding"}""" + "\n" +
+                """{"ts":"2026-06-14T10:00:03Z","type":"BUILD_FINISHED","status":"success"}""" + "\n",
+            StandardCharsets.UTF_8,
+        )
+        val events = store.readEvents(recordDir)
+        events.size shouldBe 3
+        events[1].eventType shouldBe ProgressEventTypes.TASK_SUCCESS
+        events[1].displayName shouldBe padding
+        events[2].eventType shouldBe ProgressEventTypes.BUILD_FINISHED
+
+        // The committed offset covers both appended lines, so a cached
+        // re-read returns the same events.
+        store.readEvents(recordDir).size shouldBe 3
+    }
+
+    @Test
     fun `readEvents re-reads a replaced events file`(@TempDir projectDir: File) {
         val buildId = "replaced-events"
         store.launcherArguments(projectDir, buildId, listOf(":app:test"))

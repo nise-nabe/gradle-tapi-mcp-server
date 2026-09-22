@@ -395,21 +395,31 @@ class BuildRecordStore {
                 }
                 remaining -= read
                 buffer.flip()
-                while (buffer.hasRemaining()) {
-                    val byte = buffer.get()
-                    consumed++
-                    if (consumed <= HEAD_PREFIX_BYTES) {
-                        head.write(byte.toInt())
+                val array = buffer.array()
+                var position = buffer.position()
+                val limit = buffer.limit()
+                while (position < limit) {
+                    var newline = position
+                    while (newline < limit && array[newline] != '\n'.code.toByte()) {
+                        newline++
                     }
-                    if (byte == '\n'.code.toByte()) {
+                    val end = if (newline < limit) newline + 1 else limit
+                    val count = end - position
+                    if (consumed < HEAD_PREFIX_BYTES) {
+                        head.write(array, position, minOf(count, HEAD_PREFIX_BYTES - consumed.toInt()))
+                    }
+                    line.write(array, position, count)
+                    consumed += count
+                    position = end
+                    if (newline < limit) {
                         committed = consumed
-                        val text = line.toString(StandardCharsets.UTF_8).removeSuffix("\r")
+                        val text = line.toString(StandardCharsets.UTF_8)
+                            .removeSuffix("\n")
+                            .removeSuffix("\r")
                         if (text.isNotBlank()) {
                             runCatching { parseEventLine(text) }.getOrNull()?.let(events::add)
                         }
                         line.reset()
-                    } else {
-                        line.write(byte.toInt())
                     }
                 }
             }
