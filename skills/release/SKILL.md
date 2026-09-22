@@ -57,6 +57,7 @@ bump PR で `install.sh` / `server-release.json` の **version だけ**先に上
 | `plugins/gradle-tapi-mcp/plugin.json` | plugin `version` |
 | `plugins/gradle-tapi-mcp/.cursor-plugin/plugin.json` | plugin `version` |
 | `plugins/gradle-tapi-mcp/.codex-plugin/plugin.json` | plugin `version` |
+| `plugins/gradle-tapi-mcp/.devin-plugin/plugin.json` | plugin `version` |
 | `AGENTS.md` | JAR パス例（`build/libs/gradle-tapi-mcp-server-X.Y.Z.jar`）。`install.sh` の「currently」表記は SHA PR 側 |
 
 コミットメッセージ: `chore(release): bump version to X.Y.Z`
@@ -116,6 +117,7 @@ git add build.gradle.kts README.md docs/configuration.md \
   plugins/gradle-tapi-mcp/plugin.json \
   plugins/gradle-tapi-mcp/.cursor-plugin/plugin.json \
   plugins/gradle-tapi-mcp/.codex-plugin/plugin.json \
+  plugins/gradle-tapi-mcp/.devin-plugin/plugin.json \
   AGENTS.md
 git commit -m "chore(release): bump version to X.Y.Z"
 git push -u origin cursor/release-X.Y.Z-<suffix>
