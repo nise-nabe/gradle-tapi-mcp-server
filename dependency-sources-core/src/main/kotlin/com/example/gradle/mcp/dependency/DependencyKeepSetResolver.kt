@@ -189,12 +189,6 @@ object DependencyKeepSetResolver {
         return ResolvedKeepSet(mode = mode, members = members)
     }
 
-    fun resolveFromIdea(
-        connection: ProjectConnection,
-        projectPath: String? = null,
-    ): List<KeepSetMember> =
-        membersFromIdeaModel(connection.getModel(IdeaProject::class.java), projectPath)
-
     private fun membersFromIdeaModel(
         idea: IdeaProject,
         projectPath: String? = null,
