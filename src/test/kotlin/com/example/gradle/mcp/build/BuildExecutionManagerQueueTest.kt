@@ -100,6 +100,93 @@ class BuildExecutionManagerQueueTest {
     }
 
     @Test
+    fun `queued build drains even when result persistence fails`(@TempDir projectDirectory: File) {
+        val releaseImmediately = CountDownLatch(1).also { it.countDown() }
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            blockingProjectConnection(CountDownLatch(1), releaseImmediately),
+            projectDirectory = projectDirectory,
+        )
+        val manager = BuildExecutionManager(connectionManager)
+        try {
+            manager.seedRunningBuildForTests(
+                testBuildRecord(
+                    id = "running-build",
+                    tracker = runningTracker(),
+                    projectDirectory = projectDirectory.absolutePath,
+                ),
+            )
+            // A regular file at the record-dir path makes writeAtomically's
+            // Files.createDirectories throw, so writeMcpResult fails.
+            val recordsRoot = File(projectDirectory, ".gradle/mcp-builds")
+            recordsRoot.mkdirs()
+            File(recordsRoot, "running-build").writeText("not a directory")
+
+            val queued = manager.startBackground(
+                request = BuildRunRequest(
+                    projectDirectory = projectDirectory,
+                    kind = BuildKind.TASKS,
+                    tasks = listOf("queued-task"),
+                ),
+                notifier = null,
+                queueIfBusy = true,
+            )
+            queued["status"] shouldBe BuildProgressTracker.STATUS_QUEUED
+
+            manager.completeBuildForTests("running-build").shouldBeTrue()
+
+            // Reaching RUNNING proves the queue drained despite the persistence
+            // failure; a terminal status may lag via the stale-gradle-running grace.
+            waitUntilStatus(
+                manager,
+                queued["buildId"] as String,
+                BuildProgressTracker.STATUS_RUNNING,
+            )
+            manager.hasQueuedBuild(projectDirectory).shouldBeFalse()
+        } finally {
+            // Let the drained build finish writing before @TempDir cleanup.
+            manager.shutdown()
+        }
+    }
+
+    @Test
+    fun `resetBuildState cancels remaining running builds when finalize throws`(@TempDir projectDirectory: File) {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedNoopConnection(projectDirectory)
+        val manager = BuildExecutionManager(connectionManager)
+        val recordsRoot = File(projectDirectory, ".gradle/mcp-builds")
+        recordsRoot.mkdirs()
+        // First record fails finalize via persistence; the second must still
+        // get its cancellation token fired.
+        File(recordsRoot, "running-first").writeText("not a directory")
+        val first = testBuildRecord(
+            id = "running-first",
+            tracker = runningTracker(),
+            projectDirectory = projectDirectory.absolutePath,
+        )
+        val second = testBuildRecord(
+            id = "running-second",
+            tracker = runningTracker(),
+            projectDirectory = projectDirectory.absolutePath,
+        )
+        manager.seedRunningBuildForTests(first)
+        manager.seedRunningBuildForTests(second)
+
+        manager.resetBuildState("simulated disconnect", projectDirectory)
+
+        manager.status(
+            buildId = "running-first",
+            outputLimit = com.example.gradle.mcp.model.OutputLimitOptions(),
+            progressOptions = com.example.gradle.mcp.protocol.ProgressResponseOptions(),
+        )["status"] shouldBe BuildProgressTracker.STATUS_CANCELLED
+        manager.status(
+            buildId = "running-second",
+            outputLimit = com.example.gradle.mcp.model.OutputLimitOptions(),
+            progressOptions = com.example.gradle.mcp.protocol.ProgressResponseOptions(),
+        )["status"] shouldBe BuildProgressTracker.STATUS_CANCELLED
+    }
+
+    @Test
     fun `multiple queued builds preserve fifo order`() {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedConnectionForTests(

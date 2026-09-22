@@ -257,7 +257,16 @@ internal class BuildRunner(
             record.finishedAt = Instant.now()
         }
         rememberCompletedBuild(record, outcome)
-        buildRecordStore.writeMcpResult(record, record.progressTracker.snapshot())
+        try {
+            buildRecordStore.writeMcpResult(record, record.progressTracker.snapshot())
+        } catch (exception: Exception) {
+            // Persistence is best-effort: a failed write must not skip the
+            // queue drain below (queued builds would stall forever) or abort
+            // callers iterating other records (markRunningBuildsCancelled).
+            System.err.println(
+                "Failed to persist build result for ${record.id}: ${exception.message}",
+            )
+        }
         afterBuildSlotFreed(record, queueDrain)
         return true
     }
@@ -328,15 +337,23 @@ internal class BuildRunner(
                 // project->global lock order. Queued builds are already
                 // cancelled, and disconnect callers run wakeQueuedBuilds() after
                 // releasing the global lock, so the global path skips draining.
-                finalizeBuild(
-                    record,
-                    BuildTerminalOutcome.Cancelled(reason),
-                    queueDrain = if (projectDirectory == null) {
-                        QueueDrain.NONE
-                    } else {
-                        QueueDrain.OWN_PROJECT
-                    },
-                )
+                try {
+                    finalizeBuild(
+                        record,
+                        BuildTerminalOutcome.Cancelled(reason),
+                        queueDrain = if (projectDirectory == null) {
+                            QueueDrain.NONE
+                        } else {
+                            QueueDrain.OWN_PROJECT
+                        },
+                    )
+                } catch (exception: Exception) {
+                    // A failed finalize must not abort the loop: remaining
+                    // running builds still need their cancellation tokens fired.
+                    System.err.println(
+                        "Failed to finalize build ${record.id} during reset: ${exception.message}",
+                    )
+                }
             }
     }
 
