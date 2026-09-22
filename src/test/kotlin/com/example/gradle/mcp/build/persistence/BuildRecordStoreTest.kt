@@ -124,6 +124,56 @@ class BuildRecordStoreTest {
     }
 
     @Test
+    fun `file value cache evicts only the least recently used entry`(@TempDir projectDir: File) {
+        val store = BuildRecordStore(maxCachedFiles = 2)
+        val dirs = listOf("lru-a", "lru-b", "lru-c").map { buildId ->
+            store.writeGradleResultToDisk(
+                projectDir,
+                buildId,
+                gradleBuildResult(buildId = buildId, status = BuildProgressTracker.STATUS_SUCCEEDED),
+            )
+            store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        }
+        val paths = dirs.map {
+            File(it, McpBuildRecordPaths.GRADLE_RESULT_FILE).toPath().toAbsolutePath().normalize()
+        }
+
+        store.readGradleResult(dirs[0])
+        store.readGradleResult(dirs[1])
+        // Refresh the first entry so the second becomes the eldest.
+        store.readGradleResult(dirs[0])
+        store.cachedFileValuePaths() shouldBe setOf(paths[0], paths[1])
+
+        store.readGradleResult(dirs[2])
+        store.cachedFileValuePaths() shouldBe setOf(paths[0], paths[2])
+    }
+
+    @Test
+    fun `event log cache evicts only the least recently used entry`(@TempDir projectDir: File) {
+        val store = BuildRecordStore(maxCachedFiles = 2)
+        val dirs = listOf("lru-ea", "lru-eb", "lru-ec").map { buildId ->
+            store.writeDiskFile(
+                projectDir,
+                buildId,
+                McpBuildRecordPaths.EVENTS_FILE,
+                """{"ts":"2026-06-14T10:00:01Z","type":"START","displayName":"Gradle build"}""" + "\n",
+            )
+            store.recordDirectory(projectDir, buildId).shouldNotBeNull()
+        }
+        val paths = dirs.map {
+            File(it, McpBuildRecordPaths.EVENTS_FILE).toPath().toAbsolutePath().normalize()
+        }
+
+        store.readEvents(dirs[0])
+        store.readEvents(dirs[1])
+        store.readEvents(dirs[0])
+        store.cachedEventLogPaths() shouldBe setOf(paths[0], paths[1])
+
+        store.readEvents(dirs[2])
+        store.cachedEventLogPaths() shouldBe setOf(paths[0], paths[2])
+    }
+
+    @Test
     fun `readEvents returns appended lines across incremental reads`(@TempDir projectDir: File) {
         val buildId = "incremental-events"
         store.launcherArguments(projectDir, buildId, listOf(":app:test"))
