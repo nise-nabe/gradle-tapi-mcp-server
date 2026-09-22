@@ -7,14 +7,26 @@ data class IdentifierOccurrence(
 )
 
 object IdentifierLexer {
-    fun tokenize(source: String, mode: TokenMode): List<IdentifierOccurrence> =
-        when (mode) {
-            TokenMode.ALL -> tokenizeAll(source)
-            TokenMode.IDENTS -> tokenizeIdents(source)
-        }
-
-    private fun tokenizeAll(source: String): List<IdentifierOccurrence> {
+    fun tokenize(source: String, mode: TokenMode): List<IdentifierOccurrence> {
         val out = ArrayList<IdentifierOccurrence>()
+        tokenize(source, mode) { name, line, column ->
+            out.add(IdentifierOccurrence(name, line, column))
+        }
+        return out
+    }
+
+    /** Emits each occurrence to [sink] without materializing the list. */
+    fun tokenize(source: String, mode: TokenMode, sink: (name: String, line: Int, column: Int) -> Unit) {
+        when (mode) {
+            TokenMode.ALL -> tokenizeAll(source, sink)
+            TokenMode.IDENTS -> tokenizeIdents(source, sink)
+        }
+    }
+
+    private fun tokenizeAll(
+        source: String,
+        sink: (name: String, line: Int, column: Int) -> Unit,
+    ) {
         var line = 1
         var lineStart = 0
         var i = 0
@@ -38,22 +50,17 @@ object IdentifierLexer {
                 while (i < source.length && isIdentContinue(source[i])) {
                     i += 1
                 }
-                out.add(
-                    IdentifierOccurrence(
-                        name = source.substring(start, i),
-                        line = line,
-                        column = start - lineStart + 1,
-                    ),
-                )
+                sink(source.substring(start, i), line, start - lineStart + 1)
                 continue
             }
             i += 1
         }
-        return out
     }
 
-    private fun tokenizeIdents(source: String): List<IdentifierOccurrence> {
-        val out = ArrayList<IdentifierOccurrence>()
+    private fun tokenizeIdents(
+        source: String,
+        sink: (name: String, line: Int, column: Int) -> Unit,
+    ) {
         var line = 1
         var lineStart = 0
         var i = 0
@@ -122,13 +129,7 @@ object IdentifierLexer {
                     val start = i
                     while (i < source.length && source[i] != '`' && !isLineTerminator(source[i])) i += 1
                     if (i > start) {
-                        out.add(
-                            IdentifierOccurrence(
-                                name = source.substring(start, i),
-                                line = line,
-                                column = start - lineStart + 1,
-                            ),
-                        )
+                        sink(source.substring(start, i), line, start - lineStart + 1)
                     }
                     if (i < source.length && source[i] == '`') i += 1
                 }
@@ -152,18 +153,11 @@ object IdentifierLexer {
                     val start = i
                     i += 1
                     while (i < source.length && isIdentContinue(source[i])) i += 1
-                    out.add(
-                        IdentifierOccurrence(
-                            name = source.substring(start, i),
-                            line = line,
-                            column = start - lineStart + 1,
-                        ),
-                    )
+                    sink(source.substring(start, i), line, start - lineStart + 1)
                 }
                 else -> i += 1
             }
         }
-        return out
     }
 
     private fun isLineTerminator(c: Char): Boolean = c == '\n' || c == '\r'

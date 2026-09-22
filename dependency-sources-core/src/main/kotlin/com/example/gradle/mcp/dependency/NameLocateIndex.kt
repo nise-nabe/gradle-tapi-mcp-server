@@ -301,9 +301,9 @@ class NameLocateIndex private constructor(
                 for (doc in SourcesJarCorpus.load(member)) {
                     val docId = documents.size
                     documents.add(DocMeta(doc.gav, doc.path))
-                    for (token in IdentifierLexer.tokenize(doc.text, tokenMode)) {
-                        val nameId = dictionary.intern(token.name)
-                        ensurePosting(nameId).add(OccPos(docId, token.line, token.column))
+                    IdentifierLexer.tokenize(doc.text, tokenMode) { name, line, column ->
+                        val nameId = dictionary.intern(name)
+                        ensurePosting(nameId).add(OccPos(docId, line, column))
                     }
                 }
             }
