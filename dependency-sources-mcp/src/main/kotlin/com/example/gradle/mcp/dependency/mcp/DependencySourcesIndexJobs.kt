@@ -180,11 +180,16 @@ class IndexJob(
                 return body
             }
             STATUS_FAILED -> {
-                val error = failure.get()
-                if (error != null) {
-                    throw error
+                when (val error = failure.get()) {
+                    is Exception -> throw error
+                    null -> throw IllegalStateException("Dependency-sources indexing failed")
+                    // Errors (e.g. OOM) must not propagate raw: tool handlers
+                    // only catch Exception, so wrap them for error mapping.
+                    else -> throw IllegalStateException(
+                        "Dependency-sources indexing failed: ${error.message ?: error}",
+                        error,
+                    )
                 }
-                throw IllegalStateException("Dependency-sources indexing failed")
             }
             else -> error("Index job $indexId is not terminal (status=${status.get()})")
         }

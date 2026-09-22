@@ -10,6 +10,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.model.DomainObjectSet
 import org.gradle.tooling.model.GradleModuleVersion
@@ -888,6 +889,25 @@ class DependencySourcesFacadeTest {
         }
         status["status"] shouldBe "succeeded"
         status["docCount"] shouldBe 1
+    }
+
+    @Test
+    fun `terminalResponse wraps non-Exception failures so tool error mapping applies`() {
+        val project = File(tempDir, "proj-error").apply { mkdirs() }
+        val jobs = DependencySourcesIndexJobs()
+        val job =
+            jobs.start(
+                projectDirectory = project,
+                tokenMode = "idents",
+                projectPath = null,
+            ) {
+                throw AssertionError("simulated error")
+            }
+        job.await(10_000) shouldBe true
+
+        val error = shouldThrow<IllegalStateException> { job.terminalResponse() }
+        error.message shouldContain "simulated error"
+        error.cause.shouldBeInstanceOf<AssertionError>()
     }
 
     @Test
