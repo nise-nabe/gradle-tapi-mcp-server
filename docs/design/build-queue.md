@@ -58,7 +58,7 @@ When a per-project start is rejected (`BUILD_ALREADY_RUNNING`, `BUILD_QUEUE_FULL
 
 ### 2.2 Global concurrent pool (cross-project)
 
-Background/foreground work shares a bounded executor (`MAX_CONCURRENT_BUILDS = max(4, processors)`). When the pool is full, starts also return `BUILD_ALREADY_RUNNING` (same code, different message).
+Background/foreground work shares a bounded executor (`MAX_CONCURRENT_BUILDS = processors.coerceIn(4, 8)`, overridable via `GRADLE_TAPI_MAX_CONCURRENT_BUILDS`). When the pool is full, starts also return `BUILD_ALREADY_RUNNING` (same code, different message).
 
 ### 2.3 What else shares the gate
 
