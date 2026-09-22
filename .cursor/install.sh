@@ -2,8 +2,8 @@
 set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly GRADLE_TAPI_MCP_VERSION="0.13.4"
-readonly GRADLE_TAPI_MCP_SHA256="9159b5020f85ced96e126eb9efbff22c72c3195111f7a61beaa57f8f72c9a6c4"
+readonly GRADLE_TAPI_MCP_VERSION="0.13.5"
+readonly GRADLE_TAPI_MCP_SHA256="60cc215328d23a2dd6a9a9d612ffc3aeec5a11246a9bd5753c3b3978f55ad350"
 readonly INSTALL_DIR="${HOME}/.local/share/gradle-tapi-mcp-server"
 readonly VERSIONED_JAR_NAME="gradle-tapi-mcp-server-${GRADLE_TAPI_MCP_VERSION}.jar"
 readonly VERSIONED_JAR_PATH="${INSTALL_DIR}/${VERSIONED_JAR_NAME}"
