@@ -6,6 +6,8 @@ import io.kotest.matchers.collections.shouldContain
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -65,13 +67,23 @@ class IndexSourceRootsTest {
             zip.closeEntry()
         }
         val roots = mapOf("g:n:1" to listOf(jar))
-        val cache = HashMap<String, Set<String>>()
+        val cache = IndexSourceRoots.JarEntriesCache()
         val found = IndexSourceRoots.resolve(roots, "g:n:1", "B.kt", cache)
         found.shouldBeInstanceOf<SourceRootResolution.Found>()
         found.root.name shouldBe "cached-sources.jar"
         IndexSourceRoots.resolve(roots, "g:n:1", "Missing.kt", cache) shouldBe SourceRootResolution.Missing
-        cache.size shouldBe 1
-        cache.values.single().shouldContain("B.kt")
+
+        // A replaced jar (different mtime) must not reuse stale entries.
+        val replacement = File(tempDir, "replacement.jar")
+        ZipOutputStream(replacement.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("C.kt"))
+            zip.write("class C".toByteArray())
+            zip.closeEntry()
+        }
+        replacement.setLastModified(jar.lastModified() + 1000)
+        Files.move(replacement.toPath(), jar.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        val reloaded = IndexSourceRoots.resolve(roots, "g:n:1", "C.kt", cache)
+        reloaded.shouldBeInstanceOf<SourceRootResolution.Found>()
     }
 
     @Test
