@@ -187,6 +187,29 @@ class BuildExecutionManagerQueueTest {
     }
 
     @Test
+    fun `startBackground rejects with NOT_CONNECTED after disconnect and leaves no record`(@TempDir projectDirectory: File) {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedNoopConnection(projectDirectory)
+        val manager = BuildExecutionManager(connectionManager)
+        connectionManager.disconnect(projectDirectory)
+
+        val error = shouldThrow<McpException> {
+            manager.startBackground(
+                request = BuildRunRequest(
+                    projectDirectory = projectDirectory,
+                    kind = BuildKind.TASKS,
+                    tasks = listOf("build"),
+                ),
+                notifier = null,
+                queueIfBusy = true,
+            )
+        }
+        error.code shouldBe McpErrorCode.NOT_CONNECTED
+        manager.hasQueuedBuild(projectDirectory).shouldBeFalse()
+        manager.hasRunningBuild(projectDirectory).shouldBeFalse()
+    }
+
+    @Test
     fun `multiple queued builds preserve fifo order`() {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedConnectionForTests(
