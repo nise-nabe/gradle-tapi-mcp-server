@@ -849,7 +849,7 @@ class BuildExecutionManagerRunTest {
     }
 
     @Test
-    fun `failed build emits exactly one final progress notification`() {
+    fun `interrupted build emits exactly one final progress notification`() {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedConnectionForTests(
             com.example.gradle.mcp.support.interruptedOnRunProjectConnection(),
@@ -860,7 +860,7 @@ class BuildExecutionManagerRunTest {
             com.example.gradle.mcp.build.persistence.BuildRecordStore(),
         )
         val record = testBuildRecord(
-            id = "failing-build",
+            id = "interrupted-build",
             tracker = runningTracker(),
             projectDirectory = testProjectDirectory.absolutePath,
         )
