@@ -12,7 +12,7 @@ The fat JAR is written to `build/libs/gradle-tapi-mcp-server-0.13.5.jar`.
 
 ## Plugin marketplace
 
-This repository is a plugin marketplace for Cursor, Codex, and GitHub Copilot. It publishes the `gradle-tapi-mcp` plugin (Gradle Tooling API MCP server plus the token-efficient agent skill).
+This repository is a plugin marketplace for Cursor, Codex, GitHub Copilot, and Devin. It publishes the `gradle-tapi-mcp` plugin (Gradle Tooling API MCP server plus the token-efficient agent skill).
 
 Requires Java 17+ and `bash`. The plugin launcher downloads the release JAR to `~/.local/share/gradle-tapi-mcp-server/` (same location as `.cursor/install.sh`).
 
@@ -37,6 +37,14 @@ copilot plugin marketplace add nise-nabe/gradle-tapi-mcp-server
 The catalog is `.github/plugin/marketplace.json`.
 
 Then install the `gradle-tapi-mcp` plugin from that marketplace.
+
+### Devin
+
+```bash
+devin plugins install nise-nabe/gradle-tapi-mcp-server#plugins/gradle-tapi-mcp
+```
+
+Devin has no separate marketplace catalog; the `#plugins/gradle-tapi-mcp` suffix installs the plugin from the repo subfolder (git-subdir source). The manifest is `plugins/gradle-tapi-mcp/.devin-plugin/plugin.json`.
 
 ## Cursor configuration
 
