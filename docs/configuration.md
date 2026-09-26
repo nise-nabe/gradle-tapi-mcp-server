@@ -7,7 +7,7 @@ The server speaks **stdio** by default (subprocess per MCP client). To serve MCP
 instead:
 
 ```bash
-java -jar gradle-tapi-mcp-server-0.13.5.jar \
+java -jar gradle-tapi-mcp-server-0.14.0.jar \
   --transport=streamable-http --host=127.0.0.1 --port=8080 --path=/mcp
 ```
 
