@@ -4,6 +4,8 @@ import com.example.gradle.mcp.build.BuildExecutionManager
 import com.example.gradle.mcp.build.registerBuildTools
 import com.example.gradle.mcp.cache.registerCacheTools
 import com.example.gradle.mcp.connection.GradleConnectionManager
+import com.example.gradle.mcp.connection.ProjectDirectoryResolver
+import com.example.gradle.mcp.connection.SessionProjectContext
 import com.example.gradle.mcp.connection.registerConnectionTools
 import com.example.gradle.mcp.connection.registerJavaRuntimeTools
 import com.example.gradle.mcp.dependency.registerDependencySourceTools
@@ -16,6 +18,7 @@ import com.example.gradle.mcp.server.McpTransport
 import com.example.gradle.mcp.server.ServerCliOptions
 import com.example.gradle.mcp.server.captureProtocolStdout
 import com.example.gradle.mcp.server.serveStreamableHttp
+import io.ktor.server.routing.RoutingContext
 import io.ktor.utils.io.streams.asInput
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
@@ -74,14 +77,42 @@ fun runGradleTapiMcpServer(options: ServerCliOptions = ServerCliOptions()) {
             }
             serveStreamableHttp(
                 endpoint = options.http,
-                newServer = { createGradleTapiServer(runtime, serverScope) },
+                newServer = { context ->
+                    createGradleTapiServer(
+                        runtime = runtime,
+                        serverScope = serverScope,
+                        session = sessionFromHttpContext(context),
+                    )
+                },
                 shutdownRuntime = ::shutdownRuntime,
             )
         }
     }
 }
 
-internal fun createGradleTapiServer(runtime: GradleMcpRuntime, serverScope: CoroutineScope): Server {
+/**
+ * Builds the per-session project context for an incoming HTTP session. The
+ * X-Gradle-Project-Dir request header (sent on the initialize POST by clients
+ * that support custom headers) binds the session to a project up front, so
+ * tools resolve it as the session default without a `gradle_connect` call.
+ */
+internal fun sessionFromHttpContext(context: RoutingContext): SessionProjectContext {
+    val seed = context.call.request.headers[HTTP_PROJECT_DIRECTORY_HEADER]
+        ?.takeIf { it.isNotBlank() }
+        ?.let { ProjectDirectoryResolver.bestEffortDirectory(it.trim()) }
+    return SessionProjectContext(
+        seedProjectDirectories = listOfNotNull(seed),
+    )
+}
+
+internal const val HTTP_PROJECT_DIRECTORY_HEADER = "X-Gradle-Project-Dir"
+
+internal fun createGradleTapiServer(
+    runtime: GradleMcpRuntime,
+    serverScope: CoroutineScope,
+    session: SessionProjectContext = SessionProjectContext(),
+): Server {
+    runtime.connectionManager.attachAmbientHolder(session)
     val server = Server(
         serverInfo = Implementation(
             name = "gradle-tapi-mcp-server",
@@ -102,15 +133,21 @@ internal fun createGradleTapiServer(runtime: GradleMcpRuntime, serverScope: Coro
         },
     )
 
+    // Closing the session releases the projects it held; pooled connections
+    // stay alive while other sessions still hold them.
+    server.onClose {
+        runtime.connectionManager.releaseSession(session)
+    }
+
     with(runtime) {
-        server.registerConnectionTools(serverScope)
-        server.registerJavaRuntimeTools(serverScope)
-        server.registerCacheTools(serverScope)
-        server.registerModelTools(serverScope)
-        server.registerDependencyResolutionTools(serverScope)
-        server.registerBuildTools(serverScope)
-        server.registerDependencySourceTools(serverScope)
-        server.registerGradleTapiResources()
+        server.registerConnectionTools(serverScope, session)
+        server.registerJavaRuntimeTools(serverScope, session)
+        server.registerCacheTools(serverScope, session)
+        server.registerModelTools(serverScope, session)
+        server.registerDependencyResolutionTools(serverScope, session)
+        server.registerBuildTools(serverScope, session)
+        server.registerDependencySourceTools(serverScope, session)
+        server.registerGradleTapiResources(session)
     }
     return server
 }

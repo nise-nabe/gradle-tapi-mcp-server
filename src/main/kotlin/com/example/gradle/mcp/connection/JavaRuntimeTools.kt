@@ -230,24 +230,26 @@ internal fun requireNoActiveBuildForToolchainDetection(
 }
 
 context(runtime: GradleMcpRuntime)
-fun Server.registerJavaRuntimeTools(scope: CoroutineScope) {
+fun Server.registerJavaRuntimeTools(scope: CoroutineScope, session: SessionProjectContext? = null) {
     registerTool(
         scope,
         name = "gradle_get_java_runtimes",
         description = McpToolDescriptions.JAVA_RUNTIMES,
         schema = javaRuntimesSchema(),
     ) { args ->
-        jsonResult(javaRuntimesPayload(runtime, args))
+        jsonResult(javaRuntimesPayload(runtime, args, session))
     }
 }
 
 internal fun javaRuntimesPayload(
     runtime: GradleMcpRuntime,
     args: Map<String, Any>,
+    session: SessionProjectContext? = null,
 ): Map<String, Any?> {
     rejectUnsupportedProjectPath(args, "gradle_get_java_runtimes")
     val includeToolchains = args.optionalBoolean("includeToolchains", default = true)
-    val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+    val projectDirectory =
+        ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
     if (!includeToolchains) {
         return daemonOnlyJavaRuntimesPayload(runtime, projectDirectory)
     }

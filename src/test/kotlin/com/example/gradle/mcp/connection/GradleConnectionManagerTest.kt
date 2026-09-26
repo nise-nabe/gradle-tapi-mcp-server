@@ -639,4 +639,124 @@ class GradleConnectionManagerTest {
         manager.status(project).statusBool("connected").shouldBeTrue()
         manager.status(project).statusBool("connecting").shouldBeFalse()
     }
+
+    @Test
+    fun `disconnect by one holder retains the pooled connection for the other session`(
+        @TempDir project: File,
+    ) {
+        val manager = GradleConnectionManager { _, _, _ -> noopProjectConnection() to null }
+        val sessionA = SessionProjectContext(workspaceProject = null)
+        val sessionB = SessionProjectContext(workspaceProject = null)
+        val config = ConnectionConfig(projectDirectory = project.path)
+        manager.ensureConnected(config, holder = sessionA)
+        manager.ensureConnected(config, holder = sessionB)
+
+        val info = manager.disconnect(project, sessionB)
+
+        info.shouldNotBeNull()
+        info.state shouldBe "disconnected"
+        info.retainedByOtherSessions.shouldBeTrue()
+        info.closedPooledConnection.shouldBeFalse()
+        manager.isConnected(project).shouldBeTrue()
+    }
+
+    @Test
+    fun `disconnect closes the pooled connection when the last holder releases it`(
+        @TempDir project: File,
+    ) {
+        val manager = GradleConnectionManager { _, _, _ -> noopProjectConnection() to null }
+        val sessionA = SessionProjectContext(workspaceProject = null)
+        val sessionB = SessionProjectContext(workspaceProject = null)
+        val config = ConnectionConfig(projectDirectory = project.path)
+        manager.ensureConnected(config, holder = sessionA)
+        manager.ensureConnected(config, holder = sessionB)
+
+        manager.disconnect(project, sessionB)
+        val info = manager.disconnect(project, sessionA)
+
+        info.shouldNotBeNull()
+        info.closedPooledConnection.shouldBeTrue()
+        manager.isConnected(project).shouldBeFalse()
+    }
+
+    @Test
+    fun `disconnect without a session closes the pooled connection unconditionally`(
+        @TempDir project: File,
+    ) {
+        val manager = GradleConnectionManager { _, _, _ -> noopProjectConnection() to null }
+        val sessionA = SessionProjectContext(workspaceProject = null)
+        manager.ensureConnected(
+            ConnectionConfig(projectDirectory = project.path),
+            holder = sessionA,
+        )
+
+        val info = manager.disconnect(project)
+
+        info.shouldNotBeNull()
+        manager.isConnected(project).shouldBeFalse()
+    }
+
+    @Test
+    fun `releaseSession closes pooled connections left without holders`(@TempDir project: File) {
+        val manager = GradleConnectionManager { _, _, _ -> noopProjectConnection() to null }
+        val session = SessionProjectContext(workspaceProject = null)
+        manager.ensureConnected(
+            ConnectionConfig(projectDirectory = project.path),
+            holder = session,
+        )
+
+        manager.releaseSession(session)
+
+        manager.isConnected(project).shouldBeFalse()
+    }
+
+    @Test
+    fun `releaseSession keeps connections still held by another session`(@TempDir project: File) {
+        val manager = GradleConnectionManager { _, _, _ -> noopProjectConnection() to null }
+        val sessionA = SessionProjectContext(workspaceProject = null)
+        val sessionB = SessionProjectContext(workspaceProject = null)
+        val config = ConnectionConfig(projectDirectory = project.path)
+        manager.ensureConnected(config, holder = sessionA)
+        manager.ensureConnected(config, holder = sessionB)
+
+        manager.releaseSession(sessionB)
+
+        manager.isConnected(project).shouldBeTrue()
+    }
+
+    @Test
+    fun `disconnectWouldClosePool reports shared holds`(@TempDir project: File) {
+        val manager = GradleConnectionManager { _, _, _ -> noopProjectConnection() to null }
+        val sessionA = SessionProjectContext(workspaceProject = null)
+        val sessionB = SessionProjectContext(workspaceProject = null)
+        val config = ConnectionConfig(projectDirectory = project.path)
+        manager.ensureConnected(config, holder = sessionA)
+        manager.ensureConnected(config, holder = sessionB)
+
+        manager.disconnectWouldClosePool(project, sessionA).shouldBeFalse()
+        manager.disconnectWouldClosePool(project, sessionB).shouldBeFalse()
+        manager.disconnect(project, sessionB)
+        manager.disconnectWouldClosePool(project, sessionA).shouldBeTrue()
+    }
+
+    @Test
+    fun `statusForSession lists only session-known projects`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val manager = GradleConnectionManager()
+        manager.seedNoopConnections(projectA, projectB)
+        val session = SessionProjectContext(
+            workspaceProject = null,
+            seedProjectDirectories = listOf(projectA),
+        )
+
+        val status = manager.statusForSession(session)
+
+        @Suppress("UNCHECKED_CAST")
+        val connections = status["connections"] as List<Map<String, Any?>>
+        connections.map { it["projectDirectory"] } shouldBe listOf(projectA.canonicalFile.path)
+        status["defaultProjectDirectory"] shouldBe projectA.canonicalFile.path
+        status["connected"] shouldBe true
+    }
 }

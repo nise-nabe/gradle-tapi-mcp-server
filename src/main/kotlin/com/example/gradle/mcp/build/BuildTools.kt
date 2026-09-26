@@ -3,6 +3,7 @@ package com.example.gradle.mcp.build
 import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.connection.ProjectDirectoryScope
+import com.example.gradle.mcp.connection.SessionProjectContext
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
@@ -142,24 +143,32 @@ internal fun runTestsSchema(): Map<String, Any> =
 internal fun listBuildsPayload(
     runtime: GradleMcpRuntime,
     args: Map<String, Any>,
+    session: SessionProjectContext? = null,
 ): Map<String, Any?> {
-    val projectScope = ProjectDirectoryScope(runtime.connectionManager)
+    val projectScope = session?.let { ProjectDirectoryScope(runtime.connectionManager, it) }
+        ?: ProjectDirectoryScope(runtime.connectionManager)
     val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
         args,
         boundary = projectScope::requireWithinBoundary,
     )
     val limit = args.optionalPositiveInt("limit") ?: BuildExecutionManager.DEFAULT_LIST_BUILDS
-    return runtime.buildExecutionManager.listBuilds(projectDirectory, limit)
+    return runtime.buildExecutionManager.listBuilds(
+        projectDirectory,
+        limit,
+        scope = projectScope.takeIf { session != null },
+    )
 }
 
 internal fun buildStatusPayload(
     runtime: GradleMcpRuntime,
     args: Map<String, Any>,
+    session: SessionProjectContext? = null,
 ): Map<String, Any?> {
     val outputLimit = OutputLimitOptions.fromArgs(args)
     val progressOptions = ProgressResponseOptions.fromArgs(args)
     val waitOptions = BuildStatusWaitOptions.fromArgs(args)
-    val projectScope = ProjectDirectoryScope(runtime.connectionManager)
+    val projectScope = session?.let { ProjectDirectoryScope(runtime.connectionManager, it) }
+        ?: ProjectDirectoryScope(runtime.connectionManager)
     val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
         args,
         boundary = projectScope::requireWithinBoundary,
@@ -170,18 +179,19 @@ internal fun buildStatusPayload(
         progressOptions,
         projectDirectory,
         waitOptions,
+        scope = projectScope.takeIf { session != null },
     )
 }
 
 context(runtime: GradleMcpRuntime)
-fun Server.registerBuildTools(serverScope: CoroutineScope) {
+fun Server.registerBuildTools(serverScope: CoroutineScope, session: SessionProjectContext? = null) {
     registerTool(
         serverScope,
         name = "gradle_list_builds",
         description = McpToolDescriptions.LIST_BUILDS,
         schema = listBuildsSchema(),
     ) { args ->
-        jsonResult(listBuildsPayload(runtime, args))
+        jsonResult(listBuildsPayload(runtime, args, session))
     }
     registerTool(
         serverScope,
@@ -189,7 +199,8 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         description = McpToolDescriptions.CANCEL_BUILD,
         schema = cancelBuildSchema(),
     ) { args ->
-        val projectScope = ProjectDirectoryScope(runtime.connectionManager)
+        val projectScope = session?.let { ProjectDirectoryScope(runtime.connectionManager, it) }
+            ?: ProjectDirectoryScope(runtime.connectionManager)
         val projectDirectory = ProjectDirectoryResolver.resolveOptionalHint(
             args,
             boundary = projectScope::requireWithinBoundary,
@@ -198,6 +209,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
             runtime.buildExecutionManager.cancelBuild(
                 args.requiredString("buildId"),
                 projectDirectory,
+                scope = projectScope.takeIf { session != null },
             ),
         )
     }
@@ -207,7 +219,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         description = McpToolDescriptions.BUILD_STATUS,
         schema = buildStatusSchema(),
     ) { args ->
-        jsonResult(buildStatusPayload(runtime, args))
+        jsonResult(buildStatusPayload(runtime, args, session))
     }
     registerTool(
         serverScope,
@@ -215,7 +227,8 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         description = McpToolDescriptions.RUN_TASKS,
         schema = runTasksSchema(),
     ) { args, notifier ->
-        val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+        val projectDirectory =
+            ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
         val tasks = args.requiredStringList("tasks")
         val request = BuildRunRequest(
             projectDirectory = projectDirectory,
@@ -240,7 +253,8 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         description = McpToolDescriptions.TASK_EXECUTION_PLAN,
         schema = taskExecutionPlanSchema(),
     ) { args, notifier ->
-        val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+        val projectDirectory =
+            ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
         val request = BuildRunRequest(
             projectDirectory = projectDirectory,
             kind = BuildKind.PLAN,
@@ -258,7 +272,8 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         description = McpToolDescriptions.RUN_TESTS,
         schema = runTestsSchema(),
     ) { args, notifier ->
-        val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+        val projectDirectory =
+            ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
         val parsed = parseTestRunOptions(args)
         val testOptions = parsed.options.validate(args.optionalString("taskPath"))
         val background = args.optionalBoolean("background", default = false)

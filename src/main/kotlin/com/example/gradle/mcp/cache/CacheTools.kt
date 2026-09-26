@@ -3,6 +3,7 @@ package com.example.gradle.mcp.cache
 import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.connection.ProjectLifecycleGuard
+import com.example.gradle.mcp.connection.SessionProjectContext
 import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
@@ -25,7 +26,7 @@ internal fun buildCacheStatusSchema(): Map<String, Any> =
     )
 
 context(runtime: GradleMcpRuntime)
-fun Server.registerCacheTools(scope: CoroutineScope) {
+fun Server.registerCacheTools(scope: CoroutineScope, session: SessionProjectContext? = null) {
     registerTool(
         scope,
         name = "gradle_get_build_cache_status",
@@ -33,7 +34,8 @@ fun Server.registerCacheTools(scope: CoroutineScope) {
         schema = buildCacheStatusSchema(),
     ) { args ->
         rejectUnsupportedProjectPath(args, "gradle_get_build_cache_status")
-        val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+        val projectDirectory =
+            ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
         val options = BuildCacheStatusOptions.fromArgs(args)
         ProjectLifecycleGuard.withNoActiveBuild(
             projectDirectory = projectDirectory,

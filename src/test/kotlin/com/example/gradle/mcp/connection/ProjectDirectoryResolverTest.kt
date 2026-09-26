@@ -173,4 +173,93 @@ class ProjectDirectoryResolverTest {
             mapOf("projectDirectory" to missing.path),
         ) shouldBe missing.canonicalFile
     }
+
+    @Test
+    fun `resolveRequired prefers the session default over other pooled projects`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val manager = GradleConnectionManager().also { it.seedNoopConnections(projectA, projectB) }
+        val session = SessionProjectContext(workspaceProject = null).also { it.onConnected(projectB) }
+
+        ProjectDirectoryResolver.resolveRequired(emptyMap(), manager, session) shouldBe
+            projectB.canonicalFile
+    }
+
+    @Test
+    fun `resolveRequired rejects a project the session does not know`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val manager = GradleConnectionManager().also { it.seedNoopConnections(projectA, projectB) }
+        val session = SessionProjectContext(workspaceProject = null).also { it.onConnected(projectA) }
+
+        val error = shouldThrow<McpException> {
+            ProjectDirectoryResolver.resolveRequired(
+                mapOf("projectDirectory" to projectB.path),
+                manager,
+                session,
+            )
+        }
+
+        error.code shouldBe McpErrorCode.NOT_CONNECTED
+        error.message shouldBe
+            "Not connected to Gradle project: ${projectB.canonicalFile.path}. Call gradle_connect first."
+    }
+
+    @Test
+    fun `resolveRequired rejects ambiguous calls when the session knows multiple connected projects`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+        @TempDir projectC: File,
+    ) {
+        val manager =
+            GradleConnectionManager().also { it.seedNoopConnections(projectA, projectB, projectC) }
+        // Connect A, B, C then release C (the default): the session is left
+        // knowing two connected projects with no default.
+        val session = SessionProjectContext(workspaceProject = null)
+        session.onConnected(projectA)
+        session.onConnected(projectB)
+        session.onConnected(projectC)
+        session.onDisconnected(projectC)
+
+        val error = shouldThrow<McpException> {
+            ProjectDirectoryResolver.resolveRequired(emptyMap(), manager, session)
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+    }
+
+    @Test
+    fun `resolveRequired falls back to the session workspace even when it is not connected`(
+        @TempDir workspace: File,
+    ) {
+        val manager = GradleConnectionManager()
+        val session = SessionProjectContext(workspaceProject = workspace)
+
+        val error = shouldThrow<McpException> {
+            ProjectDirectoryResolver.resolveRequired(emptyMap(), manager, session)
+        }
+
+        error.code shouldBe McpErrorCode.NOT_CONNECTED
+        error.message shouldBe
+            "Not connected to Gradle project: ${workspace.canonicalFile.path}. Call gradle_connect first."
+    }
+
+    @Test
+    fun `resolveRequired uses the sole session-known connected project`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        // Only A is pooled: the session knows B (unconnected) and A.
+        val manager = GradleConnectionManager().also { it.seedNoopConnections(projectA) }
+        val session = SessionProjectContext(
+            workspaceProject = null,
+            seedProjectDirectories = listOf(projectA, projectB),
+        )
+        session.onDisconnected(projectB)
+
+        ProjectDirectoryResolver.resolveRequired(emptyMap(), manager, session) shouldBe
+            projectA.canonicalFile
+    }
 }

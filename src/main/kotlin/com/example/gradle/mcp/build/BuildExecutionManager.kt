@@ -3,6 +3,7 @@ package com.example.gradle.mcp.build
 import com.example.gradle.mcp.build.persistence.BuildRecordStore
 import com.example.gradle.mcp.cache.CompletedBuildSnapshot
 import com.example.gradle.mcp.connection.GradleConnectionManager
+import com.example.gradle.mcp.connection.ProjectDirectoryScope
 import com.example.gradle.mcp.connection.ProjectLifecycleLock
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpErrorCode
@@ -111,10 +112,15 @@ class BuildExecutionManager(
         return completion.await(timeoutMs, TimeUnit.MILLISECONDS)
     }
 
-    fun cancelBuild(buildId: String, projectDirectoryHint: File? = null): Map<String, Any?> {
+    fun cancelBuild(
+        buildId: String,
+        projectDirectoryHint: File? = null,
+        scope: ProjectDirectoryScope? = null,
+    ): Map<String, Any?> {
         val record = registry.records[buildId]
             ?: throw McpException(McpErrorCode.INVALID_ARGUMENT, "Build not found: $buildId")
         requireMatchingProject(buildId, record, projectDirectoryHint)
+        requireWithinProjectScope(buildId, record, scope)
         val projectDirectory = record.projectDirectory?.let(::File)
         if (projectDirectory != null) {
             ProjectLifecycleLock.withProjectLock(projectDirectory) {
@@ -168,11 +174,16 @@ class BuildExecutionManager(
         progressOptions: ProgressResponseOptions,
         projectDirectoryHint: File? = null,
         waitOptions: BuildStatusWaitOptions = BuildStatusWaitOptions(),
+        scope: ProjectDirectoryScope? = null,
     ): Map<String, Any?> =
-        statusQuery.status(buildId, outputLimit, progressOptions, projectDirectoryHint, waitOptions)
+        statusQuery.status(buildId, outputLimit, progressOptions, projectDirectoryHint, waitOptions, scope)
 
-    fun listBuilds(projectDirectoryHint: File?, limit: Int): Map<String, Any?> =
-        statusQuery.listBuilds(projectDirectoryHint, limit)
+    fun listBuilds(
+        projectDirectoryHint: File?,
+        limit: Int,
+        scope: ProjectDirectoryScope? = null,
+    ): Map<String, Any?> =
+        statusQuery.listBuilds(projectDirectoryHint, limit, scope)
 
     internal fun activeBuildSnapshot(projectDirectory: File): ActiveBuildSnapshot? =
         registry.activeBuildSnapshot(projectDirectory)
