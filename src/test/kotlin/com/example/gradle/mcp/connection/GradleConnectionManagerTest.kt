@@ -4,6 +4,7 @@ import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.support.defaultProxyReturn
 import com.example.gradle.mcp.support.getModelCountingConnection
+import com.example.gradle.mcp.support.noopProjectConnection
 import com.example.gradle.mcp.support.seedCountingConnections
 import com.example.gradle.mcp.support.seedNoopConnections
 import com.example.gradle.mcp.support.statusBool
@@ -565,7 +566,7 @@ class GradleConnectionManagerTest {
                 defaultProxyReturn(method)
             },
         ) as ProjectConnection
-        val manager = GradleConnectionManager { _, _ ->
+        val manager = GradleConnectionManager { _, _, _ ->
             connectReturned.countDown()
             // Block between the disconnectAll-epoch capture and the pooling step so
             // the test can interleave disconnectAll deterministically.
@@ -587,5 +588,53 @@ class GradleConnectionManagerTest {
         resultRef.get().shouldNotBeNull().state shouldBe "disconnected"
         manager.isConnected(project).shouldBeFalse()
         closeCount.get() shouldBe 1
+    }
+
+    @Test
+    fun `ensureConnected propagates opener failure and does not pool`(@TempDir project: File) {
+        val manager = GradleConnectionManager { _, _, _ ->
+            throw RuntimeException("distribution download failed")
+        }
+
+        val error = shouldThrow<RuntimeException> {
+            manager.ensureConnected(ConnectionConfig(projectDirectory = project.path))
+        }
+
+        error.message shouldBe "distribution download failed"
+        manager.isConnected(project).shouldBeFalse()
+        manager.status(project).statusBool("connected").shouldBeFalse()
+        manager.status(project).statusBool("connecting").shouldBeFalse()
+    }
+
+    @Test
+    fun `status reports connecting while a connect is in flight`(@TempDir project: File) {
+        val connectEntered = CountDownLatch(1)
+        val releaseConnect = CountDownLatch(1)
+        val manager = GradleConnectionManager { _, _, _ ->
+            connectEntered.countDown()
+            releaseConnect.await(5, TimeUnit.SECONDS)
+            noopProjectConnection() to null
+        }
+
+        val connectThread = Thread {
+            manager.ensureConnected(ConnectionConfig(projectDirectory = project.path))
+        }.apply { isDaemon = true }
+        connectThread.start()
+        connectEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
+
+        val inFlight = manager.status(project)
+        inFlight.statusBool("connected").shouldBeFalse()
+        inFlight.statusBool("connecting").shouldBeTrue()
+        inFlight.statusStr("projectDirectory") shouldBe project.canonicalFile.path
+
+        @Suppress("UNCHECKED_CAST")
+        val connections = manager.status()["connections"] as List<Map<String, Any?>>
+        connections.single { it["projectDirectory"] == project.canonicalFile.path }["connecting"] shouldBe true
+
+        releaseConnect.countDown()
+        connectThread.join(5_000)
+
+        manager.status(project).statusBool("connected").shouldBeTrue()
+        manager.status(project).statusBool("connecting").shouldBeFalse()
     }
 }

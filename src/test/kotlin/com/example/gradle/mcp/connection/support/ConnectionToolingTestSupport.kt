@@ -2,6 +2,7 @@ package com.example.gradle.mcp.connection.support
 
 import com.example.gradle.mcp.support.selfReturningProxy
 import org.gradle.tooling.BuildLauncher
+import org.gradle.tooling.ModelBuilder
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.model.UnsupportedMethodException
 import org.gradle.tooling.model.build.BuildEnvironment
@@ -150,11 +151,33 @@ internal fun projectConnectionProxy(
                         else -> null
                     }
                 }
+                "model" -> {
+                    getModelCalls.incrementAndGet()
+                    val modelType = args?.get(0) as Class<*>
+                    modelBuilderProxy {
+                        when (modelType) {
+                            BuildEnvironment::class.java -> buildEnvironment
+                            else -> null
+                        }
+                    }
+                }
                 "newBuild" -> launcher
                 else -> defaultProxyValue(method)
             }
         },
     ) as ProjectConnection
+
+/**
+ * Fluent ModelBuilder proxy: every method except `get` returns the proxy
+ * itself so `apply { withCancellationToken(...) }` configurations work.
+ */
+private fun modelBuilderProxy(model: () -> Any?): Any =
+    selfReturningProxy(ModelBuilder::class.java) { self, method, _ ->
+        when (method.name) {
+            "get" -> model()
+            else -> self
+        }
+    }
 
 private fun normalizeStrings(args: Array<out Any?>?): List<String> =
     args?.flatMap { value ->

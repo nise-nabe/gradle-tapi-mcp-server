@@ -4,12 +4,13 @@ import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
+import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.model.build.BuildEnvironment
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 class GradleConnectionManager(
-    private val connectionOpener: (ConnectionConfig, File) -> Pair<ProjectConnection, BuildEnvironmentSnapshot?> =
+    private val connectionOpener: (ConnectionConfig, File, ConnectHooks) -> Pair<ProjectConnection, BuildEnvironmentSnapshot?> =
         Companion::openConnection,
 ) {
     private data class PooledConnection(
@@ -29,7 +30,17 @@ class GradleConnectionManager(
      */
     private var disconnectAllEpoch = 0L
 
-    fun ensureConnected(config: ConnectionConfig): ConnectionInfo {
+    /**
+     * Canonical keys with a connect currently in flight (a first-time Gradle
+     * distribution download happens inside this window), so
+     * [status] can report `connecting` instead of a misleading `connected: false`.
+     */
+    private val inflightConnects = ConcurrentHashMap<String, File>()
+
+    fun ensureConnected(
+        config: ConnectionConfig,
+        hooks: ConnectHooks = ConnectHooks(),
+    ): ConnectionInfo {
         val projectDir = validateProjectDirectory(config.projectDirectory)
         val key = ProjectDirectoryResolver.canonicalKey(projectDir)
         val normalizedConfig = config.copy(projectDirectory = projectDir.path)
@@ -41,25 +52,30 @@ class GradleConnectionManager(
             disconnectAllEpoch
         }
 
-        val (newConnection, snapshot) = connectionOpener(normalizedConfig, projectDir)
-        val newPooled = PooledConnection(
-            projectDirectory = projectDir,
-            connection = newConnection,
-            cachedEnvironment = snapshot,
-            config = normalizedConfig,
-        )
+        inflightConnects[key] = projectDir
+        try {
+            val (newConnection, snapshot) = connectionOpener(normalizedConfig, projectDir, hooks)
+            val newPooled = PooledConnection(
+                projectDirectory = projectDir,
+                connection = newConnection,
+                cachedEnvironment = snapshot,
+                config = normalizedConfig,
+            )
 
-        synchronized(pool) {
-            if (disconnectAllEpoch != epochAtStart) {
-                closeQuietly(newConnection)
-                return ConnectionInfo(projectDir.path, "disconnected")
+            synchronized(pool) {
+                if (disconnectAllEpoch != epochAtStart) {
+                    closeQuietly(newConnection)
+                    return ConnectionInfo(projectDir.path, "disconnected")
+                }
+                pool.putIfAbsent(key, newPooled)?.let { existing ->
+                    closeQuietly(newConnection)
+                    return existingConnectionInfo(existing, normalizedConfig, projectDir)
+                }
             }
-            pool.putIfAbsent(key, newPooled)?.let { existing ->
-                closeQuietly(newConnection)
-                return existingConnectionInfo(existing, normalizedConfig, projectDir)
-            }
+            return ConnectionInfo(projectDir.path, "connected")
+        } finally {
+            inflightConnects.remove(key)
         }
-        return ConnectionInfo(projectDir.path, "connected")
     }
 
     fun requireConnection(projectDirectory: File): ProjectConnection = borrowConnection(projectDirectory)
@@ -161,9 +177,16 @@ class GradleConnectionManager(
             return connectionStatus(projectDirectory, refresh, isBuildActive).toResponseMap()
         }
         val default = defaultProjectDirectory()
-        val connections = pool.values
-            .map { pooled -> connectionStatus(pooled.projectDirectory, refresh, isBuildActive) }
-            .sortedBy { it.projectDirectory }
+        val connectingOnly = inflightConnects.entries
+            .filter { it.key !in pool.keys }
+            .map { (_, dir) ->
+                ConnectionStatus(connected = false, projectDirectory = dir.path, connecting = true)
+            }
+        val connections = (
+            pool.values.map { pooled ->
+                connectionStatus(pooled.projectDirectory, refresh, isBuildActive)
+            } + connectingOnly
+            ).sortedBy { it.projectDirectory }
         return MultiConnectionStatus(
             defaultProjectDirectory = default?.path,
             connections = connections,
@@ -180,20 +203,29 @@ class GradleConnectionManager(
             return
         }
         try {
-            ensureConnected(
-                ConnectionConfig(
-                    projectDirectory = projectDirectory.canonicalFile.path,
-                    gradleUserHome = System.getenv("GRADLE_USER_HOME")?.takeIf { it.isNotBlank() },
-                    gradleVersion = System.getenv("GRADLE_VERSION")?.takeIf { it.isNotBlank() },
-                    gradleInstallation = System.getenv("GRADLE_INSTALLATION")?.takeIf { it.isNotBlank() },
-                ),
-            )
+            // The project lock serializes this background auto-connect with an
+            // explicit gradle_connect for the same project, so a first-time
+            // distribution download cannot run twice concurrently into the
+            // same wrapper dists directory.
+            ProjectLifecycleLock.withProjectLock(projectDirectory) {
+                ensureConnected(
+                    ConnectionConfig(
+                        projectDirectory = projectDirectory.canonicalFile.path,
+                        gradleUserHome = System.getenv("GRADLE_USER_HOME")?.takeIf { it.isNotBlank() },
+                        gradleVersion = System.getenv("GRADLE_VERSION")?.takeIf { it.isNotBlank() },
+                        gradleInstallation = System.getenv("GRADLE_INSTALLATION")?.takeIf { it.isNotBlank() },
+                    ),
+                )
+            }
         } catch (exception: Exception) {
             if (exception is InterruptedException) {
                 Thread.currentThread().interrupt()
                 return
             }
-            // Auto-connect is best-effort at startup.
+            // Auto-connect is best-effort at startup; the next gradle_connect reports the real error.
+            System.err.println(
+                "Auto-connect to ${projectDirectory.path} failed: ${exception.message}",
+            )
         }
     }
 
@@ -236,14 +268,18 @@ class GradleConnectionManager(
     ): ConnectionStatus {
         val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
         val pooled = pool[key]
+        // Only connected projects can refresh; a refresh while a connect is
+        // still in flight would otherwise block on the project lock for the
+        // whole download.
         val env = pooled?.cachedEnvironment
-            ?: if (refresh) {
+            ?: if (pooled != null && refresh) {
                 refreshEnvironmentWhenIdle(projectDirectory, isBuildActive)
             } else {
                 null
             }
         return ConnectionStatus(
             connected = pooled != null,
+            connecting = inflightConnects.containsKey(key),
             projectDirectory = projectDirectory.path,
             gradleVersion = env?.gradleVersion,
             versionInfo = env?.versionInfo,
@@ -313,13 +349,47 @@ class GradleConnectionManager(
         private fun openConnection(
             config: ConnectionConfig,
             projectDir: File,
+            hooks: ConnectHooks,
         ): Pair<ProjectConnection, BuildEnvironmentSnapshot?> {
             val connector = GradleConnector.newConnector().forProjectDirectory(projectDir)
             config.gradleInstallation?.let { connector.useInstallation(File(it).absoluteFile) }
             config.gradleVersion?.let { connector.useGradleVersion(it) }
             config.gradleUserHome?.let { connector.useGradleUserHomeDir(File(it).absoluteFile) }
             val connection = connector.connect()
-            return connection to loadEnvironmentSnapshot(connection)
+            // The Tooling API resolves (downloads) the Gradle distribution
+            // lazily inside the first model call, so this fetch can block for
+            // minutes on a cold GRADLE_USER_HOME or after a version bump.
+            // Failures must propagate: pooling a connection that reports
+            // "connected" but cannot run anything makes every later tool call
+            // retry the same download.
+            val snapshot = try {
+                requireBuildEnvironmentSnapshot(connection, projectDir) {
+                    hooks.cancellationToken?.let(::withCancellationToken)
+                    hooks.progressListener?.let { listener ->
+                        addProgressListener(listener, OperationType.FILE_DOWNLOAD)
+                    }
+                }
+            } catch (exception: Exception) {
+                if (exception is InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+                try {
+                    connection.close()
+                } catch (_: Exception) {
+                    // Best-effort close.
+                }
+                when (exception) {
+                    is McpException -> throw exception
+                    is InterruptedException -> throw exception
+                    else -> throw McpException(
+                        McpErrorCode.INTERNAL_ERROR,
+                        "Failed to initialize the Gradle connection for ${projectDir.path} " +
+                            "(distribution install or daemon startup): ${exception.message}",
+                        exception,
+                    )
+                }
+            }
+            return connection to snapshot
         }
 
         private fun loadEnvironmentSnapshot(connection: ProjectConnection): BuildEnvironmentSnapshot? =

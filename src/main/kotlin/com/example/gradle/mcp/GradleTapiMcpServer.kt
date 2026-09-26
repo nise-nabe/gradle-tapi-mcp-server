@@ -14,6 +14,7 @@ import com.example.gradle.mcp.protocol.registerGradleTapiResources
 import com.example.gradle.mcp.server.EofSignalingInputStream
 import com.example.gradle.mcp.server.McpTransport
 import com.example.gradle.mcp.server.ServerCliOptions
+import com.example.gradle.mcp.server.captureProtocolStdout
 import com.example.gradle.mcp.server.serveStreamableHttp
 import io.ktor.utils.io.streams.asInput
 import io.modelcontextprotocol.kotlin.sdk.server.Server
@@ -27,19 +28,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.asSink
 import kotlinx.io.buffered
 import kotlin.time.Duration.Companion.minutes
+import java.io.PrintStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 
 fun runGradleTapiMcpServer(options: ServerCliOptions = ServerCliOptions()) {
     val connectionManager = GradleConnectionManager()
     val buildExecutionManager = BuildExecutionManager(connectionManager)
-    connectionManager.tryAutoConnectFromEnvironment()
-
     val serverScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
 
@@ -55,12 +56,28 @@ fun runGradleTapiMcpServer(options: ServerCliOptions = ServerCliOptions()) {
     }
 
     when (options.transport) {
-        McpTransport.STDIO -> serveStdio(runtime, serverScope, ::shutdownRuntime)
-        McpTransport.STREAMABLE_HTTP -> serveStreamableHttp(
-            endpoint = options.http,
-            newServer = { createGradleTapiServer(runtime, serverScope) },
-            shutdownRuntime = ::shutdownRuntime,
-        )
+        McpTransport.STDIO -> {
+            // Capture the real stdout for JSON-RPC before any Tooling API
+            // call: the Gradle distribution installer writes progress to
+            // System.out, which is redirected to stderr from here on.
+            val protocolOut = captureProtocolStdout()
+            // Detached: a first-time distribution download must not delay
+            // the transport startup (initialize would be unanswered).
+            serverScope.launch(Dispatchers.IO) {
+                connectionManager.tryAutoConnectFromEnvironment()
+            }
+            serveStdio(runtime, serverScope, ::shutdownRuntime, protocolOut)
+        }
+        McpTransport.STREAMABLE_HTTP -> {
+            serverScope.launch(Dispatchers.IO) {
+                connectionManager.tryAutoConnectFromEnvironment()
+            }
+            serveStreamableHttp(
+                endpoint = options.http,
+                newServer = { createGradleTapiServer(runtime, serverScope) },
+                shutdownRuntime = ::shutdownRuntime,
+            )
+        }
     }
 }
 
@@ -102,12 +119,13 @@ private fun serveStdio(
     runtime: GradleMcpRuntime,
     serverScope: CoroutineScope,
     shutdownRuntime: suspend () -> Unit,
+    protocolOut: PrintStream,
 ) {
     val transportClosed = CountDownLatch(1)
     val server = createGradleTapiServer(runtime, serverScope)
     val transport = StdioServerTransport(
         input = EofSignalingInputStream(System.`in`, transportClosed).asInput(),
-        output = System.out.asSink().buffered(),
+        output = protocolOut.asSink().buffered(),
     ) {
         scope = serverScope
         ioDispatcher = Dispatchers.IO

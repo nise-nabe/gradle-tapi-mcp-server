@@ -4,8 +4,8 @@
 
 | Tool | Description |
 |------|-------------|
-| `gradle_connect` | Connect to a project directory (keeps other projects connected) |
-| `gradle_connection_status` | Connection state for one project or all active connections (`connections[]`, `defaultProjectDirectory`). Cache-only by default; set `refresh: true` when `runtimeStackAvailable` is false and you need `gradleVersion` / `javaHome`. Listing all connections with `refresh: true` fetches once per connected project |
+| `gradle_connect` | Connect to a project directory (keeps other projects connected). First connect may download the Gradle distribution; download progress is emitted as log notifications and MCP request cancellation aborts it |
+| `gradle_connection_status` | Connection state for one project or all active connections (`connections[]`, `defaultProjectDirectory`; `connecting: true` while a connect/distribution download is in flight). Cache-only by default; set `refresh: true` when `runtimeStackAvailable` is false and you need `gradleVersion` / `javaHome`. Listing all connections with `refresh: true` fetches once per connected project |
 | `gradle_disconnect` | Close one project (`projectDirectory`) or all connections (omit) |
 | `gradle_get_build_environment` | Gradle/Java environment including `javaVersion` and `versionInfo` (`gradle --version` text on Gradle 9.4+; lightweight) |
 | `gradle_get_java_runtimes` | Daemon Java from BuildEnvironment plus detected local JDKs via `javaToolchains -q` (set `includeToolchains: false` for daemon only) |

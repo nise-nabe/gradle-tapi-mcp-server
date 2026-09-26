@@ -2,6 +2,7 @@ package com.example.gradle.mcp.connection
 
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import org.gradle.tooling.ModelBuilder
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.UnknownModelException
 import org.gradle.tooling.UnsupportedVersionException
@@ -12,9 +13,12 @@ import java.io.File
 fun requireBuildEnvironmentSnapshot(
     connection: ProjectConnection,
     projectDirectory: File,
+    configure: ModelBuilder<BuildEnvironment>.() -> Unit = {},
 ): BuildEnvironmentSnapshot =
     try {
-        buildEnvironmentSnapshotFrom(connection.getModel(BuildEnvironment::class.java))
+        buildEnvironmentSnapshotFrom(
+            connection.model(BuildEnvironment::class.java).apply(configure).get(),
+        )
     } catch (exception: Exception) {
         if (exception is InterruptedException) {
             Thread.currentThread().interrupt()

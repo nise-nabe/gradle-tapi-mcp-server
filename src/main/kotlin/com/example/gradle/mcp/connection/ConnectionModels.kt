@@ -1,6 +1,19 @@
 package com.example.gradle.mcp.connection
 
+import org.gradle.tooling.CancellationToken
+import org.gradle.tooling.events.ProgressListener
 import java.io.File
+
+/**
+ * Optional hooks for a single connect attempt. The Tooling API installs a
+ * missing Gradle distribution lazily inside the first model call issued by
+ * `gradle_connect`; [cancellationToken] lets a cancelled MCP request abort
+ * that download, and [progressListener] receives its FILE_DOWNLOAD events.
+ */
+data class ConnectHooks(
+    val cancellationToken: CancellationToken? = null,
+    val progressListener: ProgressListener? = null,
+)
 
 data class ConnectionConfig(
     val projectDirectory: String,
@@ -39,6 +52,7 @@ data class ConnectionInfo(
 data class ConnectionStatus(
     val connected: Boolean,
     val projectDirectory: String?,
+    val connecting: Boolean = false,
     val gradleVersion: String? = null,
     val versionInfo: String? = null,
     val javaHome: String? = null,
@@ -47,6 +61,7 @@ data class ConnectionStatus(
 ) {
     fun toResponseMap(): Map<String, Any?> = buildMap {
         put("connected", connected)
+        put("connecting", connecting)
         put("projectDirectory", projectDirectory)
         put("gradleVersion", gradleVersion)
         put("versionInfo", versionInfo)
