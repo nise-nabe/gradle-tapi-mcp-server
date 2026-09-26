@@ -16,7 +16,7 @@
 
 - Standalone MCP server exposing Gradle Tooling API over stdio to MCP clients.
 - GitHub repository: `nise-nabe/gradle-tapi-mcp-server` (public, default branch `main`).
-- Stack: Kotlin 2.4.10, Java 17 toolchain, **Kotlin** MCP SDK 0.15.0 (`io.modelcontextprotocol:kotlin-sdk-server`), Gradle Tooling API 9.7.1, kotlinx.serialization（ツール結果 JSON・MCP ワイヤ）。
+- Stack: Kotlin 2.4.10, Java 17 toolchain, **Kotlin** MCP SDK 0.15.0 (`io.modelcontextprotocol:kotlin-sdk-server`), Gradle Tooling API 9.8.0, kotlinx.serialization（ツール結果 JSON・MCP ワイヤ）。
 - Build uses `gradle/libs.versions.toml`, `dependencyResolutionManagement` with `FAIL_ON_PROJECT_REPOS`, JVM Test Suites (JUnit 5), Configuration Cache, and Isolated Projects (`org.gradle.isolated-projects=true`).
 - Multi-module: root MCP server plus `:dependency-sources-core` / `:dependency-sources-mcp` for dependency-sources name locate and `:resolution-model` for `ResolutionResult` tooling models; feature subpackages (`build`, `cache`, `connection`, `model`, `protocol`, `server`, `dependency`) under `com.example.gradle.mcp`; MCP tool definitions live in each feature package with shared helpers in `protocol`; `build-logic` deferred until further need arises.
 - `gradle-wrapper.jar` is explicitly un-ignored so clones can run `./gradlew`.
@@ -81,7 +81,7 @@ Logging goes to **stderr** only; **stdout** is reserved for MCP JSON-RPC (newlin
 
 ### E2E smoke test (MCP + Gradle Tooling API)
 
-After `./gradlew jar`, drive the server over stdio: send `initialize` → `notifications/initialized` → `tools/list` → `tools/call` for `gradle_connection_status` and `gradle_get_project_overview` with `GRADLE_PROJECT_DIR` set to a Gradle project (this repo works). Expect `connected: true`, the resolved Gradle version of the connected project (this repo: wrapper **9.7.1**), and project name `gradle-tapi-mcp-server`.
+After `./gradlew jar`, drive the server over stdio: send `initialize` → `notifications/initialized` → `tools/list` → `tools/call` for `gradle_connection_status` and `gradle_get_project_overview` with `GRADLE_PROJECT_DIR` set to a Gradle project (this repo works). Expect `connected: true`, the resolved Gradle version of the connected project (this repo: wrapper **9.8.0**), and project name `gradle-tapi-mcp-server`.
 
 `GradleTapiMcpServerLauncherSmokeTest` runs during `./gradlew build` (jar + initialize smoke). Optional local benchmark: `scripts/measure_startup.py` after `./gradlew jar`.
 

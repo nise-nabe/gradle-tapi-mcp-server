@@ -297,7 +297,7 @@ class GradleConnectionManagerTest {
             getModelCountingConnection(),
             projectDirectory = project,
             environment = BuildEnvironmentSnapshot(
-                gradleVersion = "9.7.1",
+                gradleVersion = "9.8.0",
                 gradleUserHome = envHome.absolutePath,
                 javaHome = "/jdk",
                 javaVersion = "17",

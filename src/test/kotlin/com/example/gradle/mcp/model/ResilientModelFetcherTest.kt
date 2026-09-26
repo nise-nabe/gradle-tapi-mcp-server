@@ -46,7 +46,7 @@ class ResilientModelFetcherTest {
             GradleProject::class.java,
             ModelFetchPhase.BUILD_FINISHED,
             emptyList(),
-            "9.7.1",
+            "9.8.0",
         )
 
         result.partial shouldBe true
@@ -69,7 +69,7 @@ class ResilientModelFetcherTest {
             GradleProject::class.java,
             ModelFetchPhase.BUILD_FINISHED,
             emptyList(),
-            "9.7.1",
+            "9.8.0",
         )
 
         result.partial shouldBe true
@@ -87,7 +87,7 @@ class ResilientModelFetcherTest {
             GradleProject::class.java,
             ModelFetchPhase.BUILD_FINISHED,
             listOf(":app:compileJava"),
-            "9.7.1",
+            "9.8.0",
         )
 
         result.partial shouldBe true
@@ -113,7 +113,7 @@ class ResilientModelFetcherTest {
             GradleProject::class.java,
             ModelFetchPhase.BUILD_FINISHED,
             emptyList(),
-            "9.7.1",
+            "9.8.0",
         )
 
         result.failures.shouldContainExactly(
@@ -137,7 +137,7 @@ class ResilientModelFetcherTest {
                 GradleProject::class.java,
                 ModelFetchPhase.BUILD_FINISHED,
                 emptyList(),
-                "9.7.1",
+                "9.8.0",
             )
         }
 
@@ -155,7 +155,7 @@ class ResilientModelFetcherTest {
             String::class.java,
             ModelFetchPhase.PROJECTS_LOADED,
             emptyList(),
-            "9.7.1",
+            "9.8.0",
         )
 
         result.model shouldBe "gradle-build"
@@ -171,7 +171,7 @@ class ResilientModelFetcherTest {
             GradleProject::class.java,
             ModelFetchPhase.BUILD_FINISHED,
             listOf("help", ":test"),
-            "9.7.1",
+            "9.8.0",
         )
 
         harness.calls.shouldContainExactly(
@@ -214,7 +214,7 @@ class ResilientModelFetcherTest {
                 GradleProject::class.java,
                 ModelFetchPhase.BUILD_FINISHED,
                 emptyList(),
-                "9.7.1",
+                "9.8.0",
             )
         }
 
@@ -232,7 +232,7 @@ class ResilientModelFetcherTest {
         )
         val harness = phasedConnection(payload)
 
-        val result = harness.connection.fetchResilientProjectAndInvocations(emptyList(), "9.7.1")
+        val result = harness.connection.fetchResilientProjectAndInvocations(emptyList(), "9.8.0")
 
         result.model.project.path shouldBe ":"
         result.model.invocations.shouldBeSameInstanceAs(payload.invocations)
@@ -254,7 +254,7 @@ class ResilientModelFetcherTest {
                 GradleProject::class.java,
                 ModelFetchPhase.BUILD_FINISHED,
                 emptyList(),
-                "9.7.1",
+                "9.8.0",
                 buildTreePath = ":missing",
             )
         }
@@ -312,7 +312,7 @@ class ResilientModelFetcherTest {
         ResilientModelFetcher.supportsResilientFetch("9.2.1") shouldBe false
         ResilientModelFetcher.supportsResilientFetch("9.3") shouldBe true
         ResilientModelFetcher.supportsResilientFetch("9.3-rc-1") shouldBe true
-        ResilientModelFetcher.supportsResilientFetch("9.7.1") shouldBe true
+        ResilientModelFetcher.supportsResilientFetch("9.8.0") shouldBe true
         ResilientModelFetcher.supportsResilientFetch(null) shouldBe true
         ResilientModelFetcher.supportsResilientFetch("not-a-version") shouldBe true
     }
