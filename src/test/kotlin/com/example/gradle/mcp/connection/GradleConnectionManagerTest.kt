@@ -622,7 +622,9 @@ class GradleConnectionManagerTest {
         connectThread.start()
         connectEntered.await(5, TimeUnit.SECONDS).shouldBeTrue()
 
-        val inFlight = manager.status(project)
+        // status echoes the caller-supplied directory, so pass the canonical
+        // path: on Windows @TempDir may contain 8.3 short names (RUNNER~1).
+        val inFlight = manager.status(project.canonicalFile)
         inFlight.statusBool("connected").shouldBeFalse()
         inFlight.statusBool("connecting").shouldBeTrue()
         inFlight.statusStr("projectDirectory") shouldBe project.canonicalFile.path
