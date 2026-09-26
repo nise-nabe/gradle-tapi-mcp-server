@@ -76,7 +76,10 @@ public final class FailureRecords {
 
     private static FailureRecord fromFailure(Failure failure, int depth) {
         String message = truncate(safeMessage(failure));
-        String description = truncate(safeDescription(failure));
+        String description = truncate(safeOwnDescription(failure));
+        if (description == null) {
+            description = truncate(safeDescription(failure));
+        }
         ArrayList<FailureRecord> causes = new ArrayList<>();
         if (depth < MAX_CAUSE_DEPTH) {
             Collection<? extends Failure> nested = safeCauses(failure);
@@ -106,6 +109,14 @@ public final class FailureRecords {
         try {
             return failure.getDescription();
         } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static String safeOwnDescription(Failure failure) {
+        try {
+            return failure.getOwnDescription();
+        } catch (RuntimeException | LinkageError ignored) {
             return null;
         }
     }

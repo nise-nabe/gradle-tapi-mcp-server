@@ -22,6 +22,7 @@ internal fun toolingFailureProxy(
     description: String? = null,
     causes: List<Failure> = emptyList(),
     problems: List<org.gradle.tooling.events.problems.Problem> = emptyList(),
+    ownDescription: String? = null,
 ): Failure =
     Proxy.newProxyInstance(
         Failure::class.java.classLoader,
@@ -30,6 +31,7 @@ internal fun toolingFailureProxy(
         proxyIdentity(proxy, method.name, args) ?: when (method.name) {
             "getMessage" -> message
             "getDescription" -> description
+            "getOwnDescription" -> ownDescription
             "getCauses" -> causes
             "getProblems" -> problems
             else -> defaultProxyReturn(method)

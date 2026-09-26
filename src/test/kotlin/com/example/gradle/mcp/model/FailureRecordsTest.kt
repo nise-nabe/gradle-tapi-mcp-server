@@ -1,8 +1,12 @@
 package com.example.gradle.mcp.model
 
+import com.example.gradle.mcp.support.defaultProxyReturn
+import com.example.gradle.mcp.support.proxyIdentity
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import org.gradle.tooling.Failure
 import org.junit.jupiter.api.Test
+import java.lang.reflect.Proxy
 
 class FailureRecordsTest {
     @Test
@@ -66,6 +70,59 @@ class FailureRecordsTest {
         val slice = FailureRecords.fromFailures(listOf(failure))
 
         slice.records.single().problems shouldBe listOf("Compilation failed")
+    }
+
+    @Test
+    fun `prefers own description over aggregated description`() {
+        val failure = toolingFailureProxy(
+            message = "root",
+            description = "root stack\nCaused by: cause stack",
+            ownDescription = "root stack",
+            causes = listOf(
+                toolingFailureProxy(
+                    message = "cause-1",
+                    description = "cause stack\nCaused by: nested stack",
+                    ownDescription = "cause stack",
+                ),
+            ),
+        )
+
+        val slice = FailureRecords.fromFailures(listOf(failure))
+
+        val root = slice.records.single()
+        root.description shouldBe "root stack"
+        root.causes.single().description shouldBe "cause stack"
+    }
+
+    @Test
+    fun `falls back to description when own description is unavailable`() {
+        val failure = toolingFailureProxy(
+            message = "root",
+            description = "aggregated description",
+        )
+
+        val slice = FailureRecords.fromFailures(listOf(failure))
+
+        slice.records.single().description shouldBe "aggregated description"
+    }
+
+    @Test
+    fun `falls back to description when failure lacks getOwnDescription`() {
+        val failure = Proxy.newProxyInstance(
+            Failure::class.java.classLoader,
+            arrayOf(Failure::class.java),
+        ) { proxy, method, args ->
+            proxyIdentity(proxy, method.name, args) ?: when (method.name) {
+                "getMessage" -> "root"
+                "getDescription" -> "aggregated description"
+                "getOwnDescription" -> throw AbstractMethodError()
+                else -> defaultProxyReturn(method)
+            }
+        } as Failure
+
+        val slice = FailureRecords.fromFailures(listOf(failure))
+
+        slice.records.single().description shouldBe "aggregated description"
     }
 
     @Test
