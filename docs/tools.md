@@ -19,6 +19,7 @@
 | `gradle_get_dependency_resolution` | Resolved dependency graph via Tooling API `ResolutionResult` (no task run). Omit `configuration` to list resolvable/consumable names (optional `includeAttributes` / `includeOutgoingVariants`; catalog cap 200). With `configuration`: optional `projectPath`, `dependency` filter, `maxDependencies` / `maxComponents` (default 500). Unknown names return `suggestedConfigurations` |
 | `gradle_run_tasks` | Execute tasks; stdout/stderr truncated by default |
 | `gradle_run_tests` | Execute JVM tests by class, method, pattern, or task scope; stdout/stderr truncated by default |
+| `gradle_get_task_execution_plan` | Ordered task execution plan via dry run (no task actions run); returns `taskPlan` `{taskCount, tasks[{path, state}]}`. Foreground only; busy → `BUILD_ALREADY_RUNNING` + `activeBuildId` |
 | `gradle_list_builds` | List recent MCP builds from memory and `.gradle/mcp-builds/` (no Tooling API required) |
 | `gradle_get_build_status` | Poll status/output for a background build (`buildId` required); set `includeProgress: true` for detailed progress |
 | `gradle_cancel_build` | Cancel a background build via Tooling API `CancellationToken` (`buildId` required) |

@@ -5,6 +5,7 @@ import com.example.gradle.mcp.build.cancelBuildSchema
 import com.example.gradle.mcp.build.listBuildsSchema
 import com.example.gradle.mcp.build.runTasksSchema
 import com.example.gradle.mcp.build.runTestsSchema
+import com.example.gradle.mcp.build.taskExecutionPlanSchema
 import com.example.gradle.mcp.cache.buildCacheStatusSchema
 import com.example.gradle.mcp.connection.buildEnvironmentSchema
 import com.example.gradle.mcp.connection.connectSchema
@@ -49,6 +50,11 @@ internal fun allMcpToolSpecs(): List<McpToolSpec> =
         McpToolSpec("gradle_cancel_build", McpToolDescriptions.CANCEL_BUILD, cancelBuildSchema()),
         McpToolSpec("gradle_get_build_status", McpToolDescriptions.BUILD_STATUS, buildStatusSchema()),
         McpToolSpec("gradle_run_tasks", McpToolDescriptions.RUN_TASKS, runTasksSchema()),
+        McpToolSpec(
+            "gradle_get_task_execution_plan",
+            McpToolDescriptions.TASK_EXECUTION_PLAN,
+            taskExecutionPlanSchema(),
+        ),
         McpToolSpec("gradle_run_tests", McpToolDescriptions.RUN_TESTS, runTestsSchema()),
     ) + DependencySourceToolCatalog.specs().map { spec ->
         McpToolSpec(spec.name, spec.description, spec.schema)

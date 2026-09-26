@@ -54,7 +54,7 @@ class McpResourceRegistrationTest {
         server.resourceTemplates.map { it.mimeType }.distinct() shouldBe
             listOf(GradleTapiResourceUri.JSON_MIME_TYPE)
         server.resourceTemplates.shouldHaveSize(5)
-        registeredMcpToolNames.toSet().shouldHaveSize(23)
+        registeredMcpToolNames.toSet().shouldHaveSize(24)
 
         val listedUris = server.resources.keys.sorted()
         val expectedConcrete = GradleTapiResourceTemplates.concreteResources(project.canonicalFile)

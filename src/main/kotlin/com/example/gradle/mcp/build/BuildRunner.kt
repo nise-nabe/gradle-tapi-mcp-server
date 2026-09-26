@@ -89,6 +89,7 @@ internal class BuildRunner(
         }
         val operationLabel = when (effectiveRequest.kind) {
             BuildKind.TASKS -> "Gradle tasks: ${effectiveRequest.tasks.joinToString()}"
+            BuildKind.PLAN -> "Gradle task execution plan: ${effectiveRequest.tasks.joinToString()}"
             BuildKind.TESTS -> describeTestOperation(effectiveRequest)
         }
         tracker.markStarting(operationLabel)
@@ -96,7 +97,7 @@ internal class BuildRunner(
 
         try {
             when (effectiveRequest.kind) {
-                BuildKind.TASKS -> {
+                BuildKind.TASKS, BuildKind.PLAN -> {
                     val launcher = connection.newBuild()
                         .forTasks(*effectiveRequest.tasks.toTypedArray())
                     configureLauncher(launcher, record, effectiveRequest, streams, tracker)
@@ -224,7 +225,12 @@ internal class BuildRunner(
         val persistenceArguments = record.projectDirectory
             ?.let { buildRecordStore.launcherArguments(File(it), record.id, request.tasks) }
             .orEmpty()
-        launcher.addArguments(*(request.arguments + persistenceArguments).toTypedArray())
+        val planArguments = when {
+            request.kind == BuildKind.PLAN &&
+                request.arguments.none { it == "--dry-run" || it == "-m" } -> listOf("--dry-run")
+            else -> emptyList()
+        }
+        launcher.addArguments(*(request.arguments + planArguments + persistenceArguments).toTypedArray())
         launcher.addJvmArguments(*request.jvmArguments.toTypedArray())
         launcher.withCancellationToken(record.cancellationTokenSource.token())
         launcher.withDetailedFailure()

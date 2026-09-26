@@ -6,6 +6,7 @@ import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildFailureClassifier
 import com.example.gradle.mcp.build.BuildStatusView
 import com.example.gradle.mcp.build.FailureKind
+import com.example.gradle.mcp.build.TaskExecutionPlanParser
 import com.example.gradle.mcp.protocol.ProblemsSerializer
 
 internal object PersistedBuildViewFactory {
@@ -102,6 +103,13 @@ internal object PersistedBuildViewFactory {
             outcome = BuildOutputParser.outcomeFromStatus(status),
             buildSummary = if (!isRunning) {
                 BuildPersistenceContract.terminalBuildSummary(artifacts, terminalSource)
+            } else {
+                null
+            },
+            taskPlan = if (artifacts.mcpResult?.kind == "plan" && !isRunning) {
+                TaskExecutionPlanParser.toResponseMap(
+                    TaskExecutionPlanParser.parse(artifacts.stdout.text),
+                )
             } else {
                 null
             },
