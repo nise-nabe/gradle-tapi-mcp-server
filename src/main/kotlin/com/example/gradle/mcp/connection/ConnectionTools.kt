@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.connection
 
 import com.example.gradle.mcp.GradleMcpRuntime
+import com.example.gradle.mcp.protocol.McpBuildNotifier
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpToolDescriptions
@@ -16,13 +17,21 @@ import com.example.gradle.mcp.protocol.requiredString
 import com.example.gradle.mcp.protocol.registerTool
 import com.example.gradle.mcp.protocol.stringProperty
 import io.modelcontextprotocol.kotlin.sdk.server.Server
+import io.modelcontextprotocol.kotlin.sdk.types.LoggingLevel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.job
+import org.gradle.tooling.GradleConnector
+import org.gradle.tooling.events.ProgressListener
+import org.gradle.tooling.events.StartEvent
 import java.io.File
+import kotlin.coroutines.coroutineContext
 
 internal fun connectProject(
     runtime: GradleMcpRuntime,
     projectDirectory: File,
     config: ConnectionConfig,
+    hooks: ConnectHooks = ConnectHooks(),
 ): Map<String, Any?> = ProjectLifecycleLock.withProjectLock(projectDirectory) {
     val activeBuild = runtime.buildExecutionManager.activeBuildSnapshot(projectDirectory)
     if (activeBuild != null) {
@@ -33,7 +42,7 @@ internal fun connectProject(
             errorDetails = activeBuild.toErrorFields(),
         )
     }
-    runtime.connectionManager.ensureConnected(config).toResponseMap()
+    runtime.connectionManager.ensureConnected(config, hooks).toResponseMap()
 }
 
 internal fun disconnectProjects(
@@ -148,6 +157,13 @@ internal fun buildEnvironmentPayload(
     }
 }
 
+private fun gradleDistributionDownloadListener(notifier: McpBuildNotifier): ProgressListener =
+    ProgressListener { event ->
+        if (event is StartEvent) {
+            notifier.notifyLog(event.displayName, LoggingLevel.Info)
+        }
+    }
+
 context(runtime: GradleMcpRuntime)
 fun Server.registerConnectionTools(scope: CoroutineScope) {
     registerTool(
@@ -155,7 +171,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
         name = "gradle_connect",
         description = McpToolDescriptions.CONNECT,
         schema = connectSchema(),
-    ) { args ->
+    ) { args, notifier ->
         val projectDirectory = ProjectDirectoryResolver.canonicalDirectory(
             args.requiredString("projectDirectory"),
         )
@@ -165,7 +181,20 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
             gradleVersion = args.optionalString("gradleVersion"),
             gradleInstallation = args.optionalString("gradleInstallation"),
         )
-        val response = connectProject(runtime, projectDirectory, config)
+        // The first model call inside connect installs the Gradle
+        // distribution when it is missing; wire cancellation to the MCP
+        // request and surface FILE_DOWNLOAD events as log notifications.
+        val cancellation = GradleConnector.newCancellationTokenSource()
+        coroutineContext.job.invokeOnCompletion { cause ->
+            if (cause is CancellationException) {
+                cancellation.cancel()
+            }
+        }
+        val hooks = ConnectHooks(
+            cancellationToken = cancellation.token(),
+            progressListener = notifier?.let(::gradleDistributionDownloadListener),
+        )
+        val response = connectProject(runtime, projectDirectory, config, hooks)
         jsonResult(response)
     }
     registerTool(

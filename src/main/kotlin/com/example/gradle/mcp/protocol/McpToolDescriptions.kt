@@ -3,10 +3,11 @@ package com.example.gradle.mcp.protocol
 internal object McpToolDescriptions {
     const val CONNECT =
         "Connect via Tooling API. Keeps other connections; rejects when build active for same project " +
-            "(includes activeBuildId)."
+            "(includes activeBuildId). First connect may download the Gradle distribution."
 
     const val CONNECTION_STATUS =
-        "Connection status for one or all projects. refresh=true fetches BuildEnvironment per project."
+        "Connection status for one or all projects. refresh=true fetches BuildEnvironment per project. " +
+            "connecting=true during a distribution download."
 
     const val DISCONNECT =
         "Close one or all Tooling API connections. Running builds for disconnected projects are cancelled."
