@@ -5,8 +5,8 @@
 | Tool | Description |
 |------|-------------|
 | `gradle_connect` | Connect to a project directory (keeps other projects connected). First connect may download the Gradle distribution; download progress is emitted as log notifications and MCP request cancellation aborts it |
-| `gradle_connection_status` | Connection state for one project or all active connections (`connections[]`, `defaultProjectDirectory`; `connecting: true` while a connect/distribution download is in flight). Cache-only by default; set `refresh: true` when `runtimeStackAvailable` is false and you need `gradleVersion` / `javaHome`. Listing all connections with `refresh: true` fetches once per connected project |
-| `gradle_disconnect` | Close one project (`projectDirectory`) or all connections (omit) |
+| `gradle_connection_status` | Connection state for one project or all session-known connections (`connections[]`, `defaultProjectDirectory`; `connecting: true` while a connect/distribution download is in flight). Cache-only by default; set `refresh: true` when `runtimeStackAvailable` is false and you need `gradleVersion` / `javaHome`. Listing all connections with `refresh: true` fetches once per connected project |
+| `gradle_disconnect` | Release this session's hold on one project (`projectDirectory`), the session default (omit), or every connection on the server (`all: true`). A shared pooled connection closes when its last session releases it (`retainedByOtherSessions`) |
 | `gradle_get_build_environment` | Gradle/Java environment including `javaVersion` and `versionInfo` (`gradle --version` text on Gradle 9.4+; lightweight) |
 | `gradle_get_java_runtimes` | Daemon Java from BuildEnvironment plus detected local JDKs via `javaToolchains -q` (set `includeToolchains: false` for daemon only) |
 | `gradle_get_help` | Gradle CLI help text (`gradle --help` equivalent); optional `maxChars` / `tailOutput`; requires Gradle 9.4+ |
@@ -43,6 +43,6 @@ URI scheme: `gradle-tapi://{url-encoded-absolute-project-root}/…`
 | `…/builds/{buildId}/status` | `gradle_get_build_status` | Default omits stdout and progress (same as the tool) |
 | `…/builds/recent` | `gradle_list_builds` | Memory + `.gradle/mcp-builds/`; no Tooling API |
 
-`resources/templates/list` always advertises those five templates. `resources/list` lists concrete URIs for projects connected at **server startup** (typically `GRADLE_PROJECT_DIR` auto-connect), except `builds/{buildId}/status`, which stays template-only until a `buildId` is known. Later `gradle_connect` / `gradle_disconnect` do not change that list (`listChanged` is off). `resources/read` still works for any encoded project root that matches a template. Subscribe is not enabled.
+`resources/templates/list` always advertises those five templates. `resources/list` lists concrete URIs for the projects the session knows (its workspace plus projects it connected; typically `GRADLE_PROJECT_DIR` auto-connect), except `builds/{buildId}/status`, which stays template-only until a `buildId` is known. Later `gradle_connect` / `gradle_disconnect` do not change that list (`listChanged` is off). `resources/read` still works for any encoded project root that matches a template. Subscribe is not enabled.
 
 While an MCP build is active for a project, the **overview** resource **rejects** the read. The JSON-RPC error `data.error` matches the tool payload (`code`: `BUILD_ALREADY_RUNNING`, `message`, `activeBuildId` and related fields). It does not return a stale tree. Connection status, environment, build status, and recent builds follow the corresponding tools.

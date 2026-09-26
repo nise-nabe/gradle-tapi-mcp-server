@@ -4,10 +4,11 @@ internal fun projectDirectoryProperty(description: String): Map<String, String> 
     stringProperty(description)
 
 internal const val PROJECT_DIRECTORY_OPTIONAL_HINT =
-    "Gradle project root. Omit for default connected project or GRADLE_PROJECT_DIR."
+    "Gradle project root. Omit for the session default or GRADLE_PROJECT_DIR."
 
 internal const val PROJECT_DIRECTORY_RESOLVE_HINT =
-    "Gradle project root. Omit to use default connected project or GRADLE_PROJECT_DIR."
+    "Gradle project root. Omit to use the session default (set by gradle_connect) " +
+        "or GRADLE_PROJECT_DIR."
 
 internal fun optionalProjectDirectoryProperty(): Map<String, String> =
     projectDirectoryProperty(PROJECT_DIRECTORY_OPTIONAL_HINT)

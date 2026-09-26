@@ -3,6 +3,7 @@ package com.example.gradle.mcp.build
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
+import com.example.gradle.mcp.connection.ProjectDirectoryScope
 import java.io.File
 
 /**
@@ -122,6 +123,25 @@ internal fun requireMatchingProject(
         throw McpException(
             McpErrorCode.INVALID_ARGUMENT,
             "Build $buildId does not belong to project ${hint.path}",
+        )
+    }
+}
+
+/**
+ * Rejects a build recorded for a project outside [scope]. Sessions on a
+ * shared HTTP server use this so `gradle_get_build_status` /
+ * `gradle_cancel_build` cannot reach another session's builds by buildId.
+ */
+internal fun requireWithinProjectScope(
+    buildId: String,
+    record: BuildRecord?,
+    scope: ProjectDirectoryScope?,
+) {
+    val recordProject = record?.projectDirectory ?: return
+    if (scope != null && !scope.isWithinBoundary(File(recordProject))) {
+        throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "Build $buildId is outside the allowed workspace boundary: $recordProject",
         )
     }
 }

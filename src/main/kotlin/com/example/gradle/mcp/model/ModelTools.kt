@@ -4,6 +4,7 @@ import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.build.BuildExecutionManager
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.connection.ProjectLifecycleGuard
+import com.example.gradle.mcp.connection.SessionProjectContext
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpToolDescriptions
@@ -156,11 +157,13 @@ private fun fetchHelpModel(connection: ProjectConnection, prepareTasks: List<Str
 context(runtime: GradleMcpRuntime)
 private inline fun <T> fetchModelJson(
     args: Map<String, Any>,
+    session: SessionProjectContext?,
     crossinline fetch: (ProjectConnection, List<String>) -> T,
     crossinline serialize: (T) -> Any,
 ): CallToolResult {
     val prepareTasks = prepareTasksFromArgs(args)
-    val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+    val projectDirectory =
+        ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
     return ProjectLifecycleGuard.withNoActiveBuild(
         projectDirectory = projectDirectory,
         buildExecutionManager = runtime.buildExecutionManager,
@@ -175,11 +178,13 @@ private inline fun <T> fetchModelJson(
 context(runtime: GradleMcpRuntime)
 private inline fun <T : Any> fetchResilientModelMap(
     args: Map<String, Any>,
+    session: SessionProjectContext?,
     crossinline fetch: (ProjectConnection, List<String>, String?) -> ResilientModel<T>,
     crossinline serialize: (T) -> Map<String, Any?>,
 ): Map<String, Any?> {
     val prepareTasks = prepareTasksFromArgs(args)
-    val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+    val projectDirectory =
+        ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
     return ProjectLifecycleGuard.withNoActiveBuild(
         projectDirectory = projectDirectory,
         buildExecutionManager = runtime.buildExecutionManager,
@@ -196,18 +201,21 @@ private inline fun <T : Any> fetchResilientModelMap(
 context(runtime: GradleMcpRuntime)
 private inline fun <T : Any> fetchResilientModelJson(
     args: Map<String, Any>,
+    session: SessionProjectContext?,
     crossinline fetch: (ProjectConnection, List<String>, String?) -> ResilientModel<T>,
     crossinline serialize: (T) -> Map<String, Any?>,
-): CallToolResult = jsonResult(fetchResilientModelMap(args, fetch, serialize))
+): CallToolResult = jsonResult(fetchResilientModelMap(args, session, fetch, serialize))
 
 internal fun projectOverviewPayload(
     runtime: GradleMcpRuntime,
     args: Map<String, Any>,
+    session: SessionProjectContext? = null,
 ): Map<String, Any?> {
     val treeOptions = ProjectTreeOptions.fromArgs(args)
     return with(runtime) {
         fetchResilientModelMap(
             args,
+            session,
             fetch = { connection, prepareTasks, gradleVersion ->
                 connection.fetchResilientModel(
                     GradleProject::class.java,
@@ -230,14 +238,14 @@ internal fun projectOverviewPayload(
 }
 
 context(runtime: GradleMcpRuntime)
-fun Server.registerModelTools(scope: CoroutineScope) {
+fun Server.registerModelTools(scope: CoroutineScope, session: SessionProjectContext? = null) {
     registerTool(
         scope,
         name = "gradle_get_project_overview",
         description = McpToolDescriptions.PROJECT_OVERVIEW,
         schema = scopedProjectTreeSchema(),
     ) { args ->
-        jsonResult(projectOverviewPayload(runtime, args))
+        jsonResult(projectOverviewPayload(runtime, args, session))
     }
     registerTool(
         scope,
@@ -250,6 +258,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         val treeOptions = ProjectTreeOptions.fromArgs(args, parseBuildTreePath = false)
         fetchResilientModelJson(
             args,
+            session,
             fetch = { connection, prepareTasks, gradleVersion ->
                 connection.fetchResilientModel(
                     GradleBuild::class.java,
@@ -271,6 +280,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         val treeOptions = ProjectTreeOptions.fromArgs(args)
         fetchResilientModelJson(
             args,
+            session,
             fetch = { connection, prepareTasks, gradleVersion ->
                 connection.fetchResilientModel(
                     GradleProject::class.java,
@@ -301,6 +311,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         val treeOptions = ProjectTreeOptions.fromArgs(args)
         fetchResilientModelJson(
             args,
+            session,
             fetch = { connection, prepareTasks, gradleVersion ->
                 connection.fetchResilientProjectAndInvocations(
                     prepareTasks,
@@ -332,6 +343,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         val buildTreePath = parseBuildTreePathArg(args)
         fetchResilientModelJson(
             args,
+            session,
             fetch = { connection, prepareTasks, gradleVersion ->
                 connection.fetchResilientModel(
                     ProjectPublications::class.java,
@@ -355,6 +367,7 @@ fun Server.registerModelTools(scope: CoroutineScope) {
         val limitOptions = HelpLimitOptions.fromArgs(args)
         fetchModelJson(
             args,
+            session,
             fetch = ::fetchHelpModel,
             serialize = { help -> ModelSerializers.help(help, limitOptions) },
         )

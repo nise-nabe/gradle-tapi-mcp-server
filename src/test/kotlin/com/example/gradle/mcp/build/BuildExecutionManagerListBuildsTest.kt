@@ -3,6 +3,8 @@ package com.example.gradle.mcp.build
 import com.example.gradle.mcp.build.persistence.BuildRecordStore
 import com.example.gradle.mcp.build.persistence.McpBuildRecordPaths
 import com.example.gradle.mcp.connection.GradleConnectionManager
+import com.example.gradle.mcp.connection.ProjectDirectoryScope
+import com.example.gradle.mcp.connection.SessionProjectContext
 import com.example.gradle.mcp.support.failedTracker
 import com.example.gradle.mcp.support.gradleBuildResult
 import com.example.gradle.mcp.support.mcpBuildResult
@@ -274,5 +276,42 @@ class BuildExecutionManagerListBuildsTest {
         crossProjectBuild["status"] shouldBe "succeeded"
         crossProjectBuild["recordSource"] shouldBe "merged"
         crossProjectBuild["statusSource"] shouldBe "disk"
+    }
+
+    @Test
+    fun `listBuilds hides records outside the session scope`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val (manager, _) = persistedBuildManager(projectA)
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "own-build",
+                tracker = succeededTracker(),
+                projectDirectory = projectA.absolutePath,
+            ) {
+                finishedAt = Instant.parse("2026-06-14T10:01:00Z")
+            },
+        )
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "other-build",
+                tracker = succeededTracker(),
+                projectDirectory = projectB.absolutePath,
+            ) {
+                finishedAt = Instant.parse("2026-06-14T10:01:00Z")
+            },
+        )
+        val session = SessionProjectContext(
+            workspaceProject = null,
+            seedProjectDirectories = listOf(projectA),
+        )
+        val scope = ProjectDirectoryScope(GradleConnectionManager(), session)
+
+        val result = manager.listBuilds(projectDirectoryHint = null, limit = 10, scope = scope)
+        val builds = result["builds"] as List<*>
+
+        builds.map { (it as Map<*, *>)["buildId"] } shouldBe listOf("own-build")
+        result["totalAvailable"] shouldBe 1
     }
 }
