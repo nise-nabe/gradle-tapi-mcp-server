@@ -27,7 +27,7 @@ internal object BuildStatusAssembler {
 
         if (style == BuildStatusResponseStyle.FOREGROUND) {
             when (view.kind) {
-                "tasks" -> response["tasks"] = view.tasks
+                "tasks", "plan" -> response["tasks"] = view.tasks
                 "tests" -> {
                     response["testClasses"] = view.testClasses
                     response.putTestRunSelection(view.selection)
@@ -75,6 +75,7 @@ internal object BuildStatusAssembler {
 
         if (!isActive) {
             view.buildSummary?.let { response["buildSummary"] = it }
+            view.taskPlan?.let { response["taskPlan"] = it }
             view.progress?.let { response.putAll(terminalFailureFields(it, progressOptions)) }
             if (
                 view.failureKind == FailureKind.TASK_FAILURE &&

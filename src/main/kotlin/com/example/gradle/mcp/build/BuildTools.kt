@@ -105,6 +105,21 @@ internal fun runTasksSchema(): Map<String, Any> =
         ),
     )
 
+internal fun taskExecutionPlanSchema(): Map<String, Any> =
+    objectSchema(
+        required = listOf("tasks"),
+        properties = mapOf(
+            "projectDirectory" to resolveRequiredProjectDirectoryProperty(),
+            "tasks" to stringArrayProperty("Gradle task paths to plan via dry run (no task actions run)"),
+            "arguments" to stringArrayProperty("Extra Gradle CLI args (no init scripts or @files)"),
+            "jvmArguments" to stringArrayProperty("Extra JVM args for the build"),
+            "includeOutput" to booleanProperty("Stdout/stderr. Default false (plan only)."),
+            "maxOutputChars" to integerProperty(
+                "Max chars per stream when includeOutput=true (default ${OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS})",
+            ),
+        ),
+    )
+
 internal fun runTestsSchema(): Map<String, Any> =
     runOutputSchema(
         required = emptyList(),
@@ -218,6 +233,24 @@ fun Server.registerBuildTools(serverScope: CoroutineScope) {
         } else {
             jsonResult(runtime.buildExecutionManager.runForeground(request, notifier))
         }
+    }
+    registerTool(
+        serverScope,
+        name = "gradle_get_task_execution_plan",
+        description = McpToolDescriptions.TASK_EXECUTION_PLAN,
+        schema = taskExecutionPlanSchema(),
+    ) { args, notifier ->
+        val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+        val request = BuildRunRequest(
+            projectDirectory = projectDirectory,
+            kind = BuildKind.PLAN,
+            tasks = args.requiredStringList("tasks"),
+            arguments = args.optionalStringList("arguments").orEmpty(),
+            jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
+            outputLimit = OutputLimitOptions.fromArgs(args),
+            progressOptions = ProgressResponseOptions.fromArgs(args),
+        )
+        jsonResult(runtime.buildExecutionManager.runForeground(request, notifier))
     }
     registerTool(
         serverScope,

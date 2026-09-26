@@ -13,6 +13,8 @@ data class BuildStatusView(
     val failureKind: FailureKind? = null,
     val outcome: String?,
     val buildSummary: Map<String, Any?>?,
+    /** Ordered dry-run plan for [BuildKind.PLAN] builds; only set at terminal status. */
+    val taskPlan: Map<String, Any?>? = null,
     val progress: BuildProgressSnapshot?,
     val progressAvailable: Boolean,
     val stdout: CapturedStreamSnapshot,
@@ -53,6 +55,13 @@ data class BuildStatusView(
                 },
                 buildSummary = if (isTerminal) {
                     BuildOutputParser.summaryFromStdout(stdout.text)
+                } else {
+                    null
+                },
+                taskPlan = if (record.kind == BuildKind.PLAN && isTerminal) {
+                    TaskExecutionPlanParser.toResponseMap(
+                        TaskExecutionPlanParser.parse(stdout.text),
+                    )
                 } else {
                     null
                 },
