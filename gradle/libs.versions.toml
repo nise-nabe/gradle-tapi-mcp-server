@@ -7,7 +7,7 @@ ktor = "3.5.1"
 coroutines = "1.11.0"
 serialization = "1.11.0"
 slf4j = "2.0.19"
-gradle-tooling-api = "9.7.1"
+gradle-tooling-api = "9.8.0"
 kotlin-logging = "8.0.4"
 
 [libraries]
