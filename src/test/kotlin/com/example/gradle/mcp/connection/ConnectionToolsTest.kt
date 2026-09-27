@@ -260,6 +260,198 @@ class ConnectionToolsTest {
         getModelCalls.get() shouldBe 0
     }
 
+    @Test
+    fun `disconnect without args releases only the session default project`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val connectionManager = GradleConnectionManager()
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        connectionManager.seedConnectionForTests(noopProjectConnection(), projectA)
+        connectionManager.seedConnectionForTests(noopProjectConnection(), projectB)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+        val session = SessionProjectContext(
+            workspaceProject = null,
+            seedProjectDirectories = listOf(projectA),
+        )
+
+        val payload = disconnectProjects(runtime, null, session = session)
+
+        payload["state"] shouldBe "disconnected"
+        payload["projectDirectory"] shouldBe projectA.canonicalFile.path
+        connectionManager.isConnected(projectA).shouldBeFalse()
+        connectionManager.isConnected(projectB).shouldBeTrue()
+    }
+
+    @Test
+    fun `disconnect with all=true closes every pooled connection`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val connectionManager = GradleConnectionManager()
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        connectionManager.seedConnectionForTests(noopProjectConnection(), projectA)
+        connectionManager.seedConnectionForTests(noopProjectConnection(), projectB)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+        val session = SessionProjectContext(
+            workspaceProject = null,
+            seedProjectDirectories = listOf(projectA),
+        )
+
+        val payload = disconnectProjects(runtime, null, all = true, session = session)
+
+        payload["state"] shouldBe "disconnected"
+        @Suppress("UNCHECKED_CAST")
+        (payload["projectDirectories"] as List<String>)
+            .toSet() shouldBe setOf(projectA.canonicalFile.path, projectB.canonicalFile.path)
+        connectionManager.isConnected(projectA).shouldBeFalse()
+        connectionManager.isConnected(projectB).shouldBeFalse()
+    }
+
+    @Test
+    fun `disconnect rejects projectDirectory together with all=true`(@TempDir project: File) {
+        val connectionManager = GradleConnectionManager()
+        val runtime = DefaultGradleMcpRuntime(connectionManager, BuildExecutionManager(connectionManager))
+
+        val error = shouldThrow<McpException> {
+            disconnectProjects(runtime, project.absolutePath, all = true)
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+    }
+
+    @Test
+    fun `disconnect reports not_connected when the session does not know the project`(
+        @TempDir known: File,
+        @TempDir unknown: File,
+    ) {
+        val connectionManager = GradleConnectionManager()
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        connectionManager.seedConnectionForTests(noopProjectConnection(), known)
+        connectionManager.seedConnectionForTests(noopProjectConnection(), unknown)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+        val session = SessionProjectContext(
+            workspaceProject = null,
+            seedProjectDirectories = listOf(known),
+        )
+
+        val payload = disconnectProjects(runtime, unknown.absolutePath, session = session)
+
+        payload["state"] shouldBe "not_connected"
+        connectionManager.isConnected(unknown).shouldBeTrue()
+    }
+
+    @Test
+    fun `disconnect reports not_connected for a session that knows nothing`() {
+        val connectionManager = GradleConnectionManager()
+        val runtime = DefaultGradleMcpRuntime(connectionManager, BuildExecutionManager(connectionManager))
+        val session = SessionProjectContext(workspaceProject = null)
+
+        val payload = disconnectProjects(runtime, null, session = session)
+
+        payload["state"] shouldBe "not_connected"
+    }
+
+    @Test
+    fun `connection status lists only session-known projects`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val connectionManager = GradleConnectionManager()
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        connectionManager.seedConnectionForTests(noopProjectConnection(), projectA)
+        connectionManager.seedConnectionForTests(noopProjectConnection(), projectB)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+        val session = SessionProjectContext(
+            workspaceProject = null,
+            seedProjectDirectories = listOf(projectA),
+        )
+
+        val payload = connectionStatusPayload(runtime, emptyMap(), session)
+
+        @Suppress("UNCHECKED_CAST")
+        val connections = payload["connections"] as List<Map<String, Any?>>
+        connections.map { it["projectDirectory"] } shouldBe listOf(projectA.canonicalFile.path)
+        payload["defaultProjectDirectory"] shouldBe projectA.canonicalFile.path
+    }
+
+    @Test
+    fun `connection status for an unknown project reports not connected`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val connectionManager = GradleConnectionManager()
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        connectionManager.seedConnectionForTests(noopProjectConnection(), projectA)
+        connectionManager.seedConnectionForTests(noopProjectConnection(), projectB)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+        val session = SessionProjectContext(
+            workspaceProject = null,
+            seedProjectDirectories = listOf(projectA),
+        )
+
+        val payload = connectionStatusPayload(
+            runtime,
+            mapOf("projectDirectory" to projectB.path),
+            session,
+        )
+
+        payload["connected"] shouldBe false
+        payload["projectDirectory"] shouldBe projectB.canonicalFile.path
+    }
+
+    @Test
+    fun `connect reuses a pooled connection with different settings and warns`(@TempDir project: File) {
+        val connectionManager = GradleConnectionManager { _, _, _ ->
+            noopProjectConnection() to null
+        }
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+        val sessionA = SessionProjectContext(workspaceProject = null)
+        val sessionB = SessionProjectContext(workspaceProject = null)
+        val base = ConnectionConfig(projectDirectory = project.absolutePath, gradleUserHome = "/home/a")
+        connectProject(runtime, project, base, session = sessionA)
+
+        val payload = connectProject(
+            runtime,
+            project,
+            ConnectionConfig(projectDirectory = project.absolutePath, gradleUserHome = "/home/b"),
+            session = sessionB,
+        )
+
+        payload["state"] shouldBe "connected"
+        payload["reusedExistingConnection"] shouldBe true
+        payload["warning"].shouldNotBeNull().toString() shouldContain "different Gradle settings"
+        connectionManager.isConnected(project).shouldBeTrue()
+    }
+
+    @Test
+    fun `connect rejects different settings for the session's own project`(@TempDir project: File) {
+        val connectionManager = GradleConnectionManager { _, _, _ ->
+            noopProjectConnection() to null
+        }
+        val buildExecutionManager = BuildExecutionManager(connectionManager)
+        val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
+        val session = SessionProjectContext(workspaceProject = null)
+        connectProject(
+            runtime,
+            project,
+            ConnectionConfig(projectDirectory = project.absolutePath, gradleUserHome = "/home/a"),
+            session = session,
+        )
+
+        val error = shouldThrow<McpException> {
+            connectProject(
+                runtime,
+                project,
+                ConnectionConfig(projectDirectory = project.absolutePath, gradleUserHome = "/home/b"),
+                session = session,
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+    }
+
     private fun closeTrackingConnection(
         tokenSource: org.gradle.tooling.CancellationTokenSource,
         connectionClosed: AtomicBoolean,

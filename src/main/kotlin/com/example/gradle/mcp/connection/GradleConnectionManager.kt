@@ -23,6 +23,15 @@ class GradleConnectionManager(
     private val pool = ConcurrentHashMap<String, PooledConnection>()
 
     /**
+     * Canonical key -> sessions that hold the pooled connection. A pooled
+     * connection is only physically closed when its last holder releases it,
+     * so `gradle_disconnect` from one HTTP session cannot tear down a
+     * connection another session still uses. Entries are mutated under
+     * `synchronized(pool)`.
+     */
+    private val holders = ConcurrentHashMap<String, MutableSet<SessionProjectContext>>()
+
+    /**
      * Incremented inside `synchronized(pool)` on every [disconnectAll]. A connect
      * that captured the epoch before connecting but reaches the pooling step after
      * a disconnect-all has completed must not be pooled: the pool would otherwise
@@ -40,6 +49,7 @@ class GradleConnectionManager(
     fun ensureConnected(
         config: ConnectionConfig,
         hooks: ConnectHooks = ConnectHooks(),
+        holder: SessionProjectContext? = null,
     ): ConnectionInfo {
         val projectDir = validateProjectDirectory(config.projectDirectory)
         val key = ProjectDirectoryResolver.canonicalKey(projectDir)
@@ -47,7 +57,8 @@ class GradleConnectionManager(
 
         val epochAtStart = synchronized(pool) {
             pool[key]?.let { existing ->
-                return existingConnectionInfo(existing, normalizedConfig, projectDir)
+                holder?.let { registerHolderLocked(key, it) }
+                return existingConnectionInfo(existing, normalizedConfig, projectDir, holder)
             }
             disconnectAllEpoch
         }
@@ -69,8 +80,10 @@ class GradleConnectionManager(
                 }
                 pool.putIfAbsent(key, newPooled)?.let { existing ->
                     closeQuietly(newConnection)
-                    return existingConnectionInfo(existing, normalizedConfig, projectDir)
+                    holder?.let { registerHolderLocked(key, it) }
+                    return existingConnectionInfo(existing, normalizedConfig, projectDir, holder)
                 }
+                holder?.let { registerHolderLocked(key, it) }
             }
             return ConnectionInfo(projectDir.path, "connected")
         } finally {
@@ -86,16 +99,107 @@ class GradleConnectionManager(
     fun <T> withConnectionResult(block: (ProjectConnection) -> T): T =
         withConnectionResult(requireDefaultProjectDirectory(), block)
 
-    fun disconnect(projectDirectory: File? = null): ConnectionInfo? {
+    /**
+     * Releases [projectDirectory] (null = every project).
+     *
+     * With a [session], only that session's hold is released: the pooled
+     * connection is closed just when no session holds it anymore, and the
+     * result reports `retainedByOtherSessions`. Without a session the pooled
+     * connection is closed unconditionally (legacy/test behaviour).
+     */
+    fun disconnect(
+        projectDirectory: File? = null,
+        session: SessionProjectContext? = null,
+    ): ConnectionInfo? {
         if (projectDirectory == null) {
             return disconnectAll().lastOrNull()
         }
         val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
+        var retained = false
         val removed = synchronized(pool) {
-            pool.remove(key)
-        } ?: return null
-        closeQuietly(removed.connection)
-        return ConnectionInfo(removed.projectDirectory.path, "disconnected")
+            if (session != null) {
+                val holderSet = holders[key]
+                holderSet?.remove(session)
+                if (holderSet.isNullOrEmpty()) {
+                    holders.remove(key)
+                    pool.remove(key)
+                } else {
+                    retained = true
+                    null
+                }
+            } else {
+                pool.remove(key)
+            }
+        }
+        if (retained) {
+            return ConnectionInfo(
+                projectDirectory.path,
+                "disconnected",
+                retainedByOtherSessions = true,
+            )
+        }
+        removed?.let { closeQuietly(it.connection) }
+        return removed?.let {
+            ConnectionInfo(it.projectDirectory.path, "disconnected", closedPooledConnection = true)
+        }
+    }
+
+    /**
+     * Whether [disconnect] on [directory] by [session] would physically close
+     * the pooled connection — i.e. the pool has it and no other session holds
+     * it. Lets callers cancel running builds before the close (like the old
+     * unconditional disconnect) while leaving a shared connection untouched.
+     */
+    fun disconnectWouldClosePool(directory: File, session: SessionProjectContext?): Boolean {
+        val key = ProjectDirectoryResolver.canonicalKey(directory)
+        return synchronized(pool) {
+            if (!pool.containsKey(key)) {
+                return@synchronized false
+            }
+            if (session == null) {
+                return@synchronized true
+            }
+            val holderSet = holders[key]
+            holderSet.isNullOrEmpty() || (holderSet.size == 1 && session in holderSet)
+        }
+    }
+
+    /**
+     * Drops every hold of [session] (session teardown); pooled connections
+     * left without holders are closed.
+     */
+    fun releaseSession(session: SessionProjectContext) {
+        val toClose = mutableListOf<ProjectConnection>()
+        synchronized(pool) {
+            val iterator = holders.entries.iterator()
+            while (iterator.hasNext()) {
+                val (key, holderSet) = iterator.next()
+                if (holderSet.remove(session) && holderSet.isEmpty()) {
+                    iterator.remove()
+                    pool.remove(key)?.let { toClose.add(it.connection) }
+                }
+            }
+        }
+        toClose.forEach { closeQuietly(it) }
+    }
+
+    /**
+     * Registers [session] as a holder of its ambient workspace connection when
+     * that connection already exists in the pool (e.g. environment
+     * auto-connect finished before the session was created).
+     */
+    fun attachAmbientHolder(session: SessionProjectContext) {
+        val workspace = session.workspaceProject() ?: return
+        val key = ProjectDirectoryResolver.canonicalKey(workspace)
+        synchronized(pool) {
+            if (pool.containsKey(key)) {
+                registerHolderLocked(key, session)
+            }
+        }
+    }
+
+    private fun registerHolderLocked(key: String, session: SessionProjectContext) {
+        holders.getOrPut(key) { mutableSetOf() }.add(session)
     }
 
     fun disconnectAll(): List<ConnectionInfo> {
@@ -103,11 +207,12 @@ class GradleConnectionManager(
             disconnectAllEpoch++
             val snapshot = pool.values.toList()
             pool.clear()
+            holders.clear()
             snapshot
         }
         return removed.map { pooled ->
             closeQuietly(pooled.connection)
-            ConnectionInfo(pooled.projectDirectory.path, "disconnected")
+            ConnectionInfo(pooled.projectDirectory.path, "disconnected", closedPooledConnection = true)
         }
     }
 
@@ -245,17 +350,52 @@ class GradleConnectionManager(
             )
     }
 
+    /**
+     * Reports the status of projects [session] knows (its ambient workspace
+     * plus projects it connected), so a shared HTTP server does not leak
+     * other sessions' project paths through `gradle_connection_status`.
+     */
+    fun statusForSession(
+        session: SessionProjectContext,
+        refresh: Boolean = false,
+        isBuildActive: (File) -> Boolean = { false },
+    ): Map<String, Any?> {
+        val connections = session.knownProjects()
+            .map { connectionStatus(it, refresh, isBuildActive) }
+            .sortedBy { it.projectDirectory }
+        return MultiConnectionStatus(
+            defaultProjectDirectory = session.defaultProject()?.path,
+            connections = connections,
+        ).toResponseMap()
+    }
+
     private fun existingConnectionInfo(
         existing: PooledConnection,
         config: ConnectionConfig,
         projectDir: File,
+        session: SessionProjectContext? = null,
     ): ConnectionInfo {
         if (!existing.config.hasSameConnectionSettings(config)) {
-            throw McpException(
-                McpErrorCode.INVALID_ARGUMENT,
-                "Project ${projectDir.path} is already connected with different Gradle settings. " +
-                    "Call gradle_disconnect first or use matching gradleUserHome, gradleVersion, " +
-                    "and gradleInstallation.",
+            // A session joining a connection pooled by another session cannot
+            // reconfigure it, but refusing outright would block the session
+            // on a shared server — reuse it and report the ignored settings.
+            // A session that already knows the project is its effective
+            // owner, so a differing re-connect stays a hard error.
+            if (session == null || session.isKnown(projectDir)) {
+                throw McpException(
+                    McpErrorCode.INVALID_ARGUMENT,
+                    "Project ${projectDir.path} is already connected with different Gradle settings. " +
+                        "Call gradle_disconnect first or use matching gradleUserHome, gradleVersion, " +
+                        "and gradleInstallation.",
+                )
+            }
+            return ConnectionInfo(
+                projectDir.path,
+                "connected",
+                warning = "Project ${projectDir.path} is already connected with different Gradle " +
+                    "settings; the existing connection was reused and the requested " +
+                    "gradleUserHome/gradleVersion/gradleInstallation were not applied.",
+                reusedExistingConnection = true,
             )
         }
         return ConnectionInfo(projectDir.path, "connected")

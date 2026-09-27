@@ -4,6 +4,7 @@ import com.example.gradle.mcp.build.persistence.BuildRecordStore
 import com.example.gradle.mcp.build.persistence.PersistedBuildViewFactory
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
+import com.example.gradle.mcp.connection.ProjectDirectoryScope
 import com.example.gradle.mcp.connection.ProjectLifecycleLock
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
@@ -25,13 +26,14 @@ internal class BuildStatusQuery(
         progressOptions: ProgressResponseOptions,
         projectDirectoryHint: File? = null,
         waitOptions: BuildStatusWaitOptions = BuildStatusWaitOptions(),
+        scope: ProjectDirectoryScope? = null,
     ): Map<String, Any?> {
         if (!waitOptions.waitUntilComplete) {
-            return statusOnce(buildId, outputLimit, progressOptions, projectDirectoryHint)
+            return statusOnce(buildId, outputLimit, progressOptions, projectDirectoryHint, scope)
         }
         val waitStartedAt = System.currentTimeMillis()
         val deadline = waitStartedAt + waitOptions.waitTimeoutMs
-        var latest = statusOnce(buildId, outputLimit, progressOptions, projectDirectoryHint)
+        var latest = statusOnce(buildId, outputLimit, progressOptions, projectDirectoryHint, scope)
         while (
             latest["status"] == BuildProgressTracker.STATUS_RUNNING ||
                 latest["status"] == BuildProgressTracker.STATUS_QUEUED
@@ -45,7 +47,7 @@ internal class BuildStatusQuery(
                 )
             }
             Thread.sleep(minOf(waitOptions.pollIntervalMs, deadline - now))
-            latest = statusOnce(buildId, outputLimit, progressOptions, projectDirectoryHint)
+            latest = statusOnce(buildId, outputLimit, progressOptions, projectDirectoryHint, scope)
         }
         return latest
     }
@@ -55,11 +57,14 @@ internal class BuildStatusQuery(
         outputLimit: OutputLimitOptions,
         progressOptions: ProgressResponseOptions,
         projectDirectoryHint: File? = null,
+        scope: ProjectDirectoryScope? = null,
     ): Map<String, Any?> {
         val record = registry.records[buildId]
         requireMatchingProject(buildId, record, projectDirectoryHint)
+        requireWithinProjectScope(buildId, record, scope)
         val projectDirectory = record?.projectDirectory?.let(::File)
             ?: projectDirectoryHint
+            ?: scope?.preferredRoot()
             ?: connectionManager.defaultProjectDirectory()
             ?: ProjectDirectoryResolver.workspaceFromEnvironment()
         val artifacts = projectDirectory?.let { buildRecordStore.loadArtifacts(it, buildId) }
@@ -83,31 +88,36 @@ internal class BuildStatusQuery(
         )
     }
 
-    fun listBuilds(projectDirectoryHint: File?, limit: Int): Map<String, Any?> {
+    fun listBuilds(
+        projectDirectoryHint: File?,
+        limit: Int,
+        scope: ProjectDirectoryScope? = null,
+    ): Map<String, Any?> {
         val cappedLimit = limit.coerceIn(1, BuildExecutionManager.MAX_LIST_BUILDS)
-        val diskProjectDirectory = resolveProjectDirectory(projectDirectoryHint)
+        val diskProjectDirectories = diskProjectDirectories(projectDirectoryHint, scope)
 
         val entries = LinkedHashMap<String, BuildListEntry>()
         registry.records.values
             .asSequence()
             .filter { record -> record.matchesProject(projectDirectoryHint) }
+            .filter { record -> withinScope(record, scope) }
             .forEach { record ->
-                entries[record.id] = listEntryFromRecord(record, diskProjectDirectory)
+                entries[record.id] = listEntryFromRecord(record, diskProjectDirectories.firstOrNull())
             }
 
-        val diskEntries = diskProjectDirectory
-            ?.let { buildRecordStore.listBuildSortEntries(it) }
-            .orEmpty()
+        val diskEntries = diskProjectDirectories.flatMap { directory ->
+            buildRecordStore.listBuildSortEntries(directory).map { directory to it }
+        }
 
-        val totalAvailable = entries.size + diskEntries.count { it.buildId !in entries }
+        val totalAvailable = entries.size + diskEntries.count { (_, entry) -> entry.buildId !in entries }
 
-        if (diskProjectDirectory != null) {
-            val diskCandidates = diskEntries.filter { it.buildId !in entries }
+        if (diskProjectDirectories.isNotEmpty()) {
+            val diskCandidates = diskEntries.filter { (_, entry) -> entry.buildId !in entries }
             val topDiskIds = buildList {
                 entries.forEach { (buildId, entry) ->
                     add(buildId to entry.sortInstant().toEpochMilli())
                 }
-                diskCandidates.forEach { candidate ->
+                diskCandidates.forEach { (_, candidate) ->
                     add(candidate.buildId to candidate.sortEpochMillis)
                 }
             }
@@ -116,9 +126,9 @@ internal class BuildStatusQuery(
                 .map { it.first }
                 .toSet()
             diskCandidates
-                .filter { it.buildId in topDiskIds }
-                .forEach { candidate ->
-                    buildRecordStore.loadListSummary(diskProjectDirectory, candidate.buildId)?.let { summary ->
+                .filter { (_, candidate) -> candidate.buildId in topDiskIds }
+                .forEach { (directory, candidate) ->
+                    buildRecordStore.loadListSummary(directory, candidate.buildId)?.let { summary ->
                         entries[candidate.buildId] = summary
                     }
                 }
@@ -128,16 +138,32 @@ internal class BuildStatusQuery(
         val limited = sorted.take(cappedLimit)
         return buildMap {
             put("builds", limited.map { it.toResponseMap() })
-            (projectDirectoryHint ?: diskProjectDirectory)?.absolutePath?.let { put("projectDirectory", it) }
+            (projectDirectoryHint ?: diskProjectDirectories.singleOrNull())
+                ?.absolutePath?.let { put("projectDirectory", it) }
             put("totalAvailable", totalAvailable)
             put("truncated", totalAvailable > cappedLimit)
         }
     }
 
-    private fun resolveProjectDirectory(hint: File?): File? =
-        hint
-            ?: connectionManager.defaultProjectDirectory()
-            ?: ProjectDirectoryResolver.workspaceFromEnvironment()
+    private fun withinScope(record: BuildRecord, scope: ProjectDirectoryScope?): Boolean =
+        scope == null ||
+            record.projectDirectory == null ||
+            scope.isWithinBoundary(File(record.projectDirectory))
+
+    /**
+     * Directories whose `.gradle/mcp-builds` are scanned for persisted builds:
+     * the hint, else every session-scoped root, else the pool/workspace
+     * default as before.
+     */
+    private fun diskProjectDirectories(hint: File?, scope: ProjectDirectoryScope?): List<File> =
+        when {
+            hint != null -> listOf(hint)
+            scope != null -> scope.allowedRoots()
+            else -> listOfNotNull(
+                connectionManager.defaultProjectDirectory()
+                    ?: ProjectDirectoryResolver.workspaceFromEnvironment(),
+            )
+        }
 
     private fun listEntryFromRecord(record: BuildRecord, projectDirectory: File?): BuildListEntry {
         val snapshot = record.progressTracker.snapshot()

@@ -3,6 +3,7 @@ package com.example.gradle.mcp.protocol
 import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.build.buildStatusPayload
 import com.example.gradle.mcp.build.listBuildsPayload
+import com.example.gradle.mcp.connection.SessionProjectContext
 import com.example.gradle.mcp.connection.buildEnvironmentPayload
 import com.example.gradle.mcp.connection.connectionStatusPayload
 import com.example.gradle.mcp.model.projectOverviewPayload
@@ -97,7 +98,7 @@ internal object GradleTapiResourceTemplates {
  * Subscribe / `listChanged` are off in Phase 1.
  */
 context(runtime: GradleMcpRuntime)
-fun Server.registerGradleTapiResources() {
+fun Server.registerGradleTapiResources(session: SessionProjectContext? = null) {
     registeredMcpResourceTemplateUris.clear()
     GradleTapiResourceTemplates.all.forEach { spec ->
         registeredMcpResourceTemplateUris.add(spec.uriTemplate)
@@ -107,10 +108,14 @@ fun Server.registerGradleTapiResources() {
             description = spec.description,
             mimeType = GradleTapiResourceUri.JSON_MIME_TYPE,
         ) { request, _ ->
-            readGradleTapiResourceResult(runtime, request.uri)
+            readGradleTapiResourceResult(runtime, request.uri, session)
         }
     }
-    runtime.connectionManager.connectedProjectDirectories().forEach { project ->
+    // Concrete resources are only listed for projects the session knows; a
+    // shared HTTP session must not see other sessions' project URIs.
+    val listedProjects = session?.knownProjects()
+        ?: runtime.connectionManager.connectedProjectDirectories()
+    listedProjects.forEach { project ->
         GradleTapiResourceTemplates.concreteResources(project).forEach { resource ->
             addResource(
                 uri = resource.uri,
@@ -118,7 +123,7 @@ fun Server.registerGradleTapiResources() {
                 description = resource.description ?: "",
                 mimeType = resource.mimeType ?: GradleTapiResourceUri.JSON_MIME_TYPE,
             ) { request ->
-                readGradleTapiResourceResult(runtime, request.uri)
+                readGradleTapiResourceResult(runtime, request.uri, session)
             }
         }
     }
@@ -127,10 +132,11 @@ fun Server.registerGradleTapiResources() {
 internal suspend fun readGradleTapiResourceResult(
     runtime: GradleMcpRuntime,
     uri: String,
+    session: SessionProjectContext? = null,
 ): ReadResourceResult =
     try {
         withContext(Dispatchers.IO) {
-            jsonResourceResult(uri, readGradleTapiResource(runtime, uri))
+            jsonResourceResult(uri, readGradleTapiResource(runtime, uri, session))
         }
     } catch (exception: CancellationException) {
         throw exception
@@ -144,14 +150,15 @@ internal suspend fun readGradleTapiResourceResult(
 internal fun readGradleTapiResource(
     runtime: GradleMcpRuntime,
     uri: String,
+    session: SessionProjectContext? = null,
 ): Map<String, Any?> {
     val parsed = GradleTapiResourceUri.parse(uri)
     val args = parsed.toToolArgs()
     return when (parsed.kind) {
-        GradleTapiResourceKind.ConnectionStatus -> connectionStatusPayload(runtime, args)
-        GradleTapiResourceKind.Environment -> buildEnvironmentPayload(runtime, args)
-        GradleTapiResourceKind.Overview -> projectOverviewPayload(runtime, args)
-        GradleTapiResourceKind.RecentBuilds -> listBuildsPayload(runtime, args)
-        is GradleTapiResourceKind.BuildStatus -> buildStatusPayload(runtime, args)
+        GradleTapiResourceKind.ConnectionStatus -> connectionStatusPayload(runtime, args, session)
+        GradleTapiResourceKind.Environment -> buildEnvironmentPayload(runtime, args, session)
+        GradleTapiResourceKind.Overview -> projectOverviewPayload(runtime, args, session)
+        GradleTapiResourceKind.RecentBuilds -> listBuildsPayload(runtime, args, session)
+        is GradleTapiResourceKind.BuildStatus -> buildStatusPayload(runtime, args, session)
     }
 }

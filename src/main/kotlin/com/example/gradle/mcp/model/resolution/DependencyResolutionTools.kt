@@ -3,6 +3,7 @@ package com.example.gradle.mcp.model.resolution
 import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.connection.ProjectLifecycleGuard
+import com.example.gradle.mcp.connection.SessionProjectContext
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpToolDescriptions
@@ -71,7 +72,7 @@ internal fun parseDependencyResolutionQuery(args: Map<String, Any>): DependencyR
     )
 
 context(runtime: GradleMcpRuntime)
-fun Server.registerDependencyResolutionTools(scope: CoroutineScope) {
+fun Server.registerDependencyResolutionTools(scope: CoroutineScope, session: SessionProjectContext? = null) {
     registerTool(
         scope,
         name = "gradle_get_dependency_resolution",
@@ -79,7 +80,8 @@ fun Server.registerDependencyResolutionTools(scope: CoroutineScope) {
         schema = dependencyResolutionSchema(),
     ) { args ->
         val query = parseDependencyResolutionQuery(args)
-        val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+        val projectDirectory =
+            ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
 
         val model = ProjectLifecycleGuard.withNoActiveBuild(
             projectDirectory = projectDirectory,

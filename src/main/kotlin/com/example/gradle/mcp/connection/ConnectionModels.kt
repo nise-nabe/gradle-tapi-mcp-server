@@ -42,11 +42,24 @@ data class ConnectionConfig(
 data class ConnectionInfo(
     val projectDirectory: String,
     val state: String,
+    val warning: String? = null,
+    val reusedExistingConnection: Boolean = false,
+    /** Disconnect result: the pooled connection stays alive for other sessions. */
+    val retainedByOtherSessions: Boolean = false,
+    /** Disconnect result: the pooled ProjectConnection was actually closed. */
+    val closedPooledConnection: Boolean = false,
 ) {
-    fun toResponseMap(): Map<String, Any?> = mapOf(
-        "projectDirectory" to projectDirectory,
-        "state" to state,
-    )
+    fun toResponseMap(): Map<String, Any?> = buildMap {
+        put("projectDirectory", projectDirectory)
+        put("state", state)
+        warning?.let { put("warning", it) }
+        if (reusedExistingConnection) {
+            put("reusedExistingConnection", true)
+        }
+        if (retainedByOtherSessions) {
+            put("retainedByOtherSessions", true)
+        }
+    }
 }
 
 data class ConnectionStatus(

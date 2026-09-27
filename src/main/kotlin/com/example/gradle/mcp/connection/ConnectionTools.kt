@@ -32,6 +32,7 @@ internal fun connectProject(
     projectDirectory: File,
     config: ConnectionConfig,
     hooks: ConnectHooks = ConnectHooks(),
+    session: SessionProjectContext? = null,
 ): Map<String, Any?> = ProjectLifecycleLock.withProjectLock(projectDirectory) {
     val activeBuild = runtime.buildExecutionManager.activeBuildSnapshot(projectDirectory)
     if (activeBuild != null) {
@@ -42,35 +43,80 @@ internal fun connectProject(
             errorDetails = activeBuild.toErrorFields(),
         )
     }
-    runtime.connectionManager.ensureConnected(config, hooks).toResponseMap()
+    val info = runtime.connectionManager.ensureConnected(config, hooks, holder = session)
+    if (info.state == "connected") {
+        session?.onConnected(projectDirectory)
+    }
+    info.toResponseMap()
 }
 
+/**
+ * Disconnect semantics:
+ * - explicit projectDirectory -> release just that project (session must know it),
+ * - all=true -> close every pooled connection (requires no projectDirectory),
+ * - neither -> release the session's default project only.
+ *
+ * The pooled connection is physically closed once its last session releases
+ * it; when other sessions still hold it the response reports
+ * `retainedByOtherSessions` and running builds are left alone.
+ */
 internal fun disconnectProjects(
     runtime: GradleMcpRuntime,
     projectDirectoryArg: String?,
+    all: Boolean = false,
+    session: SessionProjectContext? = null,
 ): Map<String, Any?> {
+    if (projectDirectoryArg != null && all) {
+        throw McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "projectDirectory and all are mutually exclusive for gradle_disconnect.",
+        )
+    }
+    val disconnectEverything = all || (session == null && projectDirectoryArg == null)
     val projectDirectory = projectDirectoryArg?.let(ProjectDirectoryResolver::bestEffortDirectory)
+        ?: if (!disconnectEverything) session?.defaultProject() else null
+
+    if (!disconnectEverything && projectDirectory == null) {
+        return mapOf("state" to "not_connected")
+    }
+    if (!disconnectEverything && session != null && !session.isKnown(projectDirectory!!)) {
+        return mapOf(
+            "projectDirectory" to projectDirectory.path,
+            "state" to "not_connected",
+        )
+    }
+
     val hadActiveBuild: Boolean
     val disconnected = ProjectLifecycleLock.withLifecycleLock(projectDirectory) {
-        hadActiveBuild = if (projectDirectory != null) {
-            runtime.buildExecutionManager.hasActiveBuild(projectDirectory)
-        } else {
-            runtime.buildExecutionManager.hasActiveBuild()
-        }
-        runtime.buildExecutionManager.onDisconnect(projectDirectory)
-        if (projectDirectory != null) {
-            runtime.connectionManager.disconnect(projectDirectory)?.let { listOf(it) }.orEmpty()
-        } else {
+        if (disconnectEverything) {
+            hadActiveBuild = runtime.buildExecutionManager.hasActiveBuild()
+            runtime.buildExecutionManager.onDisconnect(null)
+            session?.onDisconnected(null)
             runtime.connectionManager.disconnectAll()
+        } else {
+            val willClose = runtime.connectionManager.disconnectWouldClosePool(projectDirectory!!, session)
+            hadActiveBuild = willClose && runtime.buildExecutionManager.hasActiveBuild(projectDirectory)
+            if (willClose) {
+                runtime.buildExecutionManager.onDisconnect(projectDirectory)
+            }
+            val info = runtime.connectionManager.disconnect(projectDirectory, session)
+            session?.onDisconnected(projectDirectory)
+            if (info == null) {
+                emptyList()
+            } else {
+                listOf(info)
+            }
         }
     }
     runtime.buildExecutionManager.wakeQueuedBuilds(projectDirectory)
     return buildMap {
         if (disconnected.isEmpty()) {
             put("state", "not_connected")
+            if (!disconnectEverything) {
+                put("projectDirectory", projectDirectory?.path)
+            }
         } else if (disconnected.size == 1) {
-            put("projectDirectory", disconnected.single().projectDirectory)
-            put("state", disconnected.single().state)
+            putAll(disconnected.single().toResponseMap())
         } else {
             put("state", "disconnected")
             put("projectDirectories", disconnected.map { it.projectDirectory })
@@ -118,27 +164,47 @@ internal fun disconnectSchema(): Map<String, Any> =
     objectSchema(
         properties = mapOf(
             "projectDirectory" to optionalProjectDirectoryProperty(),
+            "all" to booleanProperty(
+                "Disconnect every connected project server-wide. Default false: " +
+                    "omit to disconnect only the session default project.",
+            ),
         ),
     )
 
 internal fun connectionStatusPayload(
     runtime: GradleMcpRuntime,
     args: Map<String, Any>,
+    session: SessionProjectContext? = null,
 ): Map<String, Any?> {
     val projectDirectory = args.optionalString("projectDirectory")
         ?.let(ProjectDirectoryResolver::bestEffortDirectory)
     val refresh = args.optionalBoolean("refresh", default = false)
-    return runtime.connectionManager.status(projectDirectory, refresh) { directory ->
+    val isBuildActive: (File) -> Boolean = { directory ->
         runtime.buildExecutionManager.hasActiveBuild(directory)
     }
+    if (session != null) {
+        if (projectDirectory != null) {
+            if (!session.isKnown(projectDirectory)) {
+                return ConnectionStatus(
+                    connected = false,
+                    projectDirectory = projectDirectory.path,
+                ).toResponseMap()
+            }
+            return runtime.connectionManager.status(projectDirectory, refresh, isBuildActive)
+        }
+        return runtime.connectionManager.statusForSession(session, refresh, isBuildActive)
+    }
+    return runtime.connectionManager.status(projectDirectory, refresh, isBuildActive)
 }
 
 internal fun buildEnvironmentPayload(
     runtime: GradleMcpRuntime,
     args: Map<String, Any>,
+    session: SessionProjectContext? = null,
 ): Map<String, Any?> {
     rejectUnsupportedProjectPath(args, "gradle_get_build_environment")
-    val projectDirectory = ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+    val projectDirectory =
+        ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
     // The Tooling API connection is not thread-safe: serve the cached
     // snapshot without touching it, otherwise fetch under the same
     // no-active-build guard used by every other model query.
@@ -165,7 +231,7 @@ private fun gradleDistributionDownloadListener(notifier: McpBuildNotifier): Prog
     }
 
 context(runtime: GradleMcpRuntime)
-fun Server.registerConnectionTools(scope: CoroutineScope) {
+fun Server.registerConnectionTools(scope: CoroutineScope, session: SessionProjectContext? = null) {
     registerTool(
         scope,
         name = "gradle_connect",
@@ -194,7 +260,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
             cancellationToken = cancellation.token(),
             progressListener = notifier?.let(::gradleDistributionDownloadListener),
         )
-        val response = connectProject(runtime, projectDirectory, config, hooks)
+        val response = connectProject(runtime, projectDirectory, config, hooks, session)
         jsonResult(response)
     }
     registerTool(
@@ -203,7 +269,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
         description = McpToolDescriptions.CONNECTION_STATUS,
         schema = connectionStatusSchema(),
     ) { args ->
-        jsonResult(connectionStatusPayload(runtime, args))
+        jsonResult(connectionStatusPayload(runtime, args, session))
     }
     registerTool(
         scope,
@@ -211,7 +277,14 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
         description = McpToolDescriptions.DISCONNECT,
         schema = disconnectSchema(),
     ) { args ->
-        jsonResult(disconnectProjects(runtime, args.optionalString("projectDirectory")))
+        jsonResult(
+            disconnectProjects(
+                runtime,
+                projectDirectoryArg = args.optionalString("projectDirectory"),
+                all = args.optionalBoolean("all", default = false),
+                session = session,
+            ),
+        )
     }
     registerTool(
         scope,
@@ -219,6 +292,6 @@ fun Server.registerConnectionTools(scope: CoroutineScope) {
         description = McpToolDescriptions.BUILD_ENVIRONMENT,
         schema = buildEnvironmentSchema(),
     ) { args ->
-        jsonResult(buildEnvironmentPayload(runtime, args))
+        jsonResult(buildEnvironmentPayload(runtime, args, session))
     }
 }

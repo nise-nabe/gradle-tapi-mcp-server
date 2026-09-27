@@ -3,6 +3,7 @@ package com.example.gradle.mcp.dependency
 import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.connection.ProjectLifecycleGuard
+import com.example.gradle.mcp.connection.SessionProjectContext
 import com.example.gradle.mcp.dependency.mcp.DependencySourceToolCatalog
 import com.example.gradle.mcp.dependency.mcp.DependencySourcesGradleAccess
 import com.example.gradle.mcp.dependency.mcp.DependencySourcesIndexingConflictException
@@ -18,8 +19,8 @@ import org.gradle.tooling.ProjectConnection
 import java.io.File
 
 context(runtime: GradleMcpRuntime)
-fun Server.registerDependencySourceTools(scope: CoroutineScope) {
-    val access = RuntimeDependencySourcesAccess(runtime)
+fun Server.registerDependencySourceTools(scope: CoroutineScope, session: SessionProjectContext? = null) {
+    val access = RuntimeDependencySourcesAccess(runtime, session)
 
     registerTool(
         scope,
@@ -76,9 +77,10 @@ private inline fun dependencySourcesResult(block: () -> Map<String, Any?>): Call
 
 private class RuntimeDependencySourcesAccess(
     private val runtime: GradleMcpRuntime,
+    private val session: SessionProjectContext?,
 ) : DependencySourcesGradleAccess {
     override fun resolveProjectDirectory(args: Map<String, Any>): File =
-        ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager)
+        ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
 
     override fun gradleUserHome(projectDirectory: File): File? =
         runtime.connectionManager.gradleUserHome(projectDirectory)

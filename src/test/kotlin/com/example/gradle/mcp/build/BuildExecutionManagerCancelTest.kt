@@ -2,6 +2,8 @@ package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.cache.lastMcpBuildInsight
 import com.example.gradle.mcp.connection.GradleConnectionManager
+import com.example.gradle.mcp.connection.ProjectDirectoryScope
+import com.example.gradle.mcp.connection.SessionProjectContext
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
@@ -365,5 +367,95 @@ class BuildExecutionManagerCancelTest {
 
         manager.lastCompletedBuildSnapshot(projectA).shouldBeNull()
         manager.lastCompletedBuildSnapshot(projectB).shouldBeNull()
+    }
+
+    @Test
+    fun `cancelBuild rejects a build outside the session scope`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val connectionManager = GradleConnectionManager()
+        val scopedManager = BuildExecutionManager(connectionManager)
+        val tokenSource = GradleConnector.newCancellationTokenSource()
+        scopedManager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "other-session-build",
+                tracker = runningTracker(),
+                cancellationTokenSource = tokenSource,
+                projectDirectory = projectB.absolutePath,
+            ),
+        )
+        val session = SessionProjectContext(
+            workspaceProject = null,
+            seedProjectDirectories = listOf(projectA),
+        )
+        val scope = ProjectDirectoryScope(connectionManager, session)
+
+        val error = shouldThrow<McpException> {
+            scopedManager.cancelBuild("other-session-build", scope = scope)
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        tokenSource.token().isCancellationRequested.shouldBeFalse()
+    }
+
+    @Test
+    fun `cancelBuild accepts a build inside the session scope`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val connectionManager = GradleConnectionManager()
+        val scopedManager = BuildExecutionManager(connectionManager)
+        val tokenSource = GradleConnector.newCancellationTokenSource()
+        scopedManager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "own-session-build",
+                tracker = runningTracker(),
+                cancellationTokenSource = tokenSource,
+                projectDirectory = projectA.absolutePath,
+            ),
+        )
+        val session = SessionProjectContext(
+            workspaceProject = null,
+            seedProjectDirectories = listOf(projectA),
+        )
+        val scope = ProjectDirectoryScope(connectionManager, session)
+
+        val result = scopedManager.cancelBuild("own-session-build", scope = scope)
+
+        result["buildId"] shouldBe "own-session-build"
+        tokenSource.token().isCancellationRequested.shouldBeTrue()
+    }
+
+    @Test
+    fun `status rejects a build outside the session scope`(
+        @TempDir projectA: File,
+        @TempDir projectB: File,
+    ) {
+        val connectionManager = GradleConnectionManager()
+        val scopedManager = BuildExecutionManager(connectionManager)
+        scopedManager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "other-session-build",
+                tracker = succeededTracker(),
+                projectDirectory = projectB.absolutePath,
+            ),
+        )
+        val session = SessionProjectContext(
+            workspaceProject = null,
+            seedProjectDirectories = listOf(projectA),
+        )
+        val scope = ProjectDirectoryScope(connectionManager, session)
+
+        val error = shouldThrow<McpException> {
+            scopedManager.status(
+                "other-session-build",
+                OutputLimitOptions(),
+                ProgressResponseOptions(),
+                scope = scope,
+            )
+        }
+
+        error.code shouldBe McpErrorCode.INVALID_ARGUMENT
     }
 }
