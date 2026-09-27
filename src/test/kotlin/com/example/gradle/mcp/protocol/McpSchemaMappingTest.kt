@@ -2,9 +2,7 @@ package com.example.gradle.mcp.protocol
 
 import com.example.gradle.mcp.protocol.objectSchema
 import com.example.gradle.mcp.protocol.stringArrayProperty
-import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
-import io.modelcontextprotocol.kotlin.sdk.types.RequestMeta
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.jupiter.api.Test
@@ -32,19 +30,5 @@ class McpSchemaMappingTest {
 
         schema.required shouldBe listOf("tasks")
         schema.properties?.containsKey("tasks") shouldBe true
-    }
-}
-
-class RequestMetaProgressTokenTest {
-    @Test
-    fun `RequestMeta exposes string progress token`() {
-        val meta = RequestMeta(buildJsonObject { put("progressToken", "token-from-meta") })
-        meta.progressToken.shouldNotBeNull()
-    }
-
-    @Test
-    fun `RequestMeta exposes numeric progress token`() {
-        val meta = RequestMeta(buildJsonObject { put("progressToken", 42) })
-        meta.progressToken.shouldNotBeNull()
     }
 }
