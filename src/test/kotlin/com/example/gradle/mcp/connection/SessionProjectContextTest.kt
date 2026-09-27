@@ -15,9 +15,9 @@ class SessionProjectContextTest {
     fun `workspace is the default and known project`(@TempDir workspace: File) {
         val session = SessionProjectContext(workspaceProject = workspace)
 
-        session.defaultProject() shouldBe workspace
+        session.defaultProject() shouldBe workspace.canonicalFile
         session.isKnown(workspace).shouldBeTrue()
-        session.knownProjects() shouldBe listOf(workspace)
+        session.knownProjects() shouldBe listOf(workspace.canonicalFile)
     }
 
     @Test
@@ -38,8 +38,11 @@ class SessionProjectContextTest {
         session.onConnected(projectA)
         session.onConnected(projectB)
 
-        session.defaultProject() shouldBe projectB
-        session.knownProjects().shouldContainExactlyInAnyOrder(projectA, projectB)
+        session.defaultProject() shouldBe projectB.canonicalFile
+        session.knownProjects().shouldContainExactlyInAnyOrder(
+            projectA.canonicalFile,
+            projectB.canonicalFile,
+        )
     }
 
     @Test
@@ -52,7 +55,7 @@ class SessionProjectContextTest {
 
         session.isKnown(connected).shouldBeTrue()
         session.isKnown(workspace).shouldBeTrue()
-        session.defaultProject() shouldBe connected
+        session.defaultProject() shouldBe connected.canonicalFile
     }
 
     @Test
@@ -74,7 +77,7 @@ class SessionProjectContextTest {
         session.onDisconnected(connected)
 
         session.isKnown(connected).shouldBeFalse()
-        session.defaultProject() shouldBe workspace
+        session.defaultProject() shouldBe workspace.canonicalFile
     }
 
     @Test
@@ -92,7 +95,7 @@ class SessionProjectContextTest {
         session.isKnown(projectA).shouldBeFalse()
         session.isKnown(projectB).shouldBeFalse()
         session.isKnown(workspace).shouldBeTrue()
-        session.defaultProject() shouldBe workspace
+        session.defaultProject() shouldBe workspace.canonicalFile
     }
 
     @Test
@@ -103,7 +106,7 @@ class SessionProjectContextTest {
         )
 
         session.isKnown(seed).shouldBeTrue()
-        session.defaultProject() shouldBe seed
+        session.defaultProject() shouldBe seed.canonicalFile
     }
 
     @Test
