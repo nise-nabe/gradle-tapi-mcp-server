@@ -38,7 +38,7 @@ object ProjectDirectoryResolver {
     private fun workspaceDirectory(directory: File?): File? =
         directory?.takeIf { it.isDirectory }?.let(::bestEffortCanonical)
 
-    private fun bestEffortCanonical(directory: File): File =
+    internal fun bestEffortCanonical(directory: File): File =
         runCatching { directory.canonicalFile }.getOrElse { directory.absoluteFile }
 
     fun resolveOptional(args: Map<String, Any>, session: SessionProjectContext? = null): File? =

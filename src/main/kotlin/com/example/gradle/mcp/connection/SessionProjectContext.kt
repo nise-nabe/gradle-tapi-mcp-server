@@ -26,7 +26,8 @@ class SessionProjectContext(
     private val lock = Any()
 
     /** Ambient project visible to every session; always counts as known. */
-    private val workspace: File? = workspaceProject
+    private val workspace: File? =
+        workspaceProject?.let(ProjectDirectoryResolver::bestEffortCanonical)
 
     /** Canonical key -> directory for projects this session connected/seeded. */
     private val held = LinkedHashMap<String, File>()
@@ -37,8 +38,9 @@ class SessionProjectContext(
     init {
         workspace?.let { defaultKey = ProjectDirectoryResolver.canonicalKey(it) }
         seedProjectDirectories.forEach { directory ->
-            val key = ProjectDirectoryResolver.canonicalKey(directory)
-            held[key] = directory
+            val canonical = ProjectDirectoryResolver.bestEffortCanonical(directory)
+            val key = ProjectDirectoryResolver.canonicalKey(canonical)
+            held[key] = canonical
             defaultKey = key
         }
     }
@@ -65,8 +67,9 @@ class SessionProjectContext(
     }
 
     fun onConnected(directory: File): Unit = synchronized(lock) {
-        val key = ProjectDirectoryResolver.canonicalKey(directory)
-        held[key] = directory
+        val canonical = ProjectDirectoryResolver.bestEffortCanonical(directory)
+        val key = ProjectDirectoryResolver.canonicalKey(canonical)
+        held[key] = canonical
         defaultKey = key
     }
 
