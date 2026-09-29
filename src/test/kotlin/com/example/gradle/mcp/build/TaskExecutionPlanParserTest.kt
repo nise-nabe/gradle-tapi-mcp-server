@@ -29,7 +29,6 @@ class TaskExecutionPlanParserTest {
             ":classes",
             ":jar",
         )
-        plan.map { it.state }.distinct() shouldBe listOf("SKIPPED")
     }
 
     @Test
@@ -58,7 +57,7 @@ class TaskExecutionPlanParserTest {
 
         val plan = TaskExecutionPlanParser.parse(stdout)
 
-        plan.map { it.state } shouldBe listOf("UP-TO-DATE", "FROM-CACHE", "SKIPPED")
+        plan.map { it.path } shouldBe listOf(":compileJava", ":jar", ":test")
     }
 
     @Test
@@ -78,15 +77,15 @@ class TaskExecutionPlanParserTest {
     fun `toResponseMap exposes taskCount and ordered entries`() {
         val response = TaskExecutionPlanParser.toResponseMap(
             listOf(
-                TaskExecutionPlanParser.PlannedTask(":compileJava", "SKIPPED"),
-                TaskExecutionPlanParser.PlannedTask(":jar", "SKIPPED"),
+                TaskExecutionPlanParser.PlannedTask(":compileJava"),
+                TaskExecutionPlanParser.PlannedTask(":jar"),
             ),
         )
 
         response["taskCount"] shouldBe 2
         response["tasks"] shouldBe listOf(
-            mapOf("path" to ":compileJava", "state" to "SKIPPED"),
-            mapOf("path" to ":jar", "state" to "SKIPPED"),
+            mapOf("path" to ":compileJava"),
+            mapOf("path" to ":jar"),
         )
     }
 
@@ -113,8 +112,8 @@ class TaskExecutionPlanParserTest {
 
         (response["taskPlan"] as Map<*, *>)["taskCount"] shouldBe 2
         (response["taskPlan"] as Map<*, *>)["tasks"] shouldBe listOf(
-            mapOf("path" to ":compileJava", "state" to "SKIPPED"),
-            mapOf("path" to ":jar", "state" to "SKIPPED"),
+            mapOf("path" to ":compileJava"),
+            mapOf("path" to ":jar"),
         )
     }
 
