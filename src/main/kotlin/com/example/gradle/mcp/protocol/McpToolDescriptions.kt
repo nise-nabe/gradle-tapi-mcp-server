@@ -65,7 +65,7 @@ internal object McpToolDescriptions {
 
     const val TASK_EXECUTION_PLAN =
         "Ordered task execution plan via dry run; no task actions run. " +
-            "Returns taskPlan {taskCount, tasks[{path,state}]}. Foreground only; busy→activeBuildId."
+            "Returns taskPlan {taskCount, tasks[{path}]}. Foreground only; busy→activeBuildId."
 
     const val RUN_TESTS =
         "Run selected JVM tests (classes/methods/patterns). Whole suite→gradle_run_tasks. " +
