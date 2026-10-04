@@ -109,9 +109,42 @@ class McpBuildRecorderSupport {
         ])
     }
 
-    static String terminalStatus(boolean hasFailure, String failureClassName, String failureMessage) {
+    static boolean isCancellationMessage(String message) {
+        message?.toLowerCase()?.startsWith("build cancelled") ?: false
+    }
+
+    /**
+     * Message of the first cancellation failure in [failure]'s cause tree, or null when the
+     * failure was not caused by build cancellation. Gradle wraps the cancellation of an
+     * in-progress task in a task execution failure, so the top-level message alone is not enough.
+     */
+    static String cancellationMessage(Throwable failure, Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<Throwable, Boolean>())) {
+        if (failure == null || !seen.add(failure)) {
+            return null
+        }
+        if (failure.class.name.contains("BuildCancelled") || isCancellationMessage(failure.message)) {
+            return failure.message ?: "Build cancelled"
+        }
+        def nested = []
+        if (failure.metaClass.respondsTo(failure, "getCauses")) {
+            nested.addAll(failure.causes ?: [])
+        }
+        nested.add(failure.cause)
+        for (def cause : nested) {
+            def message = cancellationMessage(cause as Throwable, seen)
+            if (message != null) {
+                return message
+            }
+        }
+        return null
+    }
+
+    static String terminalStatus(boolean hasFailure, String failureClassName, String failureMessage, String cancellationMessage = null) {
         if (!hasFailure) {
             return "succeeded"
+        }
+        if (cancellationMessage) {
+            return "cancelled"
         }
         return terminalStatusFromFailure(failureClassName, failureMessage)
     }
@@ -302,23 +335,27 @@ if (!configurationCacheRequested) {
 
     gradle.taskGraph.afterTask { task, state ->
         gradle.ext.mcpEnsureLauncherContext()
-        def type = state.failure != null ? "TASK_FAIL" : (state.skipped ? "TASK_SKIP" : "TASK_SUCCESS")
+        def cancellationMessage = McpBuildRecorderSupport.cancellationMessage(state.failure)
+        def type = state.failure != null ? (cancellationMessage != null ? "TASK_CANCEL" : "TASK_FAIL") :
+            (state.skipped ? "TASK_SKIP" : "TASK_SUCCESS")
         gradle.ext.mcpAppendEvent([
             ts          : java.time.Instant.now().toString(),
             type        : type,
             displayName : task.path,
-            outcome     : state.failure?.message,
+            outcome     : cancellationMessage ?: state.failure?.message,
         ])
     }
 
     gradle.buildFinished { result ->
         gradle.ext.mcpEnsureLauncherContext()
         def failure = result.failure
+        def cancellationMessage = McpBuildRecorderSupport.cancellationMessage(failure)
         def status = McpBuildRecorderSupport.terminalStatus(
             failure != null,
             failure?.class?.name,
             failure?.message,
+            cancellationMessage,
         )
-        gradle.ext.mcpFinalizeBuild(status, failure?.message)
+        gradle.ext.mcpFinalizeBuild(status, cancellationMessage ?: failure?.message)
     }
 }

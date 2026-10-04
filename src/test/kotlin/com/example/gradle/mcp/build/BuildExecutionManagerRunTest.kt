@@ -929,6 +929,48 @@ class BuildExecutionManagerRunTest {
     }
 
     @Test
+    fun `task failure caused by a cancellation request finalizes as cancelled`() {
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            com.example.gradle.mcp.support.throwingOnRunProjectConnection(
+                org.gradle.tooling.BuildException(
+                    "Could not execute build using connection to Gradle distribution",
+                    RuntimeException(
+                        "Execution failed for task ':test'.",
+                        RuntimeException("Build cancelled while executing task ':test'"),
+                    ),
+                ),
+            ),
+        )
+        val runner = BuildRunner(
+            connectionManager,
+            BuildRegistry(),
+            com.example.gradle.mcp.build.persistence.BuildRecordStore(),
+        )
+        val record = testBuildRecord(
+            id = "cancelled-task-build",
+            tracker = runningTracker(),
+            projectDirectory = testProjectDirectory.absolutePath,
+        )
+        record.requestCancellation()
+
+        runCatching {
+            runner.runBuild(
+                record,
+                BuildRunRequest(
+                    projectDirectory = testProjectDirectory,
+                    kind = BuildKind.TASKS,
+                    tasks = listOf("test"),
+                ),
+                BuildProgressNotifier(null),
+            )
+        }
+
+        record.progressTracker.snapshot().status shouldBe BuildProgressTracker.STATUS_CANCELLED
+        record.failureKind shouldBe FailureKind.CANCELLED
+    }
+
+    @Test
     fun `error during build run finalizes the record instead of leaving it running`() {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedConnectionForTests(

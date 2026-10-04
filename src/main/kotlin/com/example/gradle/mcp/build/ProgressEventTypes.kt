@@ -17,10 +17,16 @@ internal object ProgressEventTypes {
     const val TASK_SKIP = "TASK_SKIP"
     const val TASK_FAIL = "TASK_FAIL"
 
+    /** Task stopped because the build was cancelled; not counted as a failed task. */
+    const val TASK_CANCEL = "TASK_CANCEL"
+
     const val TEST_START = "TEST_START"
     const val TEST_SUCCESS = "TEST_SUCCESS"
     const val TEST_SKIP = "TEST_SKIP"
     const val TEST_FAIL = "TEST_FAIL"
+
+    /** Test stopped because the build was cancelled; not counted as a failed test. */
+    const val TEST_CANCEL = "TEST_CANCEL"
 
     const val ROOT_FINISH = "ROOT_FINISH"
 

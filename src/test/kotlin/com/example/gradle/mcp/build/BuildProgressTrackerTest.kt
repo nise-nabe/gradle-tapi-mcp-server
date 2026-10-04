@@ -322,6 +322,68 @@ class BuildProgressTrackerTest {
     }
 
     @Test
+    fun `records task stopped by cancellation as cancelled instead of failed`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+        val cancelled = messageFailureProxy("Build cancelled while executing task ':test'")
+        val wrapper = messageFailureProxy("Execution failed for task ':test'.", causes = listOf(cancelled))
+
+        listener.statusChanged(taskFinishEventProxy("Task :test", taskFailureResultProxy(listOf(wrapper))))
+
+        val snapshot = tracker.snapshot()
+        snapshot.failedTaskCount shouldBe 0
+        snapshot.failedTasks shouldHaveSize 0
+        snapshot.problems shouldHaveSize 0
+        snapshot.recentEvents.last().eventType shouldBe ProgressEventTypes.TASK_CANCEL
+        snapshot.recentEvents.last().outcome shouldBe "Build cancelled while executing task ':test'"
+    }
+
+    @Test
+    fun `records test failures after cancellation request as cancelled`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+        val displayName = "com.example.DemoTest > works()"
+        val descriptor = jvmTestDescriptorProxy(
+            displayName = displayName,
+            className = "com.example.DemoTest",
+            methodName = "works",
+            source = null,
+        )
+
+        tracker.markCancellationRequested()
+        listener.statusChanged(testStartEventProxy(displayName, descriptor))
+        listener.statusChanged(
+            testFinishEventProxy(
+                displayName = displayName,
+                descriptor = descriptor,
+                result = testFailureResultProxy(message = "java.lang.InterruptedException"),
+            ),
+        )
+
+        val snapshot = tracker.snapshot()
+        snapshot.failedTests shouldHaveSize 0
+        snapshot.failedTaskCount shouldBe 0
+        snapshot.runningTaskCount shouldBe 0
+        snapshot.recentEvents.last().eventType shouldBe ProgressEventTypes.TEST_CANCEL
+    }
+
+    @Test
+    fun `still records unrelated task failures as failed`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+
+        listener.statusChanged(
+            taskFinishEventProxy(
+                "Task :compileKotlin",
+                taskFailureResultProxy(listOf(messageFailureProxy("Compilation error"))),
+            ),
+        )
+
+        tracker.snapshot().failedTaskCount shouldBe 1
+        tracker.snapshot().recentEvents.last().eventType shouldBe ProgressEventTypes.TASK_FAIL
+    }
+
+    @Test
     fun `collects structured problems from root failure result`() {
         val tracker = BuildProgressTracker()
         val listener = tracker.asGradleListener()
@@ -837,6 +899,55 @@ class BuildProgressTrackerTest {
                 }
             },
         ) as TestFailureResult
+
+    private fun taskFinishEventProxy(
+        displayName: String,
+        result: Any,
+    ): org.gradle.tooling.events.task.TaskFinishEvent =
+        Proxy.newProxyInstance(
+            org.gradle.tooling.events.task.TaskFinishEvent::class.java.classLoader,
+            arrayOf(org.gradle.tooling.events.task.TaskFinishEvent::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getDisplayName" -> displayName
+                    "getEventTime" -> 1L
+                    "getResult" -> result
+                    else -> null
+                }
+            },
+        ) as org.gradle.tooling.events.task.TaskFinishEvent
+
+    private fun taskFailureResultProxy(failures: List<Failure>): Any =
+        Proxy.newProxyInstance(
+            org.gradle.tooling.events.task.TaskFailureResult::class.java.classLoader,
+            arrayOf(org.gradle.tooling.events.task.TaskFailureResult::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getFailures" -> failures
+                    "getStartTime", "getEndTime" -> 0L
+                    "isIncremental" -> false
+                    else -> null
+                }
+            },
+        )
+
+    private fun messageFailureProxy(
+        message: String,
+        causes: List<Failure> = emptyList(),
+    ): Failure =
+        Proxy.newProxyInstance(
+            Failure::class.java.classLoader,
+            arrayOf(Failure::class.java),
+            InvocationHandler { _, method, _ ->
+                when (method.name) {
+                    "getMessage" -> message
+                    "getDescription" -> null
+                    "getProblems" -> emptyList<Problem>()
+                    "getCauses" -> causes
+                    else -> null
+                }
+            },
+        ) as Failure
 
     private fun failureResultProxy(failures: List<Failure>): FailureResult =
         Proxy.newProxyInstance(
