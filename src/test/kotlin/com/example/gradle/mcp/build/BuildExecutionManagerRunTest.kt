@@ -971,6 +971,47 @@ class BuildExecutionManagerRunTest {
     }
 
     @Test
+    fun `pre-start connection failure surfaces underlying cause in error`() {
+        val wrapper = "Could not execute build using connection to Gradle distribution " +
+            "'https://services.gradle.org/distributions/gradle-9.7.0-bin.zip'."
+        val connectionManager = GradleConnectionManager()
+        connectionManager.seedConnectionForTests(
+            com.example.gradle.mcp.support.throwingOnRunProjectConnection(
+                org.gradle.tooling.GradleConnectionException(
+                    wrapper,
+                    RuntimeException("Unable to start the daemon process."),
+                ),
+            ),
+        )
+        val runner = BuildRunner(
+            connectionManager,
+            BuildRegistry(),
+            com.example.gradle.mcp.build.persistence.BuildRecordStore(),
+        )
+        val record = testBuildRecord(
+            id = "connection-failure-build",
+            tracker = runningTracker(),
+            projectDirectory = testProjectDirectory.absolutePath,
+        )
+
+        runCatching {
+            runner.runBuild(
+                record,
+                BuildRunRequest(
+                    projectDirectory = testProjectDirectory,
+                    kind = BuildKind.TASKS,
+                    tasks = listOf("build"),
+                ),
+                BuildProgressNotifier(null),
+            )
+        }
+
+        record.progressTracker.snapshot().status shouldBe BuildProgressTracker.STATUS_FAILED
+        record.failureKind shouldBe FailureKind.CONNECTION_FAILURE
+        record.errorMessage shouldBe "$wrapper Cause: Unable to start the daemon process."
+    }
+
+    @Test
     fun `error during build run finalizes the record instead of leaving it running`() {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedConnectionForTests(

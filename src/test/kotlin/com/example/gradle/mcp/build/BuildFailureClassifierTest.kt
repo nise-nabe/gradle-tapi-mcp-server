@@ -3,6 +3,7 @@ package com.example.gradle.mcp.build
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import org.gradle.tooling.GradleConnectionException
 import org.junit.jupiter.api.Test
 
 class BuildFailureClassifierTest {
@@ -130,6 +131,50 @@ class BuildFailureClassifierTest {
         BuildFailureClassifier.unwrapBuildFailureMessage(exception) shouldBe
             "Execution failed for task ':plugin-route-collectors:compileFastTestKotlin' " +
             "(registered by plugin 'org.jetbrains.kotlin.jvm')."
+    }
+
+    @Test
+    fun `unwrapBuildFailureMessage appends first non-wrapper cause to connection wrapper`() {
+        val wrapper = "Could not execute build using connection to Gradle distribution " +
+            "'https://services.gradle.org/distributions/gradle-9.7.0-bin.zip'."
+        val exception = GradleConnectionException(
+            wrapper,
+            RuntimeException(
+                "Could not execute build using connection to Gradle distribution.",
+                RuntimeException(
+                    "Unable to start the daemon process.",
+                    RuntimeException("Invalid maximum heap size: -Xmx99zz"),
+                ),
+            ),
+        )
+
+        val message = BuildFailureClassifier.unwrapBuildFailureMessage(exception)
+
+        message shouldBe "$wrapper Cause: Unable to start the daemon process."
+        val classified = BuildFailureClassifier.classify(
+            status = BuildProgressTracker.STATUS_FAILED,
+            kind = "tasks",
+            error = message,
+            progress = null,
+            stdout = "",
+        )
+        classified.failureKind shouldBe FailureKind.CONNECTION_FAILURE
+        classified.error shouldBe message
+    }
+
+    @Test
+    fun `unwrapBuildFailureMessage keeps connection wrapper when no cause is available`() {
+        val wrapper = "Could not execute build using connection to Gradle distribution " +
+            "'https://services.gradle.org/distributions/gradle-9.7.0-bin.zip'."
+
+        BuildFailureClassifier.unwrapBuildFailureMessage(GradleConnectionException(wrapper)) shouldBe wrapper
+    }
+
+    @Test
+    fun `unwrapBuildFailureMessage does not append cause to non-wrapper message`() {
+        val exception = RuntimeException("Something broke", RuntimeException("root cause"))
+
+        BuildFailureClassifier.unwrapBuildFailureMessage(exception) shouldBe "Something broke"
     }
 
     @Test
