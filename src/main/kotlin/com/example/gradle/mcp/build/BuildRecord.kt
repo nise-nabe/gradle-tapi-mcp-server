@@ -34,6 +34,18 @@ data class BuildRecord(
     @Volatile
     var failureKind: FailureKind? = null
 
+    /**
+     * Fire the Tooling API cancellation token. The tracker is told first so task and test
+     * failures Gradle reports while stopping are recorded as cancelled, not failed.
+     */
+    fun requestCancellation() {
+        progressTracker.markCancellationRequested()
+        cancellationTokenSource.cancel()
+    }
+
+    val cancellationRequested: Boolean
+        get() = cancellationTokenSource.token().isCancellationRequested
+
     fun matchesProject(projectDirectory: File?): Boolean =
         projectDirectory == null ||
             ProjectDirectoryResolver.sameProject(this.projectDirectory, projectDirectory)

@@ -36,6 +36,20 @@ class McpBuildInitScriptProviderTest {
             .single() shouldContain "McpBuildRecorderSupport."
     }
 
+    @Test
+    fun `init scripts record cancellation-caused task failures as cancelled`() {
+        listOf(
+            "/mcp-build-recorder.init.gradle",
+            "/mcp-build-recorder-configuration-cache.init.gradle",
+        ).forEach { path ->
+            val script = readResource(path)
+
+            script shouldContain "\"TASK_CANCEL\""
+            script shouldContain "return \"cancelled\""
+            script shouldContain "McpBuildRecorderSupport.cancellationMessage("
+        }
+    }
+
     private fun readResource(path: String): String =
         McpBuildInitScriptProviderTest::class.java.getResource(path)?.readText()
             ?: error("$path not found on classpath")

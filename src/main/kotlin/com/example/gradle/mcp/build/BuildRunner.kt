@@ -143,6 +143,12 @@ internal class BuildRunner(
         if (exception is BuildCancelledException) {
             return BuildTerminalOutcome.Cancelled(exception.message ?: "Build cancelled")
         }
+        if (record?.cancellationRequested == true) {
+            // Gradle stops in-progress tasks with failures such as "Build cancelled while
+            // executing task"; the run then fails with a task exception instead of
+            // BuildCancelledException, but the build ended because of the cancellation.
+            return BuildTerminalOutcome.Cancelled(BuildFailureClassifier.cancellationMessage(exception))
+        }
         if (isInterruptRelated(exception)) {
             record?.requestCancellationIfNeeded()
             return BuildTerminalOutcome.Cancelled(
@@ -156,8 +162,8 @@ internal class BuildRunner(
         exception is InterruptedException || exception.cause is InterruptedException
 
     private fun BuildRecord.requestCancellationIfNeeded() {
-        if (!cancellationTokenSource.token().isCancellationRequested) {
-            cancellationTokenSource.cancel()
+        if (!cancellationRequested) {
+            requestCancellation()
         }
     }
 
@@ -353,7 +359,7 @@ internal class BuildRunner(
                     record.matchesProject(projectDirectory)
             }
             .forEach { record ->
-                record.cancellationTokenSource.cancel()
+                record.requestCancellation()
                 // The per-project reset path holds withProjectLock(projectDirectory),
                 // so draining that project's queue is safe. The global path
                 // (disconnect-all/shutdown) holds only global(); draining would
