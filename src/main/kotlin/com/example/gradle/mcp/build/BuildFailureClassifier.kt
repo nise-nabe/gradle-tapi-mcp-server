@@ -46,7 +46,16 @@ object BuildFailureClassifier {
         if (fromCauses != null) {
             return fromCauses
         }
-        return exception.message?.takeIf { it.isNotBlank() } ?: exception.toString()
+        val message = exception.message?.takeIf { it.isNotBlank() } ?: return exception.toString()
+        if (!isToolingConnectionWrapper(message)) {
+            return message
+        }
+        val underlyingCause = causeMessages(exception)
+            .drop(1)
+            .firstOrNull { it != message && !isToolingConnectionWrapper(it) }
+            ?: return message
+        // Keep the wrapper so classification still sees a TOOLING_CONNECTION failure.
+        return "$message Cause: $underlyingCause"
     }
 
     /** The first "Build cancelled…" message in [exception]'s cause chain, else a generic one. */
