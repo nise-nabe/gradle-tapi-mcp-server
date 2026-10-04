@@ -18,6 +18,9 @@ import java.time.Instant
  *
  * Status resolution: gradle terminal > gradle running (while Gradle still emits events) >
  * stale gradle running (MCP terminal, no post-finalize events) > mcp terminal > running.
+ * Exception: Gradle `succeeded` yields to MCP `failed` when Gradle's own output reports
+ * `BUILD FAILED` — the init script only sees build work, so failures after task execution
+ * (e.g. a build service failing on close) never reach `gradle-result.json`.
  * Terminal [buildSummary]: winning terminal source only — MCP summary when MCP is terminal
  * authority; when Gradle is terminal authority, parse `stdout.log` (ignore stale MCP summary).
  */
@@ -38,8 +41,16 @@ internal object BuildPersistenceContract {
         mcpResult: McpBuildResult?,
         events: List<DiskBuildEvent> = emptyList(),
         eventsLastModified: Instant? = null,
+        stdout: String? = null,
+        stderr: String? = null,
     ): ResolvedPersistence {
         val gradleStatus = gradleResult?.status
+        if (gradleStatus == BuildProgressTracker.STATUS_SUCCEEDED &&
+            mcpResult?.status == BuildProgressTracker.STATUS_FAILED &&
+            outputReportsBuildFailed(stdout, stderr, mcpResult)
+        ) {
+            return ResolvedPersistence(BuildProgressTracker.STATUS_FAILED, TerminalStatusSource.MCP)
+        }
         if (gradleStatus == BuildProgressTracker.STATUS_SUCCEEDED ||
             gradleStatus == BuildProgressTracker.STATUS_FAILED ||
             gradleStatus == BuildProgressTracker.STATUS_CANCELLED
@@ -62,6 +73,16 @@ internal object BuildPersistenceContract {
         }
         val status = gradleStatus ?: mcpStatus ?: BuildProgressTracker.STATUS_RUNNING
         return ResolvedPersistence(status, TerminalStatusSource.NONE)
+    }
+
+    /**
+     * Gradle's result line from captured [stdout] / [stderr] when available, else the persisted
+     * MCP `buildSummary.resultLine` (list summaries do not read the log files).
+     */
+    private fun outputReportsBuildFailed(stdout: String?, stderr: String?, mcpResult: McpBuildResult): Boolean {
+        BuildOutputParser.reportsBuildFailed(stdout, stderr)?.let { return it }
+        val resultLine = mcpResult.buildSummary?.get("resultLine") as? String ?: return false
+        return BuildOutputParser.isBuildFailedResultLine(resultLine)
     }
 
     private val staleGradleGracePeriod: Duration = Duration.ofSeconds(30)
@@ -126,5 +147,5 @@ internal object BuildPersistenceContract {
         }
 
     private fun buildSummaryFromStdout(artifacts: PersistedBuildArtifacts): Map<String, Any?>? =
-        BuildOutputParser.summaryFromStdout(artifacts.stdout.text)
+        BuildOutputParser.summaryFromStdout(artifacts.stdout.text, artifacts.stderr.text)
 }

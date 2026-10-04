@@ -54,7 +54,7 @@ data class BuildStatusView(
                     null
                 },
                 buildSummary = if (isTerminal) {
-                    BuildOutputParser.summaryFromStdout(stdout.text)
+                    BuildOutputParser.summaryFromStdout(stdout.text, stderr.text)
                 } else {
                     null
                 },

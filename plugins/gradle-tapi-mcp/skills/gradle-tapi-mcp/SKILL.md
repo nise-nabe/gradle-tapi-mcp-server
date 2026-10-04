@@ -166,7 +166,7 @@ Idea keep-set（引数なし / `projectPath` のみ）は **今のプロジェ�
 | `progressAvailable` | なし | あり |
 | `recordDirectory` | 実行中マージ時はあり | 絶対パス |
 
-**ステータス解決**: 実行中はメモリの `status` を優先し、ディスクの `events.ndjson` からタスク進捗をマージする。メモリとディスクが食い違うとき（例: `gradle_disconnect` で MCP が `cancelled` としたが Gradle が走り続けた）は **ディスクの `gradle-result.json` を優先**。Gradle が `running` のまま MCP が終端確定し、`events.ndjson` に MCP `finishedAt` 以降のイベントが無い場合は **MCP 終端ステータス**（デーモン停止の可能性）。
+**ステータス解決**: 実行中はメモリの `status` を優先し、ディスクの `events.ndjson` からタスク進捗をマージする。メモリとディスクが食い違うとき（例: `gradle_disconnect` で MCP が `cancelled` としたが Gradle が走り続けた）は **ディスクの `gradle-result.json` を優先**。Gradle が `running` のまま MCP が終端確定し、`events.ndjson` に MCP `finishedAt` 以降のイベントが無い場合は **MCP 終端ステータス**（デーモン停止の可能性）。例外: `gradle-result.json` が `succeeded` でも Gradle 出力が `BUILD FAILED`（例: タスク完了後にビルドサービスの close が失敗し、失敗タスク 0 件）なら MCP の `failed` を採用し `error` を返す。
 
 **永続化の正**:
 - 実行中ステータス → `gradle-result.json`（init script）

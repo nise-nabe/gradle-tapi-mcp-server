@@ -8,7 +8,8 @@ import com.example.gradle.mcp.protocol.ProgressResponseOptions
  * While memory reports `running`, memory status is authoritative and disk contributes
  * streams, [BuildStatusView.recordDirectory], and task events from `events.ndjson`.
  * When memory is terminal or absent, Gradle on-disk records win when status disagrees
- * (for example MCP marked a build failed on disconnect while Gradle kept running).
+ * (for example MCP marked a build failed on disconnect while Gradle kept running),
+ * except that memory `failed` beats disk `succeeded` when Gradle's output reports `BUILD FAILED`.
  */
 internal object BuildStatusMerger {
     fun merge(memory: BuildStatusView, disk: BuildStatusView): BuildStatusView {
@@ -22,11 +23,26 @@ internal object BuildStatusMerger {
                 progressAvailable = mergedProgress != null || memory.progressAvailable || disk.progressAvailable,
             )
         }
+        if (memoryFailureOverridesDiskSuccess(memory, disk)) {
+            return memory.copy(
+                recordDirectory = disk.recordDirectory,
+                stdout = pickStream(disk.stdout, memory.stdout),
+                stderr = pickStream(disk.stderr, memory.stderr),
+            )
+        }
         if (disk.status != memory.status) {
             return preferDisk(disk, memory)
         }
         return preferDisk(disk, memory).copy(statusSource = memory.statusSource)
     }
+
+    private fun memoryFailureOverridesDiskSuccess(memory: BuildStatusView, disk: BuildStatusView): Boolean =
+        memory.status == BuildProgressTracker.STATUS_FAILED &&
+            disk.status == BuildProgressTracker.STATUS_SUCCEEDED &&
+            BuildOutputParser.reportsBuildFailed(
+                pickStream(disk.stdout, memory.stdout).text,
+                pickStream(disk.stderr, memory.stderr).text,
+            ) == true
 
     private fun preferDisk(disk: BuildStatusView, memory: BuildStatusView): BuildStatusView {
         val stdout = pickStream(disk.stdout, memory.stdout)
@@ -35,7 +51,7 @@ internal object BuildStatusMerger {
         return disk.copy(
             stdout = stdout,
             stderr = stderr,
-            buildSummary = mergedTerminalBuildSummary(disk.status, stdout, disk.buildSummary),
+            buildSummary = mergedTerminalBuildSummary(disk.status, stdout, stderr, disk.buildSummary),
             progress = progress,
             progressAvailable = progress != null,
             taskPathInferred = memory.taskPathInferred || disk.taskPathInferred,
@@ -114,13 +130,14 @@ internal object BuildStatusMerger {
     private fun mergedTerminalBuildSummary(
         status: String,
         stdout: CapturedStreamSnapshot,
+        stderr: CapturedStreamSnapshot,
         diskSummary: Map<String, Any?>?,
     ): Map<String, Any?>? {
         if (status == BuildProgressTracker.STATUS_RUNNING) {
             return null
         }
         if (stdout.text.isNotBlank()) {
-            val summary = BuildOutputParser.parse(stdout.text)
+            val summary = BuildOutputParser.parse(stdout.text, stderr.text)
             if (summary.resultLine != null ||
                 summary.taskSummaryLine != null ||
                 summary.failureSummary.isNotEmpty()
