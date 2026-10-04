@@ -108,5 +108,19 @@ class BuildOutputParserTest {
         assertEquals("CANCELLED", BuildOutputParser.outcomeFromStatus(BuildProgressTracker.STATUS_CANCELLED))
         assertNull(BuildOutputParser.outcomeFromStatus(BuildProgressTracker.STATUS_RUNNING))
     }
-}
 
+    @Test
+    fun `reportsBuildFailed follows the Gradle result line`() {
+        assertEquals(true, BuildOutputParser.reportsBuildFailed("> Task :a\nBUILD FAILED in 2s\n"))
+        assertEquals(false, BuildOutputParser.reportsBuildFailed("BUILD SUCCESSFUL in 2s\n"))
+        assertNull(BuildOutputParser.reportsBuildFailed("plain log output"))
+        assertNull(BuildOutputParser.reportsBuildFailed(""))
+        assertEquals(
+            true,
+            BuildOutputParser.reportsBuildFailed(
+                "> Task :hello\n1 actionable task: 1 executed\n",
+                "FAILURE: Build failed with an exception.\n\nBUILD FAILED in 8s\n",
+            ),
+        )
+    }
+}

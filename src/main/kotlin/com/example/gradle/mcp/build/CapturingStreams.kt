@@ -243,6 +243,11 @@ class CapturingStreams(
         stdoutCapture.append(bytes, 0, bytes.size)
     }
 
+    internal fun appendStderrForTests(text: String) {
+        val bytes = text.toByteArray(StandardCharsets.UTF_8)
+        stderrCapture.append(bytes, 0, bytes.size)
+    }
+
     fun applyTo(launcher: org.gradle.tooling.ConfigurableLauncher<*>) {
         launcher.setStandardOutput(PrintStream(TailOutputStream(stdoutCapture), true, StandardCharsets.UTF_8))
         launcher.setStandardError(PrintStream(TailOutputStream(stderrCapture), true, StandardCharsets.UTF_8))

@@ -91,7 +91,7 @@ class BuildRecordStore(
         val recordDir = recordDirectory(File(projectDirectory), record.id) ?: return
         val stdout = record.streams.stdoutSnapshot()
         val stderr = record.streams.stderrSnapshot()
-        val buildSummary = BuildOutputParser.parse(stdout.text)
+        val buildSummary = BuildOutputParser.parse(stdout.text, stderr.text)
         var status = progress.status
         var error = record.errorMessage
         var failureKind = record.failureKind?.name
@@ -141,6 +141,8 @@ class BuildRecordStore(
             provisionalResult,
             readEvents(recordDir),
             eventsFileLastModified(recordDir),
+            stdout.text,
+            stderr.text,
         )
         if (status != resolved.status &&
             resolved.terminalSource == BuildPersistenceContract.TerminalStatusSource.GRADLE

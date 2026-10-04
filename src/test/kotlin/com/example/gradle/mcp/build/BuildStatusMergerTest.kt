@@ -105,6 +105,41 @@ class BuildStatusMergerTest {
     }
 
     @Test
+    fun `merge keeps memory failed over disk succeeded when stdout reports BUILD FAILED`() {
+        val memory = BuildStatusView.fromRecord(recordWithStdout("BUILD FAILED in 1s\n"))
+        val disk = diskView(
+            buildId = memory.buildId,
+            status = BuildProgressTracker.STATUS_SUCCEEDED,
+            stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+            buildSummary = null,
+            recordDirectory = "/tmp/record",
+        )
+
+        val merged = BuildStatusMerger.merge(memory, disk)
+
+        merged.status shouldBe BuildProgressTracker.STATUS_FAILED
+        merged.outcome shouldBe "FAILED"
+        merged.error shouldBe "Gradle connection closed"
+        merged.recordDirectory shouldBe "/tmp/record"
+    }
+
+    @Test
+    fun `merge prefers disk succeeded when memory failed but stdout reports BUILD SUCCESSFUL`() {
+        val memory = BuildStatusView.fromRecord(recordWithStdout("BUILD SUCCESSFUL in 1s\n"))
+        val disk = diskView(
+            buildId = memory.buildId,
+            status = BuildProgressTracker.STATUS_SUCCEEDED,
+            stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+            buildSummary = null,
+            recordDirectory = "/tmp/record",
+        )
+
+        val merged = BuildStatusMerger.merge(memory, disk)
+
+        merged.status shouldBe BuildProgressTracker.STATUS_SUCCEEDED
+    }
+
+    @Test
     fun `merge keeps memory status when disk has stale terminal state`() {
         val memory = BuildStatusView.fromRecord(runningRecord("running-merge"))
         val disk = failedView(

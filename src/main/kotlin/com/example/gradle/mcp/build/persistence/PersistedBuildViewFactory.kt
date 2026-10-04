@@ -20,6 +20,8 @@ internal object PersistedBuildViewFactory {
             artifacts.mcpResult,
             events,
             artifacts.eventsLastModified,
+            artifacts.stdout.text,
+            artifacts.stderr.text,
         )
         val status = resolved.status
         val terminalSource = resolved.terminalSource

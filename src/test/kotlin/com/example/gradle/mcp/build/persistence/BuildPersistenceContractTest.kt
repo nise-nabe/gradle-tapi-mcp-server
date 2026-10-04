@@ -225,4 +225,91 @@ class BuildPersistenceContractTest {
         resolved.status shouldBe BuildProgressTracker.STATUS_CANCELLED
         resolved.terminalSource shouldBe BuildPersistenceContract.TerminalStatusSource.MCP
     }
+
+    @Test
+    fun `resolve prefers mcp failed over gradle succeeded when stdout reports BUILD FAILED`() {
+        val resolved = BuildPersistenceContract.resolve(
+            gradleResult = gradleBuildResult(
+                buildId = "service-failure",
+                status = BuildProgressTracker.STATUS_SUCCEEDED,
+                finishedAt = "2026-06-14T10:02:00Z",
+            ),
+            mcpResult = mcpBuildResult(
+                buildId = "service-failure",
+                projectDirectory = "/tmp/project",
+                status = BuildProgressTracker.STATUS_FAILED,
+                outcome = "FAILED",
+                error = "Failed to stop service 'cleanup'.",
+            ),
+            stdout = "> Task :app:build\n\nBUILD FAILED in 1s\n",
+        )
+
+        resolved.status shouldBe BuildProgressTracker.STATUS_FAILED
+        resolved.terminalSource shouldBe BuildPersistenceContract.TerminalStatusSource.MCP
+    }
+
+    @Test
+    fun `resolve prefers mcp failed over gradle succeeded when stderr reports BUILD FAILED`() {
+        val resolved = BuildPersistenceContract.resolve(
+            gradleResult = gradleBuildResult(
+                buildId = "service-failure-stderr",
+                status = BuildProgressTracker.STATUS_SUCCEEDED,
+                finishedAt = "2026-06-14T10:02:00Z",
+            ),
+            mcpResult = mcpBuildResult(
+                buildId = "service-failure-stderr",
+                projectDirectory = "/tmp/project",
+                status = BuildProgressTracker.STATUS_FAILED,
+                outcome = "FAILED",
+            ),
+            stdout = "> Task :hello\n1 actionable task: 1 executed\n",
+            stderr = "* What went wrong:\nFailed to stop service 'cleanup'.\n\nBUILD FAILED in 8s\n",
+        )
+
+        resolved.status shouldBe BuildProgressTracker.STATUS_FAILED
+        resolved.terminalSource shouldBe BuildPersistenceContract.TerminalStatusSource.MCP
+    }
+
+    @Test
+    fun `resolve uses mcp buildSummary result line when stdout is absent`() {
+        val resolved = BuildPersistenceContract.resolve(
+            gradleResult = gradleBuildResult(
+                buildId = "service-failure-list",
+                status = BuildProgressTracker.STATUS_SUCCEEDED,
+                finishedAt = "2026-06-14T10:02:00Z",
+            ),
+            mcpResult = mcpBuildResult(
+                buildId = "service-failure-list",
+                projectDirectory = "/tmp/project",
+                status = BuildProgressTracker.STATUS_FAILED,
+                outcome = "FAILED",
+                buildSummary = mapOf("resultLine" to "BUILD FAILED in 1s"),
+            ),
+        )
+
+        resolved.status shouldBe BuildProgressTracker.STATUS_FAILED
+        resolved.terminalSource shouldBe BuildPersistenceContract.TerminalStatusSource.MCP
+    }
+
+    @Test
+    fun `resolve keeps gradle succeeded when stdout reports BUILD SUCCESSFUL`() {
+        val resolved = BuildPersistenceContract.resolve(
+            gradleResult = gradleBuildResult(
+                buildId = "stale-summary",
+                status = BuildProgressTracker.STATUS_SUCCEEDED,
+                finishedAt = "2026-06-14T10:02:00Z",
+            ),
+            mcpResult = mcpBuildResult(
+                buildId = "stale-summary",
+                projectDirectory = "/tmp/project",
+                status = BuildProgressTracker.STATUS_FAILED,
+                outcome = "FAILED",
+                buildSummary = mapOf("resultLine" to "BUILD FAILED in 1s"),
+            ),
+            stdout = "BUILD SUCCESSFUL in 1s\n",
+        )
+
+        resolved.status shouldBe BuildProgressTracker.STATUS_SUCCEEDED
+        resolved.terminalSource shouldBe BuildPersistenceContract.TerminalStatusSource.GRADLE
+    }
 }

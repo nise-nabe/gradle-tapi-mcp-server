@@ -402,6 +402,57 @@ class BuildRecordStoreTest {
     }
 
     @Test
+    fun `writeMcpResult keeps failed when gradle succeeded but stdout reports BUILD FAILED`(@TempDir projectDir: File) {
+        val buildId = "service-close-failure"
+        store.writeGradleResultToDisk(
+            projectDir,
+            buildId,
+            gradleBuildResult(
+                buildId = buildId,
+                status = BuildProgressTracker.STATUS_SUCCEEDED,
+                finishedAt = TEST_ISO_FINISH,
+            ),
+        )
+        val serviceFailure = "Failed to stop service 'cleanup'."
+        val record = testBuildRecord(
+            id = buildId,
+            tracker = failedTracker(message = serviceFailure),
+            streams = CapturingStreams().also {
+                it.appendStdoutForTests("> Task :app:build\n3 actionable tasks: 3 executed\n")
+                it.appendStderrForTests(
+                    "FAILURE: Build failed with an exception.\n\n* What went wrong:\n" +
+                        "$serviceFailure\n\nBUILD FAILED in 1s\n",
+                )
+            },
+            projectDirectory = projectDir.absolutePath,
+        ) {
+            finishedAt = Instant.parse(TEST_ISO_FINISH)
+            errorMessage = serviceFailure
+        }
+
+        store.writeMcpResult(record, record.progressTracker.snapshot())
+
+        store.readMcpResult(
+            store.recordDirectory(projectDir, buildId).shouldNotBeNull(),
+        ).shouldNotBeNull().apply {
+            status shouldBe BuildProgressTracker.STATUS_FAILED
+            outcome shouldBe "FAILED"
+            error shouldBe serviceFailure
+            failedTaskCount shouldBe 0
+        }
+        val status = store.loadAssembledStatus(projectDir, buildId, OutputLimitOptions(), ProgressResponseOptions())
+            .shouldNotBeNull()
+        status["status"] shouldBe BuildProgressTracker.STATUS_FAILED
+        status["outcome"] shouldBe "FAILED"
+        status["error"] shouldBe serviceFailure
+        (status["buildSummary"] as Map<*, *>)["resultLine"] shouldBe "BUILD FAILED in 1s"
+        store.loadListSummary(projectDir, buildId).shouldNotBeNull().apply {
+            this.status shouldBe BuildProgressTracker.STATUS_FAILED
+            outcome shouldBe "FAILED"
+        }
+    }
+
+    @Test
     fun `writeMcpResult prefers gradle failure message when memory succeeded`(@TempDir projectDir: File) {
         store.writeGradleResultToDisk(
             projectDir,
