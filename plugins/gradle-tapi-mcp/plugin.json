@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "gradle-tapi-mcp",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "description": "Query and run Gradle builds through the Gradle Tooling API MCP server with token-efficient defaults.",
   "author": {
     "name": "nise-nabe",
@@ -9,5 +9,10 @@
   },
   "homepage": "https://github.com/nise-nabe/gradle-tapi-mcp-server",
   "repository": "https://github.com/nise-nabe/gradle-tapi-mcp-server",
-  "keywords": ["gradle", "mcp", "tooling-api", "build"]
+  "keywords": [
+    "gradle",
+    "mcp",
+    "tooling-api",
+    "build"
+  ]
 }
