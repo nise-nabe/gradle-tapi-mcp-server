@@ -82,6 +82,20 @@ class McpBuildRecorderSupport {
         APPEND_EVENT_LOCKS.remove(dirPath)
     }
 
+    /** First "Build cancelled…" message in a Tooling API failure tree, or null. */
+    static String toolingCancellationMessage(def failures) {
+        for (def failure : failures ?: []) {
+            if (isCancellationMessage(failure?.message)) {
+                return failure.message
+            }
+            def nested = toolingCancellationMessage(failure?.causes)
+            if (nested != null) {
+                return nested
+            }
+        }
+        return null
+    }
+
     /** First Tooling API failure message; mirrors Kotlin BuildProgressTracker.firstOrNull fallback. */
     static String firstFailureMessage(def failures, String fallback = "failed") {
         failures?.head()?.message ?: fallback
@@ -114,9 +128,42 @@ class McpBuildRecorderSupport {
         ])
     }
 
-    static String terminalStatus(boolean hasFailure, String failureClassName, String failureMessage) {
+    static boolean isCancellationMessage(String message) {
+        message?.toLowerCase()?.startsWith("build cancelled") ?: false
+    }
+
+    /**
+     * Message of the first cancellation failure in [failure]'s cause tree, or null when the
+     * failure was not caused by build cancellation. Gradle wraps the cancellation of an
+     * in-progress task in a task execution failure, so the top-level message alone is not enough.
+     */
+    static String cancellationMessage(Throwable failure, Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<Throwable, Boolean>())) {
+        if (failure == null || !seen.add(failure)) {
+            return null
+        }
+        if (failure.class.name.contains("BuildCancelled") || isCancellationMessage(failure.message)) {
+            return failure.message ?: "Build cancelled"
+        }
+        def nested = []
+        if (failure.metaClass.respondsTo(failure, "getCauses")) {
+            nested.addAll(failure.causes ?: [])
+        }
+        nested.add(failure.cause)
+        for (def cause : nested) {
+            def message = cancellationMessage(cause as Throwable, seen)
+            if (message != null) {
+                return message
+            }
+        }
+        return null
+    }
+
+    static String terminalStatus(boolean hasFailure, String failureClassName, String failureMessage, String cancellationMessage = null) {
         if (!hasFailure) {
             return "succeeded"
+        }
+        if (cancellationMessage) {
+            return "cancelled"
         }
         return terminalStatusFromFailure(failureClassName, failureMessage)
     }
@@ -222,9 +269,15 @@ abstract class McpConfigurationCacheRecorderService
         def type = "TASK_SUCCESS"
         def outcome = null
         if (result instanceof TaskFailureResult) {
-            type = "TASK_FAIL"
-            // Gradle 9.6+: TaskFailureResult.failure removed; use failures collection.
-            outcome = McpBuildRecorderSupport.firstFailureMessage(result.failures)
+            def cancellationMessage = McpBuildRecorderSupport.toolingCancellationMessage(result.failures)
+            if (cancellationMessage != null) {
+                type = "TASK_CANCEL"
+                outcome = cancellationMessage
+            } else {
+                type = "TASK_FAIL"
+                // Gradle 9.6+: TaskFailureResult.failure removed; use failures collection.
+                outcome = McpBuildRecorderSupport.firstFailureMessage(result.failures)
+            }
         } else if (result instanceof TaskSkippedResult) {
             type = "TASK_SKIP"
         }
@@ -267,6 +320,9 @@ abstract class McpBuildFinalizeFlowAction implements FlowAction<McpBuildFinalize
 
         @Input
         Property<String> getFailureMessage()
+
+        @Input
+        Property<String> getCancellationMessage()
     }
 
     @Override
@@ -280,16 +336,18 @@ abstract class McpBuildFinalizeFlowAction implements FlowAction<McpBuildFinalize
         if (failureMessage != null && failureMessage.isEmpty()) {
             failureMessage = null
         }
+        def cancellationMessage = parameters.cancellationMessage.getOrNull() ?: null
         def status = McpBuildRecorderSupport.terminalStatus(
             parameters.buildFailed.get(),
             parameters.failureClassName.getOrNull(),
             failureMessage,
+            cancellationMessage,
         )
         McpBuildRecorderSupport.writeTerminalGradleResult(
             context.recordDirPath,
             context.buildId,
             status,
-            failureMessage,
+            cancellationMessage ?: failureMessage,
         )
         McpBuildRecorderSupport.releaseAppendEventLock(context.recordDirPath)
     }
@@ -320,6 +378,13 @@ gradle.projectsLoaded {
         spec.parameters.failureMessage.set(
             flowProviders.buildWorkResult.map { result ->
                 result.failure.map { failure -> failure.message }.orElse("")
+            },
+        )
+        spec.parameters.cancellationMessage.set(
+            flowProviders.buildWorkResult.map { result ->
+                result.failure.map { failure ->
+                    McpBuildRecorderSupport.cancellationMessage(failure) ?: ""
+                }.orElse("")
             },
         )
     }

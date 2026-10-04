@@ -29,6 +29,9 @@ internal class ProgressEventAccumulator {
                 runningTasks.remove(key)
                 failedTasks.add(key)
             }
+            ProgressEventTypes.TASK_CANCEL, ProgressEventTypes.TEST_CANCEL -> {
+                runningTasks.remove(key)
+            }
         }
     }
 

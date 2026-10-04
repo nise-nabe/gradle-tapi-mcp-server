@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.protocol.ProblemsSerializer
+import org.gradle.tooling.Failure
 import org.gradle.tooling.events.FailureResult
 import org.gradle.tooling.events.FinishEvent
 import org.gradle.tooling.events.OperationType
@@ -36,6 +37,7 @@ class BuildProgressTracker(
     private val recentDownloads = ArrayDeque<DownloadProgressSnapshot>()
     private val failedTests = LinkedHashMap<String, FailedTestSnapshot>()
     private var totalEventCount = 0
+    private var cancellationRequested = false
     private var lastNotifiedEventCount = 0
 
     fun markStarting(operation: String) {
@@ -119,6 +121,16 @@ class BuildProgressTracker(
         }
     }
 
+    /**
+     * Called before the Tooling API cancellation token fires. Task and test failures that
+     * arrive afterwards come from Gradle stopping work and are recorded as cancelled.
+     */
+    fun markCancellationRequested() {
+        synchronized(lock) {
+            cancellationRequested = true
+        }
+    }
+
     fun snapshot(): BuildProgressSnapshot =
         synchronized(lock) {
             taskProgress.snapshot(
@@ -194,6 +206,10 @@ class BuildProgressTracker(
             is TaskFinishEvent -> {
                 when (val result = event.result) {
                     is org.gradle.tooling.events.task.TaskFailureResult -> {
+                        if (isCancellationFailure(result)) {
+                            applyTaskEvent(ProgressEventTypes.TASK_CANCEL, displayName, cancellationOutcome(result))
+                            return
+                        }
                         collectProblemsFromFailureResult(result)
                         val message = result.failures.firstOrNull()?.message ?: "failed"
                         applyTaskEvent(ProgressEventTypes.TASK_FAIL, displayName, message)
@@ -216,6 +232,15 @@ class BuildProgressTracker(
             is TestFinishEvent -> {
                 when (val result = event.result) {
                     is org.gradle.tooling.events.test.TestFailureResult -> {
+                        if (isCancellationFailure(result)) {
+                            applyTaskEvent(
+                                ProgressEventTypes.TEST_CANCEL,
+                                displayName,
+                                cancellationOutcome(result),
+                                TestProgressDetailsExtractor.fromGradleEvent(event),
+                            )
+                            return
+                        }
                         collectProblemsFromFailureResult(result)
                         val failure = result.failures.firstOrNull()
                         val message = failure?.message ?: "failed"
@@ -261,13 +286,29 @@ class BuildProgressTracker(
             }
             is FinishEvent -> {
                 when (val result = event.result) {
-                    is FailureResult -> collectProblemsFromFailureResult(result)
+                    is FailureResult -> if (!isCancellationFailure(result)) {
+                        collectProblemsFromFailureResult(result)
+                    }
                 }
                 recordEventLocked(ProgressEventTypes.ROOT_FINISH, displayName)
             }
             else -> recordEventLocked(event.javaClass.simpleName, displayName)
         }
     }
+
+    private fun isCancellationFailure(result: FailureResult): Boolean =
+        cancellationRequested || result.failures.orEmpty().any(::hasCancellationCause)
+
+    private fun hasCancellationCause(failure: Failure): Boolean =
+        BuildFailureClassifier.isCancellationMessage(failure.message) ||
+            failure.causes.orEmpty().any(::hasCancellationCause)
+
+    private fun cancellationOutcome(result: FailureResult): String =
+        result.failures.orEmpty().firstNotNullOfOrNull(::firstCancellationMessage) ?: "Build cancelled"
+
+    private fun firstCancellationMessage(failure: Failure): String? =
+        failure.message?.takeIf(BuildFailureClassifier::isCancellationMessage)
+            ?: failure.causes.orEmpty().firstNotNullOfOrNull(::firstCancellationMessage)
 
     private fun collectProblemsFromFailureResult(result: FailureResult) {
         val extracted = ProblemsSerializer.fromFailureResult(result)

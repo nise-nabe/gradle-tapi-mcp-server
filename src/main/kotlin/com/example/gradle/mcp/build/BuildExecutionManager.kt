@@ -140,7 +140,7 @@ class BuildExecutionManager(
             BuildProgressTracker.STATUS_QUEUED -> {
                 registry.projectQueue.remove(projectDirectory, buildId)
                 if (!runner.finalizeQueuedBuild(record, BuildRunner.BuildTerminalOutcome.Cancelled("Build cancelled"))) {
-                    record.cancellationTokenSource.cancel()
+                    record.requestCancellation()
                     return cancellationRequestedResponse(buildId)
                 }
                 val response = queuedCancelledResponse(buildId, record)
@@ -148,7 +148,7 @@ class BuildExecutionManager(
                 response
             }
             BuildProgressTracker.STATUS_RUNNING -> {
-                record.cancellationTokenSource.cancel()
+                record.requestCancellation()
                 cancellationRequestedResponse(buildId)
             }
             else -> alreadyFinishedCancelResponse(buildId, record, status)
@@ -161,7 +161,7 @@ class BuildExecutionManager(
             BuildProgressTracker.STATUS_QUEUED ->
                 throw McpException(McpErrorCode.INTERNAL_ERROR, "Build $buildId missing projectDirectory")
             BuildProgressTracker.STATUS_RUNNING -> {
-                record.cancellationTokenSource.cancel()
+                record.requestCancellation()
                 cancellationRequestedResponse(buildId)
             }
             else -> alreadyFinishedCancelResponse(buildId, record, status)

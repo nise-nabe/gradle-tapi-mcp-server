@@ -49,6 +49,13 @@ object BuildFailureClassifier {
         return exception.message?.takeIf { it.isNotBlank() } ?: exception.toString()
     }
 
+    /** The first "Build cancelled…" message in [exception]'s cause chain, else a generic one. */
+    fun cancellationMessage(exception: Throwable): String =
+        causeMessages(exception).firstOrNull(::isCancellationMessage) ?: "Build cancelled"
+
+    internal fun isCancellationMessage(message: String?): Boolean =
+        message?.startsWith("Build cancelled", ignoreCase = true) == true
+
     fun hasEvidenceOfTestFailures(
         progress: BuildProgressSnapshot?,
         kind: String?,
