@@ -5,6 +5,7 @@ import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.protocol.optionalDownloadFields
 import com.example.gradle.mcp.protocol.optionalProgressFields
 import com.example.gradle.mcp.protocol.terminalFailureFields
+import com.example.gradle.mcp.protocol.testTimingResponseFields
 
 internal enum class BuildStatusResponseStyle {
     STATUS_POLL,
@@ -71,6 +72,14 @@ internal object BuildStatusAssembler {
 
         view.progress?.let { progress ->
             response.putAll(optionalDownloadFields(progressOptions, progress, view.statusSource))
+        }
+
+        if (progressOptions.includeTestTimings) {
+            val timings = when {
+                view.testTimings.availability != TestTimingSnapshot.UNAVAILABLE -> view.testTimings
+                else -> view.progress?.testTimings
+            }
+            response.putAll(testTimingResponseFields(timings))
         }
 
         if (!isActive) {

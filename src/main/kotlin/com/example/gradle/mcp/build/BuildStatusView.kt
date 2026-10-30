@@ -21,6 +21,7 @@ data class BuildStatusView(
     val stderr: CapturedStreamSnapshot,
     val statusSource: String,
     val recordDirectory: String? = null,
+    val testTimings: TestTimingSnapshot = TestTimingSnapshot.UNAVAILABLE_SNAPSHOT,
 ) {
     val testClasses: List<String> get() = selection.testClassesForReporting()
     val testMethods: Map<String, List<String>> get() = selection.testMethodsOrEmpty()
@@ -70,6 +71,7 @@ data class BuildStatusView(
                 stdout = stdout,
                 stderr = stderr,
                 statusSource = SOURCE_MEMORY,
+                testTimings = progress.testTimings,
             )
         }
     }

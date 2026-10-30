@@ -36,6 +36,7 @@ class BuildProgressTracker(
     private val activeDownloads = LinkedHashMap<String, DownloadProgressSnapshot>()
     private val recentDownloads = ArrayDeque<DownloadProgressSnapshot>()
     private val failedTests = LinkedHashMap<String, FailedTestSnapshot>()
+    private val testTimings = TestTimingCollector()
     private var totalEventCount = 0
     private var cancellationRequested = false
     private var lastNotifiedEventCount = 0
@@ -143,6 +144,7 @@ class BuildProgressTracker(
                 recentDownloads = buildRecentDownloadsLocked(),
                 activeDownloadCount = activeDownloads.size,
                 failedTests = failedTests.values.toList(),
+                testTimings = testTimings.snapshot(),
             )
         }
 
@@ -241,6 +243,7 @@ class BuildProgressTracker(
                             )
                             return
                         }
+                        testTimings.record(event)
                         collectProblemsFromFailureResult(result)
                         val failure = result.failures.firstOrNull()
                         val message = failure?.message ?: "failed"
@@ -254,6 +257,7 @@ class BuildProgressTracker(
                         )
                     }
                     is org.gradle.tooling.events.test.TestSkippedResult -> {
+                        testTimings.record(event)
                         applyTaskEvent(
                             ProgressEventTypes.TEST_SKIP,
                             displayName,
@@ -261,6 +265,7 @@ class BuildProgressTracker(
                         )
                     }
                     else -> {
+                        testTimings.record(event)
                         applyTaskEvent(
                             ProgressEventTypes.TEST_SUCCESS,
                             displayName,

@@ -55,6 +55,7 @@ internal object BuildStatusMerger {
             progress = progress,
             progressAvailable = progress != null,
             taskPathInferred = memory.taskPathInferred || disk.taskPathInferred,
+            testTimings = preferCapturedTestTimings(memory.testTimings, disk.testTimings),
         )
     }
 
@@ -147,6 +148,12 @@ internal object BuildStatusMerger {
         }
         return diskSummary
     }
+
+    private fun preferCapturedTestTimings(
+        memory: TestTimingSnapshot,
+        disk: TestTimingSnapshot,
+    ): TestTimingSnapshot =
+        if (memory.availability == TestTimingSnapshot.UNAVAILABLE) disk else memory
 
     private fun pickStream(
         disk: CapturedStreamSnapshot,
