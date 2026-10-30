@@ -51,8 +51,8 @@ data class TestMethodTiming(
 /**
  * In-memory capture for one MCP build. Not written to `events.ndjson`.
  *
- * [RECORDED] with an empty list means no method-level finish events were seen.
- * On `gradle_run_tasks` that includes an UP-TO-DATE or FROM-CACHE test task.
+ * [RECORDED] with an empty list means no method-level finish events were seen,
+ * which on `gradle_run_tasks` includes an UP-TO-DATE or FROM-CACHE test task.
  * `gradle_run_tests` re-executes the selected tests, so it does not take that path.
  * [INCOMPLETE] means at least one method finish arrived without readable start/end
  * times. [UNAVAILABLE] means this status view has no in-memory capture (disk-only poll).
