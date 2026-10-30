@@ -7,6 +7,7 @@ import com.example.gradle.mcp.build.BuildStatusView
 import com.example.gradle.mcp.build.FailedTestSnapshot
 import com.example.gradle.mcp.build.FailedTestSnapshots
 import com.example.gradle.mcp.build.TestProgressDetailsSnapshot
+import com.example.gradle.mcp.build.TestTimingSnapshot
 
 internal fun optionalProgressFields(
     progressOptions: ProgressResponseOptions,
@@ -26,6 +27,15 @@ internal fun optionalProgressFields(
             put("liveProblems", cappedLiveProblemResponse(snapshot.liveProblems))
         }
     }
+
+internal fun testTimingResponseFields(timings: TestTimingSnapshot?): Map<String, Any?> {
+    val capture = timings ?: TestTimingSnapshot.UNAVAILABLE_SNAPSHOT
+    return mapOf(
+        "testTimings" to capture.entries.map { it.toResponseMap() },
+        "testTimingsTruncated" to capture.truncated,
+        "testTimingsAvailability" to capture.availability,
+    )
+}
 
 internal fun optionalDownloadFields(
     progressOptions: ProgressResponseOptions,

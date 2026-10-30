@@ -141,6 +141,7 @@ internal data class GradleTapiResourceUri(
                 "includeProblems",
                 "includeDownloads",
                 "includeTestDetails",
+                "includeTestTimings",
                 "tailOutput",
                 "waitUntilComplete",
                 -> parseBooleanQuery(key, raw)

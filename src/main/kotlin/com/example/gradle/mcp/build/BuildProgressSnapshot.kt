@@ -89,4 +89,5 @@ data class BuildProgressSnapshot(
     val recentDownloads: List<DownloadProgressSnapshot> = emptyList(),
     val activeDownloadCount: Int = 0,
     val failedTests: List<FailedTestSnapshot> = emptyList(),
+    val testTimings: TestTimingSnapshot = TestTimingSnapshot.UNAVAILABLE_SNAPSHOT,
 )

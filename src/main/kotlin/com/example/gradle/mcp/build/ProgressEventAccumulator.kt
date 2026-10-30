@@ -49,6 +49,7 @@ internal class ProgressEventAccumulator {
         recentDownloads: List<DownloadProgressSnapshot> = emptyList(),
         activeDownloadCount: Int = 0,
         failedTests: List<FailedTestSnapshot> = emptyList(),
+        testTimings: TestTimingSnapshot = TestTimingSnapshot.UNAVAILABLE_SNAPSHOT,
     ): BuildProgressSnapshot =
         BuildProgressSnapshot(
             status = status,
@@ -70,6 +71,7 @@ internal class ProgressEventAccumulator {
             recentDownloads = recentDownloads,
             activeDownloadCount = activeDownloadCount,
             failedTests = failedTests,
+            testTimings = testTimings,
         )
 }
 

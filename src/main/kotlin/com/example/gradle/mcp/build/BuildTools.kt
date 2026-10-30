@@ -36,6 +36,7 @@ internal fun progressProperties(): Map<String, Any> =
         "includeTestDetails" to booleanProperty(
             "Test metadata and failedTests. Default false; live progress events need includeProgress=true.",
         ),
+        "includeTestTimings" to booleanProperty("Method timings. Default false."),
     )
 
 internal fun outputProperties(): Map<String, Any> =

@@ -24,6 +24,14 @@ class ProgressResponseOptionsTest {
 
         options.includeProgress.shouldBeFalse()
         options.includeTestDetails.shouldBeFalse()
+        options.includeTestTimings.shouldBeFalse()
+    }
+
+    @Test
+    fun `fromArgs reads includeTestTimings`() {
+        val options = ProgressResponseOptions.fromArgs(mapOf("includeTestTimings" to true))
+
+        options.includeTestTimings shouldBe true
     }
 
     @Test

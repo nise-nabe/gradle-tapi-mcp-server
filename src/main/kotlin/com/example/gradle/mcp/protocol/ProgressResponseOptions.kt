@@ -5,6 +5,7 @@ data class ProgressResponseOptions(
     val includeProblems: Boolean = false,
     val includeDownloads: Boolean = false,
     val includeTestDetails: Boolean = false,
+    val includeTestTimings: Boolean = false,
 ) {
     companion object {
         const val MAX_COMPLETED_TASKS_IN_RESPONSE = 20
@@ -18,6 +19,7 @@ data class ProgressResponseOptions(
                 includeProblems = args.optionalBoolean("includeProblems", default = false),
                 includeDownloads = args.optionalBoolean("includeDownloads", default = false),
                 includeTestDetails = args.optionalBoolean("includeTestDetails", default = false),
+                includeTestTimings = args.optionalBoolean("includeTestTimings", default = false),
             )
     }
 }
