@@ -51,10 +51,11 @@ data class TestMethodTiming(
 /**
  * In-memory capture for one MCP build. Not written to `events.ndjson`.
  *
- * [RECORDED] and an empty list means no method-level finish events were seen
- * (including an UP-TO-DATE test task). [INCOMPLETE] means at least one method
- * finish arrived without readable start/end times. [UNAVAILABLE] means this
- * status view has no in-memory capture (disk-only poll).
+ * [RECORDED] with an empty list means no method-level finish events were seen,
+ * which on `gradle_run_tasks` includes an UP-TO-DATE or FROM-CACHE test task.
+ * `gradle_run_tests` re-executes the selected tests, so it does not take that path.
+ * [INCOMPLETE] means at least one method finish arrived without readable start/end
+ * times. [UNAVAILABLE] means this status view has no in-memory capture (disk-only poll).
  */
 data class TestTimingSnapshot(
     val availability: String,
@@ -156,6 +157,34 @@ private fun resultName(result: TestOperationResult): String =
         is TestSkippedResult -> TestMethodTiming.RESULT_SKIPPED
         else -> TestMethodTiming.RESULT_SUCCESS
     }
+
+/**
+ * Gradle reports a test that was still running when the build was cancelled as
+ * [TestSkippedResult]. The Tooling API result carries only start and end times, the
+ * same type as `@Disabled` and assumption failures, so the skip reason is not available.
+ *
+ * Treat the skip as cancellation when this process already requested cancellation and
+ * the operation clock straddles that moment (started before, finished at or after).
+ * Skips that finished earlier stay, including `@Disabled` and assumptions. Skips that
+ * start at or after the request stay too.
+ */
+internal fun isCancellationInterruptedSkip(
+    result: TestOperationResult,
+    cancellationRequestedAtMillis: Long?,
+): Boolean {
+    if (cancellationRequestedAtMillis == null || result !is TestSkippedResult) {
+        return false
+    }
+    val startTime: Long
+    val endTime: Long
+    try {
+        startTime = result.startTime
+        endTime = result.endTime
+    } catch (_: RuntimeException) {
+        return false
+    }
+    return startTime < cancellationRequestedAtMillis && endTime >= cancellationRequestedAtMillis
+}
 
 internal fun taskPathFromDescriptor(descriptor: OperationDescriptor): String? {
     val seen = Collections.newSetFromMap(IdentityHashMap<OperationDescriptor, Boolean>(8))

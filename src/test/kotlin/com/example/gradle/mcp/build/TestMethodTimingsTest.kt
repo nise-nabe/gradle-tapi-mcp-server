@@ -158,6 +158,108 @@ class TestMethodTimingsTest {
     }
 
     @Test
+    fun `cancellation skip is a skipped result whose clock straddles the request`() {
+        val requestedAt = 5_000L
+        isCancellationInterruptedSkip(skippedResult(1_000, 4_999), requestedAt).shouldBeFalse()
+        isCancellationInterruptedSkip(skippedResult(1_000, 5_000), requestedAt).shouldBeTrue()
+        isCancellationInterruptedSkip(skippedResult(5_000, 5_000), requestedAt).shouldBeFalse()
+        isCancellationInterruptedSkip(skippedResult(5_001, 5_010), requestedAt).shouldBeFalse()
+        isCancellationInterruptedSkip(skippedResult(1_000, 9_000), null).shouldBeFalse()
+        isCancellationInterruptedSkip(
+            resultProxy(TestSuccessResult::class.java, 1_000, 9_000) as TestSuccessResult,
+            requestedAt,
+        ).shouldBeFalse()
+        isCancellationInterruptedSkip(
+            proxy(
+                TestSkippedResult::class.java,
+                mapOf("getStartTime" to RuntimeException("no time"), "getEndTime" to 9_000L),
+            ),
+            requestedAt,
+        ).shouldBeFalse()
+    }
+
+    @Test
+    fun `in-progress skip after cancellation is omitted and earlier skips stay`() {
+        val tracker = BuildProgressTracker()
+        val listener = tracker.asGradleListener()
+        val alreadyFinished = System.currentTimeMillis() - 1_000
+        listener.statusChanged(
+            finish(
+                className = "com.example.SampleTest",
+                methodName = "assumption()",
+                displayName = "assumption()",
+                taskPath = ":test",
+                result = "skipped",
+                startTime = alreadyFinished - 400,
+                endTime = alreadyFinished,
+            ),
+        )
+        val runningSince = System.currentTimeMillis() - 12_000
+        tracker.markCancellationRequested()
+        val stoppedAt = System.currentTimeMillis() + 20
+        listener.statusChanged(
+            finish(
+                className = "com.example.SampleTest",
+                methodName = "slow()",
+                displayName = "slow()",
+                taskPath = ":test",
+                result = "skipped",
+                startTime = runningSince,
+                endTime = stoppedAt,
+            ),
+        )
+        val disabledAt = System.currentTimeMillis() + 1_000
+        listener.statusChanged(
+            finish(
+                className = "com.example.SampleTest",
+                methodName = "disabledCase()",
+                displayName = "disabledCase()",
+                taskPath = ":test",
+                result = "skipped",
+                startTime = disabledAt,
+                endTime = disabledAt,
+            ),
+        )
+
+        val timings = tracker.snapshot().testTimings
+        timings.availability shouldBe TestTimingSnapshot.RECORDED
+        timings.entries.map { it.methodName } shouldBe listOf("assumption()", "disabledCase()")
+        timings.entries.map { it.result } shouldBe listOf(
+            TestMethodTiming.RESULT_SKIPPED,
+            TestMethodTiming.RESULT_SKIPPED,
+        )
+        timings.entries[0].durationMs shouldBe 400
+        timings.entries[1].durationMs shouldBe 0
+        val events = tracker.snapshot().recentEvents
+        events.first { it.displayName == "slow()" }.eventType shouldBe ProgressEventTypes.TEST_CANCEL
+        events.first { it.displayName == "assumption()" }.eventType shouldBe ProgressEventTypes.TEST_SKIP
+        events.first { it.displayName == "disabledCase()" }.eventType shouldBe ProgressEventTypes.TEST_SKIP
+    }
+
+    @Test
+    fun `success that finishes after cancellation request stays in timings`() {
+        val tracker = BuildProgressTracker()
+        val started = System.currentTimeMillis() - 2_000
+        tracker.markCancellationRequested()
+        tracker.asGradleListener().statusChanged(
+            finish(
+                className = "com.example.SampleTest",
+                methodName = "fast()",
+                displayName = "fast()",
+                taskPath = ":test",
+                result = "success",
+                startTime = started,
+                endTime = System.currentTimeMillis() + 20,
+            ),
+        )
+
+        val timings = tracker.snapshot().testTimings
+        timings.entries.shouldHaveSize(1)
+        timings.entries.single().result shouldBe TestMethodTiming.RESULT_SUCCESS
+        tracker.snapshot().recentEvents.last().eventType shouldBe ProgressEventTypes.TEST_SUCCESS
+    }
+
+    @Test
     fun `unreadable operation times are incomplete rather than an empty success`() {
         val tracker = BuildProgressTracker()
         tracker.asGradleListener().statusChanged(
@@ -350,6 +452,9 @@ class TestMethodTimingsTest {
             ),
         )
     }
+
+    private fun skippedResult(startTime: Long, endTime: Long): TestSkippedResult =
+        resultProxy(TestSkippedResult::class.java, startTime, endTime) as TestSkippedResult
 
     private fun resultProxy(type: Class<*>, startTime: Long, endTime: Long): Any =
         proxy(

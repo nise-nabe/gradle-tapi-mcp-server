@@ -39,6 +39,7 @@ class BuildProgressTracker(
     private val testTimings = TestTimingCollector()
     private var totalEventCount = 0
     private var cancellationRequested = false
+    private var cancellationRequestedAtMillis: Long? = null
     private var lastNotifiedEventCount = 0
 
     fun markStarting(operation: String) {
@@ -125,9 +126,15 @@ class BuildProgressTracker(
     /**
      * Called before the Tooling API cancellation token fires. Task and test failures that
      * arrive afterwards come from Gradle stopping work and are recorded as cancelled.
+     * A test still running at this moment is later reported as skipped; that skip is
+     * recorded as cancelled too. The timestamp is this process's clock, compared with
+     * the test operation's start and end.
      */
     fun markCancellationRequested() {
         synchronized(lock) {
+            if (!cancellationRequested) {
+                cancellationRequestedAtMillis = System.currentTimeMillis()
+            }
             cancellationRequested = true
         }
     }
@@ -257,6 +264,15 @@ class BuildProgressTracker(
                         )
                     }
                     is org.gradle.tooling.events.test.TestSkippedResult -> {
+                        if (isCancellationInterruptedSkip(result, cancellationRequestedAtMillis)) {
+                            applyTaskEvent(
+                                ProgressEventTypes.TEST_CANCEL,
+                                displayName,
+                                "Build cancelled",
+                                TestProgressDetailsExtractor.fromGradleEvent(event),
+                            )
+                            return
+                        }
                         testTimings.record(event)
                         applyTaskEvent(
                             ProgressEventTypes.TEST_SKIP,
