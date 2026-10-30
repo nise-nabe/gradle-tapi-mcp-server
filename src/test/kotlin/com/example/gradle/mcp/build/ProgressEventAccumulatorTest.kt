@@ -22,7 +22,13 @@ class ProgressEventAccumulatorTest {
         )
         val accumulator = ProgressEventAccumulator()
         for (event in events) {
-            accumulator.apply(event.eventType, event.displayName)
+            val progressEvent = event.toProgressEvent()
+            accumulator.apply(
+                event.eventType,
+                event.displayName,
+                recordTestFailure = event.eventType != ProgressEventTypes.TEST_FAIL ||
+                    FailedTestSnapshots.isReportableFailure(progressEvent.toFailedTestSnapshot()),
+            )
         }
         val directSnapshot = accumulator.snapshot(
             status = BuildProgressTracker.STATUS_FAILED,
@@ -95,7 +101,7 @@ class ProgressEventAccumulatorTest {
             currentOperation = "Gradle tasks: test",
         )
 
-        snapshot.failedTaskCount shouldBe 5
+        snapshot.failedTaskCount shouldBe 2
         snapshot.failedGradleTaskCount shouldBe 1
         snapshot.failedGradleTasks shouldBe listOf(":plugin:test")
         snapshot.failedTestCount shouldBe 1

@@ -67,6 +67,25 @@ class FailedTestSnapshotsTest {
     }
 
     @Test
+    fun `foldOutcomes drops a failure that later passes and ignores detail-less containers`() {
+        val methodFailure = testFailProgressEvent("com.example.FlakyTest", "failsThenPasses()", "first attempt")
+        val passed = methodFailure.copy(eventType = ProgressEventTypes.TEST_SUCCESS, outcome = null)
+        val container = ProgressEventSnapshot(
+            timestamp = "2026-06-14T10:00:01Z",
+            eventType = ProgressEventTypes.TEST_FAIL,
+            displayName = "Gradle Test Run :test failed",
+            outcome = "failed",
+        )
+        val stillFailing = testFailProgressEvent("com.example.AlwaysFailTest", "alwaysFails()", "genuine failure")
+
+        val outcomes = FailedTestSnapshots.foldOutcomes(listOf(methodFailure, container, passed, stillFailing))
+
+        outcomes.failedTests.map { it.methodName } shouldContainExactly listOf("alwaysFails()")
+        outcomes.flakyTests.map { it.methodName } shouldContainExactly listOf("failsThenPasses()")
+        outcomes.flakyTests.single().failureMessage shouldBe "first attempt"
+    }
+
+    @Test
     fun `fromEvents caps tracked failed tests`() {
         val events = (1..11).map { index ->
             testFailProgressEvent("com.example.Test$index", "fails$index", "failure $index")

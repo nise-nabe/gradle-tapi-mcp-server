@@ -137,16 +137,8 @@ internal object BuildStatusMerger {
         if (status == BuildProgressTracker.STATUS_RUNNING) {
             return null
         }
-        if (stdout.text.isNotBlank()) {
-            val summary = BuildOutputParser.parse(stdout.text, stderr.text)
-            if (summary.resultLine != null ||
-                summary.taskSummaryLine != null ||
-                summary.failureSummary.isNotEmpty()
-            ) {
-                return BuildOutputParser.toResponseMap(summary)
-            }
-        }
-        return diskSummary
+        BuildOutputParser.summaryForTerminalStatus(status, stdout.text, stderr.text)?.let { return it }
+        return BuildOutputParser.alignStoredSummary(status, diskSummary)
     }
 
     private fun preferCapturedTestTimings(
@@ -182,19 +174,24 @@ internal object BuildStatusMerger {
                 }
                 val mergedProblems = base.problems.toMutableList()
                 ProblemsSerializer.mergeDistinct(mergedProblems, other.problems)
-                val mergedFailedTests = FailedTestSnapshots.mergeDistinct(base.failedTests, other.failedTests)
-                val mergedFailedTestNames = FailedTestSnapshots.methodLevelNames(mergedFailedTests)
+                val outcomes = FailedTestSnapshots.mergeOutcomes(
+                    failedLists = listOf(base.failedTests, other.failedTests),
+                    flakyLists = listOf(base.flakyTests, other.flakyTests),
+                )
+                val mergedFailedTestNames = FailedTestSnapshots.qualifiedNames(outcomes.failedTests)
                 if (
                     mergedProblems == base.problems &&
-                    mergedFailedTests == base.failedTests &&
+                    outcomes.failedTests == base.failedTests &&
+                    outcomes.flakyTests == base.flakyTests &&
                     mergedFailedTestNames == base.failedTestNames
                 ) {
                     base
                 } else {
                     base.copy(
                         problems = mergedProblems,
-                        failedTests = mergedFailedTests,
-                        failedTestCount = FailedTestSnapshots.methodLevelCount(mergedFailedTests),
+                        failedTests = outcomes.failedTests,
+                        flakyTests = outcomes.flakyTests,
+                        failedTestCount = outcomes.failedTests.size,
                         failedTestNames = mergedFailedTestNames,
                     )
                 }

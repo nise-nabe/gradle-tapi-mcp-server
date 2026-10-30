@@ -110,6 +110,29 @@ class BuildOutputParserTest {
     }
 
     @Test
+    fun `succeeded status drops a TestLauncher BUILD FAILED line`() {
+        val summary = BuildOutputParser.summaryForTerminalStatus(
+            BuildProgressTracker.STATUS_SUCCEEDED,
+            "> Task :test\n2 actionable tasks: 1 executed\n",
+            "FAILURE: Build failed with an exception.\n\nBUILD FAILED in 4s\n",
+        )
+
+        assertEquals(false, summary!!.containsKey("resultLine"))
+        assertEquals("2 actionable tasks: 1 executed", summary["taskSummaryLine"])
+    }
+
+    @Test
+    fun `failed status keeps a BUILD FAILED line`() {
+        val summary = BuildOutputParser.summaryForTerminalStatus(
+            BuildProgressTracker.STATUS_FAILED,
+            "",
+            "BUILD FAILED in 4s\n",
+        )
+
+        assertEquals("BUILD FAILED in 4s", summary!!["resultLine"])
+    }
+
+    @Test
     fun `reportsBuildFailed follows the Gradle result line`() {
         assertEquals(true, BuildOutputParser.reportsBuildFailed("> Task :a\nBUILD FAILED in 2s\n"))
         assertEquals(false, BuildOutputParser.reportsBuildFailed("BUILD SUCCESSFUL in 2s\n"))

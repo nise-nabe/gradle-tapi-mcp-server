@@ -204,6 +204,25 @@ internal fun interruptedOnRunProjectConnection(): ProjectConnection =
         },
     ) as ProjectConnection
 
+internal fun throwingOnTestLauncherProjectConnection(failure: Throwable): ProjectConnection =
+    Proxy.newProxyInstance(
+        ProjectConnection::class.java.classLoader,
+        arrayOf(ProjectConnection::class.java),
+        InvocationHandler { _, method, _ ->
+            when (method.name) {
+                "newTestLauncher" -> chainingProxy(
+                    Class.forName("org.gradle.tooling.TestLauncher"),
+                    onRun = { throw failure },
+                )
+                "newBuild" -> chainingProxy(
+                    Class.forName("org.gradle.tooling.BuildLauncher"),
+                    onRun = { throw failure },
+                )
+                else -> defaultProxyReturn(method)
+            }
+        },
+    ) as ProjectConnection
+
 internal fun throwingOnRunProjectConnection(failure: Throwable): ProjectConnection =
     Proxy.newProxyInstance(
         ProjectConnection::class.java.classLoader,

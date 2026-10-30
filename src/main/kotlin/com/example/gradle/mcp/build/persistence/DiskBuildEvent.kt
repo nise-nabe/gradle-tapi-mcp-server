@@ -32,17 +32,23 @@ internal object DiskBuildProgress {
         currentOperation: String?,
     ): BuildProgressSnapshot {
         val accumulator = ProgressEventAccumulator()
-        for (event in events) {
-            accumulator.apply(event.eventType, event.displayName)
-        }
         val recentEvents = events.map { it.toProgressEvent() }
-        val failedTests = FailedTestSnapshots.fromEvents(recentEvents)
+        for (event in recentEvents) {
+            accumulator.apply(
+                event.eventType,
+                event.displayName,
+                recordTestFailure = event.eventType != ProgressEventTypes.TEST_FAIL ||
+                    FailedTestSnapshots.isReportableFailure(event.toFailedTestSnapshot()),
+            )
+        }
+        val outcomes = FailedTestSnapshots.foldOutcomes(recentEvents)
         return accumulator.snapshot(
             status = status,
             currentOperation = currentOperation,
             recentEvents = recentEvents,
             totalEventCount = recentEvents.size,
-            failedTests = failedTests,
+            failedTests = outcomes.failedTests,
+            flakyTests = outcomes.flakyTests,
         )
     }
 

@@ -59,6 +59,7 @@ internal object PersistedBuildViewFactory {
                     totalEventCount = 0,
                     problems = mcp.problems,
                     failedTests = mcp.testFailures,
+                    flakyTests = mcp.flakyTests,
                 )
             }
         } else {
@@ -104,7 +105,7 @@ internal object PersistedBuildViewFactory {
                 ?: artifacts.mcpResult?.failureKind?.let { runCatching { FailureKind.valueOf(it) }.getOrNull() },
             outcome = BuildOutputParser.outcomeFromStatus(status),
             buildSummary = if (!isRunning) {
-                BuildPersistenceContract.terminalBuildSummary(artifacts, terminalSource)
+                BuildPersistenceContract.terminalBuildSummary(artifacts, terminalSource, status)
             } else {
                 null
             },
@@ -164,6 +165,7 @@ internal object PersistedBuildViewFactory {
                 totalEventCount = 0,
                 problems = persistedProblems,
                 failedTests = mcp.testFailures,
+                flakyTests = mcp.flakyTests,
             )
         }
     }
@@ -199,7 +201,7 @@ internal object PersistedBuildViewFactory {
             runningTaskCount = fromEvents.runningTaskCount,
             failedTaskCount = maxOf(base.failedTaskCount, fromEvents.failedTaskCount),
             failedGradleTaskCount = maxOf(base.failedGradleTaskCount, fromEvents.failedGradleTaskCount),
-            failedTestCount = maxOf(base.failedTestCount, fromEvents.failedTestCount),
+            failedTestCount = fromEvents.failedTestCount,
             completedTasks = fromEvents.completedTasks.ifEmpty { base.completedTasks },
             runningTasks = fromEvents.runningTasks,
             failedTasks = if (base.failedTasks.isNotEmpty()) base.failedTasks else fromEvents.failedTasks,
@@ -208,14 +210,11 @@ internal object PersistedBuildViewFactory {
             } else {
                 fromEvents.failedGradleTasks
             },
-            failedTestNames = if (base.failedTestNames.isNotEmpty()) {
-                base.failedTestNames
-            } else {
-                fromEvents.failedTestNames
-            },
+            failedTestNames = fromEvents.failedTestNames,
             recentEvents = fromEvents.recentEvents,
             totalEventCount = maxOf(base.totalEventCount, fromEvents.totalEventCount),
             failedTests = fromEvents.failedTests,
+            flakyTests = fromEvents.flakyTests,
         )
     }
 }

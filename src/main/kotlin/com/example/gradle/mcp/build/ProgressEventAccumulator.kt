@@ -6,7 +6,11 @@ internal class ProgressEventAccumulator {
     private val failedTasks = LinkedHashSet<String>()
     private val failedGradleTasks = LinkedHashSet<String>()
 
-    fun apply(eventType: String, displayName: String) {
+    fun apply(
+        eventType: String,
+        displayName: String,
+        recordTestFailure: Boolean = true,
+    ) {
         val key = TaskProgressKey.fromDisplayName(displayName)
         when (eventType) {
             ProgressEventTypes.TASK_START, ProgressEventTypes.TEST_START -> {
@@ -14,11 +18,15 @@ internal class ProgressEventAccumulator {
             }
             ProgressEventTypes.TASK_SUCCESS,
             ProgressEventTypes.TASK_SKIP,
-            ProgressEventTypes.TEST_SUCCESS,
             ProgressEventTypes.TEST_SKIP,
             -> {
                 runningTasks.remove(key)
                 completedTasks.add(key)
+            }
+            ProgressEventTypes.TEST_SUCCESS -> {
+                runningTasks.remove(key)
+                completedTasks.add(key)
+                failedTasks.remove(key)
             }
             ProgressEventTypes.TASK_FAIL -> {
                 runningTasks.remove(key)
@@ -27,7 +35,9 @@ internal class ProgressEventAccumulator {
             }
             ProgressEventTypes.TEST_FAIL -> {
                 runningTasks.remove(key)
-                failedTasks.add(key)
+                if (recordTestFailure) {
+                    failedTasks.add(key)
+                }
             }
             ProgressEventTypes.TASK_CANCEL, ProgressEventTypes.TEST_CANCEL -> {
                 runningTasks.remove(key)
@@ -50,6 +60,7 @@ internal class ProgressEventAccumulator {
         activeDownloadCount: Int = 0,
         failedTests: List<FailedTestSnapshot> = emptyList(),
         testTimings: TestTimingSnapshot = TestTimingSnapshot.UNAVAILABLE_SNAPSHOT,
+        flakyTests: List<FailedTestSnapshot> = emptyList(),
     ): BuildProgressSnapshot =
         BuildProgressSnapshot(
             status = status,
@@ -58,12 +69,12 @@ internal class ProgressEventAccumulator {
             runningTaskCount = runningTasks.size,
             failedTaskCount = failedTasks.size,
             failedGradleTaskCount = failedGradleTasks.size,
-            failedTestCount = FailedTestSnapshots.methodLevelCount(failedTests),
+            failedTestCount = failedTests.size,
             completedTasks = completedTasks.toList(),
             runningTasks = runningTasks.toList(),
             failedTasks = failedTasks.toList(),
             failedGradleTasks = failedGradleTasks.toList(),
-            failedTestNames = FailedTestSnapshots.methodLevelNames(failedTests),
+            failedTestNames = FailedTestSnapshots.qualifiedNames(failedTests),
             recentEvents = recentEvents,
             totalEventCount = totalEventCount,
             problems = problems,
@@ -72,15 +83,21 @@ internal class ProgressEventAccumulator {
             activeDownloadCount = activeDownloadCount,
             failedTests = failedTests,
             testTimings = testTimings,
+            flakyTests = flakyTests,
         )
 }
 
 internal object TaskProgressKey {
     private val taskDisplayPattern = Regex("^Task (\\S+)")
     private val testDisplayPattern = Regex("^Test (.+)$")
+    private val testOutcomeSuffix = Regex(""" (?:started|failed|succeeded)$""")
 
-    fun fromDisplayName(displayName: String): String =
-        taskDisplayPattern.find(displayName)?.groupValues?.get(1)
-            ?: testDisplayPattern.find(displayName)?.groupValues?.get(1)
-            ?: displayName
+    fun fromDisplayName(displayName: String): String {
+        taskDisplayPattern.find(displayName)?.groupValues?.get(1)?.let { return it }
+        val testBody = testDisplayPattern.find(displayName)?.groupValues?.get(1)
+        if (testBody != null) {
+            return testBody.replace(testOutcomeSuffix, "")
+        }
+        return displayName
+    }
 }

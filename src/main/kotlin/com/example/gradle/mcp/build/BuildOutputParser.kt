@@ -33,12 +33,49 @@ object BuildOutputParser {
             }
         }
 
-    fun summaryFromStdout(stdout: String, stderr: String = ""): Map<String, Any?>? {
+    /**
+     * Drops a `BUILD FAILED` result line when [status] is succeeded. TestLauncher prints that
+     * line for its own "Test failed." check after a test task has already succeeded on retry.
+     */
+    fun summaryForTerminalStatus(
+        status: String,
+        stdout: String,
+        stderr: String = "",
+    ): Map<String, Any?>? {
         if (stdout.isBlank() && stderr.isBlank()) {
             return null
         }
-        return toResponseMap(parse(stdout, stderr))
+        return withoutNulls(toResponseMap(alignResultLine(status, parse(stdout, stderr))))
     }
+
+    fun alignResultLine(status: String, summary: BuildSummary): BuildSummary =
+        if (
+            status == BuildProgressTracker.STATUS_SUCCEEDED &&
+            summary.resultLine?.let(::isBuildFailedResultLine) == true
+        ) {
+            summary.copy(resultLine = null)
+        } else {
+            summary
+        }
+
+    fun alignStoredSummary(status: String, summary: Map<String, Any?>?): Map<String, Any?>? {
+        if (summary == null) {
+            return null
+        }
+        if (status != BuildProgressTracker.STATUS_SUCCEEDED) {
+            return summary
+        }
+        val resultLine = summary["resultLine"] as? String
+        if (resultLine == null || !isBuildFailedResultLine(resultLine)) {
+            return summary
+        }
+        val adjusted = LinkedHashMap(summary)
+        adjusted.remove("resultLine")
+        return adjusted.ifEmpty { null }
+    }
+
+    private fun withoutNulls(summary: Map<String, Any?>): Map<String, Any?>? =
+        summary.filterValues { it != null }.ifEmpty { null }
 
     /**
      * True when Gradle's result line is `BUILD FAILED` in any of [streams] (Gradle logs it at

@@ -114,7 +114,9 @@ class TestMethodTimingsTest {
         entries[0].startTimeEpochMs shouldBe 100
         entries[1].result shouldBe TestMethodTiming.RESULT_FAILURE
         entries[1].startTimeEpochMs shouldBe 500
-        tracker.snapshot().failedTests.shouldHaveSize(1)
+        tracker.snapshot().failedTests.shouldHaveSize(0)
+        tracker.snapshot().flakyTests.shouldHaveSize(1)
+        tracker.snapshot().flakyTests.single().methodName shouldBe "flaky"
     }
 
     @Test
