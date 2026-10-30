@@ -18,10 +18,10 @@
 | `gradle_get_project_publications` | Publications; optional `buildTreePath` for included/`buildSrc`. Gradle 9.4+ may return `partial` + capped `failures` |
 | `gradle_get_dependency_resolution` | Resolved dependency graph via Tooling API `ResolutionResult` (no task run). Omit `configuration` to list resolvable/consumable names (optional `includeAttributes` / `includeOutgoingVariants`; catalog cap 200). With `configuration`: optional `projectPath`, `dependency` filter, `maxDependencies` / `maxComponents` (default 500). Unknown names return `suggestedConfigurations` |
 | `gradle_run_tasks` | Execute tasks; stdout/stderr truncated by default |
-| `gradle_run_tests` | Execute JVM tests by class, method, pattern, or task scope; stdout/stderr truncated by default |
+| `gradle_run_tests` | Execute JVM tests by class, method, pattern, or task scope; stdout/stderr truncated by default. Optional `includeTestTimings` (default false) adds capped per-method `testTimings` |
 | `gradle_get_task_execution_plan` | Ordered task execution plan via dry run (no task actions run); returns `taskPlan` `{taskCount, tasks[{path}]}`. Foreground only; busy → `BUILD_ALREADY_RUNNING` + `activeBuildId` |
 | `gradle_list_builds` | List recent MCP builds from memory and `.gradle/mcp-builds/` (no Tooling API required) |
-| `gradle_get_build_status` | Poll status/output for a background build (`buildId` required); set `includeProgress: true` for detailed progress |
+| `gradle_get_build_status` | Poll status/output for a background build (`buildId` required); set `includeProgress: true` for detailed progress. Optional `includeTestTimings` (default false) adds in-memory per-method timings |
 | `gradle_cancel_build` | Cancel a background build via Tooling API `CancellationToken` (`buildId` required) |
 | `gradle_index_dependency_sources` | Index sources for exact simple-name locate (project Idea keep-set **or** any Maven GAV via `artifacts[]`, including versions not in the graph). `tokenMode`: `all` (default; includes comments/strings) or `idents`. Keep-set: Idea sources by default (optional `projectPath` to scope a Gradle project subtree), or explicit `artifacts[]` / `sourcePaths[]`. `background: true` returns `indexId` immediately; foreground auto-detaches after ~45s with `detached: true` + `indexId`. Poll with `gradle_get_dependency_sources_index_status`. The **server** looks up `artifacts[]` jars via optional `gradleUserHome`, else the connected project's Gradle user home, else process `GRADLE_USER_HOME`/`~/.gradle` — do not list those directories. Optional `downloadSources: true` fetches missing `*-sources.jar` (default Maven Central; override with `sourcesRepositories` for corporate mirrors) into `.gradle/mcp-dependency-sources/jars/`. Persists under `.gradle/mcp-dependency-sources/<tokenMode>/` |
 | `gradle_get_dependency_sources_index_status` | Poll a background/detached dependency-sources index job (`indexId` required) |
@@ -40,7 +40,7 @@ URI scheme: `gradle-tapi://{url-encoded-absolute-project-root}/…`
 | `…/connection/status` | `gradle_connection_status` | `?refresh=true` live-fetches `BuildEnvironment` when the cache is empty |
 | `…/environment` | `gradle_get_build_environment` | Resolved Gradle/Java, not Version Catalog files |
 | `…/overview` | `gradle_get_project_overview` | Optional `?projectPath=` or `?buildTreePath=` |
-| `…/builds/{buildId}/status` | `gradle_get_build_status` | Default omits stdout and progress (same as the tool) |
+| `…/builds/{buildId}/status` | `gradle_get_build_status` | Default omits stdout and progress (same as the tool). `?includeTestTimings=true` adds in-memory per-method timings |
 | `…/builds/recent` | `gradle_list_builds` | Memory + `.gradle/mcp-builds/`; no Tooling API |
 
 `resources/templates/list` always advertises those five templates. `resources/list` lists concrete URIs for the projects the session knows (its workspace plus projects it connected; typically `GRADLE_PROJECT_DIR` auto-connect), except `builds/{buildId}/status`, which stays template-only until a `buildId` is known. Later `gradle_connect` / `gradle_disconnect` do not change that list (`listChanged` is off). `resources/read` still works for any encoded project root that matches a template. Subscribe is not enabled.
