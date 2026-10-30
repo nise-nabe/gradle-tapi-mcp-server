@@ -384,7 +384,7 @@ class ProgressResponseOptionsTest {
             completedTaskCount = 1,
             runningTaskCount = 0,
             failedTaskCount = 1,
-            failedTestCount = 1,
+            failedTestCount = 2,
             completedTasks = emptyList(),
             runningTasks = emptyList(),
             failedTasks = listOf(":plugin:test"),
@@ -411,6 +411,7 @@ class ProgressResponseOptionsTest {
 
         val fields = terminalFailureFields(snapshot, ProgressResponseOptions())
 
+        fields["failedTestCount"] shouldBe 2
         val testFailures = fields["testFailures"] as List<*>
         testFailures.size shouldBe 2
         val frameworkFailure = testFailures[0] as Map<*, *>
@@ -420,6 +421,91 @@ class ProgressResponseOptionsTest {
         val assertionFailure = testFailures[1] as Map<*, *>
         assertionFailure["methodName"] shouldBe "bar"
         assertionFailure["failureType"] shouldBe "assertion"
+    }
+
+    @Test
+    fun `terminalFailureFields omits detail-less containers and keeps a passed retry as flaky`() {
+        val snapshot = BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_FAILED,
+            currentOperation = null,
+            completedTaskCount = 1,
+            runningTaskCount = 0,
+            failedTaskCount = 1,
+            failedTestCount = 1,
+            completedTasks = emptyList(),
+            runningTasks = emptyList(),
+            failedTasks = listOf(":test"),
+            recentEvents = emptyList(),
+            totalEventCount = 4,
+            failedTests = listOf(
+                FailedTestSnapshot(
+                    className = "com.example.AlwaysFailTest",
+                    methodName = "alwaysFails()",
+                    displayName = "Test alwaysFails()(com.example.AlwaysFailTest) failed",
+                    failureMessage = "genuine failure",
+                    exceptionType = "org.opentest4j.AssertionFailedError",
+                    failureType = "assertion",
+                ),
+                FailedTestSnapshot(
+                    className = "com.example.AlwaysFailTest",
+                    displayName = "Test class com.example.AlwaysFailTest failed",
+                    failureMessage = "failed",
+                ),
+                FailedTestSnapshot(
+                    displayName = "Gradle Test Run :test failed",
+                    failureMessage = "failed",
+                ),
+            ),
+            flakyTests = listOf(
+                FailedTestSnapshot(
+                    className = "com.example.FlakyTest",
+                    methodName = "failsThenPasses()",
+                    displayName = "Test failsThenPasses()(com.example.FlakyTest) failed",
+                    failureMessage = "first attempt",
+                ),
+            ),
+        )
+
+        val fields = terminalFailureFields(snapshot, ProgressResponseOptions())
+
+        fields["failedTestCount"] shouldBe 1
+        val testFailures = fields["testFailures"] as List<*>
+        testFailures.size shouldBe 1
+        (testFailures.single() as Map<*, *>)["methodName"] shouldBe "alwaysFails()"
+        fields["flakyTestCount"] shouldBe 1
+        val flakyTests = fields["flakyTests"] as List<*>
+        (flakyTests.single() as Map<*, *>)["methodName"] shouldBe "failsThenPasses()"
+        (flakyTests.single() as Map<*, *>)["message"] shouldBe "first attempt"
+    }
+
+    @Test
+    fun `terminalFailureFields reports flaky tests on a successful build`() {
+        val snapshot = BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_SUCCEEDED,
+            currentOperation = null,
+            completedTaskCount = 1,
+            runningTaskCount = 0,
+            failedTaskCount = 0,
+            completedTasks = emptyList(),
+            runningTasks = emptyList(),
+            failedTasks = emptyList(),
+            recentEvents = emptyList(),
+            totalEventCount = 2,
+            flakyTests = listOf(
+                FailedTestSnapshot(
+                    className = "com.example.FlakyTest",
+                    methodName = "failsThenPasses()",
+                    displayName = "Test failsThenPasses()(com.example.FlakyTest) failed",
+                    failureMessage = "first attempt",
+                ),
+            ),
+        )
+
+        val fields = terminalFailureFields(snapshot, ProgressResponseOptions())
+
+        fields.containsKey("testFailures") shouldBe false
+        fields.containsKey("failedTestCount") shouldBe false
+        fields["flakyTestCount"] shouldBe 1
     }
 
     @Test

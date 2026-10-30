@@ -248,7 +248,9 @@ class BuildProgressTrackerTest {
             ),
         )
 
-        val failedTest = tracker.snapshot().failedTests.single()
+        val snapshot = tracker.snapshot()
+        snapshot.failedTestCount shouldBe 1
+        val failedTest = snapshot.failedTests.single()
         failedTest.className shouldBe "com.example.DemoTest"
         failedTest.methodName.shouldBeNull()
         failedTest.failureType shouldBe TestFailureDetails.FAILURE_TYPE_FRAMEWORK

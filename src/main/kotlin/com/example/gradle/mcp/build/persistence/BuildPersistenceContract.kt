@@ -137,15 +137,22 @@ internal object BuildPersistenceContract {
     fun terminalBuildSummary(
         artifacts: PersistedBuildArtifacts,
         terminalSource: TerminalStatusSource,
+        status: String,
     ): Map<String, Any?>? =
         when (terminalSource) {
             TerminalStatusSource.MCP -> {
-                artifacts.mcpResult?.buildSummary ?: buildSummaryFromStdout(artifacts)
+                BuildOutputParser.alignStoredSummary(status, artifacts.mcpResult?.buildSummary)
+                    ?: BuildOutputParser.summaryForTerminalStatus(
+                        status,
+                        artifacts.stdout.text,
+                        artifacts.stderr.text,
+                    )
             }
-            TerminalStatusSource.GRADLE -> buildSummaryFromStdout(artifacts)
+            TerminalStatusSource.GRADLE -> BuildOutputParser.summaryForTerminalStatus(
+                status,
+                artifacts.stdout.text,
+                artifacts.stderr.text,
+            )
             TerminalStatusSource.NONE -> null
         }
-
-    private fun buildSummaryFromStdout(artifacts: PersistedBuildArtifacts): Map<String, Any?>? =
-        BuildOutputParser.summaryFromStdout(artifacts.stdout.text, artifacts.stderr.text)
 }

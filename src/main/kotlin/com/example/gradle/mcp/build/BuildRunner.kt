@@ -155,6 +155,11 @@ internal class BuildRunner(
                 exception.message?.takeIf { it.isNotBlank() } ?: "Build interrupted",
             )
         }
+        if (record != null &&
+            TestRetryOutcomes.failureIsPassedOnRetry(exception, record.progressTracker.snapshot())
+        ) {
+            return BuildTerminalOutcome.Succeeded
+        }
         return BuildTerminalOutcome.Failed(BuildFailureClassifier.unwrapBuildFailureMessage(exception))
     }
 

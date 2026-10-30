@@ -70,6 +70,11 @@ internal fun terminalFailureFields(
                 put("failedTestCount", snapshot.failedTestCount)
                 put("failedTestNames", snapshot.failedTestNames)
             }
+            val flakyTests = FailedTestSnapshots.testFailureMaps(snapshot.flakyTests)
+            if (flakyTests.isNotEmpty()) {
+                put("flakyTestCount", flakyTests.size)
+                put("flakyTests", flakyTests)
+            }
             val problems = ProblemsSerializer.mergedDistinct(snapshot.problems, snapshot.liveProblems)
             if (snapshot.status == BuildProgressTracker.STATUS_FAILED && problems.isNotEmpty()) {
                 put("problems", cappedTerminalProblemResponse(problems))

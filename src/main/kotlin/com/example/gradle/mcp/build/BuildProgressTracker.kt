@@ -36,6 +36,7 @@ class BuildProgressTracker(
     private val activeDownloads = LinkedHashMap<String, DownloadProgressSnapshot>()
     private val recentDownloads = ArrayDeque<DownloadProgressSnapshot>()
     private val failedTests = LinkedHashMap<String, FailedTestSnapshot>()
+    private val flakyTests = LinkedHashMap<String, FailedTestSnapshot>()
     private val testTimings = TestTimingCollector()
     private var totalEventCount = 0
     private var cancellationRequested = false
@@ -152,6 +153,7 @@ class BuildProgressTracker(
                 activeDownloadCount = activeDownloads.size,
                 failedTests = failedTests.values.toList(),
                 testTimings = testTimings.snapshot(),
+                flakyTests = flakyTests.values.toList(),
             )
         }
 
@@ -253,14 +255,21 @@ class BuildProgressTracker(
                         testTimings.record(event)
                         collectProblemsFromFailureResult(result)
                         val failure = result.failures.firstOrNull()
-                        val message = failure?.message ?: "failed"
+                        val message = failure?.message ?: FailedTestSnapshots.EMPTY_FAILURE_MESSAGE
                         val exceptionType = TestFailureDetails.exceptionTypeFromFailure(failure)
                         val failureType = TestFailureDetails.failureTypeFromFailure(failure)
+                        val details = TestProgressDetailsExtractor.fromGradleEvent(
+                            event,
+                            message,
+                            exceptionType,
+                            failureType,
+                        )
                         applyTaskEvent(
                             ProgressEventTypes.TEST_FAIL,
                             displayName,
                             message,
-                            TestProgressDetailsExtractor.fromGradleEvent(event, message, exceptionType, failureType),
+                            details,
+                            recordTestFailure = failure != null || !details?.methodName.isNullOrBlank(),
                         )
                     }
                     is org.gradle.tooling.events.test.TestSkippedResult -> {
@@ -352,9 +361,25 @@ class BuildProgressTracker(
         displayName: String,
         outcome: String? = null,
         testDetails: TestProgressDetailsSnapshot? = null,
+        recordTestFailure: Boolean = true,
     ) {
-        taskProgress.apply(eventType, displayName)
-        rememberFailedTest(eventType, displayName, outcome, testDetails)
+        taskProgress.apply(eventType, displayName, recordTestFailure)
+        when (eventType) {
+            ProgressEventTypes.TEST_SUCCESS -> {
+                FailedTestSnapshots.recordSuccess(
+                    failedTests,
+                    flakyTests,
+                    testDetails?.className,
+                    testDetails?.methodName,
+                    displayName,
+                )
+            }
+            ProgressEventTypes.TEST_FAIL -> {
+                if (recordTestFailure) {
+                    rememberFailedTest(displayName, outcome, testDetails)
+                }
+            }
+        }
         recordEventLocked(eventType, displayName, outcome, testDetails)
     }
 
@@ -386,17 +411,20 @@ class BuildProgressTracker(
     }
 
     private fun rememberFailedTest(
-        eventType: String,
         displayName: String,
         outcome: String?,
         testDetails: TestProgressDetailsSnapshot?,
     ) {
-        if (eventType != ProgressEventTypes.TEST_FAIL) {
-            return
-        }
-        FailedTestSnapshots.remember(
+        FailedTestSnapshots.recordFailure(
             failedTests,
-            FailedTestSnapshots.fromTestFailure(displayName, outcome, testDetails),
+            flakyTests,
+            FailedTestSnapshots.fromTestFailure(
+                displayName,
+                outcome,
+                testDetails,
+                exceptionType = testDetails?.exceptionType,
+                failureType = testDetails?.failureType,
+            ),
         )
     }
 

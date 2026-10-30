@@ -31,6 +31,7 @@ data class McpBuildResult(
     val failedGradleTaskCount: Int = 0,
     val failedGradleTasks: List<String> = emptyList(),
     val testFailures: List<FailedTestSnapshot> = emptyList(),
+    val flakyTests: List<FailedTestSnapshot> = emptyList(),
     val failedTestCount: Int = 0,
     val failedTestNames: List<String> = emptyList(),
     val problems: List<BuildProblemSnapshot> = emptyList(),

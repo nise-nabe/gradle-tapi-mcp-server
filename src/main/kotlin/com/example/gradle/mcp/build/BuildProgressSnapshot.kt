@@ -25,8 +25,6 @@ data class FailedTestSnapshot(
     val sourceFile: String? = null,
     val line: Int? = null,
 ) {
-    fun stableKey(): String = "${className.orEmpty()}|${methodName.orEmpty()}|$displayName"
-
     fun qualifiedName(): String? =
         when {
             className != null && methodName != null -> "$className.$methodName"
@@ -90,4 +88,6 @@ data class BuildProgressSnapshot(
     val activeDownloadCount: Int = 0,
     val failedTests: List<FailedTestSnapshot> = emptyList(),
     val testTimings: TestTimingSnapshot = TestTimingSnapshot.UNAVAILABLE_SNAPSHOT,
+    /** Tests that failed an attempt and later passed. Not counted in [failedTests]. */
+    val flakyTests: List<FailedTestSnapshot> = emptyList(),
 )

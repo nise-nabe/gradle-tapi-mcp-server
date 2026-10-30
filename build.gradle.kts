@@ -81,7 +81,21 @@ tasks.withType<Test>().configureEach {
 tasks.named<Test>("test") {
     filter {
         excludeTestsMatching("com.example.gradle.mcp.GradleTapiMcpServerLauncherSmokeTest")
+        excludeTestsMatching("com.example.gradle.mcp.build.TestRetryGradleIntegrationTest")
     }
+}
+
+val testRetryIntegrationTest = tasks.register<Test>("testRetryIntegrationTest") {
+    description = "Runs the Gradle test-retry Tooling API integration test."
+    group = "verification"
+    val testSuite = testing.suites.getByName<JvmTestSuite>("test")
+    testClassesDirs = testSuite.sources.output.classesDirs
+    classpath = files(testSuite.sources.runtimeClasspath)
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching("com.example.gradle.mcp.build.TestRetryGradleIntegrationTest")
+    }
+    dependsOn(tasks.named("testClasses"))
 }
 
 val launcherSmokeTest = tasks.register<Test>("launcherSmokeTest") {
@@ -99,5 +113,6 @@ val launcherSmokeTest = tasks.register<Test>("launcherSmokeTest") {
 
 tasks.check {
     dependsOn(launcherSmokeTest)
+    dependsOn(testRetryIntegrationTest)
 }
 

@@ -127,6 +127,7 @@ class BuildRecordStore(
             failedGradleTaskCount = progress.failedGradleTaskCount,
             failedGradleTasks = progress.failedGradleTasks,
             testFailures = progress.failedTests,
+            flakyTests = progress.flakyTests,
             failedTestCount = progress.failedTestCount,
             failedTestNames = progress.failedTestNames,
             problems = ProblemsSerializer.mergedDistinct(
@@ -168,6 +169,7 @@ class BuildRecordStore(
             outcome = BuildOutputParser.outcomeFromStatus(status),
             error = error,
             failureKind = failureKind,
+            buildSummary = BuildOutputParser.summaryForTerminalStatus(status, stdout.text, stderr.text),
         )
         writeMcpResultFiles(recordDir, result, stdout, stderr)
     }
