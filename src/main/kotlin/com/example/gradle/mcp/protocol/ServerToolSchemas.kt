@@ -7,8 +7,7 @@ internal const val PROJECT_DIRECTORY_OPTIONAL_HINT =
     "Gradle project root. Omit for the session default or GRADLE_PROJECT_DIR."
 
 internal const val PROJECT_DIRECTORY_RESOLVE_HINT =
-    "Gradle project root. Omit to use the session default (set by gradle_connect) " +
-        "or GRADLE_PROJECT_DIR."
+    "Gradle project root (default: session project or GRADLE_PROJECT_DIR)."
 
 internal fun optionalProjectDirectoryProperty(): Map<String, String> =
     projectDirectoryProperty(PROJECT_DIRECTORY_OPTIONAL_HINT)
@@ -24,7 +23,7 @@ internal val testMethodsClassPropertyNames = listOf("class", "className", "testC
 internal fun testMethodsProperty(): Map<String, Any> =
     mapOf(
         "description" to
-            "Map {FQCN: [methods]} or array [{class, methods}]. className and testClass aliases work at runtime.",
+            "Map {FQCN: [methods]} or [{class, methods}].",
         "oneOf" to listOf(
             mapOf(
                 "type" to "object",

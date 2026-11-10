@@ -34,7 +34,7 @@ internal fun progressProperties(): Map<String, Any> =
         "includeProblems" to booleanProperty("Live Problems API. Default false."),
         "includeDownloads" to booleanProperty("Download progress. Default false."),
         "includeTestDetails" to booleanProperty(
-            "Test metadata and failedTests. Default false; live progress events need includeProgress=true.",
+            "Test metadata and failedTests. Needs includeProgress for live events.",
         ),
         "includeTestTimings" to booleanProperty("Method timings. Default false."),
     )
@@ -127,14 +127,16 @@ internal fun runTestsSchema(): Map<String, Any> =
         required = emptyList(),
         extraProperties = mapOf(
             "testClasses" to stringArrayProperty(
-                "Fully qualified JVM test class names. Class.method entries (e.g. com.example.FooTest.testBar) are normalized to testMethods.",
+                "FQCNs of JVM test classes; Class.method entries normalize to testMethods.",
             ),
             "testMethods" to testMethodsProperty(),
-            "taskPath" to stringProperty("Single Test task (:mod:test or :mod:fastTest). Requires testClasses or testMethods."),
-            "includePattern" to stringProperty("Single test include pattern (Gradle 7.6+). Requires tasks."),
-            "includePatterns" to stringArrayProperty("Include patterns for every path in tasks (Gradle 7.6+)."),
+            "taskPath" to stringProperty("Test task path. Requires testClasses or testMethods."),
+            "includePattern" to stringProperty("Test include pattern (Gradle 7.6+). Requires tasks."),
+            "includePatterns" to stringArrayProperty(
+                "Include patterns applied to each path in tasks (Gradle 7.6+). Requires tasks.",
+            ),
             "tasks" to stringArrayProperty(
-                "Test task paths for TestLauncher.forTasks() (Gradle 7.6+). Without selectors, use gradle_run_tasks.",
+                "Test task paths (Gradle 7.6+). Without selectors use gradle_run_tasks.",
             ),
             "background" to booleanProperty("Return buildId immediately. Default false."),
             "queueIfBusy" to booleanProperty("Enqueue if busy (true if background)."),

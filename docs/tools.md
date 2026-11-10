@@ -29,6 +29,18 @@
 | `gradle_search_dependency_sources_multi` | Multi-name OR locate with dedup and `matchedQueries`; optional `limit` and `perQueryLimit` (`per_query_limit` alias) |
 | `gradle_read_dependency_source` | Read a UTF-8 snippet from a dependency `*-sources.jar` **or** dir/file via `sourceRoot`, using `gav`/`group`+`name`+`version` and `path`. Optional `line` + `contextLines` (default 10, max 100); omit `line` to read from the start up to `maxLines` (default 200, max 2000). Cache jars resolve by coordinates; Idea directories / `sourcePaths` use indexed `sourceRoot` (or an explicit arg) |
 
+### `gradle_run_tests` parameters
+
+Selectors (pick one style; they can be combined where noted):
+
+- `testClasses` — fully qualified JVM test class names. Entries in `Class.method` form (e.g. `com.example.FooTest.testBar`) are normalized into `testMethods`; plain class names and `Class.method` entries cannot be mixed in one call.
+- `testMethods` — map `{FQCN: [methods]}` or array `[{class, methods}]`. `className` and `testClass` are accepted as aliases for `class`.
+- `taskPath` — a single Test task path such as `:mod:test` or `:mod:fastTest`. Requires `testClasses` or `testMethods`.
+- `tasks` — Test task paths run via `TestLauncher.forTasks()` (Gradle 7.6+). Without any selector, use `gradle_run_tasks` instead.
+- `includePattern` / `includePatterns` — test include patterns (Gradle 7.6+). `includePattern` is a single pattern and requires `tasks`; `includePatterns` applies to every path in `tasks`.
+
+Execution options match `gradle_run_tasks`: `background` returns a `buildId` immediately, `queueIfBusy` enqueues when another build is active (defaults to `background`), and `arguments` / `jvmArguments` pass extra args to the build. In multi-project builds the server infers `taskPath` when unambiguous; otherwise the error payload lists `suggestedTaskPaths`. A test that fails and then passes on retry is reported under `flakyTests`.
+
 ## Resources
 
 MCP **resources** are optional host context. They wrap the same handlers as the tools above (`application/json`). **Do not treat them as a replacement for tools** — agents should keep calling tools until the MCP client actually attaches resources. This server does not remove or deprecate any tool.
