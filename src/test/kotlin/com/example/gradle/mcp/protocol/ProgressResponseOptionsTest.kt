@@ -315,6 +315,42 @@ class ProgressResponseOptionsTest {
     }
 
     @Test
+    fun `toResponseMap caps recentEvents test failureMessage when maxFailureMessageChars is set`() {
+        val longMessage = "expected:<1> but was:<0> " + "x".repeat(200)
+        val snapshot = BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_RUNNING,
+            currentOperation = "test",
+            completedTaskCount = 0,
+            runningTaskCount = 1,
+            failedTaskCount = 0,
+            completedTasks = emptyList(),
+            runningTasks = listOf("com.example.FooTest.bar"),
+            failedTasks = emptyList(),
+            recentEvents = listOf(
+                ProgressEventSnapshot(
+                    timestamp = "2026-06-29T22:00:00Z",
+                    eventType = ProgressEventTypes.TEST_FAIL,
+                    displayName = "com.example.FooTest.bar",
+                    testDetails = TestProgressDetailsSnapshot(
+                        className = "com.example.FooTest",
+                        methodName = "bar",
+                        failureMessage = longMessage,
+                    ),
+                ),
+            ),
+            totalEventCount = 1,
+        )
+
+        val response = snapshot.toResponseMap(
+            ProgressResponseOptions(includeTestDetails = true, maxFailureMessageChars = 20),
+        )
+
+        val test = (((response["recentEvents"] as List<*>).single() as Map<*, *>)["test"] as Map<*, *>)
+        test["failureMessage"] shouldBe longMessage.take(20)
+        test["failureMessageTruncated"] shouldBe true
+    }
+
+    @Test
     fun `terminalFailureFields includes problems for failed builds without includeProgress`() {
         val snapshot = BuildProgressSnapshot(
             status = BuildProgressTracker.STATUS_FAILED,
