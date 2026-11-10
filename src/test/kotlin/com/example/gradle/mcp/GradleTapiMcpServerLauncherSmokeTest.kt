@@ -52,6 +52,8 @@ class GradleTapiMcpServerLauncherSmokeTest {
         firstLine shouldStartWith "{"
         firstLine shouldContain "\"jsonrpc\""
         firstLine shouldContain "\"resources\""
+        firstLine shouldContain "\"instructions\""
+        firstLine shouldContain "gradle_get_project_overview"
         firstLine shouldNotContain "kotlin-logging"
     }
 
