@@ -86,7 +86,9 @@ OpenCode does not offer per-tool filtering; its mitigation is `codemode`
 (default `true`), which exposes MCP tools through a code-mode search interface
 instead of declaring every schema to the model:
 
-```jsonc title="opencode.json"
+In `opencode.json` (or `.jsonc`):
+
+```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
