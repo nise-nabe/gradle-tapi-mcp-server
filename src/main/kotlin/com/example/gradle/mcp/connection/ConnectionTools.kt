@@ -4,6 +4,7 @@ import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.protocol.McpBuildNotifier
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.protocol.McpToolAnnotations
 import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
@@ -237,6 +238,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope, session: SessionProjec
         name = "gradle_connect",
         description = McpToolDescriptions.CONNECT,
         schema = connectSchema(),
+        annotations = McpToolAnnotations.WRITE_OPEN_WORLD,
     ) { args, notifier ->
         val projectDirectory = ProjectDirectoryResolver.canonicalDirectory(
             args.requiredString("projectDirectory"),
@@ -268,6 +270,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope, session: SessionProjec
         name = "gradle_connection_status",
         description = McpToolDescriptions.CONNECTION_STATUS,
         schema = connectionStatusSchema(),
+        annotations = McpToolAnnotations.READ_ONLY,
     ) { args ->
         jsonResult(connectionStatusPayload(runtime, args, session))
     }
@@ -276,6 +279,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope, session: SessionProjec
         name = "gradle_disconnect",
         description = McpToolDescriptions.DISCONNECT,
         schema = disconnectSchema(),
+        annotations = McpToolAnnotations.WRITE,
     ) { args ->
         jsonResult(
             disconnectProjects(
@@ -291,6 +295,7 @@ fun Server.registerConnectionTools(scope: CoroutineScope, session: SessionProjec
         name = "gradle_get_build_environment",
         description = McpToolDescriptions.BUILD_ENVIRONMENT,
         schema = buildEnvironmentSchema(),
+        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
     ) { args ->
         jsonResult(buildEnvironmentPayload(runtime, args, session))
     }

@@ -4,6 +4,7 @@ import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
+import io.modelcontextprotocol.kotlin.sdk.types.ToolAnnotations
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,9 +18,10 @@ fun Server.registerTool(
     name: String,
     description: String,
     schema: Map<String, Any>,
+    annotations: ToolAnnotations? = null,
     handler: suspend ClientConnection.(Map<String, Any>) -> CallToolResult,
 ) {
-    registerTool(scope, name, description, schema) { args, _ -> handler(args) }
+    registerTool(scope, name, description, schema, annotations) { args, _ -> handler(args) }
 }
 
 fun Server.registerTool(
@@ -27,6 +29,7 @@ fun Server.registerTool(
     name: String,
     description: String,
     schema: Map<String, Any>,
+    annotations: ToolAnnotations? = null,
     handler: suspend ClientConnection.(Map<String, Any>, McpBuildNotifier?) -> CallToolResult,
 ) {
     registeredMcpToolNames.add(name)
@@ -34,6 +37,7 @@ fun Server.registerTool(
         name = name,
         description = description,
         inputSchema = schema.toToolSchema(),
+        toolAnnotations = annotations,
     ) { request ->
         try {
             val args = request.arguments.toToolArguments()

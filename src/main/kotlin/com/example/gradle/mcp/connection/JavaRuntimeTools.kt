@@ -4,6 +4,7 @@ import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.build.BuildExecutionManager
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.protocol.McpToolAnnotations
 import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.OutputNormalizer
 import com.example.gradle.mcp.protocol.booleanProperty
@@ -236,6 +237,7 @@ fun Server.registerJavaRuntimeTools(scope: CoroutineScope, session: SessionProje
         name = "gradle_get_java_runtimes",
         description = McpToolDescriptions.JAVA_RUNTIMES,
         schema = javaRuntimesSchema(),
+        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
     ) { args ->
         jsonResult(javaRuntimesPayload(runtime, args, session))
     }

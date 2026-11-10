@@ -14,6 +14,7 @@ import com.example.gradle.mcp.support.seedNoopConnections
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
@@ -62,6 +63,33 @@ class McpResourceRegistrationTest {
             .sorted()
         listedUris shouldContainExactly expectedConcrete
         expectedConcrete.shouldHaveSize(4)
+    }
+
+    @Test
+    fun `every registered tool declares annotations`(@TempDir project: File) {
+        registeredMcpToolNames.clear()
+        val connectionManager = GradleConnectionManager().also { it.seedNoopConnections(project) }
+        val runtime = DefaultGradleMcpRuntime(connectionManager, BuildExecutionManager(connectionManager))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val server = resourceEnabledServer()
+        with(runtime) {
+            server.registerConnectionTools(scope)
+            server.registerJavaRuntimeTools(scope)
+            server.registerCacheTools(scope)
+            server.registerModelTools(scope)
+            server.registerDependencyResolutionTools(scope)
+            server.registerBuildTools(scope)
+            server.registerDependencySourceTools(scope)
+        }
+
+        server.tools.keys.sorted() shouldBe allMcpToolSpecs().map { it.name }.sorted()
+        server.tools.values.forEach { registered ->
+            registered.tool.annotations.shouldNotBeNull()
+        }
+        server.tools.getValue("gradle_run_tasks").tool.annotations.shouldNotBeNull()
+            .readOnlyHint shouldBe false
+        server.tools.getValue("gradle_list_builds").tool.annotations.shouldNotBeNull()
+            .readOnlyHint shouldBe true
     }
 
     @Test

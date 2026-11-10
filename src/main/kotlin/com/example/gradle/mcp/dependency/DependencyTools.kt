@@ -9,6 +9,7 @@ import com.example.gradle.mcp.dependency.mcp.DependencySourcesGradleAccess
 import com.example.gradle.mcp.dependency.mcp.DependencySourcesIndexingConflictException
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.protocol.McpToolAnnotations
 import com.example.gradle.mcp.protocol.jsonResult
 import com.example.gradle.mcp.protocol.rejectUnsupportedProjectPath
 import com.example.gradle.mcp.protocol.registerTool
@@ -27,6 +28,7 @@ fun Server.registerDependencySourceTools(scope: CoroutineScope, session: Session
         name = DependencySourceToolCatalog.INDEX_TOOL,
         description = DependencySourceToolCatalog.INDEX_DESCRIPTION,
         schema = DependencySourceToolCatalog.indexSchema(),
+        annotations = McpToolAnnotations.WRITE_OPEN_WORLD,
     ) { args ->
         dependencySourcesResult { runtime.dependencySourcesFacade.index(args, access) }
     }
@@ -36,6 +38,7 @@ fun Server.registerDependencySourceTools(scope: CoroutineScope, session: Session
         name = DependencySourceToolCatalog.INDEX_STATUS_TOOL,
         description = DependencySourceToolCatalog.INDEX_STATUS_DESCRIPTION,
         schema = DependencySourceToolCatalog.indexStatusSchema(),
+        annotations = McpToolAnnotations.READ_ONLY,
     ) { args ->
         rejectUnsupportedProjectPath(args, DependencySourceToolCatalog.INDEX_STATUS_TOOL)
         dependencySourcesResult { runtime.dependencySourcesFacade.indexStatus(args) }
@@ -46,6 +49,7 @@ fun Server.registerDependencySourceTools(scope: CoroutineScope, session: Session
         name = DependencySourceToolCatalog.SEARCH_TOOL,
         description = DependencySourceToolCatalog.SEARCH_DESCRIPTION,
         schema = DependencySourceToolCatalog.searchSchema(),
+        annotations = McpToolAnnotations.READ_ONLY,
     ) { args ->
         rejectUnsupportedProjectPath(args, DependencySourceToolCatalog.SEARCH_TOOL)
         dependencySourcesResult { runtime.dependencySourcesFacade.search(args, access) }
@@ -56,6 +60,7 @@ fun Server.registerDependencySourceTools(scope: CoroutineScope, session: Session
         name = DependencySourceToolCatalog.SEARCH_MULTI_TOOL,
         description = DependencySourceToolCatalog.SEARCH_MULTI_DESCRIPTION,
         schema = DependencySourceToolCatalog.searchMultiSchema(),
+        annotations = McpToolAnnotations.READ_ONLY,
     ) { args ->
         rejectUnsupportedProjectPath(args, DependencySourceToolCatalog.SEARCH_MULTI_TOOL)
         dependencySourcesResult { runtime.dependencySourcesFacade.searchMulti(args, access) }
@@ -66,6 +71,7 @@ fun Server.registerDependencySourceTools(scope: CoroutineScope, session: Session
         name = DependencySourceToolCatalog.READ_TOOL,
         description = DependencySourceToolCatalog.READ_DESCRIPTION,
         schema = DependencySourceToolCatalog.readSchema(),
+        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
     ) { args ->
         rejectUnsupportedProjectPath(args, DependencySourceToolCatalog.READ_TOOL)
         dependencySourcesResult { runtime.dependencySourcesFacade.read(args, access) }
