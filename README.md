@@ -75,6 +75,7 @@ Add to `.cursor/mcp.json` in your Gradle project:
 | [docs/tools.md](docs/tools.md) | MCP tool catalog and resources |
 | [docs/dependency-sources.md](docs/dependency-sources.md) | Dependency sources name locate (index → search → read) |
 | [docs/usage.md](docs/usage.md) | Token-efficient usage, multiple projects, long-running builds, `gradle_run_tests` selectors, agent workflows, disconnect behavior |
+| [docs/small-context-clients.md](docs/small-context-clients.md) | Reduced tool set for small-context / local LLM clients (Pi, OpenCode) |
 
 ## Modules
 
