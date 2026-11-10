@@ -132,7 +132,9 @@ internal fun runTestsSchema(): Map<String, Any> =
             "testMethods" to testMethodsProperty(),
             "taskPath" to stringProperty("Test task path. Requires testClasses or testMethods."),
             "includePattern" to stringProperty("Test include pattern (Gradle 7.6+). Requires tasks."),
-            "includePatterns" to stringArrayProperty("Include patterns for all tasks (Gradle 7.6+)."),
+            "includePatterns" to stringArrayProperty(
+                "Include patterns applied to each path in tasks (Gradle 7.6+). Requires tasks.",
+            ),
             "tasks" to stringArrayProperty(
                 "Test task paths (Gradle 7.6+). Without selectors use gradle_run_tasks.",
             ),
