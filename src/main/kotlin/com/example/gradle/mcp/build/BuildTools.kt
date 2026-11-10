@@ -37,6 +37,9 @@ internal fun progressProperties(): Map<String, Any> =
             "Test metadata and failedTests. Needs includeProgress for live events.",
         ),
         "includeTestTimings" to booleanProperty("Method timings. Default false."),
+        "maxFailureMessageChars" to integerProperty(
+            "Cap chars for failure messages in test failure entries; cut text is marked truncated. Default: no cap.",
+        ),
     )
 
 internal fun outputProperties(): Map<String, Any> =

@@ -70,7 +70,10 @@ internal fun terminalFailureFields(
                 put("failedTestCount", snapshot.failedTestCount)
                 put("failedTestNames", snapshot.failedTestNames)
             }
-            val flakyTests = FailedTestSnapshots.testFailureMaps(snapshot.flakyTests)
+            val flakyTests = FailedTestSnapshots.testFailureMaps(
+                snapshot.flakyTests,
+                progressOptions.maxFailureMessageChars,
+            )
             if (flakyTests.isNotEmpty()) {
                 put("flakyTestCount", flakyTests.size)
                 put("flakyTests", flakyTests)
@@ -82,12 +85,15 @@ internal fun terminalFailureFields(
             if (progressOptions.includeTestDetails && shouldIncludeFailedTests(snapshot)) {
                 val failedTests = snapshot.failedTests
                     .takeLast(ProgressResponseOptions.MAX_RECENT_EVENTS_IN_RESPONSE)
-                    .map { it.toResponseMap() }
+                    .map { it.toResponseMap(progressOptions.maxFailureMessageChars) }
                 if (failedTests.isNotEmpty()) {
                     put("failedTests", failedTests)
                 }
             }
-            val testFailures = FailedTestSnapshots.testFailureMaps(snapshot.failedTests)
+            val testFailures = FailedTestSnapshots.testFailureMaps(
+                snapshot.failedTests,
+                progressOptions.maxFailureMessageChars,
+            )
             if (snapshot.status == BuildProgressTracker.STATUS_FAILED && testFailures.isNotEmpty()) {
                 put("testFailures", testFailures)
             }
@@ -145,7 +151,9 @@ internal fun BuildProgressSnapshot.toResponseMap(
                         put("displayName", event.displayName)
                         put("outcome", event.outcome)
                         if (progressOptions.includeTestDetails) {
-                            event.testDetails?.let { details -> put("test", details.toResponseMap()) }
+                            event.testDetails?.let { details ->
+                                put("test", details.toResponseMap(progressOptions.maxFailureMessageChars))
+                            }
                         }
                     }
                 },
@@ -171,7 +179,9 @@ internal fun BuildProgressSnapshot.downloadResponseFields(): Map<String, Any?> =
             },
     )
 
-private fun TestProgressDetailsSnapshot.toResponseMap(): Map<String, Any?> =
+private fun TestProgressDetailsSnapshot.toResponseMap(
+    maxMessageChars: Int? = null,
+): Map<String, Any?> =
     buildMap {
         className?.let { put("className", it) }
         methodName?.let { put("methodName", it) }
@@ -179,15 +189,36 @@ private fun TestProgressDetailsSnapshot.toResponseMap(): Map<String, Any?> =
         sourcePath?.let { put("sourcePath", it) }
         sourceLine?.let { put("sourceLine", it) }
         sourceColumn?.let { put("sourceColumn", it) }
-        failureMessage?.let { put("failureMessage", it) }
+        failureMessage?.let { message ->
+            val (capped, truncated) = truncateResponseText(message, maxMessageChars)
+            put("failureMessage", capped)
+            if (truncated) put("failureMessageTruncated", true)
+        }
         failureType?.let { put("failureType", it) }
     }
 
-private fun FailedTestSnapshot.toResponseMap(): Map<String, Any?> =
+private fun FailedTestSnapshot.toResponseMap(
+    maxMessageChars: Int? = null,
+): Map<String, Any?> =
     buildMap {
         put("displayName", displayName)
         className?.let { put("className", it) }
         methodName?.let { put("methodName", it) }
-        failureMessage?.let { put("failureMessage", it) }
+        failureMessage?.let { message ->
+            val (capped, truncated) = truncateResponseText(message, maxMessageChars)
+            put("failureMessage", capped)
+            if (truncated) put("failureMessageTruncated", true)
+        }
         failureType?.let { put("failureType", it) }
+    }
+
+/**
+ * Caps a response text field at [maxChars]; the second element reports whether
+ * the text was cut so callers can mark the entry as truncated.
+ */
+internal fun truncateResponseText(text: String, maxChars: Int?): Pair<String, Boolean> =
+    if (maxChars == null || text.length <= maxChars) {
+        text to false
+    } else {
+        text.take(maxChars) to true
     }

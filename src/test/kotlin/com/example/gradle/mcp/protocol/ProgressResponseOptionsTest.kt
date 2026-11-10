@@ -35,6 +35,13 @@ class ProgressResponseOptionsTest {
     }
 
     @Test
+    fun `fromArgs reads maxFailureMessageChars`() {
+        ProgressResponseOptions.fromArgs(mapOf("maxFailureMessageChars" to 500))
+            .maxFailureMessageChars shouldBe 500
+        ProgressResponseOptions.fromArgs(emptyMap()).maxFailureMessageChars shouldBe null
+    }
+
+    @Test
     fun `fromArgs defaults includeDownloads to false`() {
         val options = ProgressResponseOptions.fromArgs(emptyMap())
         options.includeDownloads.shouldBeFalse()
@@ -305,6 +312,42 @@ class ProgressResponseOptionsTest {
         (((withoutDetails["recentEvents"] as List<*>).single() as Map<*, *>).containsKey("test")) shouldBe false
         ((((withDetails["recentEvents"] as List<*>).single() as Map<*, *>)["test"] as Map<*, *>)["className"]) shouldBe
             "com.example.FooTest"
+    }
+
+    @Test
+    fun `toResponseMap caps recentEvents test failureMessage when maxFailureMessageChars is set`() {
+        val longMessage = "expected:<1> but was:<0> " + "x".repeat(200)
+        val snapshot = BuildProgressSnapshot(
+            status = BuildProgressTracker.STATUS_RUNNING,
+            currentOperation = "test",
+            completedTaskCount = 0,
+            runningTaskCount = 1,
+            failedTaskCount = 0,
+            completedTasks = emptyList(),
+            runningTasks = listOf("com.example.FooTest.bar"),
+            failedTasks = emptyList(),
+            recentEvents = listOf(
+                ProgressEventSnapshot(
+                    timestamp = "2026-06-29T22:00:00Z",
+                    eventType = ProgressEventTypes.TEST_FAIL,
+                    displayName = "com.example.FooTest.bar",
+                    testDetails = TestProgressDetailsSnapshot(
+                        className = "com.example.FooTest",
+                        methodName = "bar",
+                        failureMessage = longMessage,
+                    ),
+                ),
+            ),
+            totalEventCount = 1,
+        )
+
+        val response = snapshot.toResponseMap(
+            ProgressResponseOptions(includeTestDetails = true, maxFailureMessageChars = 20),
+        )
+
+        val test = (((response["recentEvents"] as List<*>).single() as Map<*, *>)["test"] as Map<*, *>)
+        test["failureMessage"] shouldBe longMessage.take(20)
+        test["failureMessageTruncated"] shouldBe true
     }
 
     @Test

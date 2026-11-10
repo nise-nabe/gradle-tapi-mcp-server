@@ -1,5 +1,6 @@
 package com.example.gradle.mcp.build
 
+import com.example.gradle.mcp.protocol.truncateResponseText
 import kotlinx.serialization.Serializable
 
 data class TestProgressDetailsSnapshot(
@@ -33,13 +34,17 @@ data class FailedTestSnapshot(
             else -> null
         }
 
-    fun toTestFailureMap(): Map<String, Any?> =
+    fun toTestFailureMap(maxMessageChars: Int? = null): Map<String, Any?> =
         buildMap {
             className?.let { put("className", it) }
             methodName?.let { put("methodName", it) }
             exceptionType?.let { put("exceptionType", it) }
             failureType?.let { put("failureType", it) }
-            failureMessage?.let { put("message", it) }
+            failureMessage?.let { message ->
+                val (capped, truncated) = truncateResponseText(message, maxMessageChars)
+                put("message", capped)
+                if (truncated) put("messageTruncated", true)
+            }
             sourceFile?.let { put("sourceFile", it) }
             line?.let { put("line", it) }
         }
