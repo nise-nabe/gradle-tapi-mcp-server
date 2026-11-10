@@ -12,8 +12,11 @@ internal object FailedTestSnapshots {
     fun qualifiedNames(tests: List<FailedTestSnapshot>): List<String> =
         tests.mapNotNull { it.qualifiedName() }
 
-    fun testFailureMaps(tests: List<FailedTestSnapshot>): List<Map<String, Any?>> =
-        reportableFailures(tests).map { it.toTestFailureMap() }
+    fun testFailureMaps(
+        tests: List<FailedTestSnapshot>,
+        maxMessageChars: Int? = null,
+    ): List<Map<String, Any?>> =
+        reportableFailures(tests).map { it.toTestFailureMap(maxMessageChars) }
 
     fun mergeDistinct(vararg lists: List<FailedTestSnapshot>): List<FailedTestSnapshot> {
         val merged = LinkedHashMap<String, FailedTestSnapshot>()

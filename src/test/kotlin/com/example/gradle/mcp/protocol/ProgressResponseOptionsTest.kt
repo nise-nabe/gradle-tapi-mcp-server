@@ -35,6 +35,13 @@ class ProgressResponseOptionsTest {
     }
 
     @Test
+    fun `fromArgs reads maxFailureMessageChars`() {
+        ProgressResponseOptions.fromArgs(mapOf("maxFailureMessageChars" to 500))
+            .maxFailureMessageChars shouldBe 500
+        ProgressResponseOptions.fromArgs(emptyMap()).maxFailureMessageChars shouldBe null
+    }
+
+    @Test
     fun `fromArgs defaults includeDownloads to false`() {
         val options = ProgressResponseOptions.fromArgs(emptyMap())
         options.includeDownloads.shouldBeFalse()

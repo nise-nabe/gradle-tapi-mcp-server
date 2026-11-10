@@ -519,4 +519,107 @@ class BuildStatusAssemblerTest {
 
         ((((response["failedTests"] as List<*>).single() as Map<*, *>)["methodName"])) shouldBe "bar"
     }
+
+    @Test
+    fun `assemble caps failure messages when maxFailureMessageChars is set`() {
+        val longMessage = "assertion failed: " + "x".repeat(200)
+        val response = BuildStatusAssembler.assemble(
+            view = BuildStatusView(
+                buildId = "capped-message-build",
+                kind = "tests",
+                status = BuildProgressTracker.STATUS_FAILED,
+                startedAt = TEST_ISO_START,
+                finishedAt = TEST_ISO_FINISH,
+                tasks = listOf("test"),
+                selection = null,
+                error = "Test failed",
+                outcome = "FAILED",
+                buildSummary = mapOf("failureSummary" to listOf("1 test failed")),
+                progress = BuildProgressSnapshot(
+                    status = BuildProgressTracker.STATUS_FAILED,
+                    currentOperation = null,
+                    completedTaskCount = 0,
+                    runningTaskCount = 0,
+                    failedTaskCount = 1,
+                    completedTasks = emptyList(),
+                    runningTasks = emptyList(),
+                    failedTasks = listOf(":test"),
+                    recentEvents = emptyList(),
+                    totalEventCount = 1,
+                    failedTests = listOf(
+                        failedTestSnapshot(
+                            className = "com.example.FooTest",
+                            methodName = "bar",
+                            failureMessage = longMessage,
+                        ),
+                    ),
+                ),
+                progressAvailable = true,
+                stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+                stderr = CapturedStreamSnapshot(text = "", totalChars = 0),
+                statusSource = BuildStatusView.SOURCE_MEMORY,
+            ),
+            outputLimit = OutputLimitOptions(),
+            progressOptions = ProgressResponseOptions(
+                includeTestDetails = true,
+                maxFailureMessageChars = 20,
+            ),
+        )
+
+        val expected = longMessage.take(20)
+        val failedTest = (response["failedTests"] as List<*>).single() as Map<*, *>
+        failedTest["failureMessage"] shouldBe expected
+        failedTest["failureMessageTruncated"] shouldBe true
+        val testFailure = (response["testFailures"] as List<*>).single() as Map<*, *>
+        testFailure["message"] shouldBe expected
+        testFailure["messageTruncated"] shouldBe true
+    }
+
+    @Test
+    fun `assemble leaves failure messages uncapped by default`() {
+        val longMessage = "assertion failed: " + "x".repeat(200)
+        val response = BuildStatusAssembler.assemble(
+            view = BuildStatusView(
+                buildId = "uncapped-message-build",
+                kind = "tests",
+                status = BuildProgressTracker.STATUS_FAILED,
+                startedAt = TEST_ISO_START,
+                finishedAt = TEST_ISO_FINISH,
+                tasks = listOf("test"),
+                selection = null,
+                error = "Test failed",
+                outcome = "FAILED",
+                buildSummary = mapOf("failureSummary" to listOf("1 test failed")),
+                progress = BuildProgressSnapshot(
+                    status = BuildProgressTracker.STATUS_FAILED,
+                    currentOperation = null,
+                    completedTaskCount = 0,
+                    runningTaskCount = 0,
+                    failedTaskCount = 1,
+                    completedTasks = emptyList(),
+                    runningTasks = emptyList(),
+                    failedTasks = listOf(":test"),
+                    recentEvents = emptyList(),
+                    totalEventCount = 1,
+                    failedTests = listOf(
+                        failedTestSnapshot(
+                            className = "com.example.FooTest",
+                            methodName = "bar",
+                            failureMessage = longMessage,
+                        ),
+                    ),
+                ),
+                progressAvailable = true,
+                stdout = CapturedStreamSnapshot(text = "", totalChars = 0),
+                stderr = CapturedStreamSnapshot(text = "", totalChars = 0),
+                statusSource = BuildStatusView.SOURCE_MEMORY,
+            ),
+            outputLimit = OutputLimitOptions(),
+            progressOptions = ProgressResponseOptions(includeTestDetails = true),
+        )
+
+        val testFailure = (response["testFailures"] as List<*>).single() as Map<*, *>
+        testFailure["message"] shouldBe longMessage
+        testFailure.containsKey("messageTruncated") shouldBe false
+    }
 }

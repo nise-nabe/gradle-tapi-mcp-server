@@ -41,6 +41,8 @@ Selectors (pick one style; they can be combined where noted):
 
 Execution options match `gradle_run_tasks`: `background` returns a `buildId` immediately, `queueIfBusy` enqueues when another build is active (defaults to `background`), and `arguments` / `jvmArguments` pass extra args to the build. In multi-project builds the server infers `taskPath` when unambiguous; otherwise the error payload lists `suggestedTaskPaths`. A test that fails and then passes on retry is reported under `flakyTests`.
 
+`maxFailureMessageChars` (also on `gradle_run_tasks` and `gradle_get_build_status`) caps the length of failure messages in `testFailures`, `flakyTests`, `failedTests`, and `recentEvents[].test` entries; cut text is marked with `messageTruncated` / `failureMessageTruncated`. Omit it for no cap (default).
+
 ## Resources
 
 MCP **resources** are optional host context. They wrap the same handlers as the tools above (`application/json`). **Do not treat them as a replacement for tools** — agents should keep calling tools until the MCP client actually attaches resources. This server does not remove or deprecate any tool.

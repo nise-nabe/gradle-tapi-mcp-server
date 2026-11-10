@@ -6,6 +6,8 @@ data class ProgressResponseOptions(
     val includeDownloads: Boolean = false,
     val includeTestDetails: Boolean = false,
     val includeTestTimings: Boolean = false,
+    /** Caps failure message length in test failure entries; null means no cap. */
+    val maxFailureMessageChars: Int? = null,
 ) {
     companion object {
         const val MAX_COMPLETED_TASKS_IN_RESPONSE = 20
@@ -20,6 +22,7 @@ data class ProgressResponseOptions(
                 includeDownloads = args.optionalBoolean("includeDownloads", default = false),
                 includeTestDetails = args.optionalBoolean("includeTestDetails", default = false),
                 includeTestTimings = args.optionalBoolean("includeTestTimings", default = false),
+                maxFailureMessageChars = args.optionalPositiveInt("maxFailureMessageChars"),
             )
     }
 }
