@@ -14,6 +14,7 @@ import com.example.gradle.mcp.support.seedNoopConnections
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
@@ -22,6 +23,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -37,31 +39,66 @@ class McpResourceRegistrationTest {
         val runtime = DefaultGradleMcpRuntime(connectionManager, BuildExecutionManager(connectionManager))
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val server = resourceEnabledServer()
-        with(runtime) {
-            server.registerConnectionTools(scope)
-            server.registerJavaRuntimeTools(scope)
-            server.registerCacheTools(scope)
-            server.registerModelTools(scope)
-            server.registerDependencyResolutionTools(scope)
-            server.registerBuildTools(scope)
-            server.registerDependencySourceTools(scope)
-            server.registerGradleTapiResources()
+        try {
+            with(runtime) {
+                server.registerConnectionTools(scope)
+                server.registerJavaRuntimeTools(scope)
+                server.registerCacheTools(scope)
+                server.registerModelTools(scope)
+                server.registerDependencyResolutionTools(scope)
+                server.registerBuildTools(scope)
+                server.registerDependencySourceTools(scope)
+                server.registerGradleTapiResources()
+            }
+
+            val templateUris = GradleTapiResourceTemplates.all.map { it.uriTemplate }
+            registeredMcpResourceTemplateUris.toList().sorted() shouldBe templateUris.sorted()
+            server.resourceTemplates.map { it.uriTemplate }.sorted() shouldBe templateUris.sorted()
+            server.resourceTemplates.map { it.mimeType }.distinct() shouldBe
+                listOf(GradleTapiResourceUri.JSON_MIME_TYPE)
+            server.resourceTemplates.shouldHaveSize(5)
+            registeredMcpToolNames.toSet().shouldHaveSize(24)
+
+            val listedUris = server.resources.keys.sorted()
+            val expectedConcrete = GradleTapiResourceTemplates.concreteResources(project.canonicalFile)
+                .map { it.uri }
+                .sorted()
+            listedUris shouldContainExactly expectedConcrete
+            expectedConcrete.shouldHaveSize(4)
+        } finally {
+            scope.cancel()
         }
+    }
 
-        val templateUris = GradleTapiResourceTemplates.all.map { it.uriTemplate }
-        registeredMcpResourceTemplateUris.toList().sorted() shouldBe templateUris.sorted()
-        server.resourceTemplates.map { it.uriTemplate }.sorted() shouldBe templateUris.sorted()
-        server.resourceTemplates.map { it.mimeType }.distinct() shouldBe
-            listOf(GradleTapiResourceUri.JSON_MIME_TYPE)
-        server.resourceTemplates.shouldHaveSize(5)
-        registeredMcpToolNames.toSet().shouldHaveSize(24)
+    @Test
+    fun `every registered tool declares annotations`(@TempDir project: File) {
+        registeredMcpToolNames.clear()
+        val connectionManager = GradleConnectionManager().also { it.seedNoopConnections(project) }
+        val runtime = DefaultGradleMcpRuntime(connectionManager, BuildExecutionManager(connectionManager))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val server = resourceEnabledServer()
+        try {
+            with(runtime) {
+                server.registerConnectionTools(scope)
+                server.registerJavaRuntimeTools(scope)
+                server.registerCacheTools(scope)
+                server.registerModelTools(scope)
+                server.registerDependencyResolutionTools(scope)
+                server.registerBuildTools(scope)
+                server.registerDependencySourceTools(scope)
+            }
 
-        val listedUris = server.resources.keys.sorted()
-        val expectedConcrete = GradleTapiResourceTemplates.concreteResources(project.canonicalFile)
-            .map { it.uri }
-            .sorted()
-        listedUris shouldContainExactly expectedConcrete
-        expectedConcrete.shouldHaveSize(4)
+            server.tools.keys.sorted() shouldBe allMcpToolSpecs().map { it.name }.sorted()
+            server.tools.values.forEach { registered ->
+                registered.tool.annotations.shouldNotBeNull()
+            }
+            server.tools.getValue("gradle_run_tasks").tool.annotations.shouldNotBeNull()
+                .readOnlyHint shouldBe false
+            server.tools.getValue("gradle_list_builds").tool.annotations.shouldNotBeNull()
+                .readOnlyHint shouldBe true
+        } finally {
+            scope.cancel()
+        }
     }
 
     @Test

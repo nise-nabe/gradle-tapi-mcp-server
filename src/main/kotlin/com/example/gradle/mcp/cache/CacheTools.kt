@@ -4,6 +4,7 @@ import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.connection.ProjectLifecycleGuard
 import com.example.gradle.mcp.connection.SessionProjectContext
+import com.example.gradle.mcp.protocol.McpToolAnnotations
 import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.jsonResult
@@ -32,6 +33,7 @@ fun Server.registerCacheTools(scope: CoroutineScope, session: SessionProjectCont
         name = "gradle_get_build_cache_status",
         description = McpToolDescriptions.BUILD_CACHE_STATUS,
         schema = buildCacheStatusSchema(),
+        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
     ) { args ->
         rejectUnsupportedProjectPath(args, "gradle_get_build_cache_status")
         val projectDirectory =

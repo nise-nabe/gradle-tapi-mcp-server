@@ -29,6 +29,15 @@
 | `gradle_search_dependency_sources_multi` | Multi-name OR locate with dedup and `matchedQueries`; optional `limit` and `perQueryLimit` (`per_query_limit` alias) |
 | `gradle_read_dependency_source` | Read a UTF-8 snippet from a dependency `*-sources.jar` **or** dir/file via `sourceRoot`, using `gav`/`group`+`name`+`version` and `path`. Optional `line` + `contextLines` (default 10, max 100); omit `line` to read from the start up to `maxLines` (default 200, max 2000). Cache jars resolve by coordinates; Idea directories / `sourcePaths` use indexed `sourceRoot` (or an explicit arg) |
 
+### Tool annotations
+
+Every tool declares MCP `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) so clients can gate permissions and approval modes:
+
+- **Read-only, local** (`readOnlyHint: true`, `openWorldHint: false`): `gradle_connection_status`, `gradle_get_build_status`, `gradle_list_builds`, `gradle_get_dependency_sources_index_status`, `gradle_search_dependency_sources`, `gradle_search_dependency_sources_multi`
+- **Read-only, may run Gradle or download artifacts** (`readOnlyHint: true`, `openWorldHint: true`): all `gradle_get_*` model/environment/help tools, `gradle_get_task_execution_plan`, `gradle_read_dependency_source`
+- **State-changing, additive** (`readOnlyHint: false`, `destructiveHint: false`): `gradle_disconnect`, `gradle_cancel_build` (local); `gradle_connect`, `gradle_index_dependency_sources` (`openWorldHint: true`, may download)
+- **Build execution** (`readOnlyHint: false`, `destructiveHint: true`): `gradle_run_tasks`, `gradle_run_tests`
+
 ### `gradle_run_tests` parameters
 
 Selectors (pick one style; they can be combined where noted):

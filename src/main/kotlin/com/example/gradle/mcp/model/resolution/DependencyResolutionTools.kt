@@ -6,6 +6,7 @@ import com.example.gradle.mcp.connection.ProjectLifecycleGuard
 import com.example.gradle.mcp.connection.SessionProjectContext
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.protocol.McpToolAnnotations
 import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.booleanProperty
 import com.example.gradle.mcp.protocol.integerProperty
@@ -78,6 +79,7 @@ fun Server.registerDependencyResolutionTools(scope: CoroutineScope, session: Ses
         name = "gradle_get_dependency_resolution",
         description = McpToolDescriptions.DEPENDENCY_RESOLUTION,
         schema = dependencyResolutionSchema(),
+        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
     ) { args ->
         val query = parseDependencyResolutionQuery(args)
         val projectDirectory =

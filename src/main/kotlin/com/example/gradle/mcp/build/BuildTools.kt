@@ -7,6 +7,7 @@ import com.example.gradle.mcp.connection.SessionProjectContext
 import com.example.gradle.mcp.model.OutputLimitOptions
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
+import com.example.gradle.mcp.protocol.McpToolAnnotations
 import com.example.gradle.mcp.protocol.McpToolDescriptions
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.protocol.booleanProperty
@@ -196,6 +197,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope, session: SessionProje
         name = "gradle_list_builds",
         description = McpToolDescriptions.LIST_BUILDS,
         schema = listBuildsSchema(),
+        annotations = McpToolAnnotations.READ_ONLY,
     ) { args ->
         jsonResult(listBuildsPayload(runtime, args, session))
     }
@@ -204,6 +206,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope, session: SessionProje
         name = "gradle_cancel_build",
         description = McpToolDescriptions.CANCEL_BUILD,
         schema = cancelBuildSchema(),
+        annotations = McpToolAnnotations.WRITE,
     ) { args ->
         val projectScope = session?.let { ProjectDirectoryScope(runtime.connectionManager, it) }
             ?: ProjectDirectoryScope(runtime.connectionManager)
@@ -224,6 +227,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope, session: SessionProje
         name = "gradle_get_build_status",
         description = McpToolDescriptions.BUILD_STATUS,
         schema = buildStatusSchema(),
+        annotations = McpToolAnnotations.READ_ONLY,
     ) { args ->
         jsonResult(buildStatusPayload(runtime, args, session))
     }
@@ -232,6 +236,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope, session: SessionProje
         name = "gradle_run_tasks",
         description = McpToolDescriptions.RUN_TASKS,
         schema = runTasksSchema(),
+        annotations = McpToolAnnotations.EXECUTE,
     ) { args, notifier ->
         val projectDirectory =
             ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
@@ -258,6 +263,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope, session: SessionProje
         name = "gradle_get_task_execution_plan",
         description = McpToolDescriptions.TASK_EXECUTION_PLAN,
         schema = taskExecutionPlanSchema(),
+        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
     ) { args, notifier ->
         val projectDirectory =
             ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
@@ -277,6 +283,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope, session: SessionProje
         name = "gradle_run_tests",
         description = McpToolDescriptions.RUN_TESTS,
         schema = runTestsSchema(),
+        annotations = McpToolAnnotations.EXECUTE,
     ) { args, notifier ->
         val projectDirectory =
             ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
