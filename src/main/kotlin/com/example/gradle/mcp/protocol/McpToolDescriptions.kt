@@ -69,6 +69,5 @@ internal object McpToolDescriptions {
 
     const val RUN_TESTS =
         "Run selected JVM tests (classes/methods/patterns). Whole suite→gradle_run_tasks. " +
-            "Multi-project infers taskPath or suggestedTaskPaths. " +
-            "Queue like gradle_run_tasks. Passed retry→flakyTests."
+            "Infers taskPath when multi-project; queues like gradle_run_tasks. Passed retries→flakyTests."
 }
