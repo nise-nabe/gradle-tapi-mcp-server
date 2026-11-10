@@ -205,7 +205,7 @@ internal suspend fun awaitSessionClose(done: CompletableJob, timeoutMs: Long): B
 private const val SESSION_CLOSE_TIMEOUT_MS = 10_000L
 
 private const val SERVER_INSTRUCTIONS =
-    "Start with gradle_get_project_overview to learn the project's tasks and structure. " +
+    "Start with gradle_get_project_overview to learn the project's structure and task counts. " +
         "Run gradle_run_tasks or gradle_run_tests to execute builds; for long runs set background=true " +
         "and poll gradle_get_build_status (or read the builds/{buildId}/status resource) until finished, " +
         "and use gradle_cancel_build to stop a running build."
