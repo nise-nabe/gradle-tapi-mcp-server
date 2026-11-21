@@ -14,6 +14,12 @@ import com.example.gradle.mcp.protocol.McpException
  * Unique prefixes (`--project-d`) are not options.
  * There is no system property for the project directory; the user home property is
  * `gradle.user.home` (`-D` / `--system-prop`), not `org.gradle.user.home`.
+ *
+ * `jvmArguments` are a separate allowlist. `ConfigurableLauncher.addJvmArguments` appends them to
+ * the Gradle daemon JVM, so an option such as `-javaagent` would run code in that process. Only
+ * heap and stack sizes, a fixed set of `-XX` memory and out-of-memory switches, and `-D` system
+ * properties that do not load code or retarget Gradle are forwarded. The `java` launcher also
+ * accepts `@argfiles`, `JAVA_TOOL_OPTIONS`, and agent options as further ways to add arguments.
  */
 internal object GradleArgumentPolicy {
     private const val GRADLE_PROJECT_SYSTEM_PROPERTY_PREFIX = "org.gradle.project."
@@ -57,14 +63,143 @@ internal object GradleArgumentPolicy {
     }
 
     private fun rejectDisallowedJvmArguments(jvmArguments: List<String>) {
-        jvmArguments.forEach { arg ->
-            if (isUserHomeSystemProperty(systemPropertyName(arg))) {
-                throw userHomeJvmArgumentException(arg)
+        jvmArguments.forEach(::rejectJvmArgument)
+    }
+
+    private fun rejectJvmArgument(arg: String) {
+        if (arg.isEmpty() || arg.any { it.isISOControl() }) {
+            throw disallowedJvmArgumentException(arg)
+        }
+        if (arg.trimStart().startsWith("@")) {
+            throw jvmArgFileException(arg)
+        }
+        if (isAllowedDaemonJvmOption(arg)) {
+            return
+        }
+        val assignment = systemPropertyAssignment(arg)
+        if (assignment == null) {
+            throw disallowedJvmArgumentException(arg)
+        }
+        if (isUserHomeSystemProperty(assignment.name)) {
+            throw userHomeJvmArgumentException(arg)
+        }
+        if (isMcpControlJvmArgument(arg)) {
+            throw mcpControlJvmArgumentException(arg)
+        }
+        if (assignment.rawBody.startsWith("=") || isDisallowedSystemPropertyName(assignment.name)) {
+            throw disallowedJvmArgumentException(arg)
+        }
+        val embedded = embeddedDisallowedOption(assignment.name) ?: embeddedDisallowedOption(assignment.value)
+        if (embedded != null) {
+            throw embeddedJvmArgumentException(arg, embedded)
+        }
+    }
+
+    private fun isAllowedDaemonJvmOption(arg: String): Boolean =
+        isAllowedXMemory(arg) || isAllowedXxOption(arg)
+
+    private fun isAllowedXMemory(arg: String): Boolean {
+        val flag = X_MEMORY_FLAGS.firstOrNull { arg.startsWith(it) } ?: return false
+        return MEMORY_SIZE.matches(arg.removePrefix(flag))
+    }
+
+    private fun isAllowedXxOption(arg: String): Boolean {
+        if (!arg.startsWith("-XX:")) {
+            return false
+        }
+        val body = arg.removePrefix("-XX:")
+        if (body.startsWith("+") || body.startsWith("-")) {
+            val name = body.substring(1)
+            return name in XX_OOM_FLAGS && !name.contains('=')
+        }
+        val separator = body.indexOf('=')
+        if (separator <= 0) {
+            return false
+        }
+        val name = body.substring(0, separator)
+        val size = body.substring(separator + 1)
+        return name in XX_SIZE_OPTIONS && MEMORY_SIZE.matches(size)
+    }
+
+    private fun isDisallowedSystemPropertyName(name: String): Boolean {
+        if (name.isEmpty()) {
+            return true
+        }
+        if (ENV_INDIRECTION_NAMES.any { name.equals(it, ignoreCase = true) }) {
+            return true
+        }
+        if (DISALLOWED_SYSTEM_PROPERTY_NAMES.any { name.equals(it, ignoreCase = true) }) {
+            return true
+        }
+        if (name.startsWith("org.gradle.java.installations.", ignoreCase = true)) {
+            return true
+        }
+        if (name.startsWith("kotlin.daemon.jvm.", ignoreCase = true)) {
+            return true
+        }
+        if (name.startsWith("jvmci.", ignoreCase = true)) {
+            return true
+        }
+        if (name.equals("com.sun.management.jmxremote", ignoreCase = true) ||
+            name.startsWith("com.sun.management.jmxremote.", ignoreCase = true)
+        ) {
+            return true
+        }
+        return name.contains("trustURLCodebase", ignoreCase = true)
+    }
+
+    private fun embeddedDisallowedOption(text: String): String? {
+        if (text.isEmpty()) {
+            return null
+        }
+        for (piece in text.split(EMBEDDED_OPTION_SEPARATORS)) {
+            val token = stripQuotes(piece.trim())
+            if (token.isEmpty()) {
+                continue
             }
-            if (isMcpControlJvmArgument(arg)) {
-                throw mcpControlJvmArgumentException(arg)
+            if (isDisallowedJvmPayload(token)) {
+                return token
+            }
+            val separator = token.indexOf('=')
+            if (separator >= 0) {
+                val rhs = stripQuotes(token.substring(separator + 1).trim())
+                if (rhs.isNotEmpty() && isDisallowedJvmPayload(rhs)) {
+                    return rhs
+                }
             }
         }
+        return null
+    }
+
+    private fun isDisallowedJvmPayload(token: String): Boolean {
+        if (token.startsWith("@")) {
+            return true
+        }
+        if (ENV_INDIRECTION_ASSIGNMENT.matches(token)) {
+            return true
+        }
+        if (token.startsWith("-XX:", ignoreCase = true) && token.contains("JVMCI", ignoreCase = true)) {
+            return true
+        }
+        return DISALLOWED_JVM_PAYLOAD_PREFIXES.any { token.startsWith(it, ignoreCase = true) }
+    }
+
+    private fun stripQuotes(token: String): String {
+        var value = token
+        while (value.isNotEmpty()) {
+            val wrapped = value.length >= 2 &&
+                ((value.first() == '"' && value.last() == '"') || (value.first() == '\'' && value.last() == '\''))
+            if (wrapped) {
+                value = value.substring(1, value.length - 1).trim()
+                continue
+            }
+            if (value.first() == '"' || value.first() == '\'') {
+                value = value.substring(1).trim()
+                continue
+            }
+            return value
+        }
+        return value
     }
 
     private fun rejectDisallowedGradleArguments(arguments: List<String>) {
@@ -153,11 +288,18 @@ internal object GradleArgumentPolicy {
     private fun shownArgument(optionToken: String, inlineValue: String?, expression: String): String =
         if (inlineValue != null) optionToken else "$optionToken $expression"
 
-    private fun systemPropertyName(arg: String): String? {
+    private fun systemPropertyName(arg: String): String? = systemPropertyAssignment(arg)?.name
+
+    private fun systemPropertyAssignment(arg: String): SystemPropertyAssignment? {
         if (!arg.startsWith("-D")) {
             return null
         }
-        return arg.removePrefix("-D").removePrefix("=").substringBefore('=')
+        val rawBody = arg.removePrefix("-D")
+        val body = rawBody.removePrefix("=")
+        val separator = body.indexOf('=')
+        val name = (if (separator >= 0) body.substring(0, separator) else body).trim()
+        val value = if (separator >= 0) body.substring(separator + 1) else ""
+        return SystemPropertyAssignment(name, value, rawBody)
     }
 
     private fun isUserHomeSystemProperty(name: String?): Boolean = name == GRADLE_USER_HOME_PROPERTY
@@ -243,6 +385,29 @@ internal object GradleArgumentPolicy {
                 "It changes the Gradle user home and can load that home's init.d scripts.",
         )
 
+    private fun disallowedJvmArgumentException(flag: String): McpException =
+        McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "Daemon JVM arguments that can load code are not allowed in jvmArguments ($flag). " +
+                "Allowed: -Xmx/-Xms/-Xss/-Xmn sizes, documented -XX memory sizes " +
+                "(including -XX:MaxMetaspaceSize), -XX:+HeapDumpOnOutOfMemoryError and the documented OOM switches, " +
+                "and -D system properties that do not load agents or retarget Gradle.",
+        )
+
+    private fun embeddedJvmArgumentException(flag: String, embedded: String): McpException =
+        McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "Daemon JVM arguments that can load code are not allowed in jvmArguments ($flag). " +
+                "The value embeds a disallowed option ($embedded).",
+        )
+
+    private fun jvmArgFileException(flag: String): McpException =
+        McpException(
+            McpErrorCode.INVALID_ARGUMENT,
+            "JVM argument files are not allowed in jvmArguments ($flag). " +
+                "The java launcher reads @argfiles and can inject agent options.",
+        )
+
     private fun mcpControlArgumentException(flag: String): McpException =
         McpException(
             McpErrorCode.INVALID_ARGUMENT,
@@ -269,6 +434,78 @@ internal object GradleArgumentPolicy {
     private class CliOption(val kind: CliOptionKind)
 
     private class MatchedOption(val option: CliOption, val inlineValue: String?)
+
+    private class SystemPropertyAssignment(val name: String, val value: String, val rawBody: String)
+
+    private val MEMORY_SIZE = Regex("[0-9]+[kKmMgGtT]?")
+    private val X_MEMORY_FLAGS = listOf("-Xmx", "-Xms", "-Xss", "-Xmn")
+    private val XX_SIZE_OPTIONS = setOf(
+        "MaxMetaspaceSize",
+        "MetaspaceSize",
+        "MaxDirectMemorySize",
+        "MaxHeapSize",
+        "InitialHeapSize",
+        "MinHeapSize",
+        "ThreadStackSize",
+        "NewSize",
+        "MaxNewSize",
+        "CompressedClassSpaceSize",
+        "ReservedCodeCacheSize",
+        "InitialCodeCacheSize",
+    )
+    private val XX_OOM_FLAGS = setOf(
+        "HeapDumpOnOutOfMemoryError",
+        "ExitOnOutOfMemoryError",
+        "CrashOnOutOfMemoryError",
+    )
+    private val ENV_INDIRECTION_NAMES = setOf(
+        "JAVA_TOOL_OPTIONS",
+        "_JAVA_OPTIONS",
+        "JDK_JAVA_OPTIONS",
+        "JAVA_OPTIONS",
+        "IBM_JAVA_OPTIONS",
+    )
+    private val ENV_INDIRECTION_ASSIGNMENT = Regex(
+        "(?i)^(JDK_JAVA_OPTIONS|JAVA_TOOL_OPTIONS|IBM_JAVA_OPTIONS|_JAVA_OPTIONS|JAVA_OPTIONS)(=.*)?$",
+    )
+    private val EMBEDDED_OPTION_SEPARATORS = Regex("[\\s\\p{Z},;]+")
+    private val DISALLOWED_JVM_PAYLOAD_PREFIXES = listOf(
+        "-javaagent",
+        "-agentpath",
+        "-agentlib",
+        "-Xbootclasspath",
+        "-Xrun",
+        "--patch-module",
+        "-XX:CompileCommand",
+        "-XX:Flags",
+        "-XX:VMOptionsFile",
+        "-XX:OnError",
+        "-XX:OnOutOfMemoryError",
+        "-XX:+EnableDynamicAgentLoading",
+        "-XX:-EnableDynamicAgentLoading",
+        "-XX:+StartAttachListener",
+        "-XX:-StartAttachListener",
+    )
+    private val DISALLOWED_SYSTEM_PROPERTY_NAMES = setOf(
+        "java.system.class.loader",
+        "java.security.manager",
+        "java.security.policy",
+        "java.security.properties",
+        "java.security.auth.login.config",
+        "java.protocol.handler.pkgs",
+        "java.rmi.server.codebase",
+        "java.ext.dirs",
+        "sun.boot.class.path",
+        "sun.boot.library.path",
+        "java.library.path",
+        "jdk.attach.allowAttachSelf",
+        "javax.management.builder.initial",
+        "org.gradle.jvmargs",
+        "org.gradle.java.home",
+        "kotlin.daemon.jvmargs",
+        "kotlin.daemon.jvm.options",
+        "com.sun.management.config.file",
+    )
 
     private val optionsByAlias: Map<String, CliOption> = buildOptions()
 
