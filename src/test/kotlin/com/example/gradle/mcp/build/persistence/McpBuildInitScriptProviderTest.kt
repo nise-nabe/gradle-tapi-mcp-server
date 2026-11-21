@@ -37,6 +37,15 @@ class McpBuildInitScriptProviderTest {
     }
 
     @Test
+    fun `init script records failureType on TEST_FAIL events`() {
+        val script = readResource("/mcp-build-recorder.init.gradle")
+
+        script shouldContain "event.failureType = failureType"
+        script shouldContain "details.isAssertionFailure()"
+        script shouldContain "return details.isAssertionFailure() ? \"assertion\" : \"framework\""
+    }
+
+    @Test
     fun `init scripts record cancellation-caused task failures as cancelled`() {
         listOf(
             "/mcp-build-recorder.init.gradle",
