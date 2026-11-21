@@ -73,6 +73,8 @@ class GradleArgumentPolicyTest {
             "-Dorg.gradle.project.project.mcp.launcherMetadata=/tmp/evil.json",
             "--system-prop=org.gradle.project.mcp.recordDir=/tmp",
             "-D=org.gradle.project.mcp.recordDir=/tmp",
+            "-DORG.GRADLE.PROJECT.mcp.recordDir=/tmp",
+            "-Dorg.gradle.project.MCP.recordDir=/tmp",
         )
         for (argument in cases) {
             val exception = shouldThrow<McpException> {
@@ -88,6 +90,7 @@ class GradleArgumentPolicyTest {
             "-Dorg.gradle.project.mcp.recordDir=/tmp",
             "-Dorg.gradle.project.mcp.ccInitScript=/tmp/evil.gradle",
             "-Dorg.gradle.project.project.mcp.launcherMetadata=/tmp/evil.json",
+            "-DORG.GRADLE.PROJECT.mcp.recordDir=/tmp",
         )
         for (argument in cases) {
             val exception = shouldThrow<McpException> {

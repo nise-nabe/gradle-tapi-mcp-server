@@ -163,11 +163,11 @@ internal object GradleArgumentPolicy {
     private fun isUserHomeSystemProperty(name: String?): Boolean = name == GRADLE_USER_HOME_PROPERTY
 
     private fun isMcpControlSystemPropertyName(name: String): Boolean {
-        if (!name.startsWith(GRADLE_PROJECT_SYSTEM_PROPERTY_PREFIX, ignoreCase = true)) {
+        val prefix = GRADLE_PROJECT_SYSTEM_PROPERTY_PREFIX
+        if (!name.startsWith(prefix, ignoreCase = true)) {
             return false
         }
-        val projectPropertyName = name.removePrefix(GRADLE_PROJECT_SYSTEM_PROPERTY_PREFIX)
-        return isMcpControlPropertyName(projectPropertyName)
+        return isMcpControlPropertyName(name.substring(prefix.length))
     }
 
     private fun propertyNameFromProjectPropToken(token: String): String =
