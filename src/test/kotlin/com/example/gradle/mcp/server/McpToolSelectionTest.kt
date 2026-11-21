@@ -150,26 +150,31 @@ class McpToolSelectionTest {
         withServer(selection) { server -> server.tools.keys.toSet() }
 
     private inline fun <T> withServer(selection: ToolSelection?, block: (Server) -> T): T {
-        val server = newServer(selection)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val server = try {
+            newServer(selection, scope)
+        } catch (exception: Exception) {
+            scope.cancel()
+            throw exception
+        }
         return try {
             block(server)
         } finally {
-            runBlocking { server.close() }
+            try {
+                runBlocking { server.close() }
+            } finally {
+                scope.cancel()
+            }
         }
     }
 
-    private fun newServer(selection: ToolSelection?): Server {
+    private fun newServer(selection: ToolSelection?, scope: CoroutineScope): Server {
         val connectionManager = GradleConnectionManager()
         val runtime = DefaultGradleMcpRuntime(connectionManager, BuildExecutionManager(connectionManager))
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        return try {
-            createGradleTapiServer(
-                runtime = runtime,
-                serverScope = scope,
-                toolSelection = selection,
-            )
-        } finally {
-            scope.cancel()
-        }
+        return createGradleTapiServer(
+            runtime = runtime,
+            serverScope = scope,
+            toolSelection = selection,
+        )
     }
 }
