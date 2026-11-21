@@ -61,15 +61,17 @@ fun runGradleTapiMcpServer(options: ServerCliOptions = ServerCliOptions()) {
     }
 
     // Reject a bad --tools list before a transport is bound, so the process
-    // exits on stderr and stdio stdout stays free of MCP frames. The served
-    // server is still created when the transport starts, after auto-connect
-    // is launched, so session hold timing stays the same.
+    // exits on stderr and stdio stdout stays free of MCP frames. Close the
+    // probe so its onClose handler releases the session. The served server is
+    // still created when the transport starts, after auto-connect is launched.
     val toolSelection = options.toolEntries?.let(::ToolSelection)
     if (toolSelection != null) {
-        createGradleTapiServer(
-            runtime = runtime,
-            serverScope = serverScope,
-            toolSelection = toolSelection,
+        closeServer(
+            createGradleTapiServer(
+                runtime = runtime,
+                serverScope = serverScope,
+                toolSelection = toolSelection,
+            ),
         )
     }
 
@@ -157,15 +159,24 @@ internal fun createGradleTapiServer(
         runtime.connectionManager.releaseSession(session)
     }
 
-    server.registerSelectedTools(toolSelection) {
-        registerGradleTools(this, runtime, serverScope, session)
-    }
-    // Resources call the same payload functions as the tools and stay registered
-    // when a tool is omitted from --tools.
-    with(runtime) {
-        server.registerGradleTapiResources(session)
+    try {
+        server.registerSelectedTools(toolSelection) {
+            registerGradleTools(this, runtime, serverScope, session)
+        }
+        // Resources call the same payload functions as the tools and stay registered
+        // when a tool is omitted from --tools.
+        with(runtime) {
+            server.registerGradleTapiResources(session)
+        }
+    } catch (exception: Exception) {
+        closeServer(server)
+        throw exception
     }
     return server
+}
+
+private fun closeServer(server: Server) {
+    runCatching { runBlocking { server.close() } }
 }
 
 private fun registerGradleTools(
