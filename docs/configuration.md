@@ -24,10 +24,27 @@ Point the client at the endpoint URL instead of launching a subprocess:
 ```
 
 Options (`--help` for the full list): `--transport=stdio|streamable-http` (`http` is an alias),
-`--host`, `--port`, `--path`, `--allowed-hosts`, `--allowed-origins`. DNS rebinding protection is
+`--host`, `--port`, `--path`, `--allowed-hosts`, `--allowed-origins`, `--tools`. DNS rebinding protection is
 on by default and only allows localhost `Host`/`Origin` headers — pass `--allowed-hosts` /
 `--allowed-origins` when exposing the endpoint beyond localhost. `GRADLE_PROJECT_DIR` must be set
 in the server process environment; `env` blocks in client config only apply to `command` servers.
+
+### Tool registration
+
+`--tools=<list>` limits which tools are registered. `<list>` is comma-separated tool names
+(`gradle_run_tests`) and/or profiles. Entries are trimmed, empty entries are ignored, and the
+result is their union (`--tools=minimal,gradle_index_dependency_sources`). The same list can be
+set with `GRADLE_TAPI_TOOLS`; `--tools` wins when both are set. Unset (or profile `all`) registers
+every tool.
+
+| Profile | Registered tools |
+|---------|------------------|
+| `all` | Every tool (default) |
+| `minimal` | `gradle_run_tasks`, `gradle_run_tests`, `gradle_get_build_status`, `gradle_get_project_overview`, `gradle_cancel_build` |
+
+Unknown names, and a list that selects no tools, exit non-zero at startup. The message is written
+to stderr and lists the valid profile and tool names. Stdout stays reserved for MCP JSON-RPC.
+Resources stay registered.
 
 ### Multiple projects and sessions (streamable HTTP)
 
@@ -60,6 +77,7 @@ are unaffected.
 | Variable | Description |
 |----------|-------------|
 | `GRADLE_PROJECT_DIR` | Default project; auto-connect on startup |
+| `GRADLE_TAPI_TOOLS` | Comma-separated tool names and profiles (`all`, `minimal`) to register. `--tools` takes precedence. A blank value is unset |
 | `GRADLE_USER_HOME` | Optional Gradle user home |
 | `GRADLE_VERSION` | Optional explicit Gradle version |
 | `GRADLE_INSTALLATION` | Optional local Gradle installation |

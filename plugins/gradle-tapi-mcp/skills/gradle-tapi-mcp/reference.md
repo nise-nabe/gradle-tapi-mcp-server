@@ -354,9 +354,20 @@ Scheme: `gradle-tapi://{url-encoded-absolute-project-root}/…` (`mimeType`: `ap
 
 **ProjectLifecycleGuard:** overview **rejects** while an MCP build is active for that project (same as the tool). The JSON-RPC error `data.error` includes `code` (`BUILD_ALREADY_RUNNING`), `message`, and `activeBuildId` / related fields. No stale snapshot. Other Phase 1 resources follow their tools.
 
+## Limiting registered tools
+
+The server registers every tool unless started with `--tools=<list>` or `GRADLE_TAPI_TOOLS=<list>` (`--tools` wins). `<list>` is comma-separated exact tool names and/or profiles, trimmed and unioned (`minimal,gradle_index_dependency_sources`). Empty entries are ignored.
+
+| Profile | Tools |
+|---------|--------|
+| `all` | Every tool (default when both are unset) |
+| `minimal` | `gradle_run_tasks`, `gradle_run_tests`, `gradle_get_build_status`, `gradle_get_project_overview`, `gradle_cancel_build` |
+
+Unknown names and an empty selection exit non-zero at startup. The error goes to stderr and lists the valid profile and tool names. Stdout stays MCP JSON-RPC only. Resources are unchanged.
+
 ## MCP tool discovery (token-efficient)
 
-`tools/list` returns every tool name, description, and `inputSchema`. For Cursor agents, prefer lazy discovery:
+`tools/list` returns every **registered** tool name, description, and `inputSchema` (the full catalog unless `--tools` / `GRADLE_TAPI_TOOLS` narrowed it). For Cursor agents, prefer lazy discovery:
 
 1. Prefer `server` + `toolName` for tools you will call, or `pattern` when the server id is unknown
 2. Use **no arguments** (full catalog) only as a last resort — it is token-heavy
@@ -390,6 +401,7 @@ Codes: `NOT_CONNECTED`, `BUILD_ALREADY_RUNNING` (active/queued build for the sam
 | Variable | Effect |
 |----------|--------|
 | `GRADLE_PROJECT_DIR` | Auto-connect on start |
+| `GRADLE_TAPI_TOOLS` | Comma-separated tool names and profiles to register (`all`, `minimal`). `--tools` takes precedence. A blank value is unset |
 | `GRADLE_USER_HOME` | Default user home |
 | `GRADLE_VERSION` | Default Gradle version |
 | `GRADLE_INSTALLATION` | Default local install |

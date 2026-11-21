@@ -19,6 +19,8 @@ Gradle プロジェクトの**実行時状態**を MCP 経由で取得・実行�
 
 グローバル設定では `${workspaceFolder}` が開いている Gradle プロジェクトを指す。設定例は [README.md](https://github.com/nise-nabe/gradle-tapi-mcp-server/blob/main/README.md) を参照。
 
+サーバーは既定ですべてのツールを登録する。小さいコンテキストでは起動引数 `--tools=minimal` または環境変数 `GRADLE_TAPI_TOOLS`（CLI が優先）で絞れる。`minimal` は `gradle_run_tasks` / `gradle_run_tests` / `gradle_get_build_status` / `gradle_get_project_overview` / `gradle_cancel_build`。ツール名とプロファイルは和集合（例: `minimal,gradle_connect`）。不明な名前は起動時に stderr で失敗する。リソースは絞られない。
+
 ## 複数プロジェクト
 
 1 つの MCP プロセスで複数 Gradle プロジェクトを同時に扱える。
