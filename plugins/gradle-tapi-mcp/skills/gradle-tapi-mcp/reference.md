@@ -30,7 +30,7 @@ Do not run shell `./gradlew` in parallel on the same checkout while an MCP build
 
 Most query/build tools accept optional `projectDirectory` (defaults to `GRADLE_PROJECT_DIR`).
 
-Model and overview tools also accept optional `prepareTasks` (string array): Gradle tasks to run before fetching the Tooling API model (for example `:app:compileJava` to ensure sources exist). Empty or omitted means no pre-tasks. **While a build is `running` or `queued` for the same `projectDirectory`, model queries are rejected** with `BUILD_ALREADY_RUNNING` and `activeBuildId` / related fields when the occupying build is known. Non-empty `prepareTasks` execute Gradle work and can be slow—use only when needed.
+Model and overview tools also accept optional `prepareTasks` (string array): Gradle tasks to run before fetching the Tooling API model (for example `:app:compileJava` to ensure sources exist). Empty or omitted means no pre-tasks. The same argument policy as `arguments` rejects tokens that retarget the project, user home, build file, settings file, or included builds. **While a build is `running` or `queued` for the same `projectDirectory`, model queries are rejected** with `BUILD_ALREADY_RUNNING` and `activeBuildId` / related fields when the occupying build is known. Non-empty `prepareTasks` execute Gradle work and can be slow—use only when needed.
 
 On Gradle 9.3+, those model tools (except `gradle_get_help`) use Tooling API `BuildController.fetch` plus a phased `projectsLoaded` / `buildFinished` action. Partial models (`partial: true` + capped `failures[]`, `isError=false`, max 20; `failuresTruncated` when clipped) need Gradle 9.4+. Gradle 9.7 may throw after the handler already delivered that model; this server keeps the payload and records failures (`withDetailedFailure`, so failed `prepareTasks` are not silent successes). When no model is produced, the tool returns `BUILD_FAILED` with the same `failures` shape. Gradle older than 9.3 keeps all-or-nothing `getModel`. `gradle_get_gradle_build` fetches at `projectsLoaded`; overview, project model, publications, and invocations fetch at `buildFinished` (invocations fetches `GradleProject` and `BuildInvocations` in one action). Omit `buildTreePath` to keep default-project `fetch(Class)`. Pass `buildTreePath` (Tooling API identity, e.g. `:buildSrc`) to `fetch(target, Class)` for included builds and `buildSrc`. Unknown `buildTreePath` returns `INVALID_ARGUMENT` (with `failures` when present). Blank `buildTreePath` is `INVALID_ARGUMENT`. Gradle older than 9.3 rejects `buildTreePath`. Scoped `projectPath` that is missing from a partial tree returns `INVALID_ARGUMENT` and includes those `failures` when present.
 
@@ -150,13 +150,15 @@ When `projectPath` is set, `taskSelectors` include only selectors whose task nam
 
 ## Execute
 
+`arguments` are Gradle CLI options for the connected project. `INVALID_ARGUMENT` quotes the rejected token. Rejected: `-p`/`--project-dir`, `-g`/`--gradle-user-home`, `-b`/`--build-file`, `-c`/`--settings-file`, `--include-build`, `-I`/`--init-script`, `@` argument files, `mcp.*` project properties, and `gradle.user.home` set with `-D` or `--system-prop` (also `-Dgradle.user.home` in `jvmArguments`). Gradle reads `gradle.user.home`, not `org.gradle.user.home`. Accepted shapes match Gradle's parser: separate value, `=value`, attached short form (`-g/tmp/home`), single-dash long name (`-project-dir`), and double-dash short name (`--g`). Unique prefixes such as `--project-d` are not options. `--info`, `--parallel`, `--build-cache`, `--console`, `-P`, and `-x` still work. Details: `docs/usage.md`.
+
 ### gradle_run_tasks
 
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `tasks` | yes | — | Task paths (e.g. `["build"]`, `[":app:test"]`) |
-| `arguments` | no | `[]` | Extra Gradle CLI args (init scripts, `@` arg files, and `mcp.*` control properties are rejected) |
-| `jvmArguments` | no | `[]` | JVM args for the build |
+| `arguments` | no | `[]` | Extra Gradle CLI args. Init scripts, `@` arg files, `mcp.*` properties, and options that retarget the project, user home, build file, settings file, or included builds are rejected |
+| `jvmArguments` | no | `[]` | JVM args for the build. `-Dgradle.user.home` and `mcp.*` project properties are rejected |
 | `includeOutput` | no | `false` | Include stdout/stderr (task log). Default false returns outcome/buildSummary only |
 | `maxOutputChars` | no | `8000` | Per-stream char limit when `includeOutput=true` |
 | `tailOutput` | no | `true` | Keep tail when truncating |
@@ -182,8 +184,8 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 | `includePattern` | no* | — | Single include pattern for `withTestsFor` TestSpec (Gradle 7.6+) |
 | `includePatterns` | no* | `[]` | Include patterns for `withTestsFor` TestSpec (Gradle 7.6+). Applied to **every** path in `tasks` |
 | `tasks` | no | `[]` | One or more Test task paths for `TestLauncher.forTasks()` (Gradle 7.6+). Required with patterns. Use multiple paths to batch `:test` and custom suites (e.g. `:fastTest`) in **one** MCP build |
-| `arguments` | no | `[]` | Extra Gradle CLI args (init scripts, `@` arg files, and `mcp.*` control properties are rejected) |
-| `jvmArguments` | no | `[]` | JVM args |
+| `arguments` | no | `[]` | Extra Gradle CLI args. Init scripts, `@` arg files, `mcp.*` properties, and options that retarget the project, user home, build file, settings file, or included builds are rejected |
+| `jvmArguments` | no | `[]` | JVM args. `-Dgradle.user.home` and `mcp.*` project properties are rejected |
 | `includeOutput` | no | `false` | Include stdout/stderr (task log). Default false returns outcome/buildSummary only |
 | `maxOutputChars` | no | `8000` | Per-stream char limit when `includeOutput=true` |
 | `tailOutput` | no | `true` | Keep tail when truncating |

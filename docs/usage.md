@@ -46,6 +46,28 @@ Tune captured output with `includeOutput` (default `false`), `maxOutputChars` (d
 
 Tool errors return structured JSON: `{ "error": { "code": "NOT_CONNECTED", "message": "..." } }`.
 
+## Client Gradle arguments
+
+`arguments` on `gradle_run_tasks`, `gradle_run_tests`, and the task-plan tool are extra Gradle command-line options for the connected project. The server rejects an option that retargets that project and returns `INVALID_ARGUMENT`. The message quotes the rejected token.
+
+Accepted shapes are the ones Gradle's command-line parser accepts: a separate value (`--project-dir /other`), `=value` (`--project-dir=/other`), an attached short option (`-g/tmp/home`, `-g=/tmp/home`), a single dash on the full long name (`-project-dir`), and a double dash on the short name (`--g`). Unique prefixes such as `--project-d` are not Gradle options and are left alone. `--build-cache`, `--parallel`, `--console`, `-P`, `-Dorg.gradle.parallel`, and `-x` still work.
+
+| Rejected | Why |
+| --- | --- |
+| `-p`, `--project-dir` | Changes the start directory. Gradle has no system property for this. |
+| `-g`, `--gradle-user-home` | Changes the Gradle user home, so that home's `init.d` scripts run. |
+| `-Dgradle.user.home`, `--system-prop=gradle.user.home=...` | Same user-home change. Also rejected in `jvmArguments`. The property Gradle reads is `gradle.user.home`, not `org.gradle.user.home`. |
+| `-b`, `--build-file` | Selects another build file. Removed from Gradle 8; still honored by Gradle 7.6 and earlier. |
+| `-c`, `--settings-file` | Selects another settings file. Same version note as `-b`. |
+| `--include-build` | Adds another build to the composite. |
+| `-I`, `--init-script` | Adds an init script. |
+| `@file` | Argument file; can inject further options. |
+| `mcp.*` via `-P` or `-Dorg.gradle.project.mcp.*` | Reserved for server build recording. |
+
+`prepareTasks` is checked with the same rules. Tokens after `--` are task names, not options.
+
+These names are the environment and execution options in the [Gradle command-line interface](https://docs.gradle.org/9.9.1/userguide/command_line_interface.html). `gradle.user.home` is the system property in [Build Environment](https://docs.gradle.org/9.9.1/userguide/build_environment.html). Tooling API `ConfigurableLauncher` arguments can override the project directory and Gradle user home configured on the connector ([Javadoc](https://docs.gradle.org/9.9.1/javadoc/org/gradle/tooling/ConfigurableLauncher.html)).
+
 Build task failures are **not** tool errors: `gradle_run_tasks` / `gradle_run_tests` return `status: "failed"` / `outcome: "FAILED"` in the success payload (`isError=false`). Reserve `BUILD_FAILED` for tooling failures (for example `javaToolchains` probe errors on `gradle_get_java_runtimes`, or a model query that produced no model).
 
 Model queries (`gradle_get_project_overview`, `gradle_get_gradle_build`, `gradle_get_project_model`, `gradle_get_build_invocations`, `gradle_get_project_publications`) use Tooling API `fetch` on Gradle 9.3+. Omit `buildTreePath` for default-project `fetch(Class)`. Pass `buildTreePath` to `fetch` a specific included build or `buildSrc` project. Gradle 9.4+ can return a partial model when some projects fail (`partial: true` and capped `failures[]`, `isError=false`). Gradle 9.7 may still throw after that payload is delivered; this server keeps the model and surfaces failures (including `prepareTasks` failures, via `withDetailedFailure`). When no model is produced, the tool returns `BUILD_FAILED` with the same `failures` shape. Gradle older than 9.3 keeps all-or-nothing `getModel` and rejects `buildTreePath`. `gradle_get_help` and `gradle_get_build_environment` are unchanged.

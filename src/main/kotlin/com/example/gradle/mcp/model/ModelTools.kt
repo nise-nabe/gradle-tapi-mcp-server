@@ -2,6 +2,7 @@ package com.example.gradle.mcp.model
 
 import com.example.gradle.mcp.GradleMcpRuntime
 import com.example.gradle.mcp.build.BuildExecutionManager
+import com.example.gradle.mcp.build.GradleArgumentPolicy
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.connection.ProjectLifecycleGuard
 import com.example.gradle.mcp.connection.SessionProjectContext
@@ -93,7 +94,7 @@ internal fun helpSchema(): Map<String, Any> =
     )
 
 private fun prepareTasksFromArgs(args: Map<String, Any>): List<String> =
-    args.optionalStringList("prepareTasks").orEmpty().filter { it.isNotBlank() }.distinct()
+    GradleArgumentPolicy.validatePrepareTasks(args.optionalStringList("prepareTasks").orEmpty())
 
 internal fun scopedGradleProject(root: GradleProject, treeOptions: ProjectTreeOptions): GradleProject =
     ProjectTreeScope.requireProject(root, treeOptions.projectPath)

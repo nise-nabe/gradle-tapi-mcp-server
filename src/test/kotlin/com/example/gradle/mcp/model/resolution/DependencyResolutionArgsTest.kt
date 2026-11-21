@@ -9,6 +9,7 @@ import io.kotest.matchers.maps.shouldContainKey
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 
 class DependencyResolutionArgsTest {
@@ -43,6 +44,15 @@ class DependencyResolutionArgsTest {
         query.includeOutgoingVariants shouldBe false
         query.maxConfigurations shouldBe 0
         query.prepareTasks.shouldBeEmpty()
+    }
+
+    @Test
+    fun `parseDependencyResolutionQuery rejects retargeting prepareTasks`() {
+        val exception = shouldThrow<McpException> {
+            parseDependencyResolutionQuery(mapOf("prepareTasks" to listOf("--include-build", "../other")))
+        }
+        exception.code shouldBe McpErrorCode.INVALID_ARGUMENT
+        exception.message shouldContain "(--include-build)"
     }
 
     @Test
