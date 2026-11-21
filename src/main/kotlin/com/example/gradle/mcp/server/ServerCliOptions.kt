@@ -23,8 +23,15 @@ data class ServerCliOptions(
     val transport: McpTransport = McpTransport.STDIO,
     val http: HttpEndpoint = HttpEndpoint(),
     val showHelp: Boolean = false,
+    /**
+     * Trimmed `--tools` / `GRADLE_TAPI_TOOLS` entries. `null` registers every tool.
+     * An empty list is present and fails at startup.
+     */
+    val toolEntries: List<String>? = null,
 ) {
     companion object {
+        const val TOOLS_ENV: String = "GRADLE_TAPI_TOOLS"
+
         val USAGE: String = """
             Usage: java -jar gradle-tapi-mcp-server-<version>.jar [options]
 
@@ -35,10 +42,12 @@ data class ServerCliOptions(
               --path=<path>                        endpoint path for streamable-http (default: /mcp)
               --allowed-hosts=<h1,h2,...>          Host header values allowed by DNS rebinding protection
               --allowed-origins=<o1,o2,...>        Origin header values allowed by DNS rebinding protection
+              --tools=<list>                       Comma-separated tool names and/or profiles to register.
+                                                   Profiles: all (default), minimal. Overrides $TOOLS_ENV.
               -h, --help                           print this help and exit
         """.trimIndent()
 
-        fun parse(args: Array<String>): ServerCliOptions {
+        fun parse(args: Array<String>, env: Map<String, String> = System.getenv()): ServerCliOptions {
             var transport = McpTransport.STDIO
             var host = HttpEndpoint().host
             var port = HttpEndpoint().port
@@ -46,6 +55,8 @@ data class ServerCliOptions(
             var allowedHosts: List<String>? = null
             var allowedOrigins: List<String>? = null
             var showHelp = false
+            var toolsFromCli = false
+            var toolsCli: String? = null
 
             for (arg in args) {
                 val option = arg.substringBefore('=')
@@ -58,6 +69,10 @@ data class ServerCliOptions(
                     "--path" -> path = parsePath(value.requireValue(option))
                     "--allowed-hosts" -> allowedHosts = value.requireValue(option).toNameList(option)
                     "--allowed-origins" -> allowedOrigins = value.requireValue(option).toNameList(option)
+                    "--tools" -> {
+                        toolsFromCli = true
+                        toolsCli = value.requireValue(option)
+                    }
                     else -> throw IllegalArgumentException("Unknown option: $arg")
                 }
             }
@@ -66,7 +81,21 @@ data class ServerCliOptions(
                 transport = transport,
                 http = HttpEndpoint(host, port, path, allowedHosts, allowedOrigins),
                 showHelp = showHelp,
+                toolEntries = toolEntries(toolsFromCli, toolsCli, env),
             )
+        }
+
+        /**
+         * `--tools` wins over [TOOLS_ENV]. A blank environment variable is unset.
+         * A present value that trims to no entries is an empty selection.
+         */
+        private fun toolEntries(fromCli: Boolean, cliValue: String?, env: Map<String, String>): List<String>? {
+            val raw = if (fromCli) {
+                cliValue
+            } else {
+                env[TOOLS_ENV]?.takeUnless { it.isBlank() }
+            } ?: return null
+            return raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
         }
 
         private fun parseTransport(value: String): McpTransport = when (value) {

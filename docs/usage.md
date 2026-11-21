@@ -1,5 +1,22 @@
 # Usage
 
+## Limiting registered tools
+
+By default the server registers every tool. To shrink the `tools/list` payload, pass a comma-separated list of exact tool names and profiles:
+
+```bash
+java -jar gradle-tapi-mcp-server-0.16.0.jar --tools=minimal
+```
+
+`--tools` overrides `GRADLE_TAPI_TOOLS` when both are set. Whitespace around entries is ignored, and empty entries are ignored. Entries are unioned, so `--tools=minimal,gradle_connect` registers the minimal profile plus `gradle_connect`.
+
+| Profile | Tools |
+|---------|--------|
+| `all` | Every tool. This is the default when the option and `GRADLE_TAPI_TOOLS` are both unset. |
+| `minimal` | `gradle_run_tasks`, `gradle_run_tests`, `gradle_get_build_status`, `gradle_get_project_overview`, `gradle_cancel_build` |
+
+An unknown tool or profile name, or a list that selects nothing (`--tools=,,,`), fails startup. The process exits non-zero and writes the error to stderr, including the rejected entries and the valid profile and tool names. Stdout stays reserved for MCP JSON-RPC. Resources are not filtered; they call the same payload functions as the tools they wrap.
+
 ## Token-efficient usage
 
 Prefer this order for agent workflows such as project context ingestion:

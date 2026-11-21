@@ -2,6 +2,8 @@
 
 ## Tools
 
+Every tool below is registered unless the server is started with `--tools` or `GRADLE_TAPI_TOOLS` (profiles `all` and `minimal`). See [configuration](configuration.md#tool-registration).
+
 | Tool | Description |
 |------|-------------|
 | `gradle_connect` | Connect to a project directory (keeps other projects connected). First connect may download the Gradle distribution; download progress is emitted as log notifications and MCP request cancellation aborts it |

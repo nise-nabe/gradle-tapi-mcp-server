@@ -3,8 +3,31 @@
 This server exposes 24 tools. The full `tools/list` payload is roughly 26K
 characters (~6–7K tokens with annotations), which fits most modern context
 windows but can crowd out a small model (e.g. 32K) once system prompts,
-conversation history, and skill files are added. This page shows how to run a
-reduced tool set.
+conversation history, and skill files are added. Limit registration when the
+process starts, or filter tools in the client.
+
+## Server-side `--tools`
+
+`--tools=<list>` (or `GRADLE_TAPI_TOOLS` when the flag is omitted) chooses which
+tools are registered. The flag wins over the environment variable. Entries are
+comma-separated exact tool names and/or profiles, unioned after trimming.
+
+```bash
+java -jar gradle-tapi-mcp-server-0.16.0.jar --tools=minimal,gradle_connect
+```
+
+| Profile | Tools |
+|---------|--------|
+| `all` | Every tool. Default when both the flag and `GRADLE_TAPI_TOOLS` are unset. |
+| `minimal` | `gradle_run_tasks`, `gradle_run_tests`, `gradle_get_build_status`, `gradle_get_project_overview`, `gradle_cancel_build` |
+
+`minimal` is the build/test/poll loop. Add `gradle_connect` and
+`gradle_connection_status` when the client does not auto-connect. Unknown names
+and an empty list fail startup: non-zero exit, error on stderr, nothing on
+stdout. Resources stay available. Details: [configuration](configuration.md#tool-registration).
+
+Clients that cannot pass server arguments can still hide tools themselves. The
+rest of this page is that client-side path.
 
 ## Recommended minimal tool set
 
@@ -127,8 +150,8 @@ purpose.
 
 ## Notes
 
-- Tool-level filtering inside the server (e.g. `--tools` allowlist) is
-  tracked separately; until it lands, use client-side exposure controls.
+- `--tools` / `GRADLE_TAPI_TOOLS` limit which tools are registered. Client
+  exposure controls still apply when the server registers a wider set.
 - `maxFailureMessageChars` on `gradle_run_tasks` / `gradle_run_tests` /
   `gradle_get_build_status` caps long failure messages — useful for small
   contexts.

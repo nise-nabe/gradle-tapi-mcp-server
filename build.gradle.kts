@@ -75,7 +75,10 @@ tasks.withType<Test>().configureEach {
     // workspace instead of @TempDir fixtures. An empty value reads as unset
     // (the resolver rejects blank values), without enumerating the parent
     // environment, which is not allowed under isolated projects.
+    // GRADLE_TAPI_TOOLS is cleared the same way: a blank value is unset, so
+    // tests keep the default full tool set.
     environment("GRADLE_PROJECT_DIR", "")
+    environment("GRADLE_TAPI_TOOLS", "")
 }
 
 tasks.named<Test>("test") {

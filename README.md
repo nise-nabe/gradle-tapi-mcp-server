@@ -67,11 +67,13 @@ Add to `.cursor/mcp.json` in your Gradle project:
 }
 ```
 
+The server registers every tool unless you pass `--tools` (or set `GRADLE_TAPI_TOOLS`). For a small context window, add `"--tools=minimal"` to `args`. Profile `minimal` is `gradle_run_tasks`, `gradle_run_tests`, `gradle_get_build_status`, `gradle_get_project_overview`, and `gradle_cancel_build`. Names and profiles can be combined (`--tools=minimal,gradle_connect`). See [docs/configuration.md](docs/configuration.md).
+
 ## Documentation
 
 | Document | Contents |
 |----------|----------|
-| [docs/configuration.md](docs/configuration.md) | Transports (stdio / Streamable HTTP), environment variables |
+| [docs/configuration.md](docs/configuration.md) | Transports (stdio / Streamable HTTP), `--tools` / `GRADLE_TAPI_TOOLS`, environment variables |
 | [docs/tools.md](docs/tools.md) | MCP tool catalog and resources |
 | [docs/dependency-sources.md](docs/dependency-sources.md) | Dependency sources name locate (index → search → read) |
 | [docs/usage.md](docs/usage.md) | Token-efficient usage, multiple projects, long-running builds, `gradle_run_tests` selectors, agent workflows, disconnect behavior |

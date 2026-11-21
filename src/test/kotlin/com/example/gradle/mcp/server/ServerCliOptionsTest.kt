@@ -1,17 +1,20 @@
 package com.example.gradle.mcp.server
 
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 
 class ServerCliOptionsTest {
     @Test
     fun `defaults to stdio`() {
-        val options = ServerCliOptions.parse(emptyArray())
+        val options = ServerCliOptions.parse(emptyArray(), env = emptyMap())
 
         options.transport shouldBe McpTransport.STDIO
         options.showHelp shouldBe false
         options.http shouldBe HttpEndpoint()
+        options.toolEntries.shouldBeNull()
     }
 
     @Test
@@ -82,6 +85,48 @@ class ServerCliOptionsTest {
         shouldThrow<IllegalArgumentException> {
             ServerCliOptions.parse(arrayOf("--host="))
         }
+        shouldThrow<IllegalArgumentException> {
+            ServerCliOptions.parse(arrayOf("--tools"))
+        }
+        shouldThrow<IllegalArgumentException> {
+            ServerCliOptions.parse(arrayOf("--tools="))
+        }
+    }
+
+    @Test
+    fun `tools flag overrides the environment variable and trims entries`() {
+        val options = ServerCliOptions.parse(
+            arrayOf("--tools= minimal , gradle_connect , ,"),
+            env = mapOf(ServerCliOptions.TOOLS_ENV to "gradle_run_tasks"),
+        )
+
+        options.toolEntries shouldBe listOf("minimal", "gradle_connect")
+    }
+
+    @Test
+    fun `blank tools environment variable is unset`() {
+        val options = ServerCliOptions.parse(
+            emptyArray(),
+            env = mapOf(ServerCliOptions.TOOLS_ENV to "   "),
+        )
+
+        options.toolEntries.shouldBeNull()
+    }
+
+    @Test
+    fun `tools environment variable is used when the flag is absent`() {
+        val options = ServerCliOptions.parse(
+            emptyArray(),
+            env = mapOf(ServerCliOptions.TOOLS_ENV to "minimal"),
+        )
+
+        options.toolEntries shouldBe listOf("minimal")
+    }
+
+    @Test
+    fun `usage documents the tools flag`() {
+        ServerCliOptions.USAGE shouldContain "--tools=<list>"
+        ServerCliOptions.USAGE shouldContain ServerCliOptions.TOOLS_ENV
     }
 
     @Test
