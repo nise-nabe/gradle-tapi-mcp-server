@@ -3,6 +3,7 @@ package com.example.gradle.mcp.build
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
 import com.example.gradle.mcp.support.failedTestSnapshot
 import com.example.gradle.mcp.support.testFailProgressEvent
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
@@ -82,6 +83,59 @@ class FailedTestSnapshotsTest {
 
         outcomes.failedTests.map { it.methodName } shouldContainExactly listOf("alwaysFails()")
         outcomes.flakyTests.map { it.methodName } shouldContainExactly listOf("failsThenPasses()")
+        outcomes.flakyTests.single().failureMessage shouldBe "first attempt"
+    }
+
+    @Test
+    fun `mergeOutcomes keeps failureType when the later snapshot omits it`() {
+        val earlier = FailedTestSnapshot(
+            className = "com.example.FooTest",
+            methodName = "bar",
+            displayName = "com.example.FooTest.bar",
+            failureMessage = "first",
+            exceptionType = "junit.framework.AssertionFailedError",
+            failureType = "assertion",
+            sourceFile = "FooTest.kt",
+            line = 12,
+        )
+        val later = earlier.copy(
+            failureMessage = "latest failure",
+            exceptionType = null,
+            failureType = null,
+            sourceFile = null,
+            line = null,
+        )
+
+        val merged = FailedTestSnapshots.mergeOutcomes(
+            failedLists = listOf(listOf(earlier), listOf(later)),
+            flakyLists = emptyList(),
+        ).failedTests.single()
+
+        merged.failureMessage shouldBe "latest failure"
+        merged.failureType shouldBe "assertion"
+        merged.exceptionType shouldBe "junit.framework.AssertionFailedError"
+        merged.sourceFile shouldBe "FooTest.kt"
+        merged.line shouldBe 12
+    }
+
+    @Test
+    fun `mergeOutcomes keeps failureType when a passed retry omits it`() {
+        val failed = FailedTestSnapshot(
+            className = "com.example.FooTest",
+            methodName = "bar",
+            displayName = "com.example.FooTest.bar",
+            failureMessage = "first attempt",
+            failureType = "assertion",
+        )
+        val flaky = failed.copy(failureMessage = null, failureType = null)
+
+        val outcomes = FailedTestSnapshots.mergeOutcomes(
+            failedLists = listOf(listOf(failed)),
+            flakyLists = listOf(listOf(flaky)),
+        )
+
+        outcomes.failedTests.shouldBeEmpty()
+        outcomes.flakyTests.single().failureType shouldBe "assertion"
         outcomes.flakyTests.single().failureMessage shouldBe "first attempt"
     }
 

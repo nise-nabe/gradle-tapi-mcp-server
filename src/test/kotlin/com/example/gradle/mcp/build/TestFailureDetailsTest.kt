@@ -58,6 +58,24 @@ class TestFailureDetailsTest {
     }
 
     @Test
+    fun `failureTypeFromExceptionType classifies assertion and framework names`() {
+        TestFailureDetails.failureTypeFromExceptionType("junit.framework.AssertionFailedError") shouldBe
+            TestFailureDetails.FAILURE_TYPE_ASSERTION
+        TestFailureDetails.failureTypeFromExceptionType("org.opentest4j.AssertionFailedError") shouldBe
+            TestFailureDetails.FAILURE_TYPE_ASSERTION
+        TestFailureDetails.failureTypeFromExceptionType("org.junit.ComparisonFailure") shouldBe
+            TestFailureDetails.FAILURE_TYPE_ASSERTION
+        TestFailureDetails.failureTypeFromExceptionType("org.opentest4j.MultipleFailuresError") shouldBe
+            TestFailureDetails.FAILURE_TYPE_ASSERTION
+        TestFailureDetails.failureTypeFromExceptionType("org.assertj.core.error.MultipleAssertionsError") shouldBe
+            TestFailureDetails.FAILURE_TYPE_ASSERTION
+        TestFailureDetails.failureTypeFromExceptionType("java.lang.IllegalStateException") shouldBe
+            TestFailureDetails.FAILURE_TYPE_FRAMEWORK
+        TestFailureDetails.failureTypeFromExceptionType("  ").shouldBeNull()
+        TestFailureDetails.failureTypeFromExceptionType(null).shouldBeNull()
+    }
+
+    @Test
     fun `failureTypeFromFailure returns null for plain failures`() {
         val failure = failureProxy(
             message = "boom",

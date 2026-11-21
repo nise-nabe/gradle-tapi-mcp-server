@@ -36,6 +36,42 @@ class TestProgressDetailsExtractorTest {
     }
 
     @Test
+    fun `fromDiskMap derives failureType from exceptionType when the event omits it`() {
+        val assertion = TestProgressDetailsExtractor.fromDiskMap(
+            ProgressEventTypes.TEST_FAIL,
+            mapOf(
+                "className" to "com.example.FooTest",
+                "methodName" to "bar",
+                "exceptionType" to "junit.framework.AssertionFailedError",
+                "failureMessage" to "expected:<1> but was:<0>",
+            ),
+        ).shouldNotBeNull()
+        val framework = TestProgressDetailsExtractor.fromDiskMap(
+            ProgressEventTypes.TEST_FAIL,
+            mapOf(
+                "exceptionType" to "java.lang.IllegalStateException",
+            ),
+        ).shouldNotBeNull()
+
+        assertion.failureType shouldBe "assertion"
+        assertion.exceptionType shouldBe "junit.framework.AssertionFailedError"
+        framework.failureType shouldBe "framework"
+    }
+
+    @Test
+    fun `fromDiskMap keeps a recorded failureType over the exceptionType derivation`() {
+        val details = TestProgressDetailsExtractor.fromDiskMap(
+            ProgressEventTypes.TEST_FAIL,
+            mapOf(
+                "exceptionType" to "junit.framework.AssertionFailedError",
+                "failureType" to "framework",
+            ),
+        ).shouldNotBeNull()
+
+        details.failureType shouldBe "framework"
+    }
+
+    @Test
     fun `fromDiskMap restores failureType for failed test events`() {
         val details = TestProgressDetailsExtractor.fromDiskMap(
             ProgressEventTypes.TEST_FAIL,
