@@ -30,10 +30,10 @@ import io.modelcontextprotocol.kotlin.sdk.server.Server
 import kotlinx.coroutines.CoroutineScope
 
 private const val USER_GRADLE_ARGUMENTS_DESCRIPTION =
-    "Gradle CLI args. Rejects project/user-home retargets, init scripts, and @files."
+    "Gradle CLI args. Rejects -p/-g/-b/-c/--include-build, user home, init scripts, @files, mcp.*."
 
 private const val USER_JVM_ARGUMENTS_DESCRIPTION =
-    "JVM args for the build (no gradle.user.home)."
+    "JVM args. Rejects gradle.user.home and mcp.*."
 
 internal fun progressProperties(): Map<String, Any> =
     mapOf(

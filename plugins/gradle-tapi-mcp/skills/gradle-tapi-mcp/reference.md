@@ -150,7 +150,7 @@ When `projectPath` is set, `taskSelectors` include only selectors whose task nam
 
 ## Execute
 
-`arguments` are Gradle CLI options for the connected project. `INVALID_ARGUMENT` quotes the rejected token. Rejected: `-p`/`--project-dir`, `-g`/`--gradle-user-home`, `-b`/`--build-file`, `-c`/`--settings-file`, `--include-build`, `-I`/`--init-script`, `@` argument files, `mcp.*` project properties, and `gradle.user.home` set with `-D` or `--system-prop` (also `-Dgradle.user.home` in `jvmArguments`). Gradle reads `gradle.user.home`, not `org.gradle.user.home`. Accepted shapes match Gradle's parser: separate value, `=value`, attached short form (`-g/tmp/home`), single-dash long name (`-project-dir`), and double-dash short name (`--g`). Unique prefixes such as `--project-d` are not options. `--info`, `--parallel`, `--build-cache`, `--console`, `-P`, and `-x` still work. Details: `docs/usage.md`.
+`arguments` are Gradle CLI options for the connected project. `INVALID_ARGUMENT` quotes the rejected token. Rejected: `-p`/`--project-dir`, `-g`/`--gradle-user-home`, `-b`/`--build-file`, `-c`/`--settings-file`, `--include-build`, `-I`/`--init-script`, `@` argument files, `mcp.*` project properties, and `gradle.user.home` set with `-D` or `--system-prop` (also `-Dgradle.user.home` in `jvmArguments`). Gradle reads `gradle.user.home`, not `org.gradle.user.home`. Accepted shapes: separate value, `=value` (including `-project-dir=/other` and `-console=plain`), attached short form (`-g/tmp/home`), single-dash long name (`-project-dir`), and double-dash short name (`--g`). Unique prefixes such as `--project-d` are not options. `--info`, `--parallel`, `--build-cache`, `--console`, `-P`, and `-x` still work. Details: `docs/usage.md`.
 
 ### gradle_run_tasks
 

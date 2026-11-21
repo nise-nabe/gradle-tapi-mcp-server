@@ -50,7 +50,7 @@ Tool errors return structured JSON: `{ "error": { "code": "NOT_CONNECTED", "mess
 
 `arguments` on `gradle_run_tasks`, `gradle_run_tests`, and the task-plan tool are extra Gradle command-line options for the connected project. The server rejects an option that retargets that project and returns `INVALID_ARGUMENT`. The message quotes the rejected token.
 
-Accepted shapes are the ones Gradle's command-line parser accepts: a separate value (`--project-dir /other`), `=value` (`--project-dir=/other`), an attached short option (`-g/tmp/home`, `-g=/tmp/home`), a single dash on the full long name (`-project-dir`), and a double dash on the short name (`--g`). Unique prefixes such as `--project-d` are not Gradle options and are left alone. `--build-cache`, `--parallel`, `--console`, `-P`, `-Dorg.gradle.parallel`, and `-x` still work.
+Accepted shapes are a separate value (`--project-dir /other`), `=value` (`--project-dir=/other` and `-project-dir=/other`), an attached short option (`-g/tmp/home`, `-g=/tmp/home`), a single dash on the full long name (`-project-dir`, `-console=plain`), and a double dash on the short name (`--g`). A single-dash token with `=` uses the full option name, so `-project-cache-dir=.gradle` is not read as `-p`. Unique prefixes such as `--project-d` are not Gradle options and are left alone. `--build-cache`, `--parallel`, `--console`, `-P`, `-Dorg.gradle.parallel`, and `-x` still work.
 
 | Rejected | Why |
 | --- | --- |

@@ -7,9 +7,11 @@ import com.example.gradle.mcp.protocol.McpException
  * Rejects client Gradle arguments that escape the connected project.
  *
  * Matching follows Gradle 9.9.1 `org.gradle.cli.CommandLineParser`: option names are exact,
- * `--` may introduce a short name (`--g`), a single `-` may introduce a long name (`-project-dir`),
- * short options attach their value (`-g/tmp/home`, `-g=/tmp/home`), and long options take
- * `=` or a following value. Unique prefixes (`--project-d`) are not options.
+ * `--` may introduce a short name (`--g`), a single `-` may introduce a long name (`-project-dir`
+ * or `-project-dir=/other`), short options attach their value (`-g/tmp/home`, `-g=/tmp/home`),
+ * and `--long` takes `=` or a following value. A single-dash token with `=` matches the full
+ * name before it is read as an attached short option, so `-console=plain` is not `-c`.
+ * Unique prefixes (`--project-d`) are not options.
  * There is no system property for the project directory; the user home property is
  * `gradle.user.home` (`-D` / `--system-prop`), not `org.gradle.user.home`.
  */
@@ -186,11 +188,14 @@ internal object GradleArgumentPolicy {
             val option = optionsByAlias[name] ?: return null
             return MatchedOption(option, inlineValue)
         }
-        if (arg.length >= 3 && arg[1] != '=' && arg[2] == '=') {
-            val option = optionsByAlias[arg.substring(1, 2)] ?: return null
-            return MatchedOption(option, arg.substring(3))
-        }
         val body = arg.substring(1)
+        val separator = body.indexOf('=')
+        if (separator >= 0) {
+            val name = body.substring(0, separator)
+            optionsByAlias[name]?.let { option ->
+                return MatchedOption(option, body.substring(separator + 1))
+            }
+        }
         optionsByAlias[body]?.let { return MatchedOption(it, null) }
         if (body.length < 2) {
             return null

@@ -137,6 +137,7 @@ class GradleArgumentPolicyTest {
         assertRejected(listOf("--p", "/tmp/other"), "--p")
         assertRejected(listOf("--p=/tmp/other"), "--p=/tmp/other")
         assertRejected(listOf("-project-dir", "/tmp/other"), "-project-dir")
+        assertRejected(listOf("-project-dir=/tmp/other"), "-project-dir=/tmp/other")
         assertRejected(listOf("--info", "-p", "/tmp/other"), "-p")
     }
 
@@ -150,6 +151,7 @@ class GradleArgumentPolicyTest {
         assertRejected(listOf("--g", "/tmp/home"), "--g")
         assertRejected(listOf("--g=/tmp/home"), "--g=/tmp/home")
         assertRejected(listOf("-gradle-user-home", "/tmp/home"), "-gradle-user-home")
+        assertRejected(listOf("-gradle-user-home=/tmp/home"), "-gradle-user-home=/tmp/home")
     }
 
     @Test
@@ -162,6 +164,7 @@ class GradleArgumentPolicyTest {
         assertRejected(listOf("--b", "other.gradle"), "--b")
         assertRejected(listOf("--b=other.gradle"), "--b=other.gradle")
         assertRejected(listOf("-build-file", "other.gradle"), "-build-file")
+        assertRejected(listOf("-build-file=other.gradle"), "-build-file=other.gradle")
         assertRejected(listOf("--settings-file", "other.settings.gradle"), "--settings-file")
         assertRejected(listOf("--settings-file=other.settings.gradle"), "--settings-file=other.settings.gradle")
         assertRejected(listOf("-c", "other.settings.gradle"), "-c")
@@ -170,6 +173,7 @@ class GradleArgumentPolicyTest {
         assertRejected(listOf("--c", "other.settings.gradle"), "--c")
         assertRejected(listOf("--c=other.settings.gradle"), "--c=other.settings.gradle")
         assertRejected(listOf("-settings-file", "other.settings.gradle"), "-settings-file")
+        assertRejected(listOf("-settings-file=other.settings.gradle"), "-settings-file=other.settings.gradle")
     }
 
     @Test
@@ -177,6 +181,7 @@ class GradleArgumentPolicyTest {
         assertRejected(listOf("--include-build", "../other"), "--include-build")
         assertRejected(listOf("--include-build=../other"), "--include-build=../other")
         assertRejected(listOf("-include-build", "../other"), "-include-build")
+        assertRejected(listOf("-include-build=../other"), "-include-build=../other")
         assertRejected(listOf("--include-build", "../a", "--include-build", "../b"), "--include-build")
     }
 
@@ -223,6 +228,8 @@ class GradleArgumentPolicyTest {
                 "plain",
                 "-console",
                 "plain",
+                "-console=plain",
+                "-project-cache-dir=.gradle",
                 "--project-cache-dir",
                 ".gradle",
                 "-project-cache-dir",
