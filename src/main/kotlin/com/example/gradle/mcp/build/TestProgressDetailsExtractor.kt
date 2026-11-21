@@ -78,6 +78,13 @@ internal object TestProgressDetailsExtractor {
         } else {
             null
         }
+        val exceptionType = map["exceptionType"] as? String
+        val recordedFailureType = (map["failureType"] as? String)?.takeIf { it.isNotBlank() }
+        val failureType = recordedFailureType ?: if (eventType == ProgressEventTypes.TEST_FAIL) {
+            TestFailureDetails.failureTypeFromExceptionType(exceptionType)
+        } else {
+            null
+        }
         return TestProgressDetailsSnapshot(
             className = map["className"] as? String,
             methodName = map["methodName"] as? String,
@@ -86,8 +93,8 @@ internal object TestProgressDetailsExtractor {
             sourceLine = (map["sourceLine"] as? Number)?.toInt(),
             sourceColumn = (map["sourceColumn"] as? Number)?.toInt(),
             failureMessage = failureMessage,
-            exceptionType = map["exceptionType"] as? String,
-            failureType = map["failureType"] as? String,
+            exceptionType = exceptionType,
+            failureType = failureType,
         ).takeUnlessBlank()
     }
 }

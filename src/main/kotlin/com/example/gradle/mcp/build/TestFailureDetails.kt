@@ -16,6 +16,32 @@ internal object TestFailureDetails {
             else -> null
         }
 
+    /**
+     * Classifies a persisted exception type the way [failureTypeFromFailure] classifies a
+     * Tooling API failure. Gradle maps `AssertionError` and the assertion subclasses it
+     * recognizes to [org.gradle.tooling.TestAssertionFailure]; every other test exception
+     * becomes [org.gradle.tooling.TestFrameworkFailure].
+     *
+     * Old `events.ndjson` rows have `exceptionType` and no `failureType`, and the class
+     * itself is not on this process's classpath, so the check uses the simple name.
+     */
+    fun failureTypeFromExceptionType(exceptionType: String?): String? {
+        val simpleName = exceptionType?.trim()?.takeIf { it.isNotEmpty() }?.substringAfterLast('.')
+            ?: return null
+        return if (isAssertionExceptionName(simpleName)) {
+            FAILURE_TYPE_ASSERTION
+        } else {
+            FAILURE_TYPE_FRAMEWORK
+        }
+    }
+
+    private fun isAssertionExceptionName(simpleName: String): Boolean =
+        simpleName.endsWith("AssertionError") ||
+            simpleName.endsWith("AssertionFailedError") ||
+            simpleName.endsWith("ComparisonFailure") ||
+            simpleName == "MultipleFailuresError" ||
+            simpleName == "MultipleAssertionsError"
+
     fun exceptionTypeFromFailure(failure: Failure?): String? {
         failure ?: return null
         (failure as? TestFailure)?.className?.takeIf { it.isNotBlank() }?.let { return it }

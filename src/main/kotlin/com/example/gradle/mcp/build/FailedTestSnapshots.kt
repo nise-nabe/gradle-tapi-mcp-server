@@ -122,8 +122,8 @@ internal object FailedTestSnapshots {
         if (!isReportableFailure(failedTest)) {
             return
         }
-        flaky.remove(failedTest.identityKey())
-        remember(failed, failedTest)
+        val previousFlaky = flaky.remove(failedTest.identityKey())
+        remember(failed, failedTest.fillingGapsFrom(previousFlaky))
     }
 
     fun recordSuccess(
@@ -142,8 +142,8 @@ internal object FailedTestSnapshots {
         flaky: LinkedHashMap<String, FailedTestSnapshot>,
         flakyTest: FailedTestSnapshot,
     ) {
-        failed.remove(flakyTest.identityKey())
-        remember(flaky, flakyTest)
+        val previousFailed = failed.remove(flakyTest.identityKey())
+        remember(flaky, flakyTest.fillingGapsFrom(previousFailed))
     }
 
     fun remember(
@@ -172,9 +172,26 @@ internal object FailedTestSnapshots {
         failedTest: FailedTestSnapshot,
     ) {
         val key = failedTest.identityKey()
-        target.remove(key)
-        target[key] = failedTest
+        val previous = target.remove(key)
+        target[key] = failedTest.fillingGapsFrom(previous)
     }
+}
+
+/**
+ * Later outcome wins where it has a value. Fields the later snapshot never recorded
+ * (for example `failureType` on an older `events.ndjson` row) stay from [previous].
+ */
+internal fun FailedTestSnapshot.fillingGapsFrom(previous: FailedTestSnapshot?): FailedTestSnapshot {
+    previous ?: return this
+    return copy(
+        className = className ?: previous.className,
+        methodName = methodName ?: previous.methodName,
+        failureMessage = failureMessage ?: previous.failureMessage,
+        exceptionType = exceptionType ?: previous.exceptionType,
+        failureType = failureType ?: previous.failureType,
+        sourceFile = sourceFile ?: previous.sourceFile,
+        line = line ?: previous.line,
+    )
 }
 
 internal data class FoldedTestOutcomes(

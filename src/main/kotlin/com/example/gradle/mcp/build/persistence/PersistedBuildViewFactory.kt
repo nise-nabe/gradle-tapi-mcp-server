@@ -5,6 +5,7 @@ import com.example.gradle.mcp.build.BuildProgressSnapshot
 import com.example.gradle.mcp.build.BuildProgressTracker
 import com.example.gradle.mcp.build.BuildFailureClassifier
 import com.example.gradle.mcp.build.BuildStatusView
+import com.example.gradle.mcp.build.FailedTestSnapshots
 import com.example.gradle.mcp.build.FailureKind
 import com.example.gradle.mcp.build.TaskExecutionPlanParser
 import com.example.gradle.mcp.protocol.ProblemsSerializer
@@ -65,12 +66,15 @@ internal object PersistedBuildViewFactory {
         } else {
             null
         }
-        val progress = attachPersistedProblems(
-            progress = progressFromEvents
-                ?: mergeEventDerivedProgress(progressFromMcp, artifacts, events, status),
+        val progress = mergeMcpTestOutcomes(
+            progress = attachPersistedProblems(
+                progress = progressFromEvents
+                    ?: mergeEventDerivedProgress(progressFromMcp, artifacts, events, status),
+                mcpResult = artifacts.mcpResult,
+                status = status,
+                isRunning = isRunning,
+            ),
             mcpResult = artifacts.mcpResult,
-            status = status,
-            isRunning = isRunning,
         )
         val progressAvailable = progress != null
         val rawError = BuildPersistenceContract.resolveError(
@@ -196,12 +200,16 @@ internal object PersistedBuildViewFactory {
         if (base == null) {
             return fromEvents
         }
+        val outcomes = FailedTestSnapshots.mergeOutcomes(
+            failedLists = listOf(base.failedTests, fromEvents.failedTests),
+            flakyLists = listOf(base.flakyTests, fromEvents.flakyTests),
+        )
         return base.copy(
             completedTaskCount = maxOf(base.completedTaskCount, fromEvents.completedTaskCount),
             runningTaskCount = fromEvents.runningTaskCount,
             failedTaskCount = maxOf(base.failedTaskCount, fromEvents.failedTaskCount),
             failedGradleTaskCount = maxOf(base.failedGradleTaskCount, fromEvents.failedGradleTaskCount),
-            failedTestCount = fromEvents.failedTestCount,
+            failedTestCount = outcomes.failedTests.size,
             completedTasks = fromEvents.completedTasks.ifEmpty { base.completedTasks },
             runningTasks = fromEvents.runningTasks,
             failedTasks = if (base.failedTasks.isNotEmpty()) base.failedTasks else fromEvents.failedTasks,
@@ -210,11 +218,41 @@ internal object PersistedBuildViewFactory {
             } else {
                 fromEvents.failedGradleTasks
             },
-            failedTestNames = fromEvents.failedTestNames,
+            failedTestNames = FailedTestSnapshots.qualifiedNames(outcomes.failedTests),
             recentEvents = fromEvents.recentEvents,
             totalEventCount = maxOf(base.totalEventCount, fromEvents.totalEventCount),
-            failedTests = fromEvents.failedTests,
-            flakyTests = fromEvents.flakyTests,
+            failedTests = outcomes.failedTests,
+            flakyTests = outcomes.flakyTests,
+        )
+    }
+
+    /**
+     * Gradle-terminal progress is built from `events.ndjson`, which older recorders wrote
+     * without `failureType`. `mcp-result.json` already has the Tooling API classification.
+     * Merge so a missing event field does not drop it.
+     */
+    private fun mergeMcpTestOutcomes(
+        progress: BuildProgressSnapshot?,
+        mcpResult: McpBuildResult?,
+    ): BuildProgressSnapshot? {
+        if (progress == null || mcpResult == null) {
+            return progress
+        }
+        if (mcpResult.testFailures.isEmpty() && mcpResult.flakyTests.isEmpty()) {
+            return progress
+        }
+        val outcomes = FailedTestSnapshots.mergeOutcomes(
+            failedLists = listOf(mcpResult.testFailures, progress.failedTests),
+            flakyLists = listOf(mcpResult.flakyTests, progress.flakyTests),
+        )
+        if (outcomes.failedTests == progress.failedTests && outcomes.flakyTests == progress.flakyTests) {
+            return progress
+        }
+        return progress.copy(
+            failedTests = outcomes.failedTests,
+            flakyTests = outcomes.flakyTests,
+            failedTestCount = outcomes.failedTests.size,
+            failedTestNames = FailedTestSnapshots.qualifiedNames(outcomes.failedTests),
         )
     }
 }

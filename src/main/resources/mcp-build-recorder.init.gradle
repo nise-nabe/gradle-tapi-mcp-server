@@ -158,6 +158,58 @@ class McpBuildRecorderSupport {
         return "failed"
     }
 
+    /**
+     * Same strings as com.example.gradle.mcp.build.TestFailureDetails.
+     * Prefer Gradle's TestFailure details: that is the flag the Tooling API turns into
+     * TestAssertionFailure vs TestFrameworkFailure. Fall back to the throwable hierarchy
+     * when the build's Gradle is older than TestResult.getFailures() (7.6).
+     */
+    static String testFailureType(TestResult result) {
+        def fromDetails = failureTypeFromReportedFailures(result)
+        if (fromDetails != null) {
+            return fromDetails
+        }
+        return failureTypeFromThrowable(result?.exception)
+    }
+
+    static String failureTypeFromReportedFailures(TestResult result) {
+        try {
+            def failures = result?.failures
+            if (failures == null || failures.isEmpty()) {
+                return null
+            }
+            def details = failures[0]?.details
+            if (details == null) {
+                return null
+            }
+            return details.isAssertionFailure() ? "assertion" : "framework"
+        } catch (Exception ignored) {
+            return null
+        }
+    }
+
+    static String failureTypeFromThrowable(Throwable throwable) {
+        def current = throwable
+        while (current != null) {
+            if (isAssertionThrowable(current)) {
+                return "assertion"
+            }
+            current = current.cause
+        }
+        return throwable == null ? null : "framework"
+    }
+
+    static boolean isAssertionThrowable(Throwable throwable) {
+        def type = throwable.getClass()
+        while (type != null) {
+            if (type.name == "java.lang.AssertionError") {
+                return true
+            }
+            type = type.superclass
+        }
+        return false
+    }
+
     static Map readLauncherMetadata(String metadataPath, File projectDirectory) {
         def parsed = new groovy.json.JsonSlurper().parse(new File(metadataPath))
         def buildId = (parsed.buildId as String)?.trim()
@@ -326,6 +378,10 @@ if (!configurationCacheRequested) {
                     if (type == "TEST_FAIL") {
                         event.failureMessage = result.exception?.message
                         event.exceptionType = result.exception?.class?.name
+                        def failureType = McpBuildRecorderSupport.testFailureType(result)
+                        if (failureType != null) {
+                            event.failureType = failureType
+                        }
                     }
                     gradle.ext.mcpAppendEvent(event)
                 }
