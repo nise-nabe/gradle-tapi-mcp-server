@@ -150,7 +150,7 @@ When `projectPath` is set, `taskSelectors` include only selectors whose task nam
 
 ## Execute
 
-`arguments` are Gradle CLI options for the connected project. `INVALID_ARGUMENT` quotes the rejected token. Rejected: `-p`/`--project-dir`, `-g`/`--gradle-user-home`, `-b`/`--build-file`, `-c`/`--settings-file`, `--include-build`, `-I`/`--init-script`, `@` argument files, `mcp.*` project properties, and `gradle.user.home` set with `-D` or `--system-prop` (also `-Dgradle.user.home` in `jvmArguments`). Gradle reads `gradle.user.home`, not `org.gradle.user.home`. Accepted shapes: separate value, `=value` (including `-project-dir=/other` and `-console=plain`), attached short form (`-g/tmp/home`), single-dash long name (`-project-dir`), and double-dash short name (`--g`). Unique prefixes such as `--project-d` are not options. `--info`, `--parallel`, `--build-cache`, `--console`, `-P`, and `-x` still work. Details: `docs/usage.md`.
+`arguments` are Gradle CLI options for the connected project. `INVALID_ARGUMENT` quotes the rejected token. Rejected: `-p`/`--project-dir`, `-g`/`--gradle-user-home`, `-b`/`--build-file`, `-c`/`--settings-file`, `--include-build`, `-I`/`--init-script`, `@` argument files, `mcp.*` project properties, and `gradle.user.home` set with `-D` or `--system-prop` (also `-Dgradle.user.home` in `jvmArguments`). Gradle reads `gradle.user.home`, not `org.gradle.user.home`. Accepted shapes: separate value, `=value` (including `-project-dir=/other` and `-console=plain`), attached short form (`-g/tmp/home`), single-dash long name (`-project-dir`), and double-dash short name (`--g`). Unique prefixes such as `--project-d` are not options. `--info`, `--parallel`, `--build-cache`, `--console`, `-P`, and `-x` still work. `jvmArguments` are a separate allowlist appended to the daemon JVM: `-Xmx`/`-Xms`/`-Xss`/`-Xmn`, documented `-XX` memory sizes (including `-XX:MaxMetaspaceSize`), `-XX:+HeapDumpOnOutOfMemoryError` (and the other documented OOM switches), and `-D` system properties that do not load agents. Agents (`-javaagent`, `-agentpath`, `-agentlib`), `-Xbootclasspath`, `-Xrun`, `--patch-module`, JVMCI / `CompileCommand` / `Flags` / `VMOptionsFile`, `@` argument files, and `JAVA_TOOL_OPTIONS`-style properties are rejected. Details: `docs/usage.md`.
 
 ### gradle_run_tasks
 
@@ -158,7 +158,7 @@ When `projectPath` is set, `taskSelectors` include only selectors whose task nam
 |----------|----------|---------|-------------|
 | `tasks` | yes | — | Task paths (e.g. `["build"]`, `[":app:test"]`) |
 | `arguments` | no | `[]` | Extra Gradle CLI args. Init scripts, `@` arg files, `mcp.*` properties, and options that retarget the project, user home, build file, settings file, or included builds are rejected |
-| `jvmArguments` | no | `[]` | JVM args for the build. `-Dgradle.user.home` and `mcp.*` project properties are rejected |
+| `jvmArguments` | no | `[]` | Extra daemon JVM args. Allowlisted: `-Xmx`/`-Xms`/`-Xss`/`-Xmn`, documented `-XX` memory sizes, `-XX:+HeapDumpOnOutOfMemoryError`, and safe `-D`. Agents, `@` files, `gradle.user.home`, and `mcp.*` are rejected |
 | `includeOutput` | no | `false` | Include stdout/stderr (task log). Default false returns outcome/buildSummary only |
 | `maxOutputChars` | no | `8000` | Per-stream char limit when `includeOutput=true` |
 | `tailOutput` | no | `true` | Keep tail when truncating |
@@ -185,7 +185,7 @@ At least one selection mechanism is required: `testClasses`, `testMethods`, or `
 | `includePatterns` | no* | `[]` | Include patterns for `withTestsFor` TestSpec (Gradle 7.6+). Applied to **every** path in `tasks` |
 | `tasks` | no | `[]` | One or more Test task paths for `TestLauncher.forTasks()` (Gradle 7.6+). Required with patterns. Use multiple paths to batch `:test` and custom suites (e.g. `:fastTest`) in **one** MCP build |
 | `arguments` | no | `[]` | Extra Gradle CLI args. Init scripts, `@` arg files, `mcp.*` properties, and options that retarget the project, user home, build file, settings file, or included builds are rejected |
-| `jvmArguments` | no | `[]` | JVM args. `-Dgradle.user.home` and `mcp.*` project properties are rejected |
+| `jvmArguments` | no | `[]` | Extra daemon JVM args. Allowlisted: `-Xmx`/`-Xms`/`-Xss`/`-Xmn`, documented `-XX` memory sizes, `-XX:+HeapDumpOnOutOfMemoryError`, and safe `-D`. Agents, `@` files, `gradle.user.home`, and `mcp.*` are rejected |
 | `includeOutput` | no | `false` | Include stdout/stderr (task log). Default false returns outcome/buildSummary only |
 | `maxOutputChars` | no | `8000` | Per-stream char limit when `includeOutput=true` |
 | `tailOutput` | no | `true` | Keep tail when truncating |
