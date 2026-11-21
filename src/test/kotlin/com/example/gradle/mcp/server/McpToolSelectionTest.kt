@@ -19,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
 
 class McpToolSelectionTest {
@@ -127,11 +128,12 @@ class McpToolSelectionTest {
 
     @Test
     fun `resources stay registered when tools are limited`() {
-        val server = newServer(ToolSelection(listOf("minimal")))
-        server.tools.keys shouldContainExactlyInAnyOrder
-            McpToolProfiles.namedSets.getValue(McpToolProfiles.MINIMAL)
-        server.resourceTemplates.map { it.uriTemplate }.sorted() shouldBe
-            GradleTapiResourceTemplates.all.map { it.uriTemplate }.sorted()
+        withServer(ToolSelection(listOf("minimal"))) { server ->
+            server.tools.keys shouldContainExactlyInAnyOrder
+                McpToolProfiles.namedSets.getValue(McpToolProfiles.MINIMAL)
+            server.resourceTemplates.map { it.uriTemplate }.sorted() shouldBe
+                GradleTapiResourceTemplates.all.map { it.uriTemplate }.sorted()
+        }
     }
 
     private fun catalogListedIn(error: ToolSelectionException): List<String> {
@@ -145,7 +147,16 @@ class McpToolSelectionTest {
     }
 
     private fun registeredToolNames(selection: ToolSelection?): Set<String> =
-        newServer(selection).tools.keys.toSet()
+        withServer(selection) { server -> server.tools.keys.toSet() }
+
+    private inline fun <T> withServer(selection: ToolSelection?, block: (Server) -> T): T {
+        val server = newServer(selection)
+        return try {
+            block(server)
+        } finally {
+            runBlocking { server.close() }
+        }
+    }
 
     private fun newServer(selection: ToolSelection?): Server {
         val connectionManager = GradleConnectionManager()
