@@ -32,6 +32,9 @@ fun Server.registerTool(
     annotations: ToolAnnotations? = null,
     handler: suspend ClientConnection.(Map<String, Any>, McpBuildNotifier?) -> CallToolResult,
 ) {
+    if (!ToolRegistration.accept(name)) {
+        return
+    }
     registeredMcpToolNames.add(name)
     addTool(
         name = name,

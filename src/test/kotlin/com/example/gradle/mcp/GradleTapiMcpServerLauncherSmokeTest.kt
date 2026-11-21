@@ -58,6 +58,32 @@ class GradleTapiMcpServerLauncherSmokeTest {
     }
 
     @Test
+    fun `unknown tools option exits on stderr and writes nothing to stdout`() {
+        val jar = projectJar()
+        val process = ProcessBuilder("java", "-jar", jar.absolutePath, "--tools=not-a-tool")
+            .directory(projectRoot())
+            .start()
+        try {
+            val finished = process.waitFor(30, TimeUnit.SECONDS)
+            if (!finished) {
+                fail<Nothing>("server did not exit after an unknown --tools name")
+            }
+            process.exitValue() shouldBe 2
+            val stdout = process.inputStream.bufferedReader(StandardCharsets.UTF_8).readText()
+            val stderr = process.errorStream.bufferedReader(StandardCharsets.UTF_8).readText()
+            stdout shouldBe ""
+            stderr shouldContain "Unknown tool or profile name(s): not-a-tool"
+            stderr shouldContain "Valid profiles: all, minimal"
+            stderr shouldContain "gradle_run_tasks"
+            stderr shouldContain "gradle_get_project_overview"
+            stderr shouldNotContain "\"jsonrpc\""
+        } finally {
+            process.destroyForcibly()
+            process.waitFor(5, TimeUnit.SECONDS)
+        }
+    }
+
+    @Test
     fun `launcher serves initialize over streamable http`() {
         val jar = projectJar()
         val port = freePort()

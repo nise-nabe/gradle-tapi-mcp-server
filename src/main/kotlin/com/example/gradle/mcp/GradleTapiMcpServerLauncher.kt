@@ -1,5 +1,6 @@
 package com.example.gradle.mcp
 
+import com.example.gradle.mcp.protocol.ToolSelectionException
 import com.example.gradle.mcp.server.ServerCliOptions
 import io.github.oshai.kotlinlogging.KotlinLoggingConfiguration
 import kotlin.system.exitProcess
@@ -19,14 +20,22 @@ object GradleTapiMcpServerLauncher {
         val options = try {
             ServerCliOptions.parse(args)
         } catch (e: IllegalArgumentException) {
-            System.err.println(e.message)
-            System.err.println(ServerCliOptions.USAGE)
-            exitProcess(2)
+            exitWithCliError(e)
         }
         if (options.showHelp) {
             println(ServerCliOptions.USAGE)
             return
         }
-        runGradleTapiMcpServer(options)
+        try {
+            runGradleTapiMcpServer(options)
+        } catch (e: ToolSelectionException) {
+            exitWithCliError(e)
+        }
+    }
+
+    private fun exitWithCliError(error: IllegalArgumentException): Nothing {
+        System.err.println(error.message)
+        System.err.println(ServerCliOptions.USAGE)
+        exitProcess(2)
     }
 }

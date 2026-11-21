@@ -12,7 +12,9 @@ import com.example.gradle.mcp.dependency.registerDependencySourceTools
 import com.example.gradle.mcp.model.registerModelTools
 import com.example.gradle.mcp.model.resolution.registerDependencyResolutionTools
 import com.example.gradle.mcp.protocol.QueryStrippingPathSegmentMatcher
+import com.example.gradle.mcp.protocol.ToolSelection
 import com.example.gradle.mcp.protocol.registerGradleTapiResources
+import com.example.gradle.mcp.protocol.registerSelectedTools
 import com.example.gradle.mcp.server.EofSignalingInputStream
 import com.example.gradle.mcp.server.McpTransport
 import com.example.gradle.mcp.server.ServerCliOptions
@@ -58,6 +60,19 @@ fun runGradleTapiMcpServer(options: ServerCliOptions = ServerCliOptions()) {
         runCatching { serverScope.cancel() }
     }
 
+    // Reject a bad --tools list before a transport is bound, so the process
+    // exits on stderr and stdio stdout stays free of MCP frames. The served
+    // server is still created when the transport starts, after auto-connect
+    // is launched, so session hold timing stays the same.
+    val toolSelection = options.toolEntries?.let(::ToolSelection)
+    if (toolSelection != null) {
+        createGradleTapiServer(
+            runtime = runtime,
+            serverScope = serverScope,
+            toolSelection = toolSelection,
+        )
+    }
+
     when (options.transport) {
         McpTransport.STDIO -> {
             // Capture the real stdout for JSON-RPC before any Tooling API
@@ -69,7 +84,7 @@ fun runGradleTapiMcpServer(options: ServerCliOptions = ServerCliOptions()) {
             serverScope.launch(Dispatchers.IO) {
                 connectionManager.tryAutoConnectFromEnvironment()
             }
-            serveStdio(runtime, serverScope, ::shutdownRuntime, protocolOut)
+            serveStdio(runtime, serverScope, ::shutdownRuntime, protocolOut, toolSelection)
         }
         McpTransport.STREAMABLE_HTTP -> {
             serverScope.launch(Dispatchers.IO) {
@@ -82,6 +97,7 @@ fun runGradleTapiMcpServer(options: ServerCliOptions = ServerCliOptions()) {
                         runtime = runtime,
                         serverScope = serverScope,
                         session = sessionFromHttpContext(context),
+                        toolSelection = toolSelection,
                     )
                 },
                 shutdownRuntime = ::shutdownRuntime,
@@ -111,6 +127,7 @@ internal fun createGradleTapiServer(
     runtime: GradleMcpRuntime,
     serverScope: CoroutineScope,
     session: SessionProjectContext = SessionProjectContext(),
+    toolSelection: ToolSelection? = null,
 ): Server {
     runtime.connectionManager.attachAmbientHolder(session)
     val server = Server(
@@ -140,6 +157,23 @@ internal fun createGradleTapiServer(
         runtime.connectionManager.releaseSession(session)
     }
 
+    server.registerSelectedTools(toolSelection) {
+        registerGradleTools(this, runtime, serverScope, session)
+    }
+    // Resources call the same payload functions as the tools and stay registered
+    // when a tool is omitted from --tools.
+    with(runtime) {
+        server.registerGradleTapiResources(session)
+    }
+    return server
+}
+
+private fun registerGradleTools(
+    server: Server,
+    runtime: GradleMcpRuntime,
+    serverScope: CoroutineScope,
+    session: SessionProjectContext,
+) {
     with(runtime) {
         server.registerConnectionTools(serverScope, session)
         server.registerJavaRuntimeTools(serverScope, session)
@@ -148,9 +182,7 @@ internal fun createGradleTapiServer(
         server.registerDependencyResolutionTools(serverScope, session)
         server.registerBuildTools(serverScope, session)
         server.registerDependencySourceTools(serverScope, session)
-        server.registerGradleTapiResources(session)
     }
-    return server
 }
 
 private fun serveStdio(
@@ -158,9 +190,14 @@ private fun serveStdio(
     serverScope: CoroutineScope,
     shutdownRuntime: suspend () -> Unit,
     protocolOut: PrintStream,
+    toolSelection: ToolSelection?,
 ) {
     val transportClosed = CountDownLatch(1)
-    val server = createGradleTapiServer(runtime, serverScope)
+    val server = createGradleTapiServer(
+        runtime,
+        serverScope,
+        toolSelection = toolSelection,
+    )
     val transport = StdioServerTransport(
         input = EofSignalingInputStream(System.`in`, transportClosed).asInput(),
         output = protocolOut.asSink().buffered(),
