@@ -29,6 +29,12 @@ import com.example.gradle.mcp.protocol.registerTool
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import kotlinx.coroutines.CoroutineScope
 
+private const val USER_GRADLE_ARGUMENTS_DESCRIPTION =
+    "Gradle CLI args. Rejects -p/-g/-b/-c/--include-build, user home, init scripts, @files, mcp.*."
+
+private const val USER_JVM_ARGUMENTS_DESCRIPTION =
+    "JVM args. Rejects gradle.user.home and mcp.*."
+
 internal fun progressProperties(): Map<String, Any> =
     mapOf(
         "includeProgress" to booleanProperty("Task/test progress. Default false."),
@@ -96,8 +102,8 @@ internal fun runOutputSchema(
         properties = mapOf(
             "projectDirectory" to resolveRequiredProjectDirectoryProperty(),
         ) + extraProperties + progressProperties() + outputProperties() + mapOf(
-            "arguments" to stringArrayProperty("Extra Gradle CLI args (no init scripts or @files)"),
-            "jvmArguments" to stringArrayProperty("Extra JVM args for the build"),
+            "arguments" to stringArrayProperty(USER_GRADLE_ARGUMENTS_DESCRIPTION),
+            "jvmArguments" to stringArrayProperty(USER_JVM_ARGUMENTS_DESCRIPTION),
         ),
     )
 
@@ -117,8 +123,8 @@ internal fun taskExecutionPlanSchema(): Map<String, Any> =
         properties = mapOf(
             "projectDirectory" to resolveRequiredProjectDirectoryProperty(),
             "tasks" to stringArrayProperty("Gradle task paths to plan via dry run (no task actions run)"),
-            "arguments" to stringArrayProperty("Extra Gradle CLI args (no init scripts or @files)"),
-            "jvmArguments" to stringArrayProperty("Extra JVM args for the build"),
+            "arguments" to stringArrayProperty(USER_GRADLE_ARGUMENTS_DESCRIPTION),
+            "jvmArguments" to stringArrayProperty(USER_JVM_ARGUMENTS_DESCRIPTION),
             "includeOutput" to booleanProperty("Stdout/stderr. Default false (plan only)."),
             "maxOutputChars" to integerProperty(
                 "Max chars per stream when includeOutput=true (default ${OutputLimitOptions.DEFAULT_MAX_OUTPUT_CHARS})",

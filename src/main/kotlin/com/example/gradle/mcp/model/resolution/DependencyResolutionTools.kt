@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.model.resolution
 
 import com.example.gradle.mcp.GradleMcpRuntime
+import com.example.gradle.mcp.build.GradleArgumentPolicy
 import com.example.gradle.mcp.connection.ProjectDirectoryResolver
 import com.example.gradle.mcp.connection.ProjectLifecycleGuard
 import com.example.gradle.mcp.connection.SessionProjectContext
@@ -67,9 +68,9 @@ internal fun parseDependencyResolutionQuery(args: Map<String, Any>): DependencyR
         includeAttributes = args.optionalBoolean("includeAttributes", default = false),
         includeOutgoingVariants = args.optionalBoolean("includeOutgoingVariants", default = false),
         maxConfigurations = args.nonNegativeIntOrDefault("maxConfigurations"),
-        prepareTasks = args.optionalStringList("prepareTasks").orEmpty()
-            .filter { it.isNotBlank() }
-            .distinct(),
+        prepareTasks = GradleArgumentPolicy.validatePrepareTasks(
+            args.optionalStringList("prepareTasks").orEmpty(),
+        ),
     )
 
 context(runtime: GradleMcpRuntime)
