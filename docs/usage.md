@@ -68,6 +68,39 @@ Accepted shapes are a separate value (`--project-dir /other`), `=value` (`--proj
 
 These names are the environment and execution options in the [Gradle command-line interface](https://docs.gradle.org/9.9.1/userguide/command_line_interface.html). `gradle.user.home` is the system property in [Build Environment](https://docs.gradle.org/9.9.1/userguide/build_environment.html). Tooling API `ConfigurableLauncher` arguments can override the project directory and Gradle user home configured on the connector ([Javadoc](https://docs.gradle.org/9.9.1/javadoc/org/gradle/tooling/ConfigurableLauncher.html)).
 
+## Daemon JVM arguments
+
+`jvmArguments` on `gradle_run_tasks`, `gradle_run_tests`, and `gradle_get_task_execution_plan` are appended to the Gradle daemon JVM. [ConfigurableLauncher.addJvmArguments](https://docs.gradle.org/9.9.1/javadoc/org/gradle/tooling/ConfigurableLauncher.html) keeps the daemon's existing JVM arguments and appends this list. A different list starts another daemon. The default is an empty list.
+
+The server allowlists the list. A client must not be able to run code in the daemon JVM. Any other token, a blank argument, or an argument that contains a control character is `INVALID_ARGUMENT`, and the message quotes that token. Allowlisted spellings are case-sensitive, matching the [`java` launcher](https://docs.oracle.com/en/java/javase/21/docs/specs/man/java.html) (`-Xmx`, not `-XMX`). Rejected agent options and `JAVA_TOOL_OPTIONS`-style names are matched without regard to case, so a wrapper cannot smuggle them by changing letters.
+
+| Allowed | Why |
+| --- | --- |
+| `-Xmx<size>`, `-Xms<size>`, `-Xss<size>`, `-Xmn<size>` | Heap and stack sizes. `<size>` is a decimal integer with an optional `k`, `m`, `g`, or `t` suffix (any letter case), the same size form as the `java` launcher's `-Xmx` / `-Xms` / `-Xss`. |
+| `-XX:MaxMetaspaceSize=<size>`, `-XX:MetaspaceSize=<size>`, `-XX:MaxDirectMemorySize=<size>`, `-XX:MaxHeapSize=<size>`, `-XX:InitialHeapSize=<size>`, `-XX:MinHeapSize=<size>`, `-XX:ThreadStackSize=<size>`, `-XX:NewSize=<size>`, `-XX:MaxNewSize=<size>`, `-XX:CompressedClassSpaceSize=<size>`, `-XX:ReservedCodeCacheSize=<size>`, `-XX:InitialCodeCacheSize=<size>` | Memory sizes only. No other `-XX` name is accepted. |
+| `-XX:+HeapDumpOnOutOfMemoryError`, `-XX:+ExitOnOutOfMemoryError`, `-XX:+CrashOnOutOfMemoryError`, and the `-XX:-` form that turns each one off | Out-of-memory behavior that does not run a command or read a file. The heap dump uses the JVM's default path. |
+| `-D<name>=<value>` and `-D<name>` | Ordinary system properties, for example `-Dfile.encoding=UTF-8`, `-Djava.awt.headless=true`, or `-Dorg.gradle.parallel=true`. `-D=name=value` is rejected; that spelling is Gradle's, not the `java` launcher's. |
+
+| Rejected | Why |
+| --- | --- |
+| `-javaagent`, `-agentpath`, `-agentlib` | Load a Java or native agent into the daemon (`java` launcher). |
+| `-Xbootclasspath`, `-Xbootclasspath/a`, `-Xbootclasspath/p` | Replace or extend the bootstrap classpath. |
+| `-Xrun` | Legacy agent interface, including `-Xrunjdwp`. |
+| `--patch-module` | Replace or augment classes inside a module. |
+| `-XX:+EnableJVMCI` and any other `-XX` option whose name contains `JVMCI`, `-XX:CompileCommand`, `-XX:CompileCommandFile`, `-XX:Flags`, `-XX:VMOptionsFile` | Load compiler code or read VM options from a file. |
+| `-XX:OnError`, `-XX:OnOutOfMemoryError` | Run a command. |
+| `-XX:+EnableDynamicAgentLoading`, `-XX:+StartAttachListener` | Allow an agent to attach to the daemon. |
+| `@file` | `java` launcher argument file. It can hide the options above. |
+| `-Dgradle.user.home` | Changes the Gradle user home (also rejected as a Gradle argument). |
+| `-Dorg.gradle.project.mcp.*` | Reserved for server build recording. |
+| `-DJAVA_TOOL_OPTIONS`, `-D_JAVA_OPTIONS`, `-DJDK_JAVA_OPTIONS`, `-DJAVA_OPTIONS`, `-DIBM_JAVA_OPTIONS` | The launcher reads these names from the environment and would apply another argument list. Any letter case is rejected. |
+| `-Dorg.gradle.jvmargs`, `-Dkotlin.daemon.jvmargs`, `-Dkotlin.daemon.jvm.options`, `-Dkotlin.daemon.jvm.*` | Another component's JVM argument list. |
+| `-Dorg.gradle.java.home`, `-Dorg.gradle.java.installations.*` | Selects a different JVM binary. |
+| `-Djava.system.class.loader`, `-Djava.security.manager`, `-Djava.security.policy`, `-Djava.security.properties`, `-Djava.security.auth.login.config`, `-Djava.protocol.handler.pkgs`, `-Djava.rmi.server.codebase`, `-Djava.ext.dirs`, `-Djava.library.path`, `-Dsun.boot.library.path`, `-Dsun.boot.class.path`, `-Djdk.attach.allowAttachSelf`, `-Djavax.management.builder.initial`, `-Dcom.sun.management.jmxremote*`, `-Dcom.sun.management.config.file`, and any property whose name contains `trustURLCodebase` | Load a class or native library, or open a remote management channel. These names are matched without regard to case. |
+| A `-D` value that embeds any rejected option | Stops a property from carrying an agent flag, `@file`, or `JAVA_TOOL_OPTIONS=...` into another parser. Whitespace, commas, and semicolons separate embedded tokens. |
+
+GC selectors (`-XX:+UseG1GC` and the other collector switches), `--add-opens`, `--add-exports`, `--add-modules`, `-XX:HeapDumpPath`, `-Xlog`, and `--enable-preview` are not in the allowlist. Put those in the build's `org.gradle.jvmargs` (`gradle.properties`). This server does not rewrite that file; the daemon still starts with it, and `jvmArguments` only adds the allowlisted extras.
+
 Build task failures are **not** tool errors: `gradle_run_tasks` / `gradle_run_tests` return `status: "failed"` / `outcome: "FAILED"` in the success payload (`isError=false`). Reserve `BUILD_FAILED` for tooling failures (for example `javaToolchains` probe errors on `gradle_get_java_runtimes`, or a model query that produced no model).
 
 Model queries (`gradle_get_project_overview`, `gradle_get_gradle_build`, `gradle_get_project_model`, `gradle_get_build_invocations`, `gradle_get_project_publications`) use Tooling API `fetch` on Gradle 9.3+. Omit `buildTreePath` for default-project `fetch(Class)`. Pass `buildTreePath` to `fetch` a specific included build or `buildSrc` project. Gradle 9.4+ can return a partial model when some projects fail (`partial: true` and capped `failures[]`, `isError=false`). Gradle 9.7 may still throw after that payload is delivered; this server keeps the model and surfaces failures (including `prepareTasks` failures, via `withDetailedFailure`). When no model is produced, the tool returns `BUILD_FAILED` with the same `failures` shape. Gradle older than 9.3 keeps all-or-nothing `getModel` and rejects `buildTreePath`. `gradle_get_help` and `gradle_get_build_environment` are unchanged.

@@ -33,7 +33,7 @@ private const val USER_GRADLE_ARGUMENTS_DESCRIPTION =
     "Gradle CLI args. Rejects -p/-g/-b/-c/--include-build, user home, init scripts, @files, mcp.*."
 
 private const val USER_JVM_ARGUMENTS_DESCRIPTION =
-    "JVM args. Rejects gradle.user.home and mcp.*."
+    "Allowlist: memory flags, safe -D. No agents."
 
 internal fun progressProperties(): Map<String, Any> =
     mapOf(
