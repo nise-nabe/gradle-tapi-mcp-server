@@ -295,7 +295,8 @@ Canonical end-user workflow (index → search → read, `tokenMode`, keep-set ti
 | `artifacts[]` | no | Explicit GAVs; skips Idea keep-set. May be versions not in the current project graph |
 | `sourcePaths[]` | no | Local trees/jars with optional GAV labels; must stay inside the project directory or the Gradle user home. Use only when the path is already known (workspace or a zip you have). Do not discover paths by listing Gradle user home |
 | `downloadSources` | no | If true with `artifacts[]`, fetch missing `*-sources.jar` into `.gradle/mcp-dependency-sources/jars/` (default false) |
-| `sourcesRepositories` | no | Maven-layout base URL(s) for `downloadSources`. Default: Maven Central. Corporate/air-gapped: pass only the internal mirror (Central is not appended). Optional `user:token@` → HTTP Basic auth |
+| `sourcesRepositories` | no | Maven-layout base URL(s) for `downloadSources`. Default: Maven Central. Corporate/air-gapped: pass only the internal mirror (Central is not appended). Default policy: HTTPS public hosts only — `http://`, private/loopback/link-local hosts, and `user:token@` userinfo are rejected unless `allowPrivateRepositories: true` |
+| `allowPrivateRepositories` | no | Permit `http://`, non-public hosts, and userinfo credentials in `sourcesRepositories` (default false) |
 | `gradleUserHome` | no | Server-side cache home for `artifacts[]` jar lookup. Override only; do not browse this directory |
 | `forceReindex` | no | Rebuild even on fingerprint hit |
 | `background` | no | Return `indexId` immediately; poll `gradle_get_dependency_sources_index_status` |

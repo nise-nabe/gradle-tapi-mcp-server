@@ -94,9 +94,10 @@ class MavenRepositorySourcesJarFetcherHttpTest {
             val destination = File(tempDir, "from-second.jar")
             val fetcher = MavenRepositorySourcesJarFetcher(
                 repositories = listOf(
-                    MavenRepositoryBase.parse(baseUrl),
+                    MavenRepositoryBase.parse(baseUrl, allowPrivateRepositories = true),
                     MavenRepositoryBase.parse(
                         "http://127.0.0.1:${second.address.port}/repository/maven-public/",
+                        allowPrivateRepositories = true,
                     ),
                 ),
                 client = testClient(),
@@ -151,6 +152,7 @@ class MavenRepositorySourcesJarFetcherHttpTest {
 
         val repo = MavenRepositoryBase.parse(
             "http://alice:s3cret@127.0.0.1:${server.address.port}/repository/maven-public/",
+            allowPrivateRepositories = true,
         )
         val destination = File(tempDir, "authed.jar")
         MavenRepositorySourcesJarFetcher(
@@ -188,7 +190,9 @@ class MavenRepositorySourcesJarFetcherHttpTest {
         // Use the production default client (Redirect.NEVER), not a test override.
         val error = shouldThrow<IOException> {
             MavenRepositorySourcesJarFetcher(
-                repositories = listOf(MavenRepositoryBase.parse(baseUrl)),
+                repositories = listOf(
+                    MavenRepositoryBase.parse(baseUrl, allowPrivateRepositories = true),
+                ),
             ).fetch(artifact, File(tempDir, "redir.jar"))
         }
         error.message shouldContain "HTTP 302"
@@ -197,7 +201,7 @@ class MavenRepositorySourcesJarFetcherHttpTest {
 
     private fun newFetcher(maxBytes: Long = MavenRepositorySourcesJarFetcher.DEFAULT_MAX_BYTES) =
         MavenRepositorySourcesJarFetcher(
-            repositories = listOf(MavenRepositoryBase.parse(baseUrl)),
+            repositories = listOf(MavenRepositoryBase.parse(baseUrl, allowPrivateRepositories = true)),
             client = testClient(),
             maxBytes = maxBytes,
         )

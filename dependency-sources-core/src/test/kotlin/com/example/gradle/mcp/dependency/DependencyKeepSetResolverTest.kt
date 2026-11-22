@@ -131,7 +131,10 @@ class DependencyKeepSetResolverTest {
 
     @Test
     fun `corporate repository base builds maven layout uri`() {
-        val repo = MavenRepositoryBase.parse("https://nexus.example.com/repository/maven-public")
+        val repo = MavenRepositoryBase.parse(
+            "https://nexus.example.com/repository/maven-public",
+            allowPrivateRepositories = true,
+        )
         val artifact = DependencyArtifactRef("com.acme", "core", "2.0.0")
         repo.sourcesJarUri(artifact).toString() shouldBe
             "https://nexus.example.com/repository/maven-public/com/acme/core/2.0.0/core-2.0.0-sources.jar"
@@ -176,9 +179,66 @@ class DependencyKeepSetResolverTest {
     }
 
     @Test
+    fun `sourcesRepositories rejects http by default`() {
+        shouldThrow<IllegalArgumentException> {
+            MavenRepositoryBase.parse("http://repo.maven.apache.org/maven2/")
+        }.message shouldContain "https"
+    }
+
+    @Test
+    fun `sourcesRepositories rejects private and loopback hosts by default`() {
+        listOf(
+            "https://127.0.0.1/maven2/",
+            "https://[::1]/maven2/",
+            "https://localhost/maven2/",
+            "https://169.254.169.254/maven2/",
+            "https://192.168.1.10/maven2/",
+            "https://10.0.0.5/maven2/",
+        ).forEach { url ->
+            shouldThrow<IllegalArgumentException> {
+                MavenRepositoryBase.parse(url)
+            }.message shouldContain "non-public"
+        }
+    }
+
+    @Test
+    fun `sourcesRepositories rejects unresolvable hosts by default`() {
+        shouldThrow<IllegalArgumentException> {
+            MavenRepositoryBase.parse("https://nonexistent.invalid/maven2/")
+        }.message shouldContain "cannot be resolved"
+    }
+
+    @Test
+    fun `sourcesRepositories rejects userinfo by default`() {
+        shouldThrow<IllegalArgumentException> {
+            MavenRepositoryBase.parse("https://alice:s3cret@8.8.8.8/maven2/")
+        }.message shouldContain "userinfo"
+    }
+
+    @Test
+    fun `sourcesRepositories accepts public https host by default`() {
+        // Literal public IP avoids depending on external DNS in tests.
+        MavenRepositoryBase.parse("https://8.8.8.8/maven2/")
+            .displayHost() shouldBe "8.8.8.8"
+    }
+
+    @Test
+    fun `allowPrivateRepositories restores http and private hosts`() {
+        MavenRepositoryBase.parse(
+            "http://alice:s3cret@192.168.1.10:8081/maven2/",
+            allowPrivateRepositories = true,
+        ).displayHost() shouldBe "192.168.1.10"
+        MavenRepositoryBase.parse(
+            "http://169.254.169.254/maven2/",
+            allowPrivateRepositories = true,
+        )
+    }
+
+    @Test
     fun `defaultOr uses only provided corporate repositories`() {
         val fetcher = MavenRepositorySourcesJarFetcher.defaultOr(
             listOf("https://nexus.example.com/repository/maven-public/"),
+            allowPrivateRepositories = true,
         )
         fetcher.shouldBeInstanceOf<MavenRepositorySourcesJarFetcher>()
     }

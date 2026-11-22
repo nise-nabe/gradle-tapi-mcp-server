@@ -52,6 +52,8 @@ class DependencySourcesFacade(
         sourcePaths.forEach { ref ->
             SourceAccessBoundary.requireWithin(ref.path, boundaryRoots, "sourcePaths entry")
         }
+        val allowPrivateRepositories =
+            args.optionalBoolean("allowPrivateRepositories", default = false)
         val forceReindex = args.optionalBoolean("forceReindex", default = false)
         val downloadSources = args.optionalBoolean("downloadSources", default = false)
         val background = args.optionalBoolean("background", default = false)
@@ -73,6 +75,7 @@ class DependencySourcesFacade(
             gradleUserHome = gradleUserHome,
             downloadSources = downloadSources,
             sourcesRepositories = sourcesRepositories,
+            allowPrivateRepositories = allowPrivateRepositories,
             // Explicit repos win; otherwise honor constructor injection (tests / Central default).
             sourcesJarFetcher = if (sourcesRepositories.isEmpty()) sourcesJarFetcher else null,
         )

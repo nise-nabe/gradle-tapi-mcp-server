@@ -2,7 +2,9 @@ package com.example.gradle.mcp.dependency
 
 import java.io.File
 import java.io.IOException
+import java.net.InetAddress
 import java.net.URI
+import java.net.UnknownHostException
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -63,7 +65,7 @@ data class MavenRepositoryBase(
         val MAVEN_CENTRAL: MavenRepositoryBase =
             MavenRepositoryBase(URI("https://repo1.maven.org/maven2/"))
 
-        fun parse(raw: String): MavenRepositoryBase {
+        fun parse(raw: String, allowPrivateRepositories: Boolean = false): MavenRepositoryBase {
             require(raw.isNotBlank()) { "sourcesRepositories entry must not be blank" }
             val trimmed = raw.trim()
             val withSlash = if (trimmed.endsWith("/")) trimmed else "$trimmed/"
@@ -76,14 +78,18 @@ data class MavenRepositoryBase(
                         error,
                     )
                 }
+            validateAccess(uri, allowPrivateRepositories)
             return MavenRepositoryBase(uri)
         }
 
-        fun parseAll(rawUrls: List<String>): List<MavenRepositoryBase> {
+        fun parseAll(
+            rawUrls: List<String>,
+            allowPrivateRepositories: Boolean = false,
+        ): List<MavenRepositoryBase> {
             require(rawUrls.isNotEmpty()) { "sourcesRepositories must not be empty when provided" }
             return rawUrls.mapIndexed { index, raw ->
                 try {
-                    parse(raw)
+                    parse(raw, allowPrivateRepositories)
                 } catch (error: IllegalArgumentException) {
                     throw IllegalArgumentException(
                         "sourcesRepositories[$index]: ${error.message}",
@@ -115,6 +121,56 @@ data class MavenRepositoryBase(
             }
             require(uri.rawQuery == null && uri.rawFragment == null) {
                 "sourcesRepositories must not include query or fragment: ${redactUserInfo(uri.toString())}"
+            }
+        }
+
+        /**
+         * SSRF guard applied to client-supplied repository URLs. By default only
+         * HTTPS URLs on publicly routable hosts are accepted; loopback,
+         * link-local (incl. cloud metadata endpoints), site-local/RFC1918,
+         * unique-local, multicast, and unresolvable hosts are rejected, as are
+         * `http://` URLs and embedded `user:password@` credentials. Passing
+         * `allowPrivateRepositories` restores the legacy behaviour for
+         * corporate mirrors on private networks.
+         */
+        private fun validateAccess(uri: URI, allowPrivateRepositories: Boolean) {
+            if (allowPrivateRepositories) return
+            val scheme = uri.scheme?.lowercase()
+            require(scheme == "https") {
+                "sourcesRepositories must use https (http requires allowPrivateRepositories): " +
+                    redactUserInfo(uri.toString())
+            }
+            require(uri.userInfo.isNullOrEmpty()) {
+                "sourcesRepositories must not contain userinfo credentials " +
+                    "(use allowPrivateRepositories for authenticated mirrors): " +
+                    redactUserInfo(uri.toString())
+            }
+            requirePublicHost(uri.host!!)
+        }
+
+        private fun requirePublicHost(host: String) {
+            val literal = host.removePrefix("[").removeSuffix("]")
+            val address =
+                try {
+                    InetAddress.getByName(literal)
+                } catch (error: UnknownHostException) {
+                    throw IllegalArgumentException(
+                        "sourcesRepositories host cannot be resolved: $host",
+                        error,
+                    )
+                }
+            val nonPublic = address.isAnyLocalAddress ||
+                address.isLoopbackAddress ||
+                address.isLinkLocalAddress ||
+                address.isSiteLocalAddress ||
+                address.isMulticastAddress ||
+                // fc00::/7 unique-local is not covered by isSiteLocalAddress.
+                (address.address.size == 16 && (address.address[0].toInt() and 0xFE) == 0xFC)
+            if (nonPublic) {
+                throw IllegalArgumentException(
+                    "sourcesRepositories host resolves to a non-public address: $host " +
+                        "(use allowPrivateRepositories for private-network mirrors)",
+                )
             }
         }
     }
@@ -251,11 +307,16 @@ class MavenRepositorySourcesJarFetcher(
                 .connectTimeout(Duration.ofSeconds(15))
                 .build()
 
-        fun defaultOr(repositoryUrls: List<String>): SourcesJarFetcher =
+        fun defaultOr(
+            repositoryUrls: List<String>,
+            allowPrivateRepositories: Boolean = false,
+        ): SourcesJarFetcher =
             if (repositoryUrls.isEmpty()) {
                 MavenCentralSourcesJarFetcher
             } else {
-                MavenRepositorySourcesJarFetcher(MavenRepositoryBase.parseAll(repositoryUrls))
+                MavenRepositorySourcesJarFetcher(
+                    MavenRepositoryBase.parseAll(repositoryUrls, allowPrivateRepositories),
+                )
             }
 
         private fun uriWithoutUserInfo(uri: URI): URI =

@@ -527,6 +527,7 @@ class DependencySourcesFacadeTest {
                 ),
                 "downloadSources" to true,
                 "sourcesRepositories" to listOf("https://nexus.example.com/repository/maven-public/"),
+                "allowPrivateRepositories" to true,
                 "tokenMode" to "idents",
             ),
             access,

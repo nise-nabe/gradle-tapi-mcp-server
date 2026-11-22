@@ -19,6 +19,12 @@ data class IndexRequest(
     val downloadSources: Boolean = false,
     val sourcesRepositories: List<String> = emptyList(),
     val sourcesJarFetcher: SourcesJarFetcher? = null,
+    /**
+     * Opt-in escape hatch for `sourcesRepositories`: permits `http://`,
+     * non-public hosts (loopback/link-local/RFC1918), and userinfo credentials.
+     * Default false restricts repositories to HTTPS public hosts.
+     */
+    val allowPrivateRepositories: Boolean = false,
 )
 
 data class SearchRequest(
@@ -87,7 +93,10 @@ class DependencyIndexStore : AutoCloseable {
         val explicit = request.artifacts.isNotEmpty() || request.sourcePaths.isNotEmpty()
         val sourcesJarCacheDir = SourcesJarCacheLayout.defaultDir(request.projectDirectory)
         val fetcher = request.sourcesJarFetcher
-            ?: MavenRepositorySourcesJarFetcher.defaultOr(request.sourcesRepositories)
+            ?: MavenRepositorySourcesJarFetcher.defaultOr(
+                request.sourcesRepositories,
+                request.allowPrivateRepositories,
+            )
         return DependencyKeepSetResolver.resolve(
             connection = if (explicit) null else connection,
             artifacts = request.artifacts,

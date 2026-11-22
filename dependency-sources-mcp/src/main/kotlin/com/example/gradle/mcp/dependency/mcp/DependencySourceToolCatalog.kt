@@ -73,14 +73,17 @@ object DependencySourceToolCatalog {
                     required = listOf("path"),
                 ),
                 "downloadSources" to booleanProperty(
-                    "Fetch missing artifacts[] jars (default false).",
+                    "Fetch missing artifacts[] jars.",
                 ),
                 "sourcesRepositories" to stringArrayProperty(
                     description = "Maven bases for downloadSources (omit=Central).",
                 ),
+                "allowPrivateRepositories" to booleanProperty(
+                    "Allow http/private/userinfo repos.",
+                ),
                 "gradleUserHome" to stringProperty("Cache home; else connected."),
                 "forceReindex" to booleanProperty("Rebuild on hit."),
-                "background" to booleanProperty("Return indexId immediately (default false)."),
+                "background" to booleanProperty("Return indexId immediately."),
             ),
         )
 
