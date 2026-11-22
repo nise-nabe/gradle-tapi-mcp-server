@@ -21,7 +21,10 @@ object SourceAccessBoundary {
         if (roots.isEmpty()) return false
         val candidate = file.canonicalFile.toPath()
         return roots.any { root ->
-            val rootPath = root.toPath()
+            // Canonicalize the root as well: callers may pass non-canonical
+            // paths (e.g. 8.3 short names on Windows) that would otherwise
+            // fail the prefix check against a canonical candidate.
+            val rootPath = root.canonicalFile.toPath()
             candidate == rootPath || candidate.startsWith(rootPath)
         }
     }
