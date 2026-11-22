@@ -290,6 +290,9 @@ class NameLocateIndex private constructor(
         /** Minimum idle time before a `.tmp-*` / `.old-*` sibling is swept. */
         internal const val STALE_SIBLING_AGE_MS: Long = 10 * 60 * 1000L
 
+        /** SHA-256 hex digest produced by [KeepSetFingerprint.compute]. */
+        private val FINGERPRINT_PATTERN = Regex("[0-9a-f]{64}")
+
         fun build(
             members: List<KeepSetMember>,
             tokenMode: TokenMode,
@@ -358,6 +361,10 @@ class NameLocateIndex private constructor(
             if (manifest.formatVersion != IndexFormat.VERSION) {
                 throw UnsupportedIndexFormatException(manifest.formatVersion, IndexFormat.VERSION)
             }
+            // Search loads cannot recompute the keep-set fingerprint, so require
+            // the SHA-256 fingerprint written at index construction instead of
+            // trusting any manifest that happens to parse.
+            if (!FINGERPRINT_PATTERN.matches(manifest.fingerprint)) return null
             if (expectedFingerprint != null && manifest.fingerprint != expectedFingerprint) return null
             val tokenMode = runCatching { TokenMode.parse(manifest.tokenMode) }.getOrNull() ?: return null
             if (expectedTokenMode != null && tokenMode != expectedTokenMode) return null

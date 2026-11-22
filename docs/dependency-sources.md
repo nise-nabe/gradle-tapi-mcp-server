@@ -10,6 +10,15 @@ Canonical agent workflow for finding types/symbols in dependency sources (index 
 
 `tokenMode` on search **must match** the index. The server does **not** silently reindex when modes differ. Prefer omitting `tokenMode` on search only when you indexed with the default `all`.
 
+## Path boundary
+
+Client-supplied paths are confined to the connected project directory and the Gradle user home reported by the Tooling API:
+
+- `sourcePaths[]` entries and an explicit `sourceRoot` must resolve inside that boundary; anything else fails with `INVALID_ARGUMENT`.
+- `source-roots.tsv` entries outside the boundary are ignored on load.
+- There is no `indexDir` override — indexes always live under `<project>/.gradle/mcp-dependency-sources/<tokenMode>/`.
+- `gradle_read_dependency_source` always resolves the project (a Gradle connection is required, including for explicit `sourceRoot`).
+
 ## `tokenMode`
 
 | Mode | Behavior | When to use |

@@ -11,6 +11,7 @@ import com.example.gradle.mcp.dependency.MavenCentralSourcesJarFetcher
 import com.example.gradle.mcp.dependency.ReadSourceRequest
 import com.example.gradle.mcp.dependency.SearchMultiRequest
 import com.example.gradle.mcp.dependency.SearchRequest
+import com.example.gradle.mcp.dependency.SourceAccessBoundary
 import com.example.gradle.mcp.dependency.SourcePathRef
 import com.example.gradle.mcp.dependency.SourcesJarCacheLayout
 import com.example.gradle.mcp.dependency.SourcesJarFetcher
@@ -37,6 +38,7 @@ class DependencySourcesFacade(
     }
 
     fun index(args: Map<String, Any>, access: DependencySourcesGradleAccess): Map<String, Any?> {
+        rejectIndexDirOverride(args)
         val projectDirectory = access.resolveProjectDirectory(args)
         val tokenMode = TokenMode.parse(args.optionalString("tokenMode"))
         val artifacts = parseArtifacts(args["artifacts"])
@@ -46,7 +48,10 @@ class DependencySourcesFacade(
             hasExplicitKeepSet = artifacts.isNotEmpty() || sourcePaths.isNotEmpty(),
         )
         val sourcesRepositories = parseSourcesRepositories(args["sourcesRepositories"])
-        val indexDir = args.optionalString("indexDir")?.let(::File)
+        val boundaryRoots = sourceBoundaryRoots(projectDirectory, access)
+        sourcePaths.forEach { ref ->
+            SourceAccessBoundary.requireWithin(ref.path, boundaryRoots, "sourcePaths entry")
+        }
         val forceReindex = args.optionalBoolean("forceReindex", default = false)
         val downloadSources = args.optionalBoolean("downloadSources", default = false)
         val background = args.optionalBoolean("background", default = false)
@@ -64,7 +69,6 @@ class DependencySourcesFacade(
             artifacts = artifacts,
             sourcePaths = sourcePaths,
             projectPath = projectPath,
-            indexDir = indexDir,
             forceReindex = forceReindex,
             gradleUserHome = gradleUserHome,
             downloadSources = downloadSources,
@@ -157,11 +161,11 @@ class DependencySourcesFacade(
     }
 
     fun search(args: Map<String, Any>, access: DependencySourcesGradleAccess): Map<String, Any?> {
+        rejectIndexDirOverride(args)
         val projectDirectory = access.resolveProjectDirectory(args)
         val query = args.requiredString("query")
         val tokenMode = args.optionalString("tokenMode")?.let(TokenMode::parse)
         val limit = args.optionalNonNegativeInt("limit")
-        val indexDir = args.optionalString("indexDir")?.let(::File)
 
         val result = store.search(
             SearchRequest(
@@ -169,19 +173,19 @@ class DependencySourcesFacade(
                 query = query,
                 tokenMode = tokenMode,
                 limit = limit,
-                indexDir = indexDir,
+                sourceBoundaryRoots = sourceBoundaryRoots(projectDirectory, access),
             ),
         )
         return searchResponse(query = query, result = result, includeMatchedQueries = false)
     }
 
     fun searchMulti(args: Map<String, Any>, access: DependencySourcesGradleAccess): Map<String, Any?> {
+        rejectIndexDirOverride(args)
         val projectDirectory = access.resolveProjectDirectory(args)
         val queries = args.requiredStringList("queries")
         val tokenMode = args.optionalString("tokenMode")?.let(TokenMode::parse)
         val limit = args.optionalNonNegativeInt("limit")
         val perQueryLimit = args.optionalNonNegativeIntWithAlias("perQueryLimit", "per_query_limit")
-        val indexDir = args.optionalString("indexDir")?.let(::File)
 
         val result = store.searchMulti(
             SearchMultiRequest(
@@ -190,13 +194,14 @@ class DependencySourcesFacade(
                 tokenMode = tokenMode,
                 limit = limit,
                 perQueryLimit = perQueryLimit,
-                indexDir = indexDir,
+                sourceBoundaryRoots = sourceBoundaryRoots(projectDirectory, access),
             ),
         )
         return searchMultiResponse(queries = queries, result = result)
     }
 
     fun read(args: Map<String, Any>, access: DependencySourcesGradleAccess): Map<String, Any?> {
+        rejectIndexDirOverride(args)
         val artifact = parseReadArtifact(args)
         val path = args.requiredString("path")
         val line = args.optionalPositiveInt("line")
@@ -205,25 +210,26 @@ class DependencySourcesFacade(
         val maxLines = args.optionalPositiveInt(
             "maxLines",
         ) ?: ReadSourceRequest.DEFAULT_MAX_LINES
-        var sourceRoot = args.optionalString("sourceRoot")?.let(::File)
-        // Explicit sourceRoot can be read without a Gradle connection (offline / hit replay).
-        val projectDirectory =
-            if (sourceRoot != null) null else access.resolveProjectDirectory(args)
+        val projectDirectory = access.resolveProjectDirectory(args)
+        val boundaryRoots = sourceBoundaryRoots(projectDirectory, access)
+        val explicitSourceRoot = args.optionalString("sourceRoot")?.let(::File)
         val gradleUserHome = resolveGradleUserHome(
             explicit = args.optionalString("gradleUserHome")?.let(::File),
             projectDirectory = projectDirectory,
             access = access,
-            needsArtifactsLookup = sourceRoot == null,
+            needsArtifactsLookup = explicitSourceRoot == null,
         )
-        if (sourceRoot == null) {
+        var sourceRoot = explicitSourceRoot
+        if (sourceRoot != null) {
+            SourceAccessBoundary.requireWithin(sourceRoot, boundaryRoots, "sourceRoot")
+        } else {
             val tokenMode = args.optionalString("tokenMode")?.let(TokenMode::parse)
             sourceRoot = resolveIndexedSourceRoot(
-                // projectDirectory is resolved above whenever sourceRoot is absent
-                projectDirectory = requireNotNull(projectDirectory),
+                projectDirectory = projectDirectory,
                 artifact = artifact,
                 path = path,
-                indexDir = args.optionalString("indexDir")?.let(::File),
                 tokenMode = tokenMode,
+                boundaryRoots = boundaryRoots,
             )
         }
 
@@ -236,7 +242,7 @@ class DependencySourcesFacade(
                 maxLines = maxLines,
                 sourceRoot = sourceRoot,
                 gradleUserHome = gradleUserHome,
-                sourcesJarCacheDir = projectDirectory?.let(SourcesJarCacheLayout::defaultDir),
+                sourcesJarCacheDir = SourcesJarCacheLayout.defaultDir(projectDirectory),
             ),
         )
         return linkedMapOf(
@@ -323,6 +329,32 @@ class DependencySourcesFacade(
         return map
     }
 
+    /**
+     * Index directories are server-managed under
+     * `<project>/.gradle/mcp-dependency-sources/<tokenMode>/`; a client-chosen
+     * directory could point reads/writes at arbitrary host paths.
+     */
+    private fun rejectIndexDirOverride(args: Map<String, Any>) {
+        if (args.containsKey("indexDir")) {
+            throw IllegalArgumentException(
+                "indexDir is not supported; indexes are stored under " +
+                    "<project>/.gradle/mcp-dependency-sources/<tokenMode>/.",
+            )
+        }
+    }
+
+    /**
+     * Boundary roots for client-supplied source paths: the connected project
+     * directory and the Gradle user home reported by the Tooling API. The
+     * explicit `gradleUserHome` argument is a cache-home override for jar
+     * lookup only — it must not widen this boundary.
+     */
+    private fun sourceBoundaryRoots(
+        projectDirectory: File,
+        access: DependencySourcesGradleAccess,
+    ): List<File> =
+        SourceAccessBoundary.roots(projectDirectory, access.gradleUserHome(projectDirectory))
+
     private fun resolveGradleUserHome(
         explicit: File?,
         projectDirectory: File?,
@@ -387,8 +419,8 @@ class DependencySourcesFacade(
         projectDirectory: File,
         artifact: DependencyArtifactRef,
         path: String,
-        indexDir: File?,
         tokenMode: TokenMode?,
+        boundaryRoots: List<File>,
     ): File? {
         val modes = if (tokenMode != null) {
             listOf(tokenMode)
@@ -397,8 +429,8 @@ class DependencySourcesFacade(
         }
         var sawAmbiguous = false
         for (mode in modes) {
-            val dir = store.resolveIndexDir(projectDirectory, mode, indexDir)
-            val roots = IndexSourceRoots.load(dir)
+            val dir = store.resolveIndexDir(projectDirectory, mode)
+            val roots = IndexSourceRoots.load(dir, allowedRoots = boundaryRoots)
             when (val resolved = IndexSourceRoots.resolve(roots, artifact.gav(), path)) {
                 is SourceRootResolution.Found -> return resolved.root
                 SourceRootResolution.Ambiguous -> sawAmbiguous = true
