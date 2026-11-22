@@ -200,7 +200,7 @@ class BuildExecutionManager(
     fun resetBuildState(reason: String, projectDirectory: File? = null) {
         ProjectLifecycleLock.withLifecycleLock(projectDirectory) {
             runner.markQueuedBuildsCancelled(reason, projectDirectory)
-            runner.markRunningBuildsCancelled(reason, projectDirectory)
+            runner.markRunningBuildsCancelled(projectDirectory)
             if (runner.shouldReplaceExecutor(projectDirectory)) {
                 runner.replaceBuildExecutor()
             }
@@ -226,7 +226,7 @@ class BuildExecutionManager(
     fun shutdown() {
         val executorToAwait = synchronized(ProjectLifecycleLock.global()) {
             runner.markQueuedBuildsCancelled("Server shutting down")
-            runner.markRunningBuildsCancelled("Server shutting down")
+            runner.markRunningBuildsCancelled()
             runner.beginExecutorShutdown()
         }
         runner.awaitExecutorTermination(executorToAwait)
