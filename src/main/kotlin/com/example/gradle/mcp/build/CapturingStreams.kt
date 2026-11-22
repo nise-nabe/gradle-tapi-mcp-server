@@ -4,14 +4,18 @@ import com.example.gradle.mcp.cache.GradlePropertiesParser
 import com.example.gradle.mcp.protocol.OutputNormalizer
 import java.io.OutputStream
 import java.io.PrintStream
-import java.nio.charset.StandardCharsets
+import java.nio.ByteBuffer
+import java.nio.CharBuffer
+import java.nio.charset.Charset
+import java.nio.charset.CodingErrorAction
 
 class TailCapturingStream(
     private val maxRetainedChars: Int = DEFAULT_MAX_RETAINED_CHARS,
+    charset: Charset = Charset.defaultCharset(),
 ) {
     private val lock = Any()
     private val buffer = StringBuilder()
-    private val decoder = Utf8StreamAccumulator()
+    private val decoder = CharsetStreamAccumulator(charset)
     private var totalChars = 0
     private var bufferCodePoints = 0
 
@@ -103,10 +107,11 @@ class TailCapturingStream(
  */
 class GradlePropertiesStreamCapture(
     private val retainKey: (String) -> Boolean = { true },
+    charset: Charset = Charset.defaultCharset(),
 ) {
     private val lock = Any()
     private val properties = linkedMapOf<String, String>()
-    private val decoder = Utf8StreamAccumulator()
+    private val decoder = CharsetStreamAccumulator(charset)
     private val lineBuffer = StringBuilder()
 
     fun asOutputStream(): OutputStream =
@@ -161,25 +166,26 @@ class GradlePropertiesStreamCapture(
 }
 
 /**
- * Accumulates UTF-8 bytes across writes and emits decoded text only for
- * complete code-point prefixes, holding a split multi-byte tail as pending.
+ * Incrementally decodes stream bytes with [Charset.defaultCharset] — the same
+ * charset the Tooling API client JVM uses to encode characters written to
+ * `setStandardOutput` / `setStandardError`. Incomplete trailing sequences are
+ * held as pending bytes across writes; malformed input decodes as U+FFFD.
  * Not thread-safe; callers synchronize around [feed] and [flush].
  */
-private class Utf8StreamAccumulator {
+private class CharsetStreamAccumulator(
+    private val charset: Charset = Charset.defaultCharset(),
+) {
+    private val decoder = charset.newDecoder()
+        .onMalformedInput(CodingErrorAction.REPLACE)
+        .onUnmappableCharacter(CodingErrorAction.REPLACE)
     private var pendingBytes = ByteArray(0)
+    private val charBuffer = CharBuffer.allocate(CHAR_BUFFER_SIZE)
 
     fun feed(bytes: ByteArray, offset: Int, length: Int, sink: (String) -> Unit) {
-        val incoming = bytes.copyOfRange(offset, offset + length)
-        val combined = if (pendingBytes.isEmpty()) incoming else pendingBytes + incoming
-        val completeLength = completePrefixLength(combined)
-        if (completeLength > 0) {
-            sink(String(combined, 0, completeLength, StandardCharsets.UTF_8))
-        }
-        pendingBytes = if (completeLength < combined.size) {
-            combined.copyOfRange(completeLength, combined.size)
-        } else {
-            ByteArray(0)
-        }
+        val combined = ByteArray(pendingBytes.size + length)
+        pendingBytes.copyInto(combined, 0, 0, pendingBytes.size)
+        bytes.copyInto(combined, pendingBytes.size, offset, offset + length)
+        pendingBytes = decode(combined, endOfInput = false, sink)
     }
 
     /** Decodes any remainder (an incomplete tail decodes as U+FFFD) and resets. */
@@ -187,37 +193,46 @@ private class Utf8StreamAccumulator {
         if (pendingBytes.isEmpty()) {
             return
         }
-        val decoded = String(pendingBytes, StandardCharsets.UTF_8)
-        pendingBytes = ByteArray(0)
-        sink(decoded)
+        pendingBytes = decode(pendingBytes, endOfInput = true, sink)
+        drainDecoder(sink)
+        decoder.reset()
     }
 
-    private fun completePrefixLength(bytes: ByteArray): Int {
-        var index = 0
-        while (index < bytes.size) {
-            val sequenceLength = sequenceLength(bytes[index])
-            if (sequenceLength <= 0) {
-                // Invalid leading byte: consume it so later bytes are not
-                // left stuck in pendingBytes. It decodes as U+FFFD.
-                index += 1
-            } else if (index + sequenceLength > bytes.size) {
-                return index
-            } else {
-                index += sequenceLength
+    /** Returns the bytes the decoder could not consume (incomplete tail). */
+    private fun decode(input: ByteArray, endOfInput: Boolean, sink: (String) -> Unit): ByteArray {
+        val byteBuffer = ByteBuffer.wrap(input)
+        val out = StringBuilder()
+        while (true) {
+            charBuffer.clear()
+            val result = decoder.decode(byteBuffer, charBuffer, endOfInput)
+            charBuffer.flip()
+            out.append(charBuffer)
+            if (!result.isOverflow) {
+                break
             }
         }
-        return bytes.size
+        if (out.isNotEmpty()) {
+            sink(out.toString())
+        }
+        return input.copyOfRange(byteBuffer.position(), input.size)
     }
 
-    private fun sequenceLength(firstByte: Byte): Int {
-        val byte = firstByte.toInt() and 0xFF
-        return when {
-            byte and 0x80 == 0 -> 1
-            byte and 0xE0 == 0xC0 -> 2
-            byte and 0xF0 == 0xE0 -> 3
-            byte and 0xF8 == 0xF0 -> 4
-            else -> 0
+    private fun drainDecoder(sink: (String) -> Unit) {
+        while (true) {
+            charBuffer.clear()
+            val result = decoder.flush(charBuffer)
+            charBuffer.flip()
+            if (charBuffer.hasRemaining()) {
+                sink(charBuffer.toString())
+            }
+            if (!result.isOverflow) {
+                return
+            }
         }
+    }
+
+    private companion object {
+        const val CHAR_BUFFER_SIZE = 8192
     }
 }
 
@@ -239,18 +254,22 @@ class CapturingStreams(
     }
 
     internal fun appendStdoutForTests(text: String) {
-        val bytes = text.toByteArray(StandardCharsets.UTF_8)
+        val bytes = text.toByteArray(Charset.defaultCharset())
         stdoutCapture.append(bytes, 0, bytes.size)
     }
 
     internal fun appendStderrForTests(text: String) {
-        val bytes = text.toByteArray(StandardCharsets.UTF_8)
+        val bytes = text.toByteArray(Charset.defaultCharset())
         stderrCapture.append(bytes, 0, bytes.size)
     }
 
     fun applyTo(launcher: org.gradle.tooling.ConfigurableLauncher<*>) {
-        launcher.setStandardOutput(PrintStream(TailOutputStream(stdoutCapture), true, StandardCharsets.UTF_8))
-        launcher.setStandardError(PrintStream(TailOutputStream(stderrCapture), true, StandardCharsets.UTF_8))
+        launcher.setStandardOutput(
+            PrintStream(TailOutputStream(stdoutCapture), true, Charset.defaultCharset()),
+        )
+        launcher.setStandardError(
+            PrintStream(TailOutputStream(stderrCapture), true, Charset.defaultCharset()),
+        )
     }
 
     private class TailOutputStream(

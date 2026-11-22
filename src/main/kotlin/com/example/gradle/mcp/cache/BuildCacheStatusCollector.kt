@@ -7,7 +7,7 @@ import org.gradle.tooling.model.build.BuildEnvironment
 import java.io.File
 import java.io.OutputStream
 import java.io.PrintStream
-import java.nio.charset.StandardCharsets
+import java.nio.charset.Charset
 
 object BuildCacheStatusCollector {
     fun collect(
@@ -111,8 +111,8 @@ object BuildCacheStatusCollector {
         val launcher = connection.newBuild()
             .forTasks("properties")
             .addArguments("-q")
-        launcher.setStandardOutput(PrintStream(capture.asOutputStream(), true, StandardCharsets.UTF_8))
-        launcher.setStandardError(PrintStream(OutputStream.nullOutputStream(), true, StandardCharsets.UTF_8))
+        launcher.setStandardOutput(PrintStream(capture.asOutputStream(), true, Charset.defaultCharset()))
+        launcher.setStandardError(PrintStream(OutputStream.nullOutputStream(), true, Charset.defaultCharset()))
         launcher.run()
         return capture.snapshotProperties()
     }

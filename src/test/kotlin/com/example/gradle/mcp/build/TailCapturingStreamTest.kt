@@ -5,6 +5,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldEndWith
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.Test
+import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -12,7 +13,7 @@ import java.util.concurrent.TimeUnit
 class TailCapturingStreamTest {
     @Test
     fun `retains only the tail of captured output`() {
-        val stream = TailCapturingStream(maxRetainedChars = 8)
+        val stream = TailCapturingStream(maxRetainedChars = 8, charset = StandardCharsets.UTF_8)
 
         stream.append("0123456789".toByteArray(StandardCharsets.UTF_8), 0, 10)
 
@@ -23,7 +24,7 @@ class TailCapturingStreamTest {
 
     @Test
     fun `buffers split utf8 bytes without replacement characters`() {
-        val stream = TailCapturingStream(maxRetainedChars = 100)
+        val stream = TailCapturingStream(maxRetainedChars = 100, charset = StandardCharsets.UTF_8)
         val bytes = "😀".toByteArray(StandardCharsets.UTF_8)
         stream.append(bytes.copyOfRange(0, 2), 0, 2)
         stream.snapshot().text shouldBe ""
@@ -34,7 +35,7 @@ class TailCapturingStreamTest {
 
     @Test
     fun `trims by code point without replacement characters`() {
-        val stream = TailCapturingStream(maxRetainedChars = 2)
+        val stream = TailCapturingStream(maxRetainedChars = 2, charset = StandardCharsets.UTF_8)
         val emoji = "😀😀😀"
         val bytes = emoji.toByteArray(StandardCharsets.UTF_8)
         stream.append(bytes, 0, bytes.size)
@@ -46,7 +47,7 @@ class TailCapturingStreamTest {
 
     @Test
     fun `normalizes CRLF in snapshot`() {
-        val stream = TailCapturingStream(maxRetainedChars = 32)
+        val stream = TailCapturingStream(maxRetainedChars = 32, charset = StandardCharsets.UTF_8)
         stream.append("a\r\nb".toByteArray(StandardCharsets.UTF_8), 0, 4)
 
         stream.snapshot().text shouldBe "a\nb"
@@ -55,7 +56,7 @@ class TailCapturingStreamTest {
 
     @Test
     fun `joins split CRLF across appends`() {
-        val stream = TailCapturingStream(maxRetainedChars = 32)
+        val stream = TailCapturingStream(maxRetainedChars = 32, charset = StandardCharsets.UTF_8)
         stream.append("a\r".toByteArray(StandardCharsets.UTF_8), 0, 2)
         stream.append("\nb".toByteArray(StandardCharsets.UTF_8), 0, 2)
 
@@ -65,7 +66,7 @@ class TailCapturingStreamTest {
 
     @Test
     fun `decodes two byte utf8 sequences`() {
-        val stream = TailCapturingStream(maxRetainedChars = 32)
+        val stream = TailCapturingStream(maxRetainedChars = 32, charset = StandardCharsets.UTF_8)
         val bytes = "Я".toByteArray(StandardCharsets.UTF_8)
         stream.append(bytes, 0, bytes.size)
 
@@ -73,8 +74,19 @@ class TailCapturingStreamTest {
     }
 
     @Test
+    fun `decodes with the JVM default charset`() {
+        val stream = TailCapturingStream(maxRetainedChars = 32)
+        val text = "café"
+        val bytes = text.toByteArray(Charset.defaultCharset())
+
+        stream.append(bytes, 0, bytes.size)
+
+        stream.snapshot().text shouldBe text
+    }
+
+    @Test
     fun `supports concurrent writes and reads`() {
-        val stream = TailCapturingStream(maxRetainedChars = 256)
+        val stream = TailCapturingStream(maxRetainedChars = 256, charset = StandardCharsets.UTF_8)
         val pool = Executors.newFixedThreadPool(4)
 
         val futures = (1..100).map {
@@ -95,7 +107,7 @@ class TailCapturingStreamTest {
 
     @Test
     fun `decodes invalid leading byte as replacement without stalling`() {
-        val stream = TailCapturingStream(maxRetainedChars = 100)
+        val stream = TailCapturingStream(maxRetainedChars = 100, charset = StandardCharsets.UTF_8)
         val bytes = byteArrayOf(0x93.toByte()) + "hello".toByteArray(StandardCharsets.UTF_8)
 
         stream.append(bytes, 0, bytes.size)
@@ -105,7 +117,7 @@ class TailCapturingStreamTest {
 
     @Test
     fun `recovers from invalid byte in the middle of output`() {
-        val stream = TailCapturingStream(maxRetainedChars = 100)
+        val stream = TailCapturingStream(maxRetainedChars = 100, charset = StandardCharsets.UTF_8)
         val bytes = "abc".toByteArray(StandardCharsets.UTF_8) +
             byteArrayOf(0x80.toByte()) +
             "def".toByteArray(StandardCharsets.UTF_8)
@@ -117,7 +129,7 @@ class TailCapturingStreamTest {
 
     @Test
     fun `invalid byte does not block a pending multi byte sequence`() {
-        val stream = TailCapturingStream(maxRetainedChars = 100)
+        val stream = TailCapturingStream(maxRetainedChars = 100, charset = StandardCharsets.UTF_8)
         val emoji = "\uD83D\uDE00".toByteArray(StandardCharsets.UTF_8)
         val first = byteArrayOf(0x93.toByte()) + emoji.copyOfRange(0, 2)
 
@@ -130,7 +142,7 @@ class TailCapturingStreamTest {
 
     @Test
     fun `finish normalizes a trailing carriage return`() {
-        val stream = TailCapturingStream(maxRetainedChars = 32)
+        val stream = TailCapturingStream(maxRetainedChars = 32, charset = StandardCharsets.UTF_8)
         stream.append("a\rb".toByteArray(StandardCharsets.UTF_8), 0, 3)
         stream.append("c\r".toByteArray(StandardCharsets.UTF_8), 0, 2)
 
@@ -144,7 +156,7 @@ class TailCapturingStreamTest {
 
     @Test
     fun `finish flushes pending utf8 bytes before resolving trailing carriage return`() {
-        val stream = TailCapturingStream(maxRetainedChars = 32)
+        val stream = TailCapturingStream(maxRetainedChars = 32, charset = StandardCharsets.UTF_8)
         val bytes = "😀".toByteArray(StandardCharsets.UTF_8)
         stream.append("x\r".toByteArray(StandardCharsets.UTF_8), 0, 2)
         stream.append(bytes.copyOfRange(0, 2), 0, 2)
@@ -156,7 +168,7 @@ class TailCapturingStreamTest {
 
     @Test
     fun `finish is idempotent`() {
-        val stream = TailCapturingStream(maxRetainedChars = 32)
+        val stream = TailCapturingStream(maxRetainedChars = 32, charset = StandardCharsets.UTF_8)
         stream.append("a\r".toByteArray(StandardCharsets.UTF_8), 0, 2)
 
         stream.finish()
@@ -168,7 +180,7 @@ class TailCapturingStreamTest {
 
     @Test
     fun `amortized trim past twice the cap keeps the exact code point tail`() {
-        val stream = TailCapturingStream(maxRetainedChars = 6)
+        val stream = TailCapturingStream(maxRetainedChars = 6, charset = StandardCharsets.UTF_8)
         // 6 code points: fits under 2x cap, no trim yet.
         stream.appendUtf8("😀😀0123")
         // 14 code points total > 12: real trim; the dropped region contains

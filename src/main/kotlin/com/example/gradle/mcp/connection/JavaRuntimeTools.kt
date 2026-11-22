@@ -20,7 +20,7 @@ import org.gradle.tooling.ProjectConnection
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
-import java.nio.charset.StandardCharsets
+import java.nio.charset.Charset
 
 private const val JAVA_RUNTIMES_DETECTION_SOURCE_BUILD_ENVIRONMENT = "buildEnvironment"
 private const val JAVA_RUNTIMES_DETECTION_SOURCE_TOOLCHAINS_TASK = "javaToolchainsTask"
@@ -169,8 +169,8 @@ internal object JavaRuntimesCollector {
             val launcher = connection.newBuild()
                 .forTasks("javaToolchains")
                 .addArguments("-q")
-            launcher.setStandardOutput(PrintStream(stdout, true, StandardCharsets.UTF_8))
-            launcher.setStandardError(PrintStream(stderr, true, StandardCharsets.UTF_8))
+            launcher.setStandardOutput(PrintStream(stdout, true, Charset.defaultCharset()))
+            launcher.setStandardError(PrintStream(stderr, true, Charset.defaultCharset()))
             launcher.run()
         } catch (exception: Exception) {
             if (exception is InterruptedException) {
@@ -182,7 +182,7 @@ internal object JavaRuntimesCollector {
                 exception,
             )
         }
-        return JavaToolchainsParser.parse(stdout.toString(StandardCharsets.UTF_8))
+        return JavaToolchainsParser.parse(stdout.toString(Charset.defaultCharset()))
     }
 
     private fun buildFailureMessage(
@@ -191,8 +191,8 @@ internal object JavaRuntimesCollector {
         stdout: ByteArrayOutputStream,
         stderr: ByteArrayOutputStream,
     ): String {
-        val stdoutExcerpt = stdout.toString(StandardCharsets.UTF_8).trim().take(300)
-        val stderrExcerpt = stderr.toString(StandardCharsets.UTF_8).trim().take(300)
+        val stdoutExcerpt = stdout.toString(Charset.defaultCharset()).trim().take(300)
+        val stderrExcerpt = stderr.toString(Charset.defaultCharset()).trim().take(300)
         return buildString {
             append("Failed to detect installed JDKs for ${projectDirectory.path} via `javaToolchains -q`.")
             exception.message?.takeIf(String::isNotBlank)?.let { append(" $it") }
