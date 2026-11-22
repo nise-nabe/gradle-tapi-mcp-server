@@ -36,9 +36,9 @@ Every tool below is registered unless the server is started with `--tools` or `G
 Every tool declares MCP `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) so clients can gate permissions and approval modes:
 
 - **Read-only, local** (`readOnlyHint: true`, `openWorldHint: false`): `gradle_connection_status`, `gradle_get_build_status`, `gradle_list_builds`, `gradle_get_dependency_sources_index_status`, `gradle_search_dependency_sources`, `gradle_search_dependency_sources_multi`
-- **Read-only, may run Gradle or download artifacts** (`readOnlyHint: true`, `openWorldHint: true`): all `gradle_get_*` model/environment/help tools, `gradle_get_task_execution_plan`, `gradle_read_dependency_source`
+- **Read-only, may run Gradle or download artifacts** (`readOnlyHint: true`, `openWorldHint: true`): `gradle_get_build_environment`, `gradle_read_dependency_source`
 - **State-changing, additive** (`readOnlyHint: false`, `destructiveHint: false`): `gradle_disconnect`, `gradle_cancel_build` (local); `gradle_connect`, `gradle_index_dependency_sources` (`openWorldHint: true`, may download)
-- **Build execution** (`readOnlyHint: false`, `destructiveHint: true`): `gradle_run_tasks`, `gradle_run_tests`
+- **Build execution** (`readOnlyHint: false`, `destructiveHint: true`): `gradle_run_tasks`, `gradle_run_tests`, `gradle_get_task_execution_plan`, and every tool that can run Gradle tasks — model queries with `prepareTasks` (`gradle_get_project_overview`, `gradle_get_gradle_build`, `gradle_get_project_model`, `gradle_get_build_invocations`, `gradle_get_project_publications`, `gradle_get_help`, `gradle_get_dependency_resolution`), `gradle_get_java_runtimes` (`javaToolchains`), and `gradle_get_build_cache_status` (`properties` task / configuration-cache probe)
 
 ### `gradle_run_tests` parameters
 

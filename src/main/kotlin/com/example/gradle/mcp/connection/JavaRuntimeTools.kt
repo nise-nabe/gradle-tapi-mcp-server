@@ -237,7 +237,7 @@ fun Server.registerJavaRuntimeTools(scope: CoroutineScope, session: SessionProje
         name = "gradle_get_java_runtimes",
         description = McpToolDescriptions.JAVA_RUNTIMES,
         schema = javaRuntimesSchema(),
-        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
+        annotations = McpToolAnnotations.EXECUTE,
     ) { args ->
         jsonResult(javaRuntimesPayload(runtime, args, session))
     }

@@ -246,7 +246,7 @@ fun Server.registerModelTools(scope: CoroutineScope, session: SessionProjectCont
         name = "gradle_get_project_overview",
         description = McpToolDescriptions.PROJECT_OVERVIEW,
         schema = scopedProjectTreeSchema(),
-        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
+        annotations = McpToolAnnotations.EXECUTE,
     ) { args ->
         jsonResult(projectOverviewPayload(runtime, args, session))
     }
@@ -255,7 +255,7 @@ fun Server.registerModelTools(scope: CoroutineScope, session: SessionProjectCont
         name = "gradle_get_gradle_build",
         description = McpToolDescriptions.GRADLE_BUILD,
         schema = projectTreeSchema(),
-        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
+        annotations = McpToolAnnotations.EXECUTE,
     ) { args ->
         rejectUnsupportedProjectPath(args, "gradle_get_gradle_build")
         rejectUnsupportedBuildTreePath(args, "gradle_get_gradle_build")
@@ -279,7 +279,7 @@ fun Server.registerModelTools(scope: CoroutineScope, session: SessionProjectCont
         name = "gradle_get_project_model",
         description = McpToolDescriptions.PROJECT_MODEL,
         schema = modelQuerySchema(),
-        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
+        annotations = McpToolAnnotations.EXECUTE,
     ) { args ->
         val options = ModelQueryOptions.fromArgs(args)
         val treeOptions = ProjectTreeOptions.fromArgs(args)
@@ -311,7 +311,7 @@ fun Server.registerModelTools(scope: CoroutineScope, session: SessionProjectCont
         name = "gradle_get_build_invocations",
         description = McpToolDescriptions.BUILD_INVOCATIONS,
         schema = buildInvocationsQuerySchema(),
-        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
+        annotations = McpToolAnnotations.EXECUTE,
     ) { args ->
         val options = ModelQueryOptions.fromArgs(args).copy(includeTasks = true)
         val treeOptions = ProjectTreeOptions.fromArgs(args)
@@ -344,7 +344,7 @@ fun Server.registerModelTools(scope: CoroutineScope, session: SessionProjectCont
         name = "gradle_get_project_publications",
         description = McpToolDescriptions.PROJECT_PUBLICATIONS,
         schema = publicationsSchema(),
-        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
+        annotations = McpToolAnnotations.EXECUTE,
     ) { args ->
         rejectUnsupportedProjectPath(args, "gradle_get_project_publications")
         val buildTreePath = parseBuildTreePathArg(args)
@@ -368,7 +368,7 @@ fun Server.registerModelTools(scope: CoroutineScope, session: SessionProjectCont
         name = "gradle_get_help",
         description = McpToolDescriptions.HELP,
         schema = helpSchema(),
-        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
+        annotations = McpToolAnnotations.EXECUTE,
     ) { args ->
         rejectUnsupportedProjectPath(args, "gradle_get_help")
         rejectUnsupportedBuildTreePath(args, "gradle_get_help")
