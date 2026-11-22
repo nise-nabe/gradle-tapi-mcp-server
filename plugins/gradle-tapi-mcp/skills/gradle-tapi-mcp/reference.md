@@ -352,7 +352,7 @@ Scheme: `gradle-tapi://{url-encoded-absolute-project-root}/…` (`mimeType`: `ap
 
 `resources/templates/list` always lists the five templates. `resources/list` lists concrete URIs for projects connected at **server startup** (typically `GRADLE_PROJECT_DIR` auto-connect); build status stays template-only. Later `gradle_connect` / `gradle_disconnect` do not update that list (`listChanged` is off). `resources/read` still matches the templates for any encoded project root. Subscribe is off.
 
-**ProjectLifecycleGuard:** overview **rejects** while an MCP build is active for that project (same as the tool). The JSON-RPC error `data.error` includes `code` (`BUILD_ALREADY_RUNNING`), `message`, and `activeBuildId` / related fields. No stale snapshot. Other Phase 1 resources follow their tools.
+**ProjectLifecycleGuard:** overview **rejects** while an MCP build is active for that project (same as the tool). The JSON-RPC error uses code `-32003` for domain conflicts and `data.error` includes `code` (`BUILD_ALREADY_RUNNING`), `message`, and `activeBuildId` / related fields. No stale snapshot. Other Phase 1 resources follow their tools.
 
 ## Limiting registered tools
 

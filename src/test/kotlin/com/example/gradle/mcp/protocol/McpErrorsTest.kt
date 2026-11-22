@@ -80,7 +80,7 @@ class McpErrorsTest {
 
         val sdk = protocol.toSdkResourceException()
 
-        sdk.code shouldBe RPCError.ErrorCode.INTERNAL_ERROR
+        sdk.code shouldBe RESOURCE_CONFLICT_RPC_CODE
         sdk.message shouldBe protocol.message
         val payload = decodeMcpJsonMap(sdk.data.toString())
         payload["error"] shouldBe mapOf(
@@ -88,6 +88,20 @@ class McpErrorsTest {
             "message" to protocol.message,
             "activeBuildId" to "running-build",
         )
+    }
+
+    @Test
+    fun `build queue full resource errors use the conflict RPC code`() {
+        val sdk = McpException(McpErrorCode.BUILD_QUEUE_FULL, "Queue full").toSdkResourceException()
+        sdk.code shouldBe RESOURCE_CONFLICT_RPC_CODE
+        val payload = decodeMcpJsonMap(sdk.data.toString())
+        payload["error"] shouldBe mapOf("code" to "BUILD_QUEUE_FULL", "message" to "Queue full")
+    }
+
+    @Test
+    fun `internal resource errors keep the internal RPC code`() {
+        val sdk = McpException(McpErrorCode.INTERNAL_ERROR, "boom").toSdkResourceException()
+        sdk.code shouldBe RPCError.ErrorCode.INTERNAL_ERROR
     }
 
     @Test
