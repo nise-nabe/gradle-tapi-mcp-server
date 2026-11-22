@@ -10,6 +10,7 @@ import com.example.gradle.mcp.cache.CompletedBuildSnapshot
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.model.ResilientModelPayload
 import com.example.gradle.mcp.model.phasedConnection
+import org.gradle.tooling.CancellationToken
 import org.gradle.tooling.CancellationTokenSource
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ProjectConnection
@@ -22,6 +23,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 internal fun queuedTracker(): BuildProgressTracker =
     BuildProgressTracker(initialStatus = BuildProgressTracker.STATUS_QUEUED)
@@ -184,6 +186,47 @@ internal fun blockingProjectConnection(
                         releaseBuild.await(5, TimeUnit.SECONDS)
                     },
                 )
+                else -> defaultProxyReturn(method)
+            }
+        },
+    ) as ProjectConnection
+
+/**
+ * BuildLauncher captures the [CancellationToken] passed to
+ * `withCancellationToken` and blocks in `run()` until it is cancelled,
+ * then throws — letting tests observe the token fired by MCP request
+ * cancellation.
+ */
+internal fun cancellationAwareProjectConnection(
+    tokenHolder: AtomicReference<CancellationToken?>,
+    runStarted: CountDownLatch,
+): ProjectConnection =
+    Proxy.newProxyInstance(
+        ProjectConnection::class.java.classLoader,
+        arrayOf(ProjectConnection::class.java),
+        InvocationHandler { _, method, _ ->
+            when (method.name) {
+                "newBuild" -> selfReturningProxy(
+                    Class.forName("org.gradle.tooling.BuildLauncher"),
+                ) { self, launcherMethod, args ->
+                    when (launcherMethod.name) {
+                        "withCancellationToken" -> {
+                            tokenHolder.set(args?.firstOrNull() as CancellationToken)
+                            self
+                        }
+                        "run" -> {
+                            runStarted.countDown()
+                            val deadline = System.currentTimeMillis() + 10_000
+                            while (tokenHolder.get()?.isCancellationRequested != true &&
+                                System.currentTimeMillis() < deadline
+                            ) {
+                                Thread.sleep(10)
+                            }
+                            throw IllegalStateException("build stopped")
+                        }
+                        else -> self
+                    }
+                }
                 else -> defaultProxyReturn(method)
             }
         },
