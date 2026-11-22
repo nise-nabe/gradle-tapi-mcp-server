@@ -14,7 +14,6 @@ data class IndexRequest(
     val sourcePaths: List<SourcePathRef> = emptyList(),
     /** When set (Idea keep-set only), index dependencies for this project subtree. */
     val projectPath: String? = null,
-    val indexDir: File? = null,
     val forceReindex: Boolean = false,
     val gradleUserHome: File? = null,
     val downloadSources: Boolean = false,
@@ -27,7 +26,8 @@ data class SearchRequest(
     val query: String,
     val tokenMode: TokenMode? = null,
     val limit: Int? = null,
-    val indexDir: File? = null,
+    /** Canonical roots that `source-roots.tsv` entries must stay within; empty disables filtering. */
+    val sourceBoundaryRoots: List<File> = emptyList(),
 )
 
 data class SearchMultiRequest(
@@ -36,7 +36,8 @@ data class SearchMultiRequest(
     val tokenMode: TokenMode? = null,
     val limit: Int? = null,
     val perQueryLimit: Int? = null,
-    val indexDir: File? = null,
+    /** Canonical roots that `source-roots.tsv` entries must stay within; empty disables filtering. */
+    val sourceBoundaryRoots: List<File> = emptyList(),
 )
 
 data class IndexResult(
@@ -76,12 +77,8 @@ class DependencyIndexStore : AutoCloseable {
     fun defaultIndexDir(projectDirectory: File, tokenMode: TokenMode): File =
         File(projectDirectory, ".gradle/mcp-dependency-sources/${tokenMode.wireName()}")
 
-    fun resolveIndexDir(projectDirectory: File, tokenMode: TokenMode, override: File?): File =
-        if (override != null) {
-            File(override, tokenMode.wireName())
-        } else {
-            defaultIndexDir(projectDirectory, tokenMode)
-        }
+    fun resolveIndexDir(projectDirectory: File, tokenMode: TokenMode): File =
+        defaultIndexDir(projectDirectory, tokenMode)
 
     fun resolveKeepSet(
         request: IndexRequest,
@@ -128,7 +125,7 @@ class DependencyIndexStore : AutoCloseable {
             keepSetMode = keepSet.mode,
             members = keepSet.members,
         )
-        val indexDir = resolveIndexDir(request.projectDirectory, request.tokenMode, request.indexDir)
+        val indexDir = resolveIndexDir(request.projectDirectory, request.tokenMode)
         val key = cacheKey(request.projectDirectory, request.tokenMode, indexDir)
 
         if (request.forceReindex) {
@@ -205,12 +202,12 @@ class DependencyIndexStore : AutoCloseable {
         // Only the index reads need the lock; enriching hits touches the
         // filesystem (source-roots.tsv + source jars), not mapped buffers.
         val stage = cacheLock.readLock().withLock {
-            val index = loadForSearch(request.projectDirectory, request.tokenMode, request.indexDir)
+            val index = loadForSearch(request.projectDirectory, request.tokenMode)
                 ?: throw IllegalArgumentException(
                     "No dependency-sources index found for this project/tokenMode. " +
                         "Call gradle_index_dependency_sources first.",
                 )
-            val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode, request.indexDir)
+            val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode)
             when (val limit = request.limit ?: DEFAULT_SEARCH_HIT_LIMIT) {
                 0 -> {
                     index.locate(request.query, limit = 0)
@@ -240,7 +237,7 @@ class DependencyIndexStore : AutoCloseable {
                 }
             }
         }
-        val hits = enrichHits(stage.indexDir, stage.hits)
+        val hits = enrichHits(stage.indexDir, stage.hits, request.sourceBoundaryRoots)
         return SearchResult(
             hits = hits,
             stats = stage.stats,
@@ -257,12 +254,12 @@ class DependencyIndexStore : AutoCloseable {
             "perQueryLimit must be non-negative"
         }
         val stage = cacheLock.readLock().withLock {
-            val index = loadForSearch(request.projectDirectory, request.tokenMode, request.indexDir)
+            val index = loadForSearch(request.projectDirectory, request.tokenMode)
                 ?: throw IllegalArgumentException(
                     "No dependency-sources index found for this project/tokenMode. " +
                         "Call gradle_index_dependency_sources first.",
                 )
-            val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode, request.indexDir)
+            val indexDir = resolveIndexDir(request.projectDirectory, index.tokenMode)
             when (val limit = request.limit ?: DEFAULT_SEARCH_HIT_LIMIT) {
                 0 -> {
                     for (query in request.queries.distinct()) {
@@ -302,7 +299,7 @@ class DependencyIndexStore : AutoCloseable {
                 }
             }
         }
-        val hits = enrichHits(stage.indexDir, stage.hits)
+        val hits = enrichHits(stage.indexDir, stage.hits, request.sourceBoundaryRoots)
         return SearchMultiResult(
             hits = hits,
             stats = stage.stats,
@@ -326,12 +323,11 @@ class DependencyIndexStore : AutoCloseable {
     private fun loadForSearch(
         projectDirectory: File,
         tokenMode: TokenMode?,
-        indexDirOverride: File?,
     ): NameLocateIndex? {
         val modes = if (tokenMode != null) listOf(tokenMode) else listOf(TokenMode.ALL, TokenMode.IDENTS)
         var staleFormatError: UnsupportedIndexFormatException? = null
         for (mode in modes) {
-            val indexDir = resolveIndexDir(projectDirectory, mode, indexDirOverride)
+            val indexDir = resolveIndexDir(projectDirectory, mode)
             val key = cacheKey(projectDirectory, mode, indexDir)
             memory[key]?.let { return it }
             val loaded =
@@ -377,9 +373,13 @@ class DependencyIndexStore : AutoCloseable {
         val truncated: Boolean,
     )
 
-    private fun enrichHits(indexDir: File, hits: List<LocateHit>): List<LocateHit> {
+    private fun enrichHits(
+        indexDir: File,
+        hits: List<LocateHit>,
+        allowedRoots: List<File>,
+    ): List<LocateHit> {
         if (hits.isEmpty()) return hits
-        val roots = IndexSourceRoots.load(indexDir)
+        val roots = IndexSourceRoots.load(indexDir, allowedRoots)
         if (roots.isEmpty()) return hits
         return hits.map { hit ->
             if (hit.sourceRoot != null) return@map hit

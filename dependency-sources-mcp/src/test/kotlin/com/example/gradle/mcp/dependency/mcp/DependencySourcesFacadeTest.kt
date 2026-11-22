@@ -771,31 +771,84 @@ class DependencySourcesFacadeTest {
         """.trimIndent()
 
     @Test
-    fun `read with explicit sourceRoot does not require project directory resolution`() {
-        val tree = File(tempDir, "offline-read").apply { mkdirs() }
-        File(tree, "Offline.kt").writeText("class Offline\n")
-        val access = object : DependencySourcesGradleAccess {
-            override fun resolveProjectDirectory(args: Map<String, Any>): File =
-                error("resolveProjectDirectory must not be called when sourceRoot is explicit")
+    fun `read with explicit sourceRoot inside the project boundary succeeds`() {
+        val project = File(tempDir, "proj-read-root-ok").apply { mkdirs() }
+        val tree = File(project, "read-tree").apply { mkdirs() }
+        File(tree, "Demo.java").writeText("class Demo {}")
+        val access = StubAccess(project, connectedGradleUserHome = null)
+        val facade = DependencySourcesFacade()
 
-            override fun gradleUserHome(projectDirectory: File): File? =
-                error("gradleUserHome must not be called when sourceRoot is explicit")
-
-            override fun <T> withConnection(projectDirectory: File, block: (ProjectConnection) -> T): T =
-                error("connection must not be required")
-
-            override fun <T> withNoActiveBuild(projectDirectory: File, block: () -> T): T = block()
-        }
-        val result = DependencySourcesFacade().read(
+        val result = facade.read(
             mapOf(
-                "gav" to "local:offline:0",
-                "path" to "Offline.kt",
+                "gav" to "local:demo:0",
+                "path" to "Demo.java",
                 "sourceRoot" to tree.absolutePath,
             ),
             access,
         )
-        result["snippet"] shouldBe "class Offline"
+
+        result["snippet"] shouldBe "class Demo {}"
         result["truncated"] shouldBe false
+    }
+
+    @Test
+    fun `read rejects explicit sourceRoot outside the project boundary`() {
+        val outside = File(tempDir, "outside-read-root").apply { mkdirs() }
+        File(outside, "Secret.kt").writeText("class Secret\n")
+        val project = File(tempDir, "proj-read-root-denied").apply { mkdirs() }
+        val access = StubAccess(project, connectedGradleUserHome = null)
+
+        val error = shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().read(
+                mapOf(
+                    "gav" to "local:secret:0",
+                    "path" to "Secret.kt",
+                    "sourceRoot" to outside.absolutePath,
+                ),
+                access,
+            )
+        }
+        error.message shouldContain "outside the allowed source boundary"
+    }
+
+    @Test
+    fun `index rejects sourcePaths outside the project boundary`() {
+        val outside = File(tempDir, "outside-src").apply { mkdirs() }
+        File(outside, "A.kt").writeText("class A\n")
+        val project = File(tempDir, "proj-src-denied").apply { mkdirs() }
+        val access = StubAccess(project, connectedGradleUserHome = null)
+
+        val error = shouldThrow<IllegalArgumentException> {
+            DependencySourcesFacade().index(
+                mapOf("sourcePaths" to listOf(mapOf("path" to outside.absolutePath))),
+                access,
+            )
+        }
+        error.message shouldContain "outside the allowed source boundary"
+    }
+
+    @Test
+    fun `indexDir override is rejected on index search and read`() {
+        val project = File(tempDir, "proj-indexdir").apply { mkdirs() }
+        val access = StubAccess(project)
+        val facade = DependencySourcesFacade()
+
+        shouldThrow<IllegalArgumentException> {
+            facade.index(mapOf("indexDir" to tempDir.absolutePath), access)
+        }.message shouldContain "indexDir is not supported"
+        shouldThrow<IllegalArgumentException> {
+            facade.search(mapOf("query" to "Foo", "indexDir" to tempDir.absolutePath), access)
+        }.message shouldContain "indexDir is not supported"
+        shouldThrow<IllegalArgumentException> {
+            facade.read(
+                mapOf(
+                    "gav" to "g:n:1",
+                    "path" to "A.kt",
+                    "indexDir" to tempDir.absolutePath,
+                ),
+                access,
+            )
+        }.message shouldContain "indexDir is not supported"
     }
 
     @Test
@@ -1161,7 +1214,9 @@ class DependencySourcesFacadeTest {
 
 private class StubAccess(
     private val projectDirectory: File,
-    private val connectedGradleUserHome: File? = null,
+    // Defaults to the project parent so sibling fixture dirs (sources trees,
+    // fake Gradle homes) stay inside the source boundary in tests.
+    private val connectedGradleUserHome: File? = projectDirectory.parentFile,
 ) : DependencySourcesGradleAccess {
     override fun resolveProjectDirectory(args: Map<String, Any>): File = projectDirectory
 

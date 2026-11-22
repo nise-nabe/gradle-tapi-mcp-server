@@ -595,6 +595,25 @@ class NameLocateIndexTest {
     }
 
     @Test
+    fun `tryLoad rejects manifest without SHA-256 fingerprint`() {
+        val sources = File(tempDir, "src-badfp").apply { mkdirs() }
+        File(sources, "A.kt").writeText("fun Foo() {}")
+        val members = listOf(KeepSetMember(gav = "g:a:1", sourceRoot = sources))
+        val fingerprint = KeepSetFingerprint.compute(TokenMode.ALL, "explicit", members)
+        val index = NameLocateIndex.build(members, TokenMode.ALL, fingerprint, "explicit")
+        val indexDir = File(tempDir, "idx-badfp")
+        index.writeTo(indexDir)
+        val manifest = File(indexDir, NameLocateIndex.MANIFEST_NAME)
+        manifest.writeText(
+            manifest.readText().replace(
+                "\"fingerprint\":\"$fingerprint\"",
+                "\"fingerprint\":\"not-a-sha256\"",
+            ),
+        )
+        NameLocateIndex.tryLoad(indexDir, null, TokenMode.ALL) shouldBe null
+    }
+
+    @Test
     fun `rejects v2 formatVersion`() {
         val sources = File(tempDir, "src-v2").apply { mkdirs() }
         File(sources, "A.kt").writeText("fun Foo() {}")

@@ -63,7 +63,7 @@ object DependencySourceToolCatalog {
                     required = listOf("group", "name", "version"),
                 ),
                 "sourcePaths" to objectArrayProperty(
-                    description = "Local trees/jars.",
+                    description = "Local trees/jars inside the project or Gradle user home.",
                     itemProperties = mapOf(
                         "path" to stringProperty("Directory, jar, or zip"),
                         "group" to stringProperty("Group label"),
@@ -79,7 +79,6 @@ object DependencySourceToolCatalog {
                     description = "Maven bases for downloadSources (omit=Central).",
                 ),
                 "gradleUserHome" to stringProperty("Cache home; else connected."),
-                "indexDir" to stringProperty("Override (<dir>/<tokenMode>/)."),
                 "forceReindex" to booleanProperty("Rebuild on hit."),
                 "background" to booleanProperty("Return indexId immediately (default false)."),
             ),
@@ -100,7 +99,6 @@ object DependencySourceToolCatalog {
                 "query" to stringProperty("Exact simple-name to locate"),
                 "tokenMode" to stringProperty("Must match an index (all|idents). Prefer all."),
                 "limit" to nullableIntegerProperty("Max hits; default 500, 0=empty, max int=unlimited."),
-                "indexDir" to stringProperty("Override dir (reads <dir>/<tokenMode>/)."),
             ),
             required = listOf("query"),
         )
@@ -121,7 +119,6 @@ object DependencySourceToolCatalog {
                 "perQueryLimit" to nullableIntegerProperty(
                     "Per-query cap; omit/null=unlimited, 0=empty. Alias: per_query_limit.",
                 ),
-                "indexDir" to stringProperty("Override dir (reads <dir>/<tokenMode>/)."),
             ),
             required = listOf("queries"),
         )
@@ -138,9 +135,8 @@ object DependencySourceToolCatalog {
                 "line" to integerProperty("Optional 1-based anchor; must be within file."),
                 "contextLines" to integerProperty("Lines before/after line (default 10, max 100)."),
                 "maxLines" to integerProperty("Whole-file cap when line omitted (default 200, max 2000)."),
-                "sourceRoot" to stringProperty("Jar/zip/dir/file override; else hit/index/cache."),
+                "sourceRoot" to stringProperty("Jar/zip/dir/file override; must stay within the project or Gradle user home."),
                 "tokenMode" to stringProperty("Index mode for roots lookup (all|idents)."),
-                "indexDir" to stringProperty("Override index dir (<dir>/<tokenMode>/)."),
                 "gradleUserHome" to stringProperty("Cache home for *-sources.jar; else connected."),
             ),
             required = listOf("path"),

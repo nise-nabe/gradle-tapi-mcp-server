@@ -87,6 +87,26 @@ class IndexSourceRootsTest {
     }
 
     @Test
+    fun `load drops roots outside allowedRoots`() {
+        val inside = File(tempDir, "project/src").apply { mkdirs() }
+        val outside = File(tempDir, "elsewhere").apply { mkdirs() }
+        val dir = File(tempDir, "index").apply { mkdirs() }
+        IndexSourceRoots.write(
+            dir,
+            listOf(
+                KeepSetMember(gav = "g:in:1", sourceRoot = inside),
+                KeepSetMember(gav = "g:out:1", sourceRoot = outside),
+            ),
+        )
+
+        val filtered = IndexSourceRoots.load(dir, allowedRoots = listOf(File(tempDir, "project")))
+        filtered.keys shouldBe setOf("g:in:1")
+
+        val unfiltered = IndexSourceRoots.load(dir)
+        unfiltered.keys shouldBe setOf("g:in:1", "g:out:1")
+    }
+
+    @Test
     fun `ambiguous roots with same path return Ambiguous`() {
         val a = File(tempDir, "root-a").apply { mkdirs() }
         val b = File(tempDir, "root-b").apply { mkdirs() }

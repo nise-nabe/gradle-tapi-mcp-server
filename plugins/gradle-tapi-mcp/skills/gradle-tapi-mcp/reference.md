@@ -293,11 +293,10 @@ Canonical end-user workflow (index → search → read, `tokenMode`, keep-set ti
 | `tokenMode` | no | `all` (default) or `idents` (prefer on large first-time indexes) |
 | `projectPath` | no | Idea keep-set only: scope to a Gradle project subtree (e.g. `:worker`) |
 | `artifacts[]` | no | Explicit GAVs; skips Idea keep-set. May be versions not in the current project graph |
-| `sourcePaths[]` | no | Local trees/jars with optional GAV labels. Use only when the path is already known (workspace or a zip you have). Do not discover paths by listing Gradle user home |
+| `sourcePaths[]` | no | Local trees/jars with optional GAV labels; must stay inside the project directory or the Gradle user home. Use only when the path is already known (workspace or a zip you have). Do not discover paths by listing Gradle user home |
 | `downloadSources` | no | If true with `artifacts[]`, fetch missing `*-sources.jar` into `.gradle/mcp-dependency-sources/jars/` (default false) |
 | `sourcesRepositories` | no | Maven-layout base URL(s) for `downloadSources`. Default: Maven Central. Corporate/air-gapped: pass only the internal mirror (Central is not appended). Optional `user:token@` → HTTP Basic auth |
 | `gradleUserHome` | no | Server-side cache home for `artifacts[]` jar lookup. Override only; do not browse this directory |
-| `indexDir` | no | Override index directory |
 | `forceReindex` | no | Rebuild even on fingerprint hit |
 | `background` | no | Return `indexId` immediately; poll `gradle_get_dependency_sources_index_status` |
 
@@ -329,14 +328,13 @@ Exact simple-name locate against a prior index (`tokenMode` must match; no silen
 | `line` | no | 1-based anchor; must be within the file |
 | `contextLines` | no | Window around `line` (default 10) |
 | `maxLines` | no | Cap when `line` omitted (default 200) |
-| `sourceRoot` | no | Explicit jar/zip/dir/file. Optional when search hit / `source-roots.tsv` provides it, or a `*-sources.jar` exists in Maven local / Gradle caches. Pass when neither index nor cache can resolve the root |
+| `sourceRoot` | no | Explicit jar/zip/dir/file inside the project directory or Gradle user home. Optional when search hit / `source-roots.tsv` provides it, or a `*-sources.jar` exists in Maven local / Gradle caches. Pass when neither index nor cache can resolve the root |
 | `tokenMode` | no | Which index side-car to consult (`all`/`idents`; omit tries `all` then `idents`) |
-| `indexDir` | no | Override index directory |
 | `gradleUserHome` | no | Server-side cache home for jar lookup; else connected project. Not a path to browse |
 
 Returns `snippet`, `startLine`, `endLine`, `lineCount`, `truncated`, and resolved `sourceRoot`.
 
-Search hits may include `sourceRoot` from the index side-car `source-roots.tsv` (written at index time). Hits omit `sourceRoot` when multiple roots contain the same path. `gradle_read_dependency_source` uses that path when `sourceRoot` is omitted (before falling back to cache jar lookup); if the path is ambiguous across indexed roots, read fails and requires an explicit `sourceRoot` (no silent jar fallback). An explicit `sourceRoot` works without a Gradle connection. `contextLines` max 100; `maxLines` max 2000. Oversized lines/snippets are truncated (`MAX_LINE_CHARS` / `MAX_SNIPPET_CHARS`) and `truncated=true`.
+Search hits may include `sourceRoot` from the index side-car `source-roots.tsv` (written at index time). Hits omit `sourceRoot` when multiple roots contain the same path. `gradle_read_dependency_source` uses that path when `sourceRoot` is omitted (before falling back to cache jar lookup); if the path is ambiguous across indexed roots, read fails and requires an explicit `sourceRoot` (no silent jar fallback). An explicit `sourceRoot` must stay inside the project directory or the Gradle user home and requires a resolved project. `contextLines` max 100; `maxLines` max 2000. Oversized lines/snippets are truncated (`MAX_LINE_CHARS` / `MAX_SNIPPET_CHARS`) and `truncated=true`.
 
 ## MCP resources (optional host context)
 

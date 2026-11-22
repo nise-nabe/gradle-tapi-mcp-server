@@ -34,7 +34,12 @@ object IndexSourceRoots {
         }
     }
 
-    fun load(directory: File): Map<String, List<File>> {
+    /**
+     * Load the side-car mapping. When [allowedRoots] is non-empty, entries whose
+     * source root falls outside those canonical roots are dropped so a stale or
+     * hand-edited TSV cannot point reads at arbitrary host paths.
+     */
+    fun load(directory: File, allowedRoots: List<File> = emptyList()): Map<String, List<File>> {
         val file = File(directory, FILE_NAME)
         if (!file.isFile) return emptyMap()
         val result = LinkedHashMap<String, ArrayList<File>>()
@@ -44,6 +49,9 @@ object IndexSourceRoots {
             if (tab <= 0) return@forEachLine
             val gav = unescape(raw.substring(0, tab))
             val root = File(unescape(raw.substring(tab + 1)))
+            if (allowedRoots.isNotEmpty() && !SourceAccessBoundary.isWithin(root, allowedRoots)) {
+                return@forEachLine
+            }
             result.getOrPut(gav) { ArrayList() }.add(root)
         }
         return result
