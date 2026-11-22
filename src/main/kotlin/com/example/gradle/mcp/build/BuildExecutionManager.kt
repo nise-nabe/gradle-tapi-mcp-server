@@ -10,12 +10,15 @@ import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpBuildNotifier
 import com.example.gradle.mcp.protocol.ProgressResponseOptions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
+import kotlin.coroutines.coroutineContext
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
@@ -83,25 +86,39 @@ class BuildExecutionManager(
             }
         }
 
-        return withContext(NonCancellable) {
-            try {
-                val completedInTime = awaitBuildCompletion(completion, foregroundDetachTimeoutMs)
-                if (completedInTime) {
-                    BuildStatusAssembler.assemble(
-                        view = BuildStatusView.fromRecord(start.record),
-                        outputLimit = request.outputLimit,
-                        progressOptions = request.progressOptions,
-                        style = BuildStatusResponseStyle.FOREGROUND,
-                    )
-                } else {
-                    detachedForegroundResponse(start.record, request)
-                }
-            } catch (_: InterruptedException) {
-                Thread.interrupted()
-                detachedForegroundResponse(start.record, request)
-            } finally {
-                registry.pruneCompletedBuilds()
+        // A client notifications/cancelled cancels this coroutine, but the
+        // NonCancellable wait below cannot observe it. Fire the build's
+        // cancellation token from the job handler instead, as gradle_connect
+        // does, so the Gradle build stops rather than running on detached.
+        val cancellationHandle = coroutineContext.job.invokeOnCompletion { cause ->
+            if (cause is CancellationException) {
+                start.record.requestCancellation()
             }
+        }
+
+        return try {
+            withContext(NonCancellable) {
+                try {
+                    val completedInTime = awaitBuildCompletion(completion, foregroundDetachTimeoutMs)
+                    if (completedInTime) {
+                        BuildStatusAssembler.assemble(
+                            view = BuildStatusView.fromRecord(start.record),
+                            outputLimit = request.outputLimit,
+                            progressOptions = request.progressOptions,
+                            style = BuildStatusResponseStyle.FOREGROUND,
+                        )
+                    } else {
+                        detachedForegroundResponse(start.record, request)
+                    }
+                } catch (_: InterruptedException) {
+                    Thread.interrupted()
+                    detachedForegroundResponse(start.record, request)
+                } finally {
+                    registry.pruneCompletedBuilds()
+                }
+            }
+        } finally {
+            cancellationHandle.dispose()
         }
     }
 

@@ -10,6 +10,7 @@ import com.example.gradle.mcp.support.LauncherCall
 import com.example.gradle.mcp.support.noopProjectConnection
 import com.example.gradle.mcp.support.seedNoopConnection
 import com.example.gradle.mcp.support.blockingProjectConnection
+import com.example.gradle.mcp.support.cancellationAwareProjectConnection
 import com.example.gradle.mcp.support.failedTracker
 import com.example.gradle.mcp.support.runningTracker
 import com.example.gradle.mcp.support.succeededTracker
@@ -720,6 +721,51 @@ class BuildExecutionManagerRunTest {
         }
         manager.hasActiveBuild().shouldBeFalse()
     }
+
+    @Test
+    fun `runForeground fires the build cancellation token when the request coroutine is cancelled`() =
+        runBlocking {
+            val connectionManager = GradleConnectionManager()
+            val tokenHolder = AtomicReference<org.gradle.tooling.CancellationToken?>()
+            val runStarted = CountDownLatch(1)
+            connectionManager.seedConnectionForTests(
+                cancellationAwareProjectConnection(tokenHolder, runStarted),
+            )
+            val manager = BuildExecutionManager(connectionManager)
+
+            val deferred = async(Dispatchers.IO) {
+                manager.runForeground(
+                    request = BuildRunRequest(
+                        projectDirectory = testProjectDirectory,
+                        kind = BuildKind.TASKS,
+                        tasks = listOf("test"),
+                    ),
+                    notifier = null,
+                    foregroundDetachTimeoutMs = 10_000L,
+                )
+            }
+
+            runStarted.await(5, TimeUnit.SECONDS).shouldBeTrue()
+            deferred.cancel()
+
+            // The cancelled MCP request must reach the Tooling API token even
+            // though the foreground wait runs in a NonCancellable context.
+            var attempts = 0
+            while (tokenHolder.get()?.isCancellationRequested != true && attempts < 100) {
+                Thread.sleep(50)
+                attempts++
+            }
+            tokenHolder.get()?.isCancellationRequested shouldBe true
+
+            // The worker observes the cancelled token, stops the build, and
+            // finalizes the record.
+            attempts = 0
+            while (manager.hasActiveBuild() && attempts < 100) {
+                Thread.sleep(50)
+                attempts++
+            }
+            manager.hasActiveBuild().shouldBeFalse()
+        }
 
     @Test
     fun `runForeground detaches with buildId when promote timeout elapses`() = runBlocking {
