@@ -234,7 +234,10 @@ class BuildCacheStatusTest {
 
     @Test
     fun `GradlePropertiesStreamCapture retains early cache keys from large property output`() {
-        val capture = GradlePropertiesStreamCapture(retainKey = BuildCachePropertyKeys::isCacheRelated)
+        val capture = GradlePropertiesStreamCapture(
+            retainKey = BuildCachePropertyKeys::isCacheRelated,
+            charset = StandardCharsets.UTF_8,
+        )
         val out = PrintStream(capture.asOutputStream(), true, StandardCharsets.UTF_8)
         out.println("org.gradle.caching: true")
         repeat(50_000) { index ->
@@ -294,7 +297,10 @@ class BuildCacheStatusTest {
 
     @Test
     fun `GradlePropertiesStreamCapture captures properties written after invalid utf8 bytes`() {
-        val capture = GradlePropertiesStreamCapture(retainKey = BuildCachePropertyKeys::isCacheRelated)
+        val capture = GradlePropertiesStreamCapture(
+            retainKey = BuildCachePropertyKeys::isCacheRelated,
+            charset = StandardCharsets.UTF_8,
+        )
         val out = capture.asOutputStream()
         out.write(byteArrayOf(0x93.toByte(), 0x0A.toByte()))
         out.write("org.gradle.caching: true\n".toByteArray(StandardCharsets.UTF_8))
@@ -304,7 +310,10 @@ class BuildCacheStatusTest {
 
     @Test
     fun `GradlePropertiesStreamCapture joins a final line split by truncated utf8 bytes`() {
-        val capture = GradlePropertiesStreamCapture(retainKey = BuildCachePropertyKeys::isCacheRelated)
+        val capture = GradlePropertiesStreamCapture(
+            retainKey = BuildCachePropertyKeys::isCacheRelated,
+            charset = StandardCharsets.UTF_8,
+        )
         val out = capture.asOutputStream()
         // The trailing 0xC3 starts a two-byte UTF-8 sequence that never
         // completes: it stays in pendingBytes until snapshotProperties.

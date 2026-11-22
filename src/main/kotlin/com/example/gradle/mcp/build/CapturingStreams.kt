@@ -11,10 +11,11 @@ import java.nio.charset.CodingErrorAction
 
 class TailCapturingStream(
     private val maxRetainedChars: Int = DEFAULT_MAX_RETAINED_CHARS,
+    charset: Charset = Charset.defaultCharset(),
 ) {
     private val lock = Any()
     private val buffer = StringBuilder()
-    private val decoder = CharsetStreamAccumulator()
+    private val decoder = CharsetStreamAccumulator(charset)
     private var totalChars = 0
     private var bufferCodePoints = 0
 
@@ -106,10 +107,11 @@ class TailCapturingStream(
  */
 class GradlePropertiesStreamCapture(
     private val retainKey: (String) -> Boolean = { true },
+    charset: Charset = Charset.defaultCharset(),
 ) {
     private val lock = Any()
     private val properties = linkedMapOf<String, String>()
-    private val decoder = CharsetStreamAccumulator()
+    private val decoder = CharsetStreamAccumulator(charset)
     private val lineBuffer = StringBuilder()
 
     fun asOutputStream(): OutputStream =
