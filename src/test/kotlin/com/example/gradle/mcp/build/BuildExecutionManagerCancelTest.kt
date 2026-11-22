@@ -110,14 +110,26 @@ class BuildExecutionManagerCancelTest {
     }
 
     @Test
-    fun `resetBuildState cancels running builds and clears active state`() {
-        manager.seedRunningBuildForTests(testBuildRecord(id = "running-build", tracker = runningTracker()))
+    fun `resetBuildState requests cancellation and keeps the build active until the worker finalizes`() {
+        val tokenSource = GradleConnector.newCancellationTokenSource()
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "running-build",
+                tracker = runningTracker(),
+                cancellationTokenSource = tokenSource,
+            ),
+        )
 
         manager.resetBuildState("Preparing new Gradle connection")
 
-        val status = manager.status("running-build", OutputLimitOptions(), ProgressResponseOptions())
-        status["status"] shouldBe "cancelled"
-        status["error"] shouldBe "Preparing new Gradle connection"
+        // The Tooling API operation may still be in flight, so the record
+        // stays RUNNING (and active) until the worker's runBuild finalizes it.
+        manager.status("running-build", OutputLimitOptions(), ProgressResponseOptions())["status"] shouldBe "running"
+        tokenSource.token().isCancellationRequested.shouldBeTrue()
+        manager.hasActiveBuild().shouldBeTrue()
+
+        manager.completeBuildForTests("running-build").shouldBeTrue()
+        manager.status("running-build", OutputLimitOptions(), ProgressResponseOptions())["status"] shouldBe "succeeded"
         manager.hasActiveBuild().shouldBeFalse()
     }
 
@@ -146,13 +158,22 @@ class BuildExecutionManagerCancelTest {
 
     @Test
     fun `onDisconnect cancels running builds`() {
-        manager.seedRunningBuildForTests(testBuildRecord(id = "running-build", tracker = runningTracker()))
+        val tokenSource = GradleConnector.newCancellationTokenSource()
+        manager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "running-build",
+                tracker = runningTracker(),
+                cancellationTokenSource = tokenSource,
+            ),
+        )
 
         manager.onDisconnect()
 
-        val status = manager.status("running-build", OutputLimitOptions(), ProgressResponseOptions())
-        status["status"] shouldBe "cancelled"
-        status["error"] shouldBe "Gradle connection closed"
+        // Cancellation is requested but the record stays RUNNING until the
+        // worker observes the cancelled Tooling API call returning.
+        manager.status("running-build", OutputLimitOptions(), ProgressResponseOptions())["status"] shouldBe "running"
+        tokenSource.token().isCancellationRequested.shouldBeTrue()
+        manager.completeBuildForTests("running-build").shouldBeTrue()
 
         val notConnected = shouldThrow<McpException> {
             manager.startBackground(
@@ -275,6 +296,7 @@ class BuildExecutionManagerCancelTest {
         )
 
         manager.resetBuildState("Gradle connection closed")
+        manager.completeBuildForTests("running-build").shouldBeTrue()
 
         val snapshot = manager.lastCompletedBuildSnapshot(projectDir)
         snapshot.shouldNotBeNull()

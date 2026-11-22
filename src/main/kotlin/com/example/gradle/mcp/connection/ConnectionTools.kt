@@ -129,8 +129,9 @@ internal fun disconnectProjects(
 }
 
 private const val DISCONNECT_DURING_BUILD_WARNING =
-    "One or more builds were still in progress for the disconnected project(s). The server cancelled them " +
-        "via the Tooling API CancellationToken and marked status cancelled."
+    "One or more builds were still in progress for the disconnected project(s). The server requested " +
+        "cancellation via the Tooling API CancellationToken; each build reports cancelled once its " +
+        "in-flight operation returns."
 
 internal fun connectSchema(): Map<String, Any> =
     objectSchema(

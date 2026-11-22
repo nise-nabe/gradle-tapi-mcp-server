@@ -49,6 +49,10 @@ class ConnectionToolsTest {
 
         payload["warning"].shouldNotBeNull().toString() shouldContain "cancelled"
         payload["state"] shouldBe "disconnected"
+        // The build stays active until its worker finalizes the cancelled
+        // Tooling API operation; simulate that completion here.
+        buildExecutionManager.hasActiveBuild().shouldBe(true)
+        buildExecutionManager.completeBuildForTests("active-build").shouldBe(true)
         buildExecutionManager.hasActiveBuild().shouldBe(false)
     }
 

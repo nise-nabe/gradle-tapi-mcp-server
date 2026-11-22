@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
+import org.gradle.tooling.GradleConnector
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -150,40 +151,61 @@ class BuildExecutionManagerQueueTest {
     }
 
     @Test
-    fun `resetBuildState cancels remaining running builds when finalize throws`(@TempDir projectDirectory: File) {
+    fun `resetBuildState requests cancellation for every running build`(@TempDir projectDirectory: File) {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnection(projectDirectory)
         val manager = BuildExecutionManager(connectionManager)
         val recordsRoot = File(projectDirectory, ".gradle/mcp-builds")
         recordsRoot.mkdirs()
-        // First record fails finalize via persistence; the second must still
-        // get its cancellation token fired.
+        // First record fails persistence at worker finalize; the second must
+        // still reach a terminal state.
         File(recordsRoot, "running-first").writeText("not a directory")
+        val firstToken = GradleConnector.newCancellationTokenSource()
+        val secondToken = GradleConnector.newCancellationTokenSource()
         val first = testBuildRecord(
             id = "running-first",
             tracker = runningTracker(),
             projectDirectory = projectDirectory.absolutePath,
+            cancellationTokenSource = firstToken,
         )
         val second = testBuildRecord(
             id = "running-second",
             tracker = runningTracker(),
             projectDirectory = projectDirectory.absolutePath,
+            cancellationTokenSource = secondToken,
         )
         manager.seedRunningBuildForTests(first)
         manager.seedRunningBuildForTests(second)
 
         manager.resetBuildState("simulated disconnect", projectDirectory)
 
+        // Running builds stay RUNNING until their workers finalize; both
+        // cancellation tokens must be fired.
+        firstToken.token().isCancellationRequested.shouldBeTrue()
+        secondToken.token().isCancellationRequested.shouldBeTrue()
         manager.status(
             buildId = "running-first",
             outputLimit = com.example.gradle.mcp.model.OutputLimitOptions(),
             progressOptions = com.example.gradle.mcp.protocol.ProgressResponseOptions(),
-        )["status"] shouldBe BuildProgressTracker.STATUS_CANCELLED
+        )["status"] shouldBe BuildProgressTracker.STATUS_RUNNING
         manager.status(
             buildId = "running-second",
             outputLimit = com.example.gradle.mcp.model.OutputLimitOptions(),
             progressOptions = com.example.gradle.mcp.protocol.ProgressResponseOptions(),
-        )["status"] shouldBe BuildProgressTracker.STATUS_CANCELLED
+        )["status"] shouldBe BuildProgressTracker.STATUS_RUNNING
+
+        manager.completeBuildForTests("running-first").shouldBeTrue()
+        manager.completeBuildForTests("running-second").shouldBeTrue()
+        manager.status(
+            buildId = "running-first",
+            outputLimit = com.example.gradle.mcp.model.OutputLimitOptions(),
+            progressOptions = com.example.gradle.mcp.protocol.ProgressResponseOptions(),
+        )["status"] shouldBe BuildProgressTracker.STATUS_SUCCEEDED
+        manager.status(
+            buildId = "running-second",
+            outputLimit = com.example.gradle.mcp.model.OutputLimitOptions(),
+            progressOptions = com.example.gradle.mcp.protocol.ProgressResponseOptions(),
+        )["status"] shouldBe BuildProgressTracker.STATUS_SUCCEEDED
     }
 
     @Test

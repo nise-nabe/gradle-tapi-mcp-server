@@ -96,6 +96,13 @@ internal class BuildRunner(
         notifier.notifyIfNeeded(tracker)
 
         try {
+            if (record.cancellationRequested) {
+                // Cancelled during queueing or connection borrow: skip the
+                // Tooling API call entirely and finalize as cancelled.
+                finalizeBuild(record, BuildTerminalOutcome.Cancelled("Build cancelled"))
+                notifier.notifyFinal(tracker)
+                return
+            }
             when (effectiveRequest.kind) {
                 BuildKind.TASKS, BuildKind.PLAN -> {
                     val launcher = connection.newBuild()
@@ -357,7 +364,17 @@ internal class BuildRunner(
             }
     }
 
-    fun markRunningBuildsCancelled(reason: String, projectDirectory: File? = null) {
+    /**
+     * Requests cancellation of every running build without finalizing it.
+     *
+     * The record stays RUNNING until the worker's `runBuild` observes the
+     * cancelled Tooling API operation returning and calls `finalizeBuild`
+     * itself. Finalizing here would flip the status to CANCELLED while
+     * `launcher.run()` is still in flight, letting lifecycle guards admit a
+     * new Tooling API call on the same connection and making the worker's
+     * later finalize a no-op.
+     */
+    fun markRunningBuildsCancelled(projectDirectory: File? = null) {
         registry.records.values
             .filter { record ->
                 record.progressTracker.snapshot().status == BuildProgressTracker.STATUS_RUNNING &&
@@ -365,30 +382,6 @@ internal class BuildRunner(
             }
             .forEach { record ->
                 record.requestCancellation()
-                // The per-project reset path holds withProjectLock(projectDirectory),
-                // so draining that project's queue is safe. The global path
-                // (disconnect-all/shutdown) holds only global(); draining would
-                // take the project lock in drainProjectQueue and invert the
-                // project->global lock order. Queued builds are already
-                // cancelled, and disconnect callers run wakeQueuedBuilds() after
-                // releasing the global lock, so the global path skips draining.
-                try {
-                    finalizeBuild(
-                        record,
-                        BuildTerminalOutcome.Cancelled(reason),
-                        queueDrain = if (projectDirectory == null) {
-                            QueueDrain.NONE
-                        } else {
-                            QueueDrain.OWN_PROJECT
-                        },
-                    )
-                } catch (exception: Exception) {
-                    // A failed finalize must not abort the loop: remaining
-                    // running builds still need their cancellation tokens fired.
-                    System.err.println(
-                        "Failed to finalize build ${record.id} during reset: ${exception.message}",
-                    )
-                }
             }
     }
 
