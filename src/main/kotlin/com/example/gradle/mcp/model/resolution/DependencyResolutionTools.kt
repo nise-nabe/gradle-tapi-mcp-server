@@ -80,7 +80,7 @@ fun Server.registerDependencyResolutionTools(scope: CoroutineScope, session: Ses
         name = "gradle_get_dependency_resolution",
         description = McpToolDescriptions.DEPENDENCY_RESOLUTION,
         schema = dependencyResolutionSchema(),
-        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
+        annotations = McpToolAnnotations.EXECUTE,
     ) { args ->
         val query = parseDependencyResolutionQuery(args)
         val projectDirectory =

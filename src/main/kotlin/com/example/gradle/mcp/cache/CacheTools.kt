@@ -33,7 +33,7 @@ fun Server.registerCacheTools(scope: CoroutineScope, session: SessionProjectCont
         name = "gradle_get_build_cache_status",
         description = McpToolDescriptions.BUILD_CACHE_STATUS,
         schema = buildCacheStatusSchema(),
-        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
+        annotations = McpToolAnnotations.EXECUTE,
     ) { args ->
         rejectUnsupportedProjectPath(args, "gradle_get_build_cache_status")
         val projectDirectory =

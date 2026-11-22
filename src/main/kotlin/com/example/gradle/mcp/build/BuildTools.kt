@@ -269,7 +269,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope, session: SessionProje
         name = "gradle_get_task_execution_plan",
         description = McpToolDescriptions.TASK_EXECUTION_PLAN,
         schema = taskExecutionPlanSchema(),
-        annotations = McpToolAnnotations.READ_ONLY_OPEN_WORLD,
+        annotations = McpToolAnnotations.EXECUTE,
     ) { args, notifier ->
         val projectDirectory =
             ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)

@@ -96,6 +96,26 @@ class McpResourceRegistrationTest {
                 .readOnlyHint shouldBe false
             server.tools.getValue("gradle_list_builds").tool.annotations.shouldNotBeNull()
                 .readOnlyHint shouldBe true
+
+            // Tools that can execute Gradle tasks (prepareTasks, javaToolchains,
+            // properties, dry-run builds) must not advertise readOnlyHint.
+            val taskExecutingTools = listOf(
+                "gradle_get_project_overview",
+                "gradle_get_gradle_build",
+                "gradle_get_project_model",
+                "gradle_get_build_invocations",
+                "gradle_get_project_publications",
+                "gradle_get_help",
+                "gradle_get_dependency_resolution",
+                "gradle_get_java_runtimes",
+                "gradle_get_build_cache_status",
+                "gradle_get_task_execution_plan",
+            )
+            taskExecutingTools.forEach { toolName ->
+                val annotations = server.tools.getValue(toolName).tool.annotations.shouldNotBeNull()
+                annotations.readOnlyHint shouldBe false
+                annotations.destructiveHint shouldBe true
+            }
         } finally {
             scope.cancel()
         }
