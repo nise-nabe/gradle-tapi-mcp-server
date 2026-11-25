@@ -24,6 +24,7 @@ import io.ktor.server.routing.RoutingContext
 import io.ktor.utils.io.streams.asInput
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
+import io.modelcontextprotocol.kotlin.sdk.server.ServerSession
 import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
@@ -83,22 +84,40 @@ fun runGradleTapiMcpServer(options: ServerCliOptions = ServerCliOptions()) {
             val protocolOut = captureProtocolStdout()
             // Detached: a first-time distribution download must not delay
             // the transport startup (initialize would be unanswered).
+            val autoConnectEpoch = connectionManager.currentDisconnectAllEpoch()
             serverScope.launch(Dispatchers.IO) {
-                connectionManager.tryAutoConnectFromEnvironment()
+                connectionManager.tryAutoConnectFromEnvironment(
+                    expectedDisconnectAllEpoch = autoConnectEpoch,
+                )
             }
             serveStdio(runtime, serverScope, ::shutdownRuntime, protocolOut, toolSelection)
         }
         McpTransport.STREAMABLE_HTTP -> {
+            val autoConnectEpoch = connectionManager.currentDisconnectAllEpoch()
             serverScope.launch(Dispatchers.IO) {
-                connectionManager.tryAutoConnectFromEnvironment()
+                connectionManager.tryAutoConnectFromEnvironment(
+                    expectedDisconnectAllEpoch = autoConnectEpoch,
+                )
             }
             serveStreamableHttp(
                 endpoint = options.http,
                 newServer = { context ->
+                    // A session close may have released the startup workspace
+                    // since the previous session. Reconnecting with the new
+                    // session as holder keeps the ambient default available
+                    // even when teardown wins the handoff race.
+                    val session = sessionFromHttpContext(context)
+                    val sessionAutoConnectEpoch = connectionManager.currentDisconnectAllEpoch()
+                    serverScope.launch(Dispatchers.IO) {
+                        connectionManager.tryAutoConnectFromEnvironment(
+                            holder = session,
+                            expectedDisconnectAllEpoch = sessionAutoConnectEpoch,
+                        )
+                    }
                     createGradleTapiServer(
                         runtime = runtime,
                         serverScope = serverScope,
-                        session = sessionFromHttpContext(context),
+                        session = session,
                         toolSelection = toolSelection,
                     )
                 },
@@ -153,10 +172,33 @@ internal fun createGradleTapiServer(
         },
     )
 
-    // Closing the session releases the projects it held; pooled connections
+    // Server.onClose does not run when an individual streamable-HTTP session
+    // ends, so hook each connected ServerSession as well. Pooled connections
     // stay alive while other sessions still hold them.
+    val releasedHolders = AtomicBoolean(false)
+    fun releaseSessionHolders() {
+        if (releasedHolders.compareAndSet(false, true)) {
+            runtime.connectionManager.releaseSession(session) { projectDirectory ->
+                runtime.buildExecutionManager.onDisconnect(projectDirectory)
+            }
+        }
+    }
+    val hookedSessions = mutableSetOf<ServerSession>()
+    server.onConnect {
+        val newSessions = synchronized(hookedSessions) {
+            server.sessions.values.filter { it !in hookedSessions }
+                .also { hookedSessions.addAll(it) }
+        }
+        newSessions.forEach { serverSession ->
+            serverSession.onClose {
+                if (server.sessions.isEmpty()) {
+                    releaseSessionHolders()
+                }
+            }
+        }
+    }
     server.onClose {
-        runtime.connectionManager.releaseSession(session)
+        releaseSessionHolders()
     }
 
     try {

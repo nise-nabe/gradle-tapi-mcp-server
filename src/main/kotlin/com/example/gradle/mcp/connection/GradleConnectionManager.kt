@@ -166,34 +166,69 @@ class GradleConnectionManager(
 
     /**
      * Drops every hold of [session] (session teardown); pooled connections
-     * left without holders are closed.
+     * left without holders are closed. [beforePhysicalClose] runs under the
+     * project lifecycle lock just before a connection is physically closed,
+     * so callers can settle builds before the connection becomes unavailable.
      */
-    fun releaseSession(session: SessionProjectContext) {
-        val toClose = mutableListOf<ProjectConnection>()
-        synchronized(pool) {
-            val iterator = holders.entries.iterator()
-            while (iterator.hasNext()) {
-                val (key, holderSet) = iterator.next()
-                if (holderSet.remove(session) && holderSet.isEmpty()) {
-                    iterator.remove()
-                    pool.remove(key)?.let { toClose.add(it.connection) }
+    fun releaseSession(
+        session: SessionProjectContext,
+        beforePhysicalClose: (File) -> Unit = {},
+    ) {
+        val candidateKeys = synchronized(pool) {
+            holders.entries.filter { session in it.value }.map { it.key }
+        }
+        for (key in candidateKeys) {
+            val directory = synchronized(pool) { pool[key]?.projectDirectory } ?: continue
+            var toClose: ProjectConnection? = null
+            try {
+                ProjectLifecycleLock.withProjectLock(directory) {
+                    toClose = synchronized(pool) {
+                        val holderSet = holders[key] ?: return@synchronized null
+                        if (!holderSet.remove(session)) {
+                            return@synchronized null
+                        }
+                        if (holderSet.isEmpty()) {
+                            holders.remove(key)
+                            pool.remove(key)?.connection
+                        } else {
+                            null
+                        }
+                    }
+                    toClose?.let {
+                        beforePhysicalClose(directory)
+                    }
                 }
+            } finally {
+                toClose?.let(::closeQuietly)
             }
         }
-        toClose.forEach { closeQuietly(it) }
     }
 
     /**
-     * Registers [session] as a holder of its ambient workspace connection when
-     * that connection already exists in the pool (e.g. environment
-     * auto-connect finished before the session was created).
+     * Registers [session] as a holder of every ambient connection that already
+     * exists in the pool (e.g. environment auto-connect finished before the
+     * session was created). Late-arriving connections are attached lazily by
+     * [attachHolderIfConnected] during project resolution.
      */
     fun attachAmbientHolder(session: SessionProjectContext) {
-        val workspace = session.workspaceProject() ?: return
-        val key = ProjectDirectoryResolver.canonicalKey(workspace)
-        synchronized(pool) {
-            if (pool.containsKey(key)) {
+        session.knownProjects().forEach { project ->
+            attachHolderIfConnected(project, session)
+        }
+    }
+
+    /**
+     * Atomically registers [session] as a holder when [projectDirectory] is
+     * pooled. The check and hold share the pool monitor so disconnect cannot
+     * close the connection between resolution and use.
+     */
+    fun attachHolderIfConnected(projectDirectory: File, session: SessionProjectContext): Boolean {
+        val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
+        return synchronized(pool) {
+            if (!pool.containsKey(key)) {
+                false
+            } else {
                 registerHolderLocked(key, session)
+                true
             }
         }
     }
@@ -298,13 +333,25 @@ class GradleConnectionManager(
         ).toResponseMap()
     }
 
-    fun tryAutoConnectFromEnvironment() {
+    fun currentDisconnectAllEpoch(): Long = synchronized(pool) { disconnectAllEpoch }
+
+    fun tryAutoConnectFromEnvironment(
+        holder: SessionProjectContext? = null,
+        expectedDisconnectAllEpoch: Long? = null,
+    ) {
         val projectDir = ProjectDirectoryResolver.workspaceFromEnvironment() ?: return
-        tryAutoConnectFromDirectory(projectDir)
+        tryAutoConnectFromDirectory(projectDir, holder, expectedDisconnectAllEpoch)
     }
 
-    internal fun tryAutoConnectFromDirectory(projectDirectory: File) {
-        if (isConnected(projectDirectory)) {
+    internal fun tryAutoConnectFromDirectory(
+        projectDirectory: File,
+        holder: SessionProjectContext? = null,
+        expectedDisconnectAllEpoch: Long? = null,
+    ) {
+        if (holder != null && attachHolderIfConnected(projectDirectory, holder)) {
+            return
+        }
+        if (holder == null && isConnected(projectDirectory)) {
             return
         }
         try {
@@ -313,6 +360,11 @@ class GradleConnectionManager(
             // distribution download cannot run twice concurrently into the
             // same wrapper dists directory.
             ProjectLifecycleLock.withProjectLock(projectDirectory) {
+                if (expectedDisconnectAllEpoch != null &&
+                    currentDisconnectAllEpoch() != expectedDisconnectAllEpoch
+                ) {
+                    return@withProjectLock
+                }
                 ensureConnected(
                     ConnectionConfig(
                         projectDirectory = projectDirectory.canonicalFile.path,
@@ -320,6 +372,7 @@ class GradleConnectionManager(
                         gradleVersion = System.getenv("GRADLE_VERSION")?.takeIf { it.isNotBlank() },
                         gradleInstallation = System.getenv("GRADLE_INSTALLATION")?.takeIf { it.isNotBlank() },
                     ),
+                    holder = holder,
                 )
             }
         } catch (exception: Exception) {

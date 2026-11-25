@@ -58,7 +58,14 @@ object ProjectDirectoryResolver {
                 "Not connected to Gradle project: ${resolved.path}. Call gradle_connect first.",
             )
         }
-        if (!connectionManager.isConnected(resolved)) {
+        if (session != null) {
+            if (!connectionManager.attachHolderIfConnected(resolved, session)) {
+                throw McpException(
+                    McpErrorCode.NOT_CONNECTED,
+                    "Not connected to Gradle project: ${resolved.path}. Call gradle_connect first.",
+                )
+            }
+        } else if (!connectionManager.isConnected(resolved)) {
             throw McpException(
                 McpErrorCode.NOT_CONNECTED,
                 "Not connected to Gradle project: ${resolved.path}. Call gradle_connect first.",
