@@ -247,12 +247,13 @@ fun Server.registerBuildTools(serverScope: CoroutineScope, session: SessionProje
         val projectDirectory =
             ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
         val tasks = args.requiredStringList("tasks")
+        val (arguments, jvmArguments) = validatedUserBuildArguments(args)
         val request = BuildRunRequest(
             projectDirectory = projectDirectory,
             kind = BuildKind.TASKS,
             tasks = tasks,
-            arguments = args.optionalStringList("arguments").orEmpty(),
-            jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
+            arguments = arguments,
+            jvmArguments = jvmArguments,
             outputLimit = OutputLimitOptions.fromArgs(args),
             progressOptions = ProgressResponseOptions.fromArgs(args),
         )
@@ -273,12 +274,13 @@ fun Server.registerBuildTools(serverScope: CoroutineScope, session: SessionProje
     ) { args, notifier ->
         val projectDirectory =
             ProjectDirectoryResolver.resolveRequired(args, runtime.connectionManager, session)
+        val (arguments, jvmArguments) = validatedUserBuildArguments(args)
         val request = BuildRunRequest(
             projectDirectory = projectDirectory,
             kind = BuildKind.PLAN,
             tasks = args.requiredStringList("tasks"),
-            arguments = args.optionalStringList("arguments").orEmpty(),
-            jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
+            arguments = arguments,
+            jvmArguments = jvmArguments,
             outputLimit = OutputLimitOptions.fromArgs(args),
             progressOptions = ProgressResponseOptions.fromArgs(args),
         )
@@ -298,6 +300,7 @@ fun Server.registerBuildTools(serverScope: CoroutineScope, session: SessionProje
         val background = args.optionalBoolean("background", default = false)
         val queueIfBusy = requireQueueIfBusyWithBackground(args, background)
         val deferScopeModelCheck = background && queueIfBusy
+        val (arguments, jvmArguments) = validatedUserBuildArguments(args)
         val scopeResolution = preflightRunTests(
             projectDirectory,
             testOptions,
@@ -305,8 +308,8 @@ fun Server.registerBuildTools(serverScope: CoroutineScope, session: SessionProje
         )
         val request = scopeResolution.options.toBuildRunRequest(
             projectDirectory = projectDirectory,
-            arguments = args.optionalStringList("arguments").orEmpty(),
-            jvmArguments = args.optionalStringList("jvmArguments").orEmpty(),
+            arguments = arguments,
+            jvmArguments = jvmArguments,
             outputLimit = OutputLimitOptions.fromArgs(args),
             progressOptions = ProgressResponseOptions.fromArgs(args),
         )
@@ -327,6 +330,16 @@ fun Server.registerBuildTools(serverScope: CoroutineScope, session: SessionProje
             ),
         )
     }
+}
+
+// Validate user-supplied Gradle CLI arguments at admission time so invalid input
+// fails as INVALID_ARGUMENT before the build is queued or any preflight model
+// fetch runs. Execution-time validation in BuildRunner stays as defense in depth.
+internal fun validatedUserBuildArguments(args: Map<String, Any>): Pair<List<String>, List<String>> {
+    val arguments = args.optionalStringList("arguments").orEmpty()
+    val jvmArguments = args.optionalStringList("jvmArguments").orEmpty()
+    GradleArgumentPolicy.validateUserBuildArguments(arguments, jvmArguments)
+    return arguments to jvmArguments
 }
 
 internal fun requireQueueIfBusyWithBackground(args: Map<String, Any>, background: Boolean): Boolean {
