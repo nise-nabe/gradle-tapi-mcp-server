@@ -993,8 +993,10 @@ class BuildProgressTrackerTest {
             arrayOf(ProblemId::class.java),
             InvocationHandler { _, method, _ ->
                 when (method.name) {
+                    // Gradle deprecates getDisplayName(): predefined problem ids
+                    // have a display name equal to their name.
                     "getDisplayName" -> displayName
-                    "getName" -> "compilation-failed"
+                    "getName" -> displayName
                     "getGroup" -> null
                     else -> null
                 }

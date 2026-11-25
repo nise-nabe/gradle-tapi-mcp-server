@@ -12,6 +12,7 @@ data class ProblemLocationSnapshot(
 @Serializable
 data class BuildProblemSnapshot(
     val label: String,
+    val groupPath: List<String> = emptyList(),
     val details: String? = null,
     val severity: String? = null,
     val solutions: List<String> = emptyList(),
@@ -22,6 +23,7 @@ data class BuildProblemSnapshot(
     internal fun dedupeKey(): String =
         listOf(
             label,
+            groupPath.joinToString("\u001f"),
             details.orEmpty(),
             contextualLabel.orEmpty(),
             severity.orEmpty(),
