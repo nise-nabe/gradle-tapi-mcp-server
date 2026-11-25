@@ -123,4 +123,48 @@ class ProjectDirectoryScopeTest {
         exception.message shouldBe
             "projectDirectory requires GRADLE_PROJECT_DIR or an active Gradle connection to define the workspace boundary."
     }
+
+    @Test
+    fun `symlink inside the boundary pointing outside is rejected`() {
+        val workspace = workspaceRoot.resolve("workspace").also { it.mkdirs() }
+        val outside = workspaceRoot.resolve("outside").also { it.mkdirs() }
+        val link = workspace.toPath().resolve("link-out")
+        java.nio.file.Files.createSymbolicLink(link, outside.toPath())
+        val scope = ProjectDirectoryScope(
+            connectedProjectDirectories = { emptyList() },
+            workspaceProjectDirectory = { workspace },
+        )
+
+        scope.isWithinBoundary(link.toFile()) shouldBe false
+        scope.isWithinBoundary(link.resolve("nested").toFile()) shouldBe false
+    }
+
+    @Test
+    fun `symlinked workspace root still contains its real children`() {
+        val realWorkspace = workspaceRoot.resolve("real-workspace").also { it.mkdirs() }
+        val child = realWorkspace.resolve("child").also { it.mkdirs() }
+        val linkRoot = workspaceRoot.resolve("workspace-link")
+        java.nio.file.Files.createSymbolicLink(linkRoot.toPath(), realWorkspace.toPath())
+        val scope = ProjectDirectoryScope(
+            connectedProjectDirectories = { emptyList() },
+            workspaceProjectDirectory = { linkRoot },
+        )
+
+        scope.isWithinBoundary(child) shouldBe true
+        scope.isWithinBoundary(linkRoot.resolve("child")) shouldBe true
+    }
+
+    @Test
+    fun `missing tail under a symlinked ancestor resolves through the link`() {
+        val outside = workspaceRoot.resolve("outside-tail").also { it.mkdirs() }
+        val workspace = workspaceRoot.resolve("workspace-tail").also { it.mkdirs() }
+        val link = workspace.toPath().resolve("link-out-tail")
+        java.nio.file.Files.createSymbolicLink(link, outside.toPath())
+        val scope = ProjectDirectoryScope(
+            connectedProjectDirectories = { emptyList() },
+            workspaceProjectDirectory = { workspace },
+        )
+
+        scope.isWithinBoundary(link.resolve("not-created-yet").toFile()) shouldBe false
+    }
 }
