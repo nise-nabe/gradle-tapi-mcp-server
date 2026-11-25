@@ -20,10 +20,11 @@ import kotlin.time.Duration.Companion.seconds
  * server-initiated notifications in JSON-response mode) alive through proxies
  * and idle timeouts.
  *
- * Known upstream limitation (kotlin-sdk 0.15.0): `mcpStreamableHttp` creates the
- * transport and calls `newServer` before validating that a POST is an
- * initialize request, so repeated session-id-less POSTs that are rejected with
- * 400 leave unclosed Server/session objects behind until the process ends.
+ * Known upstream limitation (observed with kotlin-sdk 0.15.0; not yet re-verified
+ * against the 0.16.0 session manager): `mcpStreamableHttp` creates the transport
+ * and calls `newServer` before validating that a POST is an initialize request,
+ * so repeated session-id-less POSTs that are rejected with 400 may leave unclosed
+ * Server/session objects behind until the process ends.
  */
 internal fun serveStreamableHttp(
     endpoint: HttpEndpoint,
