@@ -215,12 +215,15 @@ class BuildExecutionManager(
         registry.hasQueuedBuild(projectDirectory)
 
     fun resetBuildState(reason: String, projectDirectory: File? = null) {
-        ProjectLifecycleLock.withLifecycleLock(projectDirectory) {
+        val replaceExecutor = ProjectLifecycleLock.withLifecycleLock(projectDirectory) {
             runner.markQueuedBuildsCancelled(reason, projectDirectory)
             runner.markRunningBuildsCancelled(projectDirectory)
-            if (runner.shouldReplaceExecutor(projectDirectory)) {
-                runner.replaceBuildExecutor()
-            }
+            runner.shouldReplaceExecutor(projectDirectory)
+        }
+        if (replaceExecutor) {
+            // Waiting for build workers while holding the project lock can
+            // deadlock: finalization re-enters that lock to drain the queue.
+            runner.replaceBuildExecutor()
         }
     }
 
