@@ -1117,7 +1117,7 @@ class DependencySourcesFacadeTest {
 
     @Test
     fun `prune retains the most recently finished job when retention overflows`() {
-        val jobs = DependencySourcesIndexJobs()
+        val jobs = DependencySourcesIndexJobs(maxQueuedJobs = 128)
         val started =
             (1..65).map { i ->
                 jobs.start(
