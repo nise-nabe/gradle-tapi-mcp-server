@@ -179,8 +179,11 @@ private fun problemIdProxy(displayName: String): ProblemId =
         arrayOf(ProblemId::class.java),
         InvocationHandler { _, method, _ ->
             when (method.name) {
+                // Gradle deprecates getDisplayName(): ids created from the
+                // predefined problem groups have a display name equal to
+                // their name, so fixtures mirror that contract.
                 "getDisplayName" -> displayName
-                "getName" -> displayName.lowercase().replace(' ', '-')
+                "getName" -> displayName
                 "getGroup" -> null
                 else -> null
             }

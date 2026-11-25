@@ -208,8 +208,7 @@ internal object ProblemsSerializer {
         }
     }
 
-    private fun problemLabel(problemId: ProblemId): String =
-        problemId.displayName.takeIf { it.isNotBlank() } ?: problemId.name
+    private fun problemLabel(problemId: ProblemId): String = problemId.name
 
     private fun severityName(severity: Severity): String? =
         when {

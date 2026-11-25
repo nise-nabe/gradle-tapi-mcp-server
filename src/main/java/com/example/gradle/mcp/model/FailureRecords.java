@@ -163,11 +163,13 @@ public final class FailureRecords {
             if (id == null) {
                 return null;
             }
-            String displayName = id.getDisplayName();
-            if (displayName != null && !displayName.isBlank()) {
-                return truncate(displayName);
+            // ProblemId.getDisplayName() is deprecated in Gradle 9.x; getName()
+            // carries the human-readable label now.
+            String name = id.getName();
+            if (name == null || name.isBlank()) {
+                return null;
             }
-            return truncate(id.getName());
+            return truncate(name);
         } catch (RuntimeException ignored) {
             return null;
         }
