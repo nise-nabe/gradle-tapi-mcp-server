@@ -84,29 +84,40 @@ fun runGradleTapiMcpServer(options: ServerCliOptions = ServerCliOptions()) {
             val protocolOut = captureProtocolStdout()
             // Detached: a first-time distribution download must not delay
             // the transport startup (initialize would be unanswered).
+            val autoConnectEpoch = connectionManager.currentDisconnectAllEpoch()
             serverScope.launch(Dispatchers.IO) {
-                connectionManager.tryAutoConnectFromEnvironment()
+                connectionManager.tryAutoConnectFromEnvironment(
+                    expectedDisconnectAllEpoch = autoConnectEpoch,
+                )
             }
             serveStdio(runtime, serverScope, ::shutdownRuntime, protocolOut, toolSelection)
         }
         McpTransport.STREAMABLE_HTTP -> {
+            val autoConnectEpoch = connectionManager.currentDisconnectAllEpoch()
             serverScope.launch(Dispatchers.IO) {
-                connectionManager.tryAutoConnectFromEnvironment()
+                connectionManager.tryAutoConnectFromEnvironment(
+                    expectedDisconnectAllEpoch = autoConnectEpoch,
+                )
             }
             serveStreamableHttp(
                 endpoint = options.http,
                 newServer = { context ->
                     // A session close may have released the startup workspace
-                    // since the previous session. Reconnecting here keeps the
-                    // ambient default available to later sessions (including
-                    // minimal tool profiles without gradle_connect).
+                    // since the previous session. Reconnecting with the new
+                    // session as holder keeps the ambient default available
+                    // even when teardown wins the handoff race.
+                    val session = sessionFromHttpContext(context)
+                    val sessionAutoConnectEpoch = connectionManager.currentDisconnectAllEpoch()
                     serverScope.launch(Dispatchers.IO) {
-                        connectionManager.tryAutoConnectFromEnvironment()
+                        connectionManager.tryAutoConnectFromEnvironment(
+                            holder = session,
+                            expectedDisconnectAllEpoch = sessionAutoConnectEpoch,
+                        )
                     }
                     createGradleTapiServer(
                         runtime = runtime,
                         serverScope = serverScope,
-                        session = sessionFromHttpContext(context),
+                        session = session,
                         toolSelection = toolSelection,
                     )
                 },

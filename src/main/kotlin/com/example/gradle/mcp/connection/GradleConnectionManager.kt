@@ -333,13 +333,25 @@ class GradleConnectionManager(
         ).toResponseMap()
     }
 
-    fun tryAutoConnectFromEnvironment() {
+    fun currentDisconnectAllEpoch(): Long = synchronized(pool) { disconnectAllEpoch }
+
+    fun tryAutoConnectFromEnvironment(
+        holder: SessionProjectContext? = null,
+        expectedDisconnectAllEpoch: Long? = null,
+    ) {
         val projectDir = ProjectDirectoryResolver.workspaceFromEnvironment() ?: return
-        tryAutoConnectFromDirectory(projectDir)
+        tryAutoConnectFromDirectory(projectDir, holder, expectedDisconnectAllEpoch)
     }
 
-    internal fun tryAutoConnectFromDirectory(projectDirectory: File) {
-        if (isConnected(projectDirectory)) {
+    internal fun tryAutoConnectFromDirectory(
+        projectDirectory: File,
+        holder: SessionProjectContext? = null,
+        expectedDisconnectAllEpoch: Long? = null,
+    ) {
+        if (holder != null && attachHolderIfConnected(projectDirectory, holder)) {
+            return
+        }
+        if (holder == null && isConnected(projectDirectory)) {
             return
         }
         try {
@@ -348,6 +360,11 @@ class GradleConnectionManager(
             // distribution download cannot run twice concurrently into the
             // same wrapper dists directory.
             ProjectLifecycleLock.withProjectLock(projectDirectory) {
+                if (expectedDisconnectAllEpoch != null &&
+                    currentDisconnectAllEpoch() != expectedDisconnectAllEpoch
+                ) {
+                    return@withProjectLock
+                }
                 ensureConnected(
                     ConnectionConfig(
                         projectDirectory = projectDirectory.canonicalFile.path,
@@ -355,6 +372,7 @@ class GradleConnectionManager(
                         gradleVersion = System.getenv("GRADLE_VERSION")?.takeIf { it.isNotBlank() },
                         gradleInstallation = System.getenv("GRADLE_INSTALLATION")?.takeIf { it.isNotBlank() },
                     ),
+                    holder = holder,
                 )
             }
         } catch (exception: Exception) {
