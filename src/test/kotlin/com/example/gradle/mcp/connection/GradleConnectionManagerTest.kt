@@ -764,29 +764,28 @@ class GradleConnectionManagerTest {
     }
 
     @Test
-    fun `releaseSession runs physical-close preparation outside the project lock`(
+    fun `releaseSession splits close preparation and blocking completion across the project lock`(
         @TempDir project: File,
     ) {
         val manager = GradleConnectionManager { _, _, _ -> noopProjectConnection() to null }
         val session = SessionProjectContext(workspaceProject = null)
         manager.ensureConnected(ConnectionConfig(projectDirectory = project.path), holder = session)
-        val enteredProjectLock = AtomicBoolean(false)
-        val enteredDuringCallback = AtomicBoolean(false)
-        lateinit var lockProbe: Thread
+        val projectLock = ProjectLifecycleLock.forProject(project)
+        val prepareHeldProjectLock = AtomicBoolean(false)
+        val completionHeldProjectLock = AtomicBoolean(true)
 
-        manager.releaseSession(session) {
-            lockProbe = Thread {
-                ProjectLifecycleLock.withProjectLock(project) {
-                    enteredProjectLock.set(true)
-                }
-            }
-            lockProbe.start()
-            lockProbe.join(1_000)
-            enteredDuringCallback.set(enteredProjectLock.get())
-        }
-        lockProbe.join(1_000)
+        manager.releaseSession(
+            session,
+            preparePhysicalClose = {
+                prepareHeldProjectLock.set(Thread.holdsLock(projectLock))
+            },
+            beforePhysicalClose = {
+                completionHeldProjectLock.set(Thread.holdsLock(projectLock))
+            },
+        )
 
-        enteredDuringCallback.get().shouldBeTrue()
+        prepareHeldProjectLock.get().shouldBeTrue()
+        completionHeldProjectLock.get().shouldBeFalse()
     }
 
     @Test

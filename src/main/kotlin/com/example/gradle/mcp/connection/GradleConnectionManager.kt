@@ -166,13 +166,15 @@ class GradleConnectionManager(
 
     /**
      * Drops every hold of [session] (session teardown); pooled connections
-     * left without holders are closed. [beforePhysicalClose] runs after the
-     * hold is removed atomically under the project lifecycle lock but before
-     * the underlying connection is physically closed, so callers can settle
-     * builds without blocking that lock.
+     * left without holders are closed. [preparePhysicalClose] runs under the
+     * project lifecycle lock immediately after the hold is removed and must be
+     * non-blocking; [beforePhysicalClose] runs after that lock is released but
+     * before the underlying connection is physically closed, so callers can
+     * wait for build workers without blocking lifecycle admission.
      */
     fun releaseSession(
         session: SessionProjectContext,
+        preparePhysicalClose: (File) -> Unit = {},
         beforePhysicalClose: (File) -> Unit = {},
     ) {
         val candidateKeys = synchronized(pool) {
@@ -196,11 +198,11 @@ class GradleConnectionManager(
                             null
                         }
                     }
+                    if (toClose != null) {
+                        preparePhysicalClose(directory)
+                    }
                 }
                 if (toClose != null) {
-                    // The project lock is only needed to remove the hold atomically
-                    // against build admission. Build cancellation can wait for
-                    // workers, so it must run after that lock is released.
                     beforePhysicalClose(directory)
                 }
             } finally {

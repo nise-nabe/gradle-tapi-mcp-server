@@ -214,10 +214,37 @@ class BuildExecutionManager(
     fun hasQueuedBuild(projectDirectory: File? = null): Boolean =
         registry.hasQueuedBuild(projectDirectory)
 
+    /**
+     * Cancellation-only first half of disconnect handling. The caller must hold
+     * the lifecycle lock for [projectDirectory] (or the global lock when it is
+     * null) so new builds cannot be admitted before the connection close becomes
+     * visible. This method must not wait for workers.
+     */
+    fun prepareDisconnect(projectDirectory: File? = null) {
+        markDisconnectBuilds("Gradle connection closed", projectDirectory)
+        registry.clearLastCompletedBuilds(projectDirectory)
+    }
+
+    /**
+     * Potentially blocking second half of disconnect handling. Call after the
+     * lifecycle lock used for [prepareDisconnect] has been released.
+     */
+    fun completeDisconnect(projectDirectory: File? = null) {
+        if (runner.shouldReplaceExecutor(projectDirectory)) {
+            // Waiting for build workers while holding the project lock can
+            // deadlock: finalization re-enters that lock to drain the queue.
+            runner.replaceBuildExecutor()
+        }
+    }
+
+    private fun markDisconnectBuilds(reason: String, projectDirectory: File?) {
+        runner.markQueuedBuildsCancelled(reason, projectDirectory)
+        runner.markRunningBuildsCancelled(projectDirectory)
+    }
+
     fun resetBuildState(reason: String, projectDirectory: File? = null) {
         val replaceExecutor = ProjectLifecycleLock.withLifecycleLock(projectDirectory) {
-            runner.markQueuedBuildsCancelled(reason, projectDirectory)
-            runner.markRunningBuildsCancelled(projectDirectory)
+            markDisconnectBuilds(reason, projectDirectory)
             runner.shouldReplaceExecutor(projectDirectory)
         }
         if (replaceExecutor) {
