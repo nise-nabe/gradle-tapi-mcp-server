@@ -356,6 +356,55 @@ class ProblemsSerializerTest {
     }
 
     @Test
+    fun `mergeDistinct keeps same-named problems from different groups distinct`() {
+        val javaProblem = problemProxy(
+            displayName = "Java compilation problem",
+            name = "compilation-problem",
+            groupPath = listOf("compilation", "java"),
+            details = "same details",
+            severity = Severity.WARNING,
+        )
+        val kotlinProblem = problemProxy(
+            displayName = "Kotlin compilation problem",
+            name = "compilation-problem",
+            groupPath = listOf("compilation", "kotlin"),
+            details = "same details",
+            severity = Severity.WARNING,
+        )
+        val target = mutableListOf<BuildProblemSnapshot>()
+
+        ProblemsSerializer.mergeDistinct(
+            target,
+            ProblemsSerializer.fromProblemEvent(singleProblemEventProxy(javaProblem)),
+        )
+        ProblemsSerializer.mergeDistinct(
+            target,
+            ProblemsSerializer.fromProblemEvent(singleProblemEventProxy(kotlinProblem)),
+        )
+
+        target shouldHaveSize 2
+        target.map { it.label } shouldBe listOf("compilation-problem", "compilation-problem")
+        target.map { it.groupPath } shouldBe listOf(
+            listOf("compilation", "java"),
+            listOf("compilation", "kotlin"),
+        )
+    }
+
+    @Test
+    fun `toResponseMaps includes non-empty problem group path`() {
+        val response = ProblemsSerializer.toResponseMaps(
+            listOf(
+                BuildProblemSnapshot(
+                    label = "compilation-problem",
+                    groupPath = listOf("compilation", "java"),
+                ),
+            ),
+        ).single()
+
+        response["groupPath"] shouldBe listOf("compilation", "java")
+    }
+
+    @Test
     fun `fromFailure maps unknown severity to unknown`() {
         val problem = problemProxy(
             displayName = "Future problem",

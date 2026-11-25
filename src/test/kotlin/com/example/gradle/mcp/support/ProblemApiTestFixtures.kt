@@ -10,6 +10,7 @@ import org.gradle.tooling.events.problems.ProblemAggregation
 import org.gradle.tooling.events.problems.ProblemAggregationEvent
 import org.gradle.tooling.events.problems.ProblemContext
 import org.gradle.tooling.events.problems.ProblemDefinition
+import org.gradle.tooling.events.problems.ProblemGroup
 import org.gradle.tooling.events.problems.ProblemId
 import org.gradle.tooling.events.problems.ProblemSummariesEvent
 import org.gradle.tooling.events.problems.ProblemSummary
@@ -26,7 +27,7 @@ internal fun singleProblemEventProxy(problem: Problem): SingleProblemEvent =
         InvocationHandler { _, method, _ ->
             when (method.name) {
                 "getProblem" -> problem
-                "getDisplayName" -> "Problem: ${problem.definition.id.displayName}"
+                "getDisplayName" -> "Problem: ${problem.definition.id.name}"
                 "getEventTime" -> 0L
                 else -> null
             }
@@ -121,8 +122,10 @@ internal fun problemProxy(
     originLocations: List<Location> = emptyList(),
     contextualLocations: List<Location> = emptyList(),
     locationsError: Throwable? = null,
+    name: String = displayName,
+    groupPath: List<String> = emptyList(),
 ): Problem {
-    val definition = problemDefinitionProxy(problemIdProxy(displayName), severity)
+    val definition = problemDefinitionProxy(problemIdProxy(displayName, name, groupPath), severity)
     return Proxy.newProxyInstance(
         Problem::class.java.classLoader,
         arrayOf(Problem::class.java),
@@ -173,22 +176,46 @@ internal fun throwingFileLocationProxy(): FileLocation =
         },
     ) as FileLocation
 
-private fun problemIdProxy(displayName: String): ProblemId =
-    Proxy.newProxyInstance(
+private fun problemIdProxy(
+    displayName: String,
+    name: String = displayName,
+    groupPath: List<String> = emptyList(),
+): ProblemId {
+    val group = groupPath.fold(null as ProblemGroup?) { parent, groupName ->
+        problemGroupProxy(groupName, parent)
+    }
+    return Proxy.newProxyInstance(
         ProblemId::class.java.classLoader,
         arrayOf(ProblemId::class.java),
         InvocationHandler { _, method, _ ->
             when (method.name) {
                 // Gradle deprecates getDisplayName(): ids created from the
                 // predefined problem groups have a display name equal to
-                // their name, so fixtures mirror that contract.
+                // their name, so fixtures mirror that contract by default.
                 "getDisplayName" -> displayName
-                "getName" -> displayName
-                "getGroup" -> null
+                "getName" -> name
+                "getGroup" -> group
                 else -> null
             }
         },
     ) as ProblemId
+}
+
+private fun problemGroupProxy(
+    name: String,
+    parent: ProblemGroup?,
+): ProblemGroup =
+    Proxy.newProxyInstance(
+        ProblemGroup::class.java.classLoader,
+        arrayOf(ProblemGroup::class.java),
+        InvocationHandler { _, method, _ ->
+            when (method.name) {
+                "getDisplayName", "getName" -> name
+                "getParent" -> parent
+                else -> null
+            }
+        },
+    ) as ProblemGroup
 
 private fun problemDefinitionProxy(
     problemId: ProblemId,

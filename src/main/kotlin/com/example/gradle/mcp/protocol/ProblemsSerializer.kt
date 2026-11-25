@@ -21,6 +21,8 @@ import org.gradle.tooling.events.problems.Severity
 import org.gradle.tooling.events.problems.SingleProblemEvent
 
 internal object ProblemsSerializer {
+    private const val MAX_PROBLEM_GROUP_DEPTH = 32
+
     fun fromFailureResult(result: FailureResult): List<BuildProblemSnapshot> =
         result.failures.flatMap { failure -> fromFailure(failure) }
 
@@ -82,6 +84,9 @@ internal object ProblemsSerializer {
         problems.map { problem ->
             buildMap {
                 put("label", problem.label)
+                if (problem.groupPath.isNotEmpty()) {
+                    put("groupPath", problem.groupPath)
+                }
                 problem.details?.let { put("details", it) }
                 problem.severity?.let { put("severity", it) }
                 if (problem.solutions.isNotEmpty()) {
@@ -129,6 +134,7 @@ internal object ProblemsSerializer {
         summaries.map { summary ->
             BuildProblemSnapshot(
                 label = problemLabel(summary.problemId),
+                groupPath = problemGroupPath(summary.problemId),
                 details = summary.count?.let { count -> "Occurred $count times" },
             )
         }
@@ -137,6 +143,7 @@ internal object ProblemsSerializer {
         val definition = problem.definition
         return BuildProblemSnapshot(
             label = problemLabel(definition.id),
+            groupPath = problemGroupPath(definition.id),
             details = problem.details?.details?.takeIf { it.isNotBlank() },
             severity = severityName(definition.severity),
             solutions = problem.solutions.mapNotNull { it.solution.takeIf(String::isNotBlank) },
@@ -149,6 +156,7 @@ internal object ProblemsSerializer {
     private fun toSnapshot(definition: ProblemDefinition): BuildProblemSnapshot =
         BuildProblemSnapshot(
             label = problemLabel(definition.id),
+            groupPath = problemGroupPath(definition.id),
             severity = severityName(definition.severity),
         )
 
@@ -158,6 +166,7 @@ internal object ProblemsSerializer {
     ): BuildProblemSnapshot =
         BuildProblemSnapshot(
             label = problemLabel(definition.id),
+            groupPath = problemGroupPath(definition.id),
             details = context.details?.details?.takeIf { it.isNotBlank() }
                 ?: context.failure?.message?.takeIf { it.isNotBlank() },
             severity = severityName(definition.severity),
@@ -209,6 +218,18 @@ internal object ProblemsSerializer {
     }
 
     private fun problemLabel(problemId: ProblemId): String = problemId.name
+
+    private fun problemGroupPath(problemId: ProblemId): List<String> {
+        val groups = mutableListOf<String>()
+        var group = problemId.group
+        var depth = 0
+        while (group != null && depth < MAX_PROBLEM_GROUP_DEPTH) {
+            group.name.takeIf { it.isNotBlank() }?.let(groups::add)
+            group = group.parent
+            depth += 1
+        }
+        return groups.asReversed()
+    }
 
     private fun severityName(severity: Severity): String? =
         when {
