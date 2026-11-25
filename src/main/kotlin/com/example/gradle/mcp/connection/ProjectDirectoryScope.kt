@@ -43,9 +43,9 @@ class ProjectDirectoryScope(
     }
 
     fun isWithinBoundary(directory: File): Boolean {
-        val canonicalDirectory = directory.canonicalFile.toPath()
+        val resolvedDirectory = realPathResolvingSymlinks(directory)
         return allowedRoots().any { root ->
-            isSameOrContainedIn(canonicalDirectory, root.canonicalFile.toPath())
+            isSameOrContainedIn(resolvedDirectory, realPathResolvingSymlinks(root))
         }
     }
 
