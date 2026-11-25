@@ -12,6 +12,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
 
 interface McpBuildNotifier {
     fun notifyProgress(progress: Double, total: Double, message: String)
@@ -26,37 +28,70 @@ internal class ClientConnectionBuildNotifier(
 ) : McpBuildNotifier {
     private val orderedDispatcher = Dispatchers.Default.limitedParallelism(1)
 
+    // Bound the notification backlog: a chatty build otherwise launches one
+    // coroutine per log line with no ceiling. Progress updates drop silently
+    // when saturated (the next update supersedes them); log lines apply
+    // backpressure to the Gradle listener thread and are only dropped after
+    // LOG_BACKPRESSURE_TIMEOUT_MS with a stuck or disconnected client.
+    private val inFlight = Semaphore(MAX_PENDING_NOTIFICATIONS)
+
     override fun notifyProgress(progress: Double, total: Double, message: String) {
+        if (!inFlight.tryAcquire()) {
+            return
+        }
         scope.launch(orderedDispatcher) {
-            runCatching {
-                connection.notification(
-                    ProgressNotification(
-                        ProgressNotificationParams(
-                            progressToken = progressToken,
-                            progress = progress,
-                            total = total,
-                            message = message,
+            try {
+                runCatching {
+                    connection.notification(
+                        ProgressNotification(
+                            ProgressNotificationParams(
+                                progressToken = progressToken,
+                                progress = progress,
+                                total = total,
+                                message = message,
+                            ),
                         ),
-                    ),
-                )
+                    )
+                }
+            } finally {
+                inFlight.release()
             }
         }
     }
 
     override fun notifyLog(message: String, level: LoggingLevel) {
+        val acquired =
+            try {
+                inFlight.tryAcquire(LOG_BACKPRESSURE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            } catch (interrupted: InterruptedException) {
+                Thread.currentThread().interrupt()
+                false
+            }
+        if (!acquired) {
+            return
+        }
         scope.launch(orderedDispatcher) {
-            runCatching {
-                connection.sendLoggingMessage(
-                    LoggingMessageNotification(
-                        LoggingMessageNotificationParams(
-                            level = level,
-                            logger = "gradle-build",
-                            data = buildJsonObject { put("message", message) },
+            try {
+                runCatching {
+                    connection.sendLoggingMessage(
+                        LoggingMessageNotification(
+                            LoggingMessageNotificationParams(
+                                level = level,
+                                logger = "gradle-build",
+                                data = buildJsonObject { put("message", message) },
+                            ),
                         ),
-                    ),
-                )
+                    )
+                }
+            } finally {
+                inFlight.release()
             }
         }
+    }
+
+    companion object {
+        const val MAX_PENDING_NOTIFICATIONS: Int = 512
+        const val LOG_BACKPRESSURE_TIMEOUT_MS: Long = 30_000L
     }
 }
 
