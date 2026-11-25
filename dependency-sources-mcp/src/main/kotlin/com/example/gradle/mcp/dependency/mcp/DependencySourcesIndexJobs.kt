@@ -2,15 +2,19 @@ package com.example.gradle.mcp.dependency.mcp
 
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /** A second index run was requested while [DependencySourcesIndexJobs] is already indexing the project. */
 class DependencySourcesIndexingConflictException(message: String) : IllegalStateException(message)
+
+/** Indexing could not be scheduled because the shared worker pool and its queue are saturated. */
+class DependencySourcesIndexQueueFullException(message: String) : IllegalStateException(message)
 
 /**
  * Tracks long-running `gradle_index_dependency_sources` jobs so clients can poll
@@ -18,11 +22,23 @@ class DependencySourcesIndexingConflictException(message: String) : IllegalState
  */
 class DependencySourcesIndexJobs(
     private val foregroundDetachTimeoutMs: Long = DEFAULT_FOREGROUND_DETACH_TIMEOUT_MS,
+    maxConcurrentJobs: Int = DEFAULT_MAX_CONCURRENT_JOBS,
+    maxQueuedJobs: Int = DEFAULT_MAX_QUEUED_JOBS,
 ) {
     private val jobs = ConcurrentHashMap<String, IndexJob>()
     private val activeByProject = ConcurrentHashMap<String, IndexJob>()
+
+    // Bounded pool + bounded queue: newCachedThreadPool allowed unbounded thread
+    // growth when many projects were indexed at once, and each indexing job holds
+    // Gradle model state in memory. Saturation rejects with a queue-full error.
     private val executor =
-        Executors.newCachedThreadPool { runnable ->
+        ThreadPoolExecutor(
+            maxConcurrentJobs,
+            maxConcurrentJobs,
+            0L,
+            TimeUnit.MILLISECONDS,
+            ArrayBlockingQueue(maxQueuedJobs),
+        ) { runnable ->
             Thread(runnable, "dependency-sources-index").apply { isDaemon = true }
         }
 
@@ -66,9 +82,14 @@ class DependencySourcesIndexJobs(
         } catch (error: RejectedExecutionException) {
             activeByProject.remove(projectKey, job)
             jobs.remove(indexId)
-            throw IllegalStateException(
-                "Unable to schedule dependency-sources indexing: ${error.message}",
-                error,
+            if (executor.isShutdown) {
+                throw IllegalStateException(
+                    "Unable to schedule dependency-sources indexing: ${error.message}",
+                    error,
+                )
+            }
+            throw DependencySourcesIndexQueueFullException(
+                "Dependency-sources indexing queue is full; retry after a running index finishes.",
             )
         }
         return job
@@ -110,6 +131,8 @@ class DependencySourcesIndexJobs(
 
     companion object {
         const val DEFAULT_FOREGROUND_DETACH_TIMEOUT_MS: Long = 45_000L
+        const val DEFAULT_MAX_CONCURRENT_JOBS: Int = 4
+        const val DEFAULT_MAX_QUEUED_JOBS: Int = 32
         private const val MAX_RETAINED_JOBS: Int = 64
     }
 }

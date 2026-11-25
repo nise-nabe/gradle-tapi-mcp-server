@@ -7,6 +7,7 @@ import com.example.gradle.mcp.connection.SessionProjectContext
 import com.example.gradle.mcp.dependency.mcp.DependencySourceToolCatalog
 import com.example.gradle.mcp.dependency.mcp.DependencySourcesGradleAccess
 import com.example.gradle.mcp.dependency.mcp.DependencySourcesIndexingConflictException
+import com.example.gradle.mcp.dependency.mcp.DependencySourcesIndexQueueFullException
 import com.example.gradle.mcp.protocol.McpErrorCode
 import com.example.gradle.mcp.protocol.McpException
 import com.example.gradle.mcp.protocol.McpToolAnnotations
@@ -112,6 +113,8 @@ private fun mapDependencySourcesError(error: Throwable): Throwable =
             McpException(McpErrorCode.INVALID_ARGUMENT, error.message ?: "Invalid argument", error)
         is DependencySourcesIndexingConflictException ->
             McpException(McpErrorCode.BUILD_ALREADY_RUNNING, error.message ?: "Indexing already running", error)
+        is DependencySourcesIndexQueueFullException ->
+            McpException(McpErrorCode.BUILD_QUEUE_FULL, error.message ?: "Indexing queue full", error)
         is IllegalStateException ->
             McpException(McpErrorCode.INTERNAL_ERROR, error.message ?: "Internal error", error)
         else -> error
