@@ -323,6 +323,17 @@ internal class BuildRunner(
         return true
     }
 
+    /**
+     * Finish a build that was dequeued but never submitted because its connection
+     * disappeared. The caller owns the dequeued work item, so no worker can race
+     * this terminal update.
+     */
+    fun finalizeUnsubmittedBuild(record: BuildRecord, outcome: BuildTerminalOutcome.Cancelled) {
+        record.progressTracker.markCancelled(outcome.message)
+        record.errorMessage = outcome.message
+        record.finishedAt = Instant.now()
+    }
+
     private fun afterBuildSlotFreed(record: BuildRecord, queueDrain: QueueDrain) {
         if (queueDrain == QueueDrain.NONE) {
             return
@@ -445,10 +456,14 @@ internal class BuildRunner(
                 ) {
                     is ProjectBuildQueue.TakeResult.Ready -> {
                         if (!connectionManager.isConnected(projectDirectory)) {
-                            registry.projectQueue.requeueAtFront(projectDirectory, result.queued)
-                            return
+                            finalizeUnsubmittedBuild(
+                                result.queued.record,
+                                BuildTerminalOutcome.Cancelled("Gradle connection closed"),
+                            )
+                            null
+                        } else {
+                            result.queued
                         }
-                        result.queued
                     }
                     ProjectBuildQueue.TakeResult.StaleRetry -> null // continue outer loop
                     ProjectBuildQueue.TakeResult.Empty,

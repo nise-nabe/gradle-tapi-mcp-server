@@ -595,7 +595,7 @@ class BuildExecutionManagerQueueTest {
     }
 
     @Test
-    fun `wakeQueuedBuilds keeps queued work when the project is disconnected`() {
+    fun `wakeQueuedBuilds cancels unsubmitted work when the project is disconnected`() {
         val connectionManager = GradleConnectionManager()
         val manager = BuildExecutionManager(connectionManager)
         manager.seedQueuedBuildForTests(
@@ -614,13 +614,13 @@ class BuildExecutionManagerQueueTest {
         try {
             manager.wakeQueuedBuilds(testProjectDirectory)
 
-            manager.queueDepthForTests(testProjectDirectory) shouldBe 1
+            manager.queueDepthForTests(testProjectDirectory) shouldBe 0
             val status = manager.status(
                 buildId = "queued-disconnected",
                 outputLimit = com.example.gradle.mcp.model.OutputLimitOptions(),
                 progressOptions = com.example.gradle.mcp.protocol.ProgressResponseOptions(),
             )
-            status["status"] shouldBe BuildProgressTracker.STATUS_QUEUED
+            status["status"] shouldBe BuildProgressTracker.STATUS_CANCELLED
         } finally {
             manager.shutdown()
         }
