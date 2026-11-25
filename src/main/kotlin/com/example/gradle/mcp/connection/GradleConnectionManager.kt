@@ -184,16 +184,30 @@ class GradleConnectionManager(
     }
 
     /**
-     * Registers [session] as a holder of its ambient workspace connection when
-     * that connection already exists in the pool (e.g. environment
-     * auto-connect finished before the session was created).
+     * Registers [session] as a holder of every ambient connection that already
+     * exists in the pool (e.g. environment auto-connect finished before the
+     * session was created). Late-arriving connections are attached lazily by
+     * [attachHolderIfConnected] during project resolution.
      */
     fun attachAmbientHolder(session: SessionProjectContext) {
-        val workspace = session.workspaceProject() ?: return
-        val key = ProjectDirectoryResolver.canonicalKey(workspace)
-        synchronized(pool) {
-            if (pool.containsKey(key)) {
+        session.knownProjects().forEach { project ->
+            attachHolderIfConnected(project, session)
+        }
+    }
+
+    /**
+     * Atomically registers [session] as a holder when [projectDirectory] is
+     * pooled. The check and hold share the pool monitor so disconnect cannot
+     * close the connection between resolution and use.
+     */
+    fun attachHolderIfConnected(projectDirectory: File, session: SessionProjectContext): Boolean {
+        val key = ProjectDirectoryResolver.canonicalKey(projectDirectory)
+        return synchronized(pool) {
+            if (!pool.containsKey(key)) {
+                false
+            } else {
                 registerHolderLocked(key, session)
+                true
             }
         }
     }

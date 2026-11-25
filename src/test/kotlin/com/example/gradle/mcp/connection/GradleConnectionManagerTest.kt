@@ -697,6 +697,42 @@ class GradleConnectionManagerTest {
     }
 
     @Test
+    fun `attachAmbientHolder holds seeded projects already in the pool`(@TempDir project: File) {
+        val manager = GradleConnectionManager()
+        manager.seedConnectionForTests(noopProjectConnection(), projectDirectory = project)
+        val ambientSession = SessionProjectContext(
+            workspaceProject = null,
+            seedProjectDirectories = listOf(project),
+        )
+        val otherSession = SessionProjectContext(workspaceProject = null)
+
+        manager.attachAmbientHolder(ambientSession)
+        val info = manager.disconnect(project, otherSession)
+
+        info.shouldNotBeNull()
+        info.retainedByOtherSessions.shouldBeTrue()
+        manager.isConnected(project).shouldBeTrue()
+    }
+
+    @Test
+    fun `resolveRequired lazily holds an ambient connection that arrived after session creation`(
+        @TempDir project: File,
+    ) {
+        val manager = GradleConnectionManager()
+        val ambientSession = SessionProjectContext(workspaceProject = project)
+        val otherSession = SessionProjectContext(workspaceProject = null)
+        manager.attachAmbientHolder(ambientSession)
+        manager.seedConnectionForTests(noopProjectConnection(), projectDirectory = project)
+
+        ProjectDirectoryResolver.resolveRequired(emptyMap(), manager, ambientSession)
+        val info = manager.disconnect(project, otherSession)
+
+        info.shouldNotBeNull()
+        info.retainedByOtherSessions.shouldBeTrue()
+        manager.isConnected(project).shouldBeTrue()
+    }
+
+    @Test
     fun `releaseSession closes pooled connections left without holders`(@TempDir project: File) {
         val manager = GradleConnectionManager { _, _, _ -> noopProjectConnection() to null }
         val session = SessionProjectContext(workspaceProject = null)
