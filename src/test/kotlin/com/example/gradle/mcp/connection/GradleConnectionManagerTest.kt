@@ -733,6 +733,31 @@ class GradleConnectionManagerTest {
     }
 
     @Test
+    fun `releaseSession runs the close callback only for physically closed projects`(
+        @TempDir project: File,
+    ) {
+        val manager = GradleConnectionManager { _, _, _ -> noopProjectConnection() to null }
+        val sessionA = SessionProjectContext(workspaceProject = null)
+        val sessionB = SessionProjectContext(workspaceProject = null)
+        val config = ConnectionConfig(projectDirectory = project.path)
+        manager.ensureConnected(config, holder = sessionA)
+        manager.ensureConnected(config, holder = sessionB)
+        var closeCallbacks = 0
+
+        manager.releaseSession(sessionB) { closeCallbacks++ }
+        closeCallbacks shouldBe 0
+        manager.isConnected(project).shouldBeTrue()
+
+        manager.releaseSession(sessionA) { closingDirectory ->
+            closingDirectory shouldBe project.canonicalFile
+            closeCallbacks++
+        }
+
+        closeCallbacks shouldBe 1
+        manager.isConnected(project).shouldBeFalse()
+    }
+
+    @Test
     fun `releaseSession closes pooled connections left without holders`(@TempDir project: File) {
         val manager = GradleConnectionManager { _, _, _ -> noopProjectConnection() to null }
         val session = SessionProjectContext(workspaceProject = null)

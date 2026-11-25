@@ -166,21 +166,42 @@ class GradleConnectionManager(
 
     /**
      * Drops every hold of [session] (session teardown); pooled connections
-     * left without holders are closed.
+     * left without holders are closed. [beforePhysicalClose] runs under the
+     * project lifecycle lock just before a connection is physically closed,
+     * so callers can settle builds before the connection becomes unavailable.
      */
-    fun releaseSession(session: SessionProjectContext) {
-        val toClose = mutableListOf<ProjectConnection>()
-        synchronized(pool) {
-            val iterator = holders.entries.iterator()
-            while (iterator.hasNext()) {
-                val (key, holderSet) = iterator.next()
-                if (holderSet.remove(session) && holderSet.isEmpty()) {
-                    iterator.remove()
-                    pool.remove(key)?.let { toClose.add(it.connection) }
+    fun releaseSession(
+        session: SessionProjectContext,
+        beforePhysicalClose: (File) -> Unit = {},
+    ) {
+        val candidateKeys = synchronized(pool) {
+            holders.entries.filter { session in it.value }.map { it.key }
+        }
+        for (key in candidateKeys) {
+            val directory = synchronized(pool) { pool[key]?.projectDirectory } ?: continue
+            var toClose: ProjectConnection? = null
+            try {
+                ProjectLifecycleLock.withProjectLock(directory) {
+                    toClose = synchronized(pool) {
+                        val holderSet = holders[key] ?: return@synchronized null
+                        if (!holderSet.remove(session)) {
+                            return@synchronized null
+                        }
+                        if (holderSet.isEmpty()) {
+                            holders.remove(key)
+                            pool.remove(key)?.connection
+                        } else {
+                            null
+                        }
+                    }
+                    toClose?.let {
+                        beforePhysicalClose(directory)
+                    }
                 }
+            } finally {
+                toClose?.let(::closeQuietly)
             }
         }
-        toClose.forEach { closeQuietly(it) }
     }
 
     /**
