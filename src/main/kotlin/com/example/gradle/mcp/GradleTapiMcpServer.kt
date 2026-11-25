@@ -96,6 +96,13 @@ fun runGradleTapiMcpServer(options: ServerCliOptions = ServerCliOptions()) {
             serveStreamableHttp(
                 endpoint = options.http,
                 newServer = { context ->
+                    // A session close may have released the startup workspace
+                    // since the previous session. Reconnecting here keeps the
+                    // ambient default available to later sessions (including
+                    // minimal tool profiles without gradle_connect).
+                    serverScope.launch(Dispatchers.IO) {
+                        connectionManager.tryAutoConnectFromEnvironment()
+                    }
                     createGradleTapiServer(
                         runtime = runtime,
                         serverScope = serverScope,
