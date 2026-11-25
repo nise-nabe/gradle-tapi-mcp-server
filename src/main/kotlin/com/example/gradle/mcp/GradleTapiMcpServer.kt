@@ -24,6 +24,7 @@ import io.ktor.server.routing.RoutingContext
 import io.ktor.utils.io.streams.asInput
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
+import io.modelcontextprotocol.kotlin.sdk.server.ServerSession
 import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
@@ -153,10 +154,31 @@ internal fun createGradleTapiServer(
         },
     )
 
-    // Closing the session releases the projects it held; pooled connections
+    // Server.onClose does not run when an individual streamable-HTTP session
+    // ends, so hook each connected ServerSession as well. Pooled connections
     // stay alive while other sessions still hold them.
+    val releasedHolders = AtomicBoolean(false)
+    fun releaseSessionHolders() {
+        if (releasedHolders.compareAndSet(false, true)) {
+            runtime.connectionManager.releaseSession(session)
+        }
+    }
+    val hookedSessions = mutableSetOf<ServerSession>()
+    server.onConnect {
+        val newSessions = synchronized(hookedSessions) {
+            server.sessions.values.filter { it !in hookedSessions }
+                .also { hookedSessions.addAll(it) }
+        }
+        newSessions.forEach { serverSession ->
+            serverSession.onClose {
+                if (server.sessions.isEmpty()) {
+                    releaseSessionHolders()
+                }
+            }
+        }
+    }
     server.onClose {
-        runtime.connectionManager.releaseSession(session)
+        releaseSessionHolders()
     }
 
     try {
