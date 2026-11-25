@@ -6,6 +6,7 @@ import io.ktor.server.routing.RoutingContext
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.mcpStreamableHttp
 import kotlinx.coroutines.runBlocking
+import java.net.InetAddress
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -47,8 +48,27 @@ internal fun serveStreamableHttp(
             "gradle-tapi-mcp-server serving MCP streamable-http on " +
                 "http://${endpoint.host}:${endpoint.port}${endpoint.path}",
         )
+        if (!isLoopbackBindHost(endpoint.host)) {
+            System.err.println(
+                "WARNING: streamable-http is bound to non-loopback host '${endpoint.host}'. " +
+                    "The server has no authentication: anyone who can reach this port can run " +
+                    "arbitrary Gradle tasks (i.e. execute code) in connected projects. Bind to " +
+                    "127.0.0.1 or front it with authenticated TLS.",
+            )
+        }
         engine.start(wait = true)
     } finally {
         runBlocking { shutdownRuntime() }
     }
 }
+
+// Loopback-only binding is the safety boundary for streamable-http: the server
+// has no authentication, so a reachable non-loopback bind exposes task execution
+// to the network. Unknown/unresolvable hosts count as non-loopback so the
+// warning is never silently skipped.
+internal fun isLoopbackBindHost(host: String): Boolean =
+    try {
+        InetAddress.getByName(host).isLoopbackAddress
+    } catch (_: Exception) {
+        false
+    }
