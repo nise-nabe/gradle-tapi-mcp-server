@@ -34,6 +34,10 @@ data class BuildRecord(
     @Volatile
     var failureKind: FailureKind? = null
 
+    /** Set when disconnect handling already cleared this build's completion snapshot. */
+    @Volatile
+    var suppressCompletionSnapshot: Boolean = false
+
     /**
      * Fire the Tooling API cancellation token. The tracker is told first so task and test
      * failures Gradle reports while stopping are recorded as cancelled, not failed.

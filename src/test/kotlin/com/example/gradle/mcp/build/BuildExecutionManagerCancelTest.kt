@@ -204,6 +204,7 @@ class BuildExecutionManagerCancelTest {
             projectDirectory = project.absolutePath,
         )
         scopedManager.seedRunningBuildForTests(oldBuild)
+        val executorBeforeClose = scopedManager.testExecutor()
 
         connectionManager.releaseSession(
             closingSession,
@@ -218,6 +219,9 @@ class BuildExecutionManagerCancelTest {
 
         oldBuild.cancellationRequested.shouldBeTrue()
         replacementBuild.cancellationRequested.shouldBeFalse()
+        scopedManager.testExecutor() shouldNotBe executorBeforeClose
+        scopedManager.completeBuildForTests(oldBuild.id).shouldBeTrue()
+        scopedManager.lastCompletedBuildSnapshot(project).shouldBeNull()
         scopedManager.shutdown()
     }
 

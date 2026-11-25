@@ -14,6 +14,7 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -30,6 +31,9 @@ internal class BuildRunner(
     private val registry: BuildRegistry,
     private val buildRecordStore: BuildRecordStore,
 ) {
+    private val executorRotationLock = Any()
+    private val retiredBuildExecutors = ConcurrentLinkedQueue<ExecutorService>()
+
     @Volatile
     private var executor: ExecutorService = newBuildExecutor()
 
@@ -37,7 +41,9 @@ internal class BuildRunner(
 
     /** Submit build work; throws [RejectedExecutionException] when the pool is saturated. */
     fun execute(work: () -> Unit) {
-        executor.execute { work() }
+        synchronized(executorRotationLock) {
+            executor.execute { work() }
+        }
     }
 
     fun runBuild(
@@ -352,7 +358,9 @@ internal class BuildRunner(
             is BuildTerminalOutcome.Failed -> "FAILED"
             is BuildTerminalOutcome.Cancelled -> "CANCELLED"
         }
-        registry.storeLastCompletedBuild(record, wireOutcome)
+        if (!record.suppressCompletionSnapshot) {
+            registry.storeLastCompletedBuild(record, wireOutcome)
+        }
     }
 
     fun markQueuedBuildsCancelled(reason: String, projectDirectory: File? = null) {
@@ -504,19 +512,39 @@ internal class BuildRunner(
         }
     }
 
-    fun replaceBuildExecutor() {
-        val oldExecutor = executor
-        oldExecutor.shutdown()
-        try {
-            if (!oldExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                oldExecutor.shutdownNow()
-                oldExecutor.awaitTermination(2, TimeUnit.SECONDS)
-            }
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
-            oldExecutor.shutdownNow()
+    /**
+     * Swap new work onto a fresh executor while the caller still holds the
+     * lifecycle lock that admits builds. The retired executor is shut down but
+     * awaited only after that lock is released, so replacement builds never run
+     * on a pool that disconnect handling may interrupt.
+     */
+    fun retireBuildExecutorIfNeeded(projectDirectory: File?): Boolean {
+        if (!shouldReplaceExecutor(projectDirectory)) {
+            return false
         }
-        executor = newBuildExecutor()
+        val oldExecutor = synchronized(executorRotationLock) {
+            val current = executor
+            executor = newBuildExecutor()
+            current
+        }
+        oldExecutor.shutdown()
+        retiredBuildExecutors.add(oldExecutor)
+        return true
+    }
+
+    fun awaitRetiredBuildExecutors() {
+        while (true) {
+            val retired = retiredBuildExecutors.poll() ?: return
+            try {
+                if (!retired.awaitTermination(5, TimeUnit.SECONDS)) {
+                    retired.shutdownNow()
+                    retired.awaitTermination(2, TimeUnit.SECONDS)
+                }
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                retired.shutdownNow()
+            }
+        }
     }
 
     private fun newBuildExecutor(): ExecutorService {
