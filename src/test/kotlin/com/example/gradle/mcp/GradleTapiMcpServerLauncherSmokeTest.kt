@@ -109,6 +109,93 @@ class GradleTapiMcpServerLauncherSmokeTest {
         }
     }
 
+    @Test
+    fun `streamable http serves tools list within an initialized session`() {
+        val jar = projectJar()
+        val port = freePort()
+        val process = ProcessBuilder(
+            "java", "-jar", jar.absolutePath,
+            "--transport=streamable-http",
+            "--host=127.0.0.1",
+            "--port=$port",
+        )
+            .directory(projectRoot())
+            .redirectError(ProcessBuilder.Redirect.DISCARD)
+            .start()
+
+        try {
+            val client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(2))
+                .build()
+            val initialize = postInitializeWithRetry(process, port)
+            initialize.statusCode() shouldBe 200
+            val sessionId = initialize.headers().firstValue("mcp-session-id").orElseThrow()
+
+            val initialized = postJson(client, port, sessionId,
+                """{"jsonrpc":"2.0","method":"notifications/initialized"}""")
+            initialized.statusCode() shouldBe 202
+
+            val toolsList = postJson(client, port, sessionId,
+                """{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}""")
+            toolsList.statusCode() shouldBe 200
+            toolsList.body() shouldContain "gradle_connection_status"
+            toolsList.body() shouldContain "gradle_run_tasks"
+        } finally {
+            process.destroyForcibly()
+            process.waitFor(5, TimeUnit.SECONDS)
+        }
+    }
+
+    @Test
+    fun `streamable http rejects session-less non-initialize posts with 400`() {
+        val jar = projectJar()
+        val port = freePort()
+        val process = ProcessBuilder(
+            "java", "-jar", jar.absolutePath,
+            "--transport=streamable-http",
+            "--host=127.0.0.1",
+            "--port=$port",
+        )
+            .directory(projectRoot())
+            .redirectError(ProcessBuilder.Redirect.DISCARD)
+            .start()
+
+        try {
+            val initialize = postInitializeWithRetry(process, port)
+            initialize.statusCode() shouldBe 200
+
+            val client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(2))
+                .build()
+            val noSession = postJson(client, port, null,
+                """{"jsonrpc":"2.0","id":9,"method":"tools/list","params":{}}""")
+            noSession.statusCode() shouldBe 400
+
+            val wrongSession = postJson(client, port, "no-such-session",
+                """{"jsonrpc":"2.0","id":10,"method":"tools/list","params":{}}""")
+            wrongSession.statusCode() shouldBe 404
+        } finally {
+            process.destroyForcibly()
+            process.waitFor(5, TimeUnit.SECONDS)
+        }
+    }
+
+    private fun postJson(
+        client: HttpClient,
+        port: Int,
+        sessionId: String?,
+        body: String,
+    ): HttpResponse<String> {
+        val builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port/mcp"))
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json, text/event-stream")
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+        if (sessionId != null) {
+            builder.header("mcp-session-id", sessionId)
+        }
+        return client.send(builder.build(), HttpResponse.BodyHandlers.ofString())
+    }
+
     private fun postInitializeWithRetry(process: Process, port: Int): HttpResponse<String> {
         val client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(2))
