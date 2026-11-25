@@ -80,9 +80,12 @@ internal fun disconnectProjects(
     if (!disconnectEverything && projectDirectory == null) {
         return mapOf("state" to "not_connected")
     }
-    if (!disconnectEverything && session != null && !session.isKnown(projectDirectory!!)) {
+    // Non-null whenever disconnectEverything is false (guarded above); centralize
+    // the invariant instead of sprinkling !! across the single-project path.
+    val singleProjectDirectory = if (disconnectEverything) null else projectDirectory
+    if (singleProjectDirectory != null && session != null && !session.isKnown(singleProjectDirectory)) {
         return mapOf(
-            "projectDirectory" to projectDirectory.path,
+            "projectDirectory" to singleProjectDirectory.path,
             "state" to "not_connected",
         )
     }
@@ -95,13 +98,16 @@ internal fun disconnectProjects(
             session?.onDisconnected(null)
             runtime.connectionManager.disconnectAll()
         } else {
-            val willClose = runtime.connectionManager.disconnectWouldClosePool(projectDirectory!!, session)
-            hadActiveBuild = willClose && runtime.buildExecutionManager.hasActiveBuild(projectDirectory)
-            if (willClose) {
-                runtime.buildExecutionManager.onDisconnect(projectDirectory)
+            val targetDirectory = checkNotNull(singleProjectDirectory) {
+                "single-project disconnect requires a resolved projectDirectory"
             }
-            val info = runtime.connectionManager.disconnect(projectDirectory, session)
-            session?.onDisconnected(projectDirectory)
+            val willClose = runtime.connectionManager.disconnectWouldClosePool(targetDirectory, session)
+            hadActiveBuild = willClose && runtime.buildExecutionManager.hasActiveBuild(targetDirectory)
+            if (willClose) {
+                runtime.buildExecutionManager.onDisconnect(targetDirectory)
+            }
+            val info = runtime.connectionManager.disconnect(targetDirectory, session)
+            session?.onDisconnected(targetDirectory)
             if (info == null) {
                 emptyList()
             } else {

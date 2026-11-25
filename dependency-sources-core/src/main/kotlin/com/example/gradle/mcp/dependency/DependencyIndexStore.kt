@@ -365,7 +365,6 @@ class DependencyIndexStore : AutoCloseable {
         jarEntries.clear()
     }
 
-    
     private class SearchStage(
         val indexDir: File,
         val hits: List<LocateHit>,
@@ -390,7 +389,7 @@ class DependencyIndexStore : AutoCloseable {
         }
     }
 
-private fun cacheKey(projectDirectory: File, tokenMode: TokenMode, indexDir: File): String =
+    private fun cacheKey(projectDirectory: File, tokenMode: TokenMode, indexDir: File): String =
         projectDirectory.canonicalFile.absolutePath + "|" + tokenMode.wireName() + "|" +
             indexDir.canonicalFile.absolutePath
 
