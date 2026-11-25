@@ -595,6 +595,38 @@ class BuildExecutionManagerQueueTest {
     }
 
     @Test
+    fun `wakeQueuedBuilds keeps queued work when the project is disconnected`() {
+        val connectionManager = GradleConnectionManager()
+        val manager = BuildExecutionManager(connectionManager)
+        manager.seedQueuedBuildForTests(
+            testBuildRecord(
+                id = "queued-disconnected",
+                tracker = queuedTracker(),
+                projectDirectory = testProjectDirectory.absolutePath,
+            ),
+            request = BuildRunRequest(
+                projectDirectory = testProjectDirectory,
+                kind = BuildKind.TASKS,
+                tasks = listOf("compileKotlin"),
+            ),
+        )
+
+        try {
+            manager.wakeQueuedBuilds(testProjectDirectory)
+
+            manager.queueDepthForTests(testProjectDirectory) shouldBe 1
+            val status = manager.status(
+                buildId = "queued-disconnected",
+                outputLimit = com.example.gradle.mcp.model.OutputLimitOptions(),
+                progressOptions = com.example.gradle.mcp.protocol.ProgressResponseOptions(),
+            )
+            status["status"] shouldBe BuildProgressTracker.STATUS_QUEUED
+        } finally {
+            manager.shutdown()
+        }
+    }
+
+    @Test
     fun `wakeQueuedBuilds drains without holding another project lock`() {
         val projectA = File("/tmp/project-a").absoluteFile
         val projectB = File("/tmp/project-b").absoluteFile

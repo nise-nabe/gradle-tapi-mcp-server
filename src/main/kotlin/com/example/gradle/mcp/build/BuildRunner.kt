@@ -443,7 +443,13 @@ internal class BuildRunner(
                         hasRunningBuild = registry.hasRunningBuild(projectDirectory),
                     )
                 ) {
-                    is ProjectBuildQueue.TakeResult.Ready -> result.queued
+                    is ProjectBuildQueue.TakeResult.Ready -> {
+                        if (!connectionManager.isConnected(projectDirectory)) {
+                            registry.projectQueue.requeueAtFront(projectDirectory, result.queued)
+                            return
+                        }
+                        result.queued
+                    }
                     ProjectBuildQueue.TakeResult.StaleRetry -> null // continue outer loop
                     ProjectBuildQueue.TakeResult.Empty,
                     ProjectBuildQueue.TakeResult.IdleOccupied,

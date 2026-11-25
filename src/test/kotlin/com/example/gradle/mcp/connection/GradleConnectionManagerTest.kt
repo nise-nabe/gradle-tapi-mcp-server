@@ -733,6 +733,63 @@ class GradleConnectionManagerTest {
     }
 
     @Test
+    fun `releaseSession prevents late auto-connect from retaining a closed session`(
+        @TempDir project: File,
+    ) {
+        val connectStarted = CountDownLatch(1)
+        val allowConnect = CountDownLatch(1)
+        val manager = GradleConnectionManager { _, _, _ ->
+            connectStarted.countDown()
+            allowConnect.await(5, TimeUnit.SECONDS)
+            noopProjectConnection() to null
+        }
+        val closingSession = SessionProjectContext(workspaceProject = null)
+        val connectThread = Thread {
+            manager.tryAutoConnectFromDirectory(project, holder = closingSession)
+        }
+        connectThread.start()
+        connectStarted.await(5, TimeUnit.SECONDS).shouldBeTrue()
+
+        manager.releaseSession(closingSession)
+        allowConnect.countDown()
+        connectThread.join(5_000)
+
+        val otherSession = SessionProjectContext(workspaceProject = null)
+        manager.ensureConnected(ConnectionConfig(projectDirectory = project.path), holder = otherSession)
+        val info = manager.disconnect(project, otherSession)
+
+        info.shouldNotBeNull()
+        info.closedPooledConnection.shouldBeTrue()
+        manager.isConnected(project).shouldBeFalse()
+    }
+
+    @Test
+    fun `releaseSession runs physical-close preparation outside the project lock`(
+        @TempDir project: File,
+    ) {
+        val manager = GradleConnectionManager { _, _, _ -> noopProjectConnection() to null }
+        val session = SessionProjectContext(workspaceProject = null)
+        manager.ensureConnected(ConnectionConfig(projectDirectory = project.path), holder = session)
+        val enteredProjectLock = AtomicBoolean(false)
+        val enteredDuringCallback = AtomicBoolean(false)
+        lateinit var lockProbe: Thread
+
+        manager.releaseSession(session) {
+            lockProbe = Thread {
+                ProjectLifecycleLock.withProjectLock(project) {
+                    enteredProjectLock.set(true)
+                }
+            }
+            lockProbe.start()
+            lockProbe.join(1_000)
+            enteredDuringCallback.set(enteredProjectLock.get())
+        }
+        lockProbe.join(1_000)
+
+        enteredDuringCallback.get().shouldBeTrue()
+    }
+
+    @Test
     fun `releaseSession runs the close callback only for physically closed projects`(
         @TempDir project: File,
     ) {
