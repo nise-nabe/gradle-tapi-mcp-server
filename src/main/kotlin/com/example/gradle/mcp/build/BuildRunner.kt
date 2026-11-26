@@ -432,20 +432,12 @@ internal class BuildRunner(
     }
 
     /**
-     * Whether the shared build executor should be swapped for a fresh one.
-     *
-     * On a per-project disconnect the project being disconnected is still in the
-     * connection pool: GradleConnectionManager.disconnect runs after onDisconnect
-     * so running builds can be cancelled through the live ProjectConnection.
-     * Treat that project as already removed: replace the executor when every
-     * still-connected project is the one being disconnected (no other connection
-     * will remain). An empty pool, or a global reset with null projectDirectory,
-     * also qualifies.
+     * Whether the shared build executor can be swapped for a fresh one. The
+     * executor is shared across projects, so a healthy build must never be
+     * interrupted because an unrelated project disconnected.
      */
-    fun shouldReplaceExecutor(projectDirectory: File?): Boolean =
-        projectDirectory == null ||
-            connectionManager.connectedProjectDirectories()
-                .all { ProjectDirectoryResolver.sameProject(it.path, projectDirectory) }
+    fun canRetireBuildExecutor(): Boolean =
+        registry.runningRecords().all { it.cancellationRequested }
 
     fun drainAllProjectQueues() {
         registry.projectQueue.projectKeys().forEach { projectKey ->
@@ -483,7 +475,7 @@ internal class BuildRunner(
                 continue
             }
             try {
-                executor.execute { queued.work() }
+                execute { queued.work() }
             } catch (_: RejectedExecutionException) {
                 ProjectLifecycleLock.withProjectLock(projectDirectory) {
                     registry.projectQueue.requeueAtFront(projectDirectory, queued)
@@ -518,15 +510,16 @@ internal class BuildRunner(
      * awaited only after that lock is released, so replacement builds never run
      * on a pool that disconnect handling may interrupt.
      */
-    fun retireBuildExecutorIfNeeded(projectDirectory: File?): Boolean {
-        if (!shouldReplaceExecutor(projectDirectory)) {
-            return false
-        }
+    fun retireBuildExecutorIfNeeded(): Boolean {
         val oldExecutor = synchronized(executorRotationLock) {
-            val current = executor
-            executor = newBuildExecutor()
-            current
-        }
+            if (canRetireBuildExecutor()) {
+                val current = executor
+                executor = newBuildExecutor()
+                current
+            } else {
+                null
+            }
+        } ?: return false
         oldExecutor.shutdown()
         retiredBuildExecutors.add(oldExecutor)
         return true

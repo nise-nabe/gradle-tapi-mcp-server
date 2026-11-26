@@ -226,7 +226,7 @@ class BuildExecutionManager(
             .forEach { it.suppressCompletionSnapshot = true }
         markDisconnectBuilds("Gradle connection closed", projectDirectory)
         registry.clearLastCompletedBuilds(projectDirectory)
-        runner.retireBuildExecutorIfNeeded(projectDirectory)
+        runner.retireBuildExecutorIfNeeded()
     }
 
     /**
@@ -247,7 +247,7 @@ class BuildExecutionManager(
     fun resetBuildState(reason: String, projectDirectory: File? = null) {
         ProjectLifecycleLock.withLifecycleLock(projectDirectory) {
             markDisconnectBuilds(reason, projectDirectory)
-            runner.retireBuildExecutorIfNeeded(projectDirectory)
+            runner.retireBuildExecutorIfNeeded()
         }
         // Waiting for build workers while holding the project lock can
         // deadlock: finalization re-enters that lock to drain the queue.

@@ -259,13 +259,20 @@ class BuildExecutionManagerCancelTest {
     }
 
     @Test
-    fun `onDisconnect keeps executor while other projects remain connected`(
+    fun `onDisconnect keeps executor while a healthy build is running`(
         @TempDir projectA: File,
         @TempDir projectB: File,
     ) {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnections(projectA, projectB)
         val scopedManager = BuildExecutionManager(connectionManager)
+        scopedManager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "healthy-other-project-build",
+                tracker = runningTracker(),
+                projectDirectory = projectB.absolutePath,
+            ),
+        )
 
         val executorBefore = scopedManager.testExecutor()
 
