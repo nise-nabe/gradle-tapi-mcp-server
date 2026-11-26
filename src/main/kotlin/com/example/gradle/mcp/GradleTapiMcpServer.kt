@@ -178,9 +178,15 @@ internal fun createGradleTapiServer(
     val releasedHolders = AtomicBoolean(false)
     fun releaseSessionHolders() {
         if (releasedHolders.compareAndSet(false, true)) {
-            runtime.connectionManager.releaseSession(session) { projectDirectory ->
-                runtime.buildExecutionManager.onDisconnect(projectDirectory)
-            }
+            runtime.connectionManager.releaseSession(
+                session,
+                preparePhysicalClose = { projectDirectory ->
+                    runtime.buildExecutionManager.prepareDisconnect(projectDirectory)
+                },
+                beforePhysicalClose = { projectDirectory ->
+                    runtime.buildExecutionManager.completeDisconnect(projectDirectory)
+                },
+            )
         }
     }
     val hookedSessions = mutableSetOf<ServerSession>()

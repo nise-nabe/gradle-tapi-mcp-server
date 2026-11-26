@@ -115,7 +115,7 @@ class ConnectionToolsTest {
     }
 
     @Test
-    fun `disconnect keeps build executor while another project stays connected`(
+    fun `disconnect keeps build executor while a healthy build is running`(
         @TempDir projectA: File,
         @TempDir projectB: File,
     ) {
@@ -123,6 +123,13 @@ class ConnectionToolsTest {
         val buildExecutionManager = BuildExecutionManager(connectionManager)
         connectionManager.seedConnectionForTests(noopProjectConnection(), projectA)
         connectionManager.seedConnectionForTests(noopProjectConnection(), projectB)
+        buildExecutionManager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "healthy-other-project-build",
+                tracker = runningTracker(),
+                projectDirectory = projectB.absolutePath,
+            ),
+        )
         val runtime = DefaultGradleMcpRuntime(connectionManager, buildExecutionManager)
         val executorBefore = buildExecutionManager.testExecutor()
 

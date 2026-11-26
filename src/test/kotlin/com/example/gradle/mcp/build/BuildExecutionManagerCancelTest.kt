@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.build
 
 import com.example.gradle.mcp.cache.lastMcpBuildInsight
+import com.example.gradle.mcp.connection.ConnectionConfig
 import com.example.gradle.mcp.connection.GradleConnectionManager
 import com.example.gradle.mcp.connection.ProjectDirectoryScope
 import com.example.gradle.mcp.connection.SessionProjectContext
@@ -186,6 +187,45 @@ class BuildExecutionManagerCancelTest {
     }
 
     @Test
+    fun `session teardown does not cancel builds started on replacement connection`(@TempDir project: File) {
+        val connectionManager = GradleConnectionManager { _, _, _ -> noopProjectConnection() to null }
+        val scopedManager = BuildExecutionManager(connectionManager)
+        val closingSession = SessionProjectContext(workspaceProject = null)
+        val config = ConnectionConfig(projectDirectory = project.path)
+        connectionManager.ensureConnected(config, holder = closingSession)
+        val oldBuild = testBuildRecord(
+            id = "old-connection-build",
+            tracker = runningTracker(),
+            projectDirectory = project.absolutePath,
+        )
+        val replacementBuild = testBuildRecord(
+            id = "replacement-connection-build",
+            tracker = runningTracker(),
+            projectDirectory = project.absolutePath,
+        )
+        scopedManager.seedRunningBuildForTests(oldBuild)
+        val executorBeforeClose = scopedManager.testExecutor()
+
+        connectionManager.releaseSession(
+            closingSession,
+            preparePhysicalClose = { scopedManager.prepareDisconnect(it) },
+            beforePhysicalClose = { projectDirectory ->
+                val replacementSession = SessionProjectContext(workspaceProject = null)
+                connectionManager.ensureConnected(config, holder = replacementSession)
+                scopedManager.seedRunningBuildForTests(replacementBuild)
+                scopedManager.completeDisconnect(projectDirectory)
+            },
+        )
+
+        oldBuild.cancellationRequested.shouldBeTrue()
+        replacementBuild.cancellationRequested.shouldBeFalse()
+        scopedManager.testExecutor() shouldNotBe executorBeforeClose
+        scopedManager.completeBuildForTests(oldBuild.id).shouldBeTrue()
+        scopedManager.lastCompletedBuildSnapshot(project).shouldBeNull()
+        scopedManager.shutdown()
+    }
+
+    @Test
     fun `onDisconnect replaces executor when last project is disconnected`(@TempDir project: File) {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnection(project)
@@ -209,9 +249,9 @@ class BuildExecutionManagerCancelTest {
 
         val executorBefore = scopedManager.testExecutor()
 
-        // disconnectProjects calls onDisconnect before removing the connection
-        // from the pool so in-flight builds can be cancelled through the live
-        // ProjectConnection.
+        // disconnectProjects requests cancellation while the connection is
+        // still pooled, then completes the potentially blocking reset after
+        // releasing the lifecycle lock.
         scopedManager.onDisconnect(project)
         connectionManager.disconnect(project)
 
@@ -219,13 +259,20 @@ class BuildExecutionManagerCancelTest {
     }
 
     @Test
-    fun `onDisconnect keeps executor while other projects remain connected`(
+    fun `onDisconnect keeps executor while a healthy build is running`(
         @TempDir projectA: File,
         @TempDir projectB: File,
     ) {
         val connectionManager = GradleConnectionManager()
         connectionManager.seedNoopConnections(projectA, projectB)
         val scopedManager = BuildExecutionManager(connectionManager)
+        scopedManager.seedRunningBuildForTests(
+            testBuildRecord(
+                id = "healthy-other-project-build",
+                tracker = runningTracker(),
+                projectDirectory = projectB.absolutePath,
+            ),
+        )
 
         val executorBefore = scopedManager.testExecutor()
 

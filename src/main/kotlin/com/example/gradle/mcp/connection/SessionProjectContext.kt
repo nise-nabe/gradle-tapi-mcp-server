@@ -1,6 +1,7 @@
 package com.example.gradle.mcp.connection
 
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Per-MCP-session view of "which Gradle projects this session works with".
@@ -24,6 +25,14 @@ class SessionProjectContext(
     seedProjectDirectories: List<File> = emptyList(),
 ) {
     private val lock = Any()
+    private val released = AtomicBoolean(false)
+
+    internal val isReleased: Boolean
+        get() = released.get()
+
+    internal fun markReleased() {
+        released.set(true)
+    }
 
     /** Ambient project visible to every session; always counts as known. */
     private val workspace: File? =

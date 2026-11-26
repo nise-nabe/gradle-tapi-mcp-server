@@ -166,15 +166,19 @@ class GradleConnectionManager(
 
     /**
      * Drops every hold of [session] (session teardown); pooled connections
-     * left without holders are closed. [beforePhysicalClose] runs under the
-     * project lifecycle lock just before a connection is physically closed,
-     * so callers can settle builds before the connection becomes unavailable.
+     * left without holders are closed. [preparePhysicalClose] runs under the
+     * project lifecycle lock immediately after the hold is removed and must be
+     * non-blocking; [beforePhysicalClose] runs after that lock is released but
+     * before the underlying connection is physically closed, so callers can
+     * wait for build workers without blocking lifecycle admission.
      */
     fun releaseSession(
         session: SessionProjectContext,
+        preparePhysicalClose: (File) -> Unit = {},
         beforePhysicalClose: (File) -> Unit = {},
     ) {
         val candidateKeys = synchronized(pool) {
+            session.markReleased()
             holders.entries.filter { session in it.value }.map { it.key }
         }
         for (key in candidateKeys) {
@@ -194,9 +198,12 @@ class GradleConnectionManager(
                             null
                         }
                     }
-                    toClose?.let {
-                        beforePhysicalClose(directory)
+                    if (toClose != null) {
+                        preparePhysicalClose(directory)
                     }
+                }
+                if (toClose != null) {
+                    beforePhysicalClose(directory)
                 }
             } finally {
                 toClose?.let(::closeQuietly)
@@ -234,7 +241,9 @@ class GradleConnectionManager(
     }
 
     private fun registerHolderLocked(key: String, session: SessionProjectContext) {
-        holders.getOrPut(key) { mutableSetOf() }.add(session)
+        if (!session.isReleased) {
+            holders.getOrPut(key) { mutableSetOf() }.add(session)
+        }
     }
 
     fun disconnectAll(): List<ConnectionInfo> {

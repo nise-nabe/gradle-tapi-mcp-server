@@ -91,10 +91,12 @@ internal fun disconnectProjects(
     }
 
     val hadActiveBuild: Boolean
+    var completeDisconnect: (() -> Unit)? = null
     val disconnected = ProjectLifecycleLock.withLifecycleLock(projectDirectory) {
         if (disconnectEverything) {
             hadActiveBuild = runtime.buildExecutionManager.hasActiveBuild()
-            runtime.buildExecutionManager.onDisconnect(null)
+            runtime.buildExecutionManager.prepareDisconnect(null)
+            completeDisconnect = { runtime.buildExecutionManager.completeDisconnect(null) }
             session?.onDisconnected(null)
             runtime.connectionManager.disconnectAll()
         } else {
@@ -104,7 +106,8 @@ internal fun disconnectProjects(
             val willClose = runtime.connectionManager.disconnectWouldClosePool(targetDirectory, session)
             hadActiveBuild = willClose && runtime.buildExecutionManager.hasActiveBuild(targetDirectory)
             if (willClose) {
-                runtime.buildExecutionManager.onDisconnect(targetDirectory)
+                runtime.buildExecutionManager.prepareDisconnect(targetDirectory)
+                completeDisconnect = { runtime.buildExecutionManager.completeDisconnect(targetDirectory) }
             }
             val info = runtime.connectionManager.disconnect(targetDirectory, session)
             session?.onDisconnected(targetDirectory)
@@ -115,6 +118,7 @@ internal fun disconnectProjects(
             }
         }
     }
+    completeDisconnect?.invoke()
     runtime.buildExecutionManager.wakeQueuedBuilds(projectDirectory)
     return buildMap {
         if (disconnected.isEmpty()) {

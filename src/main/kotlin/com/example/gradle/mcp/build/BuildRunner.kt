@@ -14,6 +14,7 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -30,6 +31,9 @@ internal class BuildRunner(
     private val registry: BuildRegistry,
     private val buildRecordStore: BuildRecordStore,
 ) {
+    private val executorRotationLock = Any()
+    private val retiredBuildExecutors = ConcurrentLinkedQueue<ExecutorService>()
+
     @Volatile
     private var executor: ExecutorService = newBuildExecutor()
 
@@ -37,7 +41,9 @@ internal class BuildRunner(
 
     /** Submit build work; throws [RejectedExecutionException] when the pool is saturated. */
     fun execute(work: () -> Unit) {
-        executor.execute { work() }
+        synchronized(executorRotationLock) {
+            executor.execute { work() }
+        }
     }
 
     fun runBuild(
@@ -323,6 +329,17 @@ internal class BuildRunner(
         return true
     }
 
+    /**
+     * Finish a build that was dequeued but never submitted because its connection
+     * disappeared. The caller owns the dequeued work item, so no worker can race
+     * this terminal update.
+     */
+    fun finalizeUnsubmittedBuild(record: BuildRecord, outcome: BuildTerminalOutcome.Cancelled) {
+        record.progressTracker.markCancelled(outcome.message)
+        record.errorMessage = outcome.message
+        record.finishedAt = Instant.now()
+    }
+
     private fun afterBuildSlotFreed(record: BuildRecord, queueDrain: QueueDrain) {
         if (queueDrain == QueueDrain.NONE) {
             return
@@ -341,7 +358,9 @@ internal class BuildRunner(
             is BuildTerminalOutcome.Failed -> "FAILED"
             is BuildTerminalOutcome.Cancelled -> "CANCELLED"
         }
-        registry.storeLastCompletedBuild(record, wireOutcome)
+        if (!record.suppressCompletionSnapshot) {
+            registry.storeLastCompletedBuild(record, wireOutcome)
+        }
     }
 
     fun markQueuedBuildsCancelled(reason: String, projectDirectory: File? = null) {
@@ -413,20 +432,12 @@ internal class BuildRunner(
     }
 
     /**
-     * Whether the shared build executor should be swapped for a fresh one.
-     *
-     * On a per-project disconnect the project being disconnected is still in the
-     * connection pool: GradleConnectionManager.disconnect runs after onDisconnect
-     * so running builds can be cancelled through the live ProjectConnection.
-     * Treat that project as already removed: replace the executor when every
-     * still-connected project is the one being disconnected (no other connection
-     * will remain). An empty pool, or a global reset with null projectDirectory,
-     * also qualifies.
+     * Whether the shared build executor can be swapped for a fresh one. The
+     * executor is shared across projects, so a healthy build must never be
+     * interrupted because an unrelated project disconnected.
      */
-    fun shouldReplaceExecutor(projectDirectory: File?): Boolean =
-        projectDirectory == null ||
-            connectionManager.connectedProjectDirectories()
-                .all { ProjectDirectoryResolver.sameProject(it.path, projectDirectory) }
+    fun canRetireBuildExecutor(): Boolean =
+        registry.runningRecords().all { it.cancellationRequested }
 
     fun drainAllProjectQueues() {
         registry.projectQueue.projectKeys().forEach { projectKey ->
@@ -443,7 +454,17 @@ internal class BuildRunner(
                         hasRunningBuild = registry.hasRunningBuild(projectDirectory),
                     )
                 ) {
-                    is ProjectBuildQueue.TakeResult.Ready -> result.queued
+                    is ProjectBuildQueue.TakeResult.Ready -> {
+                        if (!connectionManager.isConnected(projectDirectory)) {
+                            finalizeUnsubmittedBuild(
+                                result.queued.record,
+                                BuildTerminalOutcome.Cancelled("Gradle connection closed"),
+                            )
+                            null
+                        } else {
+                            result.queued
+                        }
+                    }
                     ProjectBuildQueue.TakeResult.StaleRetry -> null // continue outer loop
                     ProjectBuildQueue.TakeResult.Empty,
                     ProjectBuildQueue.TakeResult.IdleOccupied,
@@ -454,7 +475,7 @@ internal class BuildRunner(
                 continue
             }
             try {
-                executor.execute { queued.work() }
+                execute { queued.work() }
             } catch (_: RejectedExecutionException) {
                 ProjectLifecycleLock.withProjectLock(projectDirectory) {
                     registry.projectQueue.requeueAtFront(projectDirectory, queued)
@@ -483,19 +504,40 @@ internal class BuildRunner(
         }
     }
 
-    fun replaceBuildExecutor() {
-        val oldExecutor = executor
-        oldExecutor.shutdown()
-        try {
-            if (!oldExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                oldExecutor.shutdownNow()
-                oldExecutor.awaitTermination(2, TimeUnit.SECONDS)
+    /**
+     * Swap new work onto a fresh executor while the caller still holds the
+     * lifecycle lock that admits builds. The retired executor is shut down but
+     * awaited only after that lock is released, so replacement builds never run
+     * on a pool that disconnect handling may interrupt.
+     */
+    fun retireBuildExecutorIfNeeded(): Boolean {
+        val oldExecutor = synchronized(executorRotationLock) {
+            if (canRetireBuildExecutor()) {
+                val current = executor
+                executor = newBuildExecutor()
+                current
+            } else {
+                null
             }
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
-            oldExecutor.shutdownNow()
+        } ?: return false
+        oldExecutor.shutdown()
+        retiredBuildExecutors.add(oldExecutor)
+        return true
+    }
+
+    fun awaitRetiredBuildExecutors() {
+        while (true) {
+            val retired = retiredBuildExecutors.poll() ?: return
+            try {
+                if (!retired.awaitTermination(5, TimeUnit.SECONDS)) {
+                    retired.shutdownNow()
+                    retired.awaitTermination(2, TimeUnit.SECONDS)
+                }
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                retired.shutdownNow()
+            }
         }
-        executor = newBuildExecutor()
     }
 
     private fun newBuildExecutor(): ExecutorService {
