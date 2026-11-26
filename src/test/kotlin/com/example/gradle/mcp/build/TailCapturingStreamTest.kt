@@ -76,8 +76,10 @@ class TailCapturingStreamTest {
     @Test
     fun `decodes with the JVM default charset`() {
         val stream = TailCapturingStream(maxRetainedChars = 32)
-        val text = "café"
-        val bytes = text.toByteArray(Charset.defaultCharset())
+        val defaultCharset = Charset.defaultCharset()
+        val text = listOf("café", "日本語", "ascii")
+            .first { defaultCharset.newEncoder().canEncode(it) }
+        val bytes = text.toByteArray(defaultCharset)
 
         stream.append(bytes, 0, bytes.size)
 
