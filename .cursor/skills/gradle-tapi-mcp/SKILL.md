@@ -7,7 +7,7 @@ description: >-
 
 # Gradle Tooling API MCP
 
-The `gradle` MCP server (release v0.16.0) is configured in `.cursor/mcp.json`. `.cursor/install.sh`
+The `gradle` MCP server (release v0.16.1) is configured in `.cursor/mcp.json`. `.cursor/install.sh`
 downloads the release JAR to `~/.local/share/gradle-tapi-mcp-server/`, verifies its SHA-256, and
 exposes it via a stable `gradle-tapi-mcp-server.jar` symlink.
 `GRADLE_PROJECT_DIR` is set to the workspace root. This repo's MCP config does not set `--tools` / `GRADLE_TAPI_TOOLS`, so the release server registers every tool. A small-context client can start the JAR with `--tools=minimal` (`gradle_run_tasks`, `gradle_run_tests`, `gradle_get_build_status`, `gradle_get_project_overview`, `gradle_cancel_build`) or a comma-separated union of profiles and exact tool names.
